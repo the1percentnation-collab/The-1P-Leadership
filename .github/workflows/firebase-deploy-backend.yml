@@ -1,4 +1,4 @@
-name: Deploy Firestore rules + Cloud Functions
+name: Deploy Firestore rules + Storage rules + Cloud Functions
 on:
   push:
     branches:
@@ -6,6 +6,7 @@ on:
     paths:
       - 'firestore.rules'
       - 'firestore.indexes.json'
+      - 'storage.rules'
       - 'firebase.json'
       - 'functions/**'
       - '.github/workflows/firebase-deploy-backend.yml'
@@ -34,12 +35,12 @@ jobs:
           echo "path=$RUNNER_TEMP/sa.json" >> "$GITHUB_OUTPUT"
           echo "SA client_email: $(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["client_email"])' "$RUNNER_TEMP/sa.json")"
 
-      - name: Deploy Firestore rules + Functions
+      - name: Deploy Firestore rules + Storage rules + Functions
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.sa.outputs.path }}
         run: |
           npx --yes firebase-tools deploy \
-            --only firestore:rules,firestore:indexes,functions \
+            --only firestore:rules,firestore:indexes,storage,functions \
             --project the-1p-leadership \
             --non-interactive \
             --force

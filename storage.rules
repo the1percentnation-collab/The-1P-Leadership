@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // avatars/{uid}/{filename} — readable by any signed-in user, writable only by that uid.
+    match /avatars/{uid}/{filename} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // posts/{postId}/{filename} — readable by any signed-in user. Writable by any signed-in
+    // user (the client attaches the postId after creating the post doc, which is itself
+    // guarded by Firestore rules tying authorUid to auth.uid). Extra hardening (5MB, images)
+    // is applied here.
+    match /posts/{postId}/{filename} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

@@ -188,19 +188,23 @@ export const store = {
     }
   },
 
-  // Writes an aggregate digest (completedCount, lastActiveAt) to
-  // companies/{companyId}/members/{uid} so company admins can see progress
+  // Writes an aggregate digest (completedCount, lastActiveAt, public profile bits) to
+  // companies/{companyId}/members/{uid} so company admins + peers can see progress/profile
   // without being granted read access on /progress subcollections (which stay private).
   async _mirrorMemberDigest(user) {
     try {
       const uDoc = await getDoc(doc(db, 'users', user.uid));
       if (!uDoc.exists()) return;
-      const companyId = uDoc.data().companyId;
+      const data = uDoc.data();
+      const companyId = data.companyId;
       if (!companyId) return;
       await setDoc(doc(db, 'companies', companyId, 'members', user.uid), {
         uid: user.uid,
-        email: user.email || uDoc.data().email || null,
-        displayName: user.displayName || uDoc.data().displayName || null,
+        email: user.email || data.email || null,
+        displayName: data.displayName || user.displayName || null,
+        avatarUrl: data.avatarUrl || null,
+        bio: data.bio || null,
+        role: data.role || 'user',
         completedCount: this.completed.size,
         currentModule: this.currentModule,
         lastActiveAt: serverTimestamp()

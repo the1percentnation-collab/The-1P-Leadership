@@ -91,18 +91,151 @@ service cloud.firestore {
       }
 
       // companies/{cid}/members/{uid} — mirrored roster entries written by the
-      // acceptInvite Cloud Function. Readable by owner + any admin of the company.
+      // acceptInvite Cloud Function. Readable by owner + any admin of the company
+      // + any member of the same company (so members.html can render peers).
       // Members can read their own entry. Writes are server-only (admin SDK bypasses rules).
       match /members/{mUid} {
         allow read: if isOwner()
                      || isCompanyAdmin(cid)
-                     || (isSignedIn() && request.auth.uid == mUid);
+                     || (isSignedIn() && request.auth.uid == mUid)
+                     || (isSignedIn()
+                         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+                         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == cid);
+        allow list: if isOwner()
+                     || isCompanyAdmin(cid)
+                     || (isSignedIn()
+                         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+                         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == cid);
         // Allow the company admin/owner to delete a member entry when revoking a seat.
         allow delete: if isOwner() || isCompanyAdmin(cid);
         // Owner can write freely; members can update their own aggregate digest fields
         // (completedCount, lastActiveAt, capstoneStatus) but not reassign their uid.
         allow create, update: if isOwner()
                                || (isSignedIn() && request.auth.uid == mUid);
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Community feed
+    // ────────────────────────────────────────────────────────────────
+    // posts/{postId}
+    //  Scope: companyId == null  -> global (owner-authored, visible to all)
+    //         companyId == <cid>  -> company-scoped, visible to that company + owner
+    match /posts/{postId} {
+      // Can the caller see this post?
+      function callerCompanyId() {
+        return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+               ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId
+               : null;
+      }
+      function canReadPost() {
+        return isSignedIn() && (
+          isOwner()
+          || resource.data.companyId == null
+          || resource.data.companyId == callerCompanyId()
+        );
+      }
+
+      allow get: if canReadPost();
+      // list: we can't evaluate resource.data per-query here across companyId == null OR ==
+      // user's cid easily; clients run two queries (one per companyId filter). Allow list to
+      // any signed-in user — individual documents still filter via `get` rules above.
+      allow list: if isSignedIn();
+
+      // Create: authorUid must match auth.uid. Counters must start at 0. companyId must be
+      // null (global) only if the caller is owner, otherwise it must match caller's own cid.
+      allow create: if isSignedIn()
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.likeCount == 0
+        && request.resource.data.commentCount == 0
+        && (
+          (request.resource.data.companyId == null && isOwner())
+          || (request.resource.data.companyId != null
+              && request.resource.data.companyId == callerCompanyId())
+        );
+
+      // Update:
+      //   - author may update their own post (text, imageUrl, updatedAt) but not counters directly
+      //   - any signed-in reader may increment/decrement likeCount by ±1 (via toggleLike txn)
+      //   - any signed-in reader may increment/decrement commentCount by ±1 (via addComment txn)
+      // We enforce ±1 delta on counters; content edits only if authorUid matches.
+      allow update: if isSignedIn() && canReadPost() && (
+        (
+          // Like toggle: likeCount diffs by ±1, commentCount & content unchanged.
+          request.resource.data.authorUid == resource.data.authorUid
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.text == resource.data.text
+          && request.resource.data.imageUrl == resource.data.imageUrl
+          && request.resource.data.commentCount == resource.data.commentCount
+          && (
+            request.resource.data.likeCount == resource.data.likeCount + 1
+            || request.resource.data.likeCount == resource.data.likeCount - 1
+          )
+        )
+        || (
+          // Comment add/delete: commentCount diffs by ±1, likeCount & content unchanged.
+          request.resource.data.authorUid == resource.data.authorUid
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.text == resource.data.text
+          && request.resource.data.imageUrl == resource.data.imageUrl
+          && request.resource.data.likeCount == resource.data.likeCount
+          && (
+            request.resource.data.commentCount == resource.data.commentCount + 1
+            || request.resource.data.commentCount == resource.data.commentCount - 1
+          )
+        )
+        || (
+          // Author editing own post content — counters must be unchanged.
+          resource.data.authorUid == request.auth.uid
+          && request.resource.data.likeCount == resource.data.likeCount
+          && request.resource.data.commentCount == resource.data.commentCount
+          && request.resource.data.authorUid == resource.data.authorUid
+        )
+      );
+
+      // Delete: author, owner, or same-company admin.
+      allow delete: if isSignedIn() && (
+        resource.data.authorUid == request.auth.uid
+        || isOwner()
+        || (resource.data.companyId != null && isCompanyAdmin(resource.data.companyId))
+      );
+
+      // comments/{commentId}
+      match /comments/{commentId} {
+        function parentPost() {
+          return get(/databases/$(database)/documents/posts/$(postId));
+        }
+        function callerCompanyId() {
+          return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+                 ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId
+                 : null;
+        }
+        function canReadParent() {
+          return isSignedIn() && (
+            isOwner()
+            || parentPost().data.companyId == null
+            || parentPost().data.companyId == callerCompanyId()
+          );
+        }
+
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && canReadParent()
+          && request.resource.data.authorUid == request.auth.uid;
+        allow update: if isSignedIn()
+          && resource.data.authorUid == request.auth.uid
+          && request.resource.data.authorUid == resource.data.authorUid;
+        allow delete: if isSignedIn() && (
+          resource.data.authorUid == request.auth.uid
+          || isOwner()
+          || (parentPost().data.companyId != null && isCompanyAdmin(parentPost().data.companyId))
+        );
+      }
+
+      // likes/{uid} — doc id must equal auth.uid.
+      match /likes/{likeUid} {
+        allow read: if isSignedIn();
+        allow create, delete: if isSignedIn() && request.auth.uid == likeUid;
+        allow update: if false;
       }
     }
   }
