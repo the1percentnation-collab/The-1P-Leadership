@@ -3,10 +3,719 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The 1P Leadership</title>
+  <title>True Leader: The One Percent Way</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-primary: #0a0a0a;
+      --bg-card: #1a1a1a;
+      --bg-card-hover: #222;
+      --bg-module: #1e1e1e;
+      --text-primary: #e8e8e8;
+      --text-secondary: #999;
+      --text-muted: #666;
+      --accent-red: #c0392b;
+      --accent-gold: #d4a843;
+      --accent-green: #4a7c59;
+      --border-subtle: #2a2a2a;
+      --border-card: #333;
+      --level1-color: #d4a843;
+      --level2-color: #6b9b5e;
+      --level3-color: #c0392b;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Header */
+    .header {
+      padding: 24px 0 8px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+
+    .brand-dot {
+      width: 10px;
+      height: 10px;
+      background: var(--accent-red);
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* Hero */
+    .hero {
+      padding: 20px 0 32px;
+    }
+
+    .hero h1 {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+      line-height: 1.2;
+    }
+
+    .hero p {
+      font-size: 16px;
+      color: var(--text-secondary);
+      font-style: italic;
+    }
+
+    /* Stats Bar */
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 20px 16px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-transform: capitalize;
+    }
+
+    /* Tier Cards */
+    .tiers-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+
+    .tier-card {
+      background: var(--bg-card);
+      border: 2px solid var(--border-card);
+      border-radius: 12px;
+      padding: 24px;
+      cursor: pointer;
+      transition: border-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
+      position: relative;
+    }
+
+    .tier-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .tier-card.active[data-level="1"] {
+      border-color: var(--level1-color);
+      border-style: dashed;
+      box-shadow: 0 0 20px rgba(212, 168, 67, 0.1);
+    }
+
+    .tier-card.active[data-level="2"] {
+      border-color: var(--level2-color);
+      border-style: dashed;
+      box-shadow: 0 0 20px rgba(107, 155, 94, 0.1);
+    }
+
+    .tier-card.active[data-level="3"] {
+      border-color: var(--level3-color);
+      border-style: dashed;
+      box-shadow: 0 0 20px rgba(192, 57, 43, 0.1);
+    }
+
+    .tier-badge {
+      display: inline-block;
+      padding: 3px 12px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .tier-badge.level-1 {
+      background: rgba(212, 168, 67, 0.15);
+      color: var(--level1-color);
+      border: 1px solid rgba(212, 168, 67, 0.3);
+    }
+
+    .tier-badge.level-2 {
+      background: rgba(107, 155, 94, 0.15);
+      color: var(--level2-color);
+      border: 1px solid rgba(107, 155, 94, 0.3);
+    }
+
+    .tier-badge.level-3 {
+      background: rgba(192, 57, 43, 0.15);
+      color: var(--level3-color);
+      border: 1px solid rgba(192, 57, 43, 0.3);
+    }
+
+    .tier-name {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .tier-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .tier-price {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .tier-installment {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    .tier-cert-badge {
+      display: inline-block;
+      padding: 6px 16px;
+      border: 1px solid var(--border-card);
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    /* Level Detail Section */
+    .level-detail {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 36px;
+      margin-bottom: 40px;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .level-detail-header h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .level-detail-meta {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 28px;
+    }
+
+    .level-detail-meta span {
+      margin: 0 4px;
+      color: var(--text-muted);
+    }
+
+    /* Modules Grid */
+    .modules-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 36px;
+    }
+
+    .module-card {
+      background: var(--bg-module);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 16px 20px;
+      transition: background 0.2s;
+    }
+
+    .module-card:hover {
+      background: var(--bg-card-hover);
+    }
+
+    .module-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .module-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* Certification Requirements */
+    .cert-requirements {
+      margin-bottom: 8px;
+    }
+
+    .cert-requirements h3 {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .cert-requirements ul {
+      list-style: none;
+    }
+
+    .cert-requirements li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+
+    .cert-requirements li::before {
+      content: '';
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      min-width: 7px;
+      background: var(--accent-red);
+      border-radius: 50%;
+      margin-top: 7px;
+    }
+
+    /* Certification Pathway */
+    .pathway-section {
+      margin-bottom: 40px;
+    }
+
+    .pathway-section h3 {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+    }
+
+    .pathway-flow {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 24px;
+    }
+
+    .pathway-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .pathway-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .pathway-step {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 18px;
+      border: 1px solid var(--border-card);
+      border-radius: 20px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      background: rgba(255, 255, 255, 0.02);
+      white-space: nowrap;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .pathway-step:hover {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-primary);
+    }
+
+    .pathway-arrow {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    /* CTA Button */
+    .cta-section {
+      padding-bottom: 48px;
+    }
+
+    .cta-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      background: transparent;
+      color: var(--text-primary);
+      border: 1px solid var(--border-card);
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s, transform 0.15s;
+      font-family: inherit;
+    }
+
+    .cta-button:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: var(--text-muted);
+      transform: translateY(-1px);
+    }
+
+    .cta-button .arrow {
+      font-size: 16px;
+      transition: transform 0.2s;
+    }
+
+    .cta-button:hover .arrow {
+      transform: translate(2px, -2px);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .stats-bar {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .tiers-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .modules-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero h1 {
+        font-size: 24px;
+      }
+
+      .level-detail {
+        padding: 24px;
+      }
+
+      .pathway-row {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .pathway-arrow {
+        display: none;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .stats-bar {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .stat-card {
+        padding: 14px 10px;
+      }
+
+      .stat-value {
+        font-size: 18px;
+      }
+
+      .tier-price {
+        font-size: 24px;
+      }
+
+      .container {
+        padding: 0 16px;
+      }
+    }
+  </style>
 </head>
 <body>
-  <h1>The 1P Leadership</h1>
-  <p>Coming soon.</p>
+
+<div class="container">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      THE ONE PERCENT NATION
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero">
+    <h1>True Leader: The One Percent Way</h1>
+    <p>Leadership coaching certification &mdash; three tiers, built to last</p>
+  </section>
+
+  <!-- Stats Bar -->
+  <section class="stats-bar" id="statsBar"></section>
+
+  <!-- Tier Cards -->
+  <section class="tiers-grid" id="tiersGrid"></section>
+
+  <!-- Level Detail -->
+  <section id="levelDetail"></section>
+
+  <!-- Certification Pathway -->
+  <section class="pathway-section">
+    <h3>Certification Pathway</h3>
+    <div class="pathway-flow" id="pathwayFlow"></div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <button class="cta-button" id="ctaButton">
+      <span id="ctaText">Build Level 1, Module 1 content</span>
+      <span class="arrow">&#8599;</span>
+    </button>
+  </section>
+
+</div>
+
+<script>
+  // ── Data ──────────────────────────────────────────────
+
+  const stats = [
+    { value: '3', label: 'Certification tiers' },
+    { value: '80\u2013120', label: 'Learning hours' },
+    { value: '$497', label: 'Entry point' },
+    { value: '$9,997', label: 'Full path bundle' },
+  ];
+
+  const tiers = [
+    {
+      level: 1,
+      name: 'Foundation',
+      tagline: 'Lead yourself first \u2014 mindset, identity, self\u2011coaching',
+      price: '$497',
+      installment: 'or 3 \u00d7 $175',
+      badge: 'Certified Self\u2011Leader',
+      duration: '4\u20136 weeks self\u2011paced',
+      outcome: 'Certified Self\u2011Leader badge',
+      modules: [
+        { num: 1, name: 'Redefining Success' },
+        { num: 2, name: 'Mindset Reset' },
+        { num: 3, name: 'Self\u2011Awareness as a Leadership Skill' },
+        { num: 4, name: 'Energy, Time & Boundaries' },
+        { num: 5, name: 'Self\u2011Coaching Fundamentals' },
+        { num: 6, name: 'Faith, Purpose & Alignment' },
+        { num: 7, name: 'Capstone: Your Leadership Manifesto' },
+      ],
+      certRequirements: [
+        'Complete all 7 modules and reflections',
+        'Submit Leadership Manifesto \u2014 written + 5\u2011min video',
+        'Pass Foundations Knowledge Check at 80% or higher',
+        'Receive Certified Self\u2011Leader digital badge + signed certificate',
+      ],
+    },
+    {
+      level: 2,
+      name: 'Practitioner',
+      tagline: 'Coach the one in front of you \u2014 frameworks, conversations',
+      price: '$2,497',
+      installment: 'or 6 \u00d7 $447',
+      badge: 'One Percent Certified Coach',
+      duration: '8\u201312 weeks guided',
+      outcome: 'One Percent Certified Coach badge',
+      modules: [
+        { num: 1, name: 'Coaching Foundations & Ethics' },
+        { num: 2, name: 'Active Listening & Powerful Questions' },
+        { num: 3, name: 'The 1P Coaching Framework' },
+        { num: 4, name: 'Emotional Intelligence in Practice' },
+        { num: 5, name: 'Goal Setting & Accountability' },
+        { num: 6, name: 'Coaching Practicum & Feedback' },
+        { num: 7, name: 'Building Your Coaching Practice' },
+        { num: 8, name: 'Capstone: Live Coaching Demo' },
+      ],
+      certRequirements: [
+        'Complete all 8 modules and coaching exercises',
+        'Log minimum 10 practice coaching sessions',
+        'Submit Live Coaching Demo \u2014 recorded + peer review',
+        'Pass Practitioner Assessment at 85% or higher',
+        'Receive One Percent Certified Coach digital badge + signed certificate',
+      ],
+    },
+    {
+      level: 3,
+      name: 'Master',
+      tagline: 'Build leaders who build leaders \u2014 culture, teams, legacy',
+      price: '$7,997',
+      installment: 'or 12 \u00d7 $725',
+      badge: 'Master Coach & Authorized Trainer',
+      duration: '16\u201324 weeks by invite',
+      outcome: 'Master Coach & Authorized Trainer badge',
+      modules: [
+        { num: 1, name: 'Leadership Culture Design' },
+        { num: 2, name: 'Team Dynamics & Facilitation' },
+        { num: 3, name: 'Mentoring & Developing Coaches' },
+        { num: 4, name: 'Organizational Coaching Strategy' },
+        { num: 5, name: 'Legacy & Succession Planning' },
+        { num: 6, name: 'Capstone: Leadership Legacy Project' },
+      ],
+      certRequirements: [
+        'Complete all 6 modules and leadership projects',
+        'Mentor at least 2 Level 2 Practitioners',
+        'Submit Leadership Legacy Project \u2014 written + presentation',
+        'Pass Master Assessment at 90% or higher',
+        'Receive Master Coach & Authorized Trainer badge + signed certificate',
+      ],
+    },
+  ];
+
+  const pathwaySteps = [
+    ['Enroll in Level 1', 'Certified Self\u2011Leader', 'Level 2 Practitioner', 'One Percent Certified Coach'],
+    ['Level 3 Master (by invite)', 'Authorized Trainer'],
+  ];
+
+  // ── State ─────────────────────────────────────────────
+
+  let activeLevel = 1;
+
+  // ── Renderers ─────────────────────────────────────────
+
+  function renderStats() {
+    const el = document.getElementById('statsBar');
+    el.innerHTML = stats.map(s => `
+      <div class="stat-card">
+        <div class="stat-value">${s.value}</div>
+        <div class="stat-label">${s.label}</div>
+      </div>
+    `).join('');
+  }
+
+  function renderTiers() {
+    const el = document.getElementById('tiersGrid');
+    el.innerHTML = tiers.map(t => `
+      <div class="tier-card${t.level === activeLevel ? ' active' : ''}"
+           data-level="${t.level}"
+           onclick="selectTier(${t.level})">
+        <span class="tier-badge level-${t.level}">Level ${t.level}</span>
+        <div class="tier-name">${t.name}</div>
+        <div class="tier-desc">${t.tagline}</div>
+        <div class="tier-price">${t.price}</div>
+        <div class="tier-installment">${t.installment}</div>
+        <span class="tier-cert-badge">${t.badge}</span>
+      </div>
+    `).join('');
+  }
+
+  function renderLevelDetail() {
+    const t = tiers.find(t => t.level === activeLevel);
+    const el = document.getElementById('levelDetail');
+    el.innerHTML = `
+      <div class="level-detail" key="${t.level}">
+        <div class="level-detail-header">
+          <h2>Level ${t.level} &mdash; ${t.name}: ${t.level === 1 ? 'Lead Yourself First' : t.level === 2 ? 'Coach the One in Front of You' : 'Build Leaders Who Build Leaders'}</h2>
+          <div class="level-detail-meta">${t.duration}<span>&middot;</span>Outcome: ${t.outcome}</div>
+        </div>
+
+        <div class="modules-grid">
+          ${t.modules.map(m => `
+            <div class="module-card">
+              <div class="module-label">Module ${m.num}</div>
+              <div class="module-name">${m.name}</div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="cert-requirements">
+          <h3>Certification Requirements</h3>
+          <ul>
+            ${t.certRequirements.map(r => `<li>${r}</li>`).join('')}
+          </ul>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderPathway() {
+    const el = document.getElementById('pathwayFlow');
+    el.innerHTML = pathwaySteps.map(row => `
+      <div class="pathway-row">
+        ${row.map((step, i) => `
+          <span class="pathway-step">${step}</span>
+          ${i < row.length - 1 ? '<span class="pathway-arrow">&#8250;</span>' : ''}
+        `).join('')}
+      </div>
+    `).join('');
+  }
+
+  function updateCTA() {
+    const t = tiers.find(t => t.level === activeLevel);
+    document.getElementById('ctaText').textContent =
+      `Build Level ${t.level}, Module 1 content`;
+  }
+
+  // ── Interaction ───────────────────────────────────────
+
+  function selectTier(level) {
+    if (level === activeLevel) return;
+    activeLevel = level;
+    renderTiers();
+    renderLevelDetail();
+    updateCTA();
+  }
+
+  // ── Init ──────────────────────────────────────────────
+
+  function init() {
+    renderStats();
+    renderTiers();
+    renderLevelDetail();
+    renderPathway();
+    updateCTA();
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+</script>
+
 </body>
 </html>
