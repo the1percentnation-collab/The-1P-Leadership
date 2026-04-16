@@ -3,6 +3,7 @@ import { MODULES, PILLARS } from './modules.js';
 import { onAuthReady, signOut, currentUser } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { firebaseReady } from './firebase.js';
+import { getUserProfile, hasNewPostsSinceVisit, avatarHtml, escapeHtml } from './community.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -122,18 +123,29 @@ function completeModule() {
 $('btn-prev').addEventListener('click', () => navigate(-1));
 $('btn-next').addEventListener('click', () => navigate(1));
 
-async function renderUserChip(user, role) {
+async function renderUserChip(user, role, opts = {}) {
   const chip = $('user-chip');
   if (!chip) return;
-  const label = user ? (user.displayName || user.email || 'Signed in') : 'Offline';
+  const { profile = null, companyId = null, hasNewCommunity = false } = opts;
+  const label = user ? (profile && profile.displayName) || user.displayName || user.email || 'Signed in' : 'Offline';
   const adminLink = role && (role === 'admin' || role === 'owner')
     ? `<a class="user-chip-link" href="/admin.html">Admin</a>` : '';
   const ownerLink = role === 'owner'
     ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
+  const communityClass = hasNewCommunity ? 'c-has-badge' : '';
+  const avatar = user
+    ? `<a href="/profile.html" class="c-avatar-link" title="Your profile">${avatarHtml({
+        displayName: (profile && profile.displayName) || user.displayName || user.email,
+        avatarUrl: profile && profile.avatarUrl || null
+      }, 28)}</a>`
+    : '';
   chip.innerHTML = `
+    <a class="user-chip-link ${communityClass}" href="/community.html" title="Community">Community</a>
+    <a class="user-chip-link" href="/members.html">Members</a>
     ${adminLink}
     ${ownerLink}
-    <span class="user-chip-email">${label}</span>
+    ${avatar}
+    <span class="user-chip-email">${escapeHtml(label)}</span>
     <button class="btn btn-ghost" id="btn-signout">Sign out</button>
   `;
   const out = $('btn-signout');
@@ -161,15 +173,25 @@ async function main() {
   await store.load();
   render();
 
-  // Topbar chip with role-aware links.
+  // Topbar chip with role-aware links + community badge + avatar.
   let role = null;
+  let companyId = null;
+  let profile = null;
+  let hasNewCommunity = false;
   try {
     if (firebaseReady && currentUser()) {
       const info = await getRoleInfo();
       role = info.role;
+      companyId = info.companyId || null;
+      try {
+        profile = await getUserProfile(currentUser().uid);
+      } catch (e) {}
+      try {
+        hasNewCommunity = await hasNewPostsSinceVisit({ role, companyId });
+      } catch (e) {}
     }
   } catch (e) {}
-  renderUserChip(currentUser(), role);
+  renderUserChip(currentUser(), role, { profile, companyId, hasNewCommunity });
 }
 
 main();
