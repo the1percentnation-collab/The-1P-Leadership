@@ -107,6 +107,63 @@ exports.acceptInvite = onCall(async (request) => {
 });
 
 /**
+ * deleteContact({ companyId, contactId })
+ * - Verifies caller is owner or admin of the company (uid in adminUids).
+ * - Recursively deletes notes + activities subcollections then the contact doc.
+ *   (Firestore doesn't cascade automatically.)
+ */
+exports.deleteContact = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const companyId = (request.data && request.data.companyId || '').toString().trim();
+  const contactId = (request.data && request.data.contactId || '').toString().trim();
+  if (!companyId || !contactId) {
+    throw new HttpsError('invalid-argument', 'companyId and contactId are required.');
+  }
+
+  const db = admin.firestore();
+  const companyRef = db.collection('companies').doc(companyId);
+  const companySnap = await companyRef.get();
+  if (!companySnap.exists) throw new HttpsError('not-found', 'Company not found.');
+
+  const isOwnerClaim = request.auth.token && request.auth.token.role === 'owner';
+  const adminUids = (companySnap.data() && companySnap.data().adminUids) || [];
+  if (!isOwnerClaim && !adminUids.includes(uid)) {
+    throw new HttpsError('permission-denied', 'Not an admin of this company.');
+  }
+
+  const contactRef = companyRef.collection('contacts').doc(contactId);
+  const contactSnap = await contactRef.get();
+  if (!contactSnap.exists) {
+    // Idempotent — treat missing as success.
+    return { ok: true, deleted: 0, note: 'Contact already gone.' };
+  }
+
+  // Recursively delete subcollections in batches of 400 (Firestore batch limit = 500,
+  // leave headroom). Collections are bounded in practice (notes + activities per contact).
+  async function deleteCollection(colRef) {
+    let deleted = 0;
+    while (true) {
+      const snap = await colRef.limit(400).get();
+      if (snap.empty) break;
+      const batch = db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      deleted += snap.size;
+      if (snap.size < 400) break;
+    }
+    return deleted;
+  }
+
+  const notesDeleted = await deleteCollection(contactRef.collection('notes'));
+  const actsDeleted = await deleteCollection(contactRef.collection('activities'));
+  await contactRef.delete();
+
+  return { ok: true, deleted: notesDeleted + actsDeleted + 1 };
+});
+
+/**
  * bootstrapOwner()
  * - Callable by the authenticated user whose email == OWNER_EMAIL.
  * - Sets custom claim role='owner' on that user.

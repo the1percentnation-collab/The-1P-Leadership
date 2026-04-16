@@ -113,6 +113,36 @@ service cloud.firestore {
         allow create, update: if isOwner()
                                || (isSignedIn() && request.auth.uid == mUid);
       }
+
+      // ──────────────────────────────────────────────────────────────
+      // CRM (Phase 2): contacts + notes + activities.
+      // Scoped to the company. Only company admins + owner can read/write.
+      // Activities are create-only from the client (immutable audit trail).
+      // ──────────────────────────────────────────────────────────────
+      match /contacts/{contactId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
+
+        match /notes/{noteId} {
+          allow read: if isOwner() || isCompanyAdmin(cid);
+          allow create: if (isOwner() || isCompanyAdmin(cid))
+                         && request.resource.data.authorUid == request.auth.uid;
+          allow update: if (isOwner() || isCompanyAdmin(cid))
+                         && resource.data.authorUid == request.auth.uid
+                         && request.resource.data.authorUid == resource.data.authorUid;
+          allow delete: if isOwner() || isCompanyAdmin(cid);
+        }
+
+        match /activities/{activityId} {
+          allow read: if isOwner() || isCompanyAdmin(cid);
+          // Create-only: act as immutable audit trail. actorUid must match caller.
+          allow create: if (isOwner() || isCompanyAdmin(cid))
+                         && request.resource.data.actorUid == request.auth.uid;
+          allow update: if false;
+          // Deletes only by owner — admins cannot tamper with history.
+          allow delete: if isOwner();
+        }
+      }
     }
 
     // ────────────────────────────────────────────────────────────────
