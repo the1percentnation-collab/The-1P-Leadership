@@ -34,6 +34,7 @@ function renderUserChip(u, role) {
   const ownerLink = role === 'owner' ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
   chip.innerHTML = `
     <a class="user-chip-link" href="/index.html">Dashboard</a>
+    <a class="user-chip-link" href="/crm.html">CRM</a>
     ${ownerLink}
     <span class="user-chip-email">${u.email || ''}</span>
     <button class="btn btn-ghost" id="btn-signout">Sign out</button>

@@ -19,6 +19,7 @@ function renderUserChip(u) {
   chip.innerHTML = `
     <a class="user-chip-link" href="/index.html">Dashboard</a>
     <a class="user-chip-link" href="/admin.html">Admin</a>
+    <a class="user-chip-link" href="/crm.html">CRM</a>
     <span class="user-chip-email">${u.email || ''}</span>
     <button class="btn btn-ghost" id="btn-signout">Sign out</button>
   `;
