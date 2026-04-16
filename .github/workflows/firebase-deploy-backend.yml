@@ -32,6 +32,7 @@ jobs:
         run: |
           echo "$SA_JSON" > "$RUNNER_TEMP/sa.json"
           echo "path=$RUNNER_TEMP/sa.json" >> "$GITHUB_OUTPUT"
+          echo "SA client_email: $(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["client_email"])' "$RUNNER_TEMP/sa.json")"
 
       - name: Deploy Firestore rules + Functions
         env:
