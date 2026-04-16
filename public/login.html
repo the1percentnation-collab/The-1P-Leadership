@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in | 1P-CLC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+  <div class="auth-shell">
+    <div class="auth-card">
+      <div class="brand-badge">1P-CLC Program</div>
+      <h1>SIGN <span>IN</span></h1>
+      <div class="auth-sub">Welcome back. Continue your certification.</div>
+
+      <div id="auth-msg"></div>
+
+      <form class="auth-form" id="login-form" novalidate>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" required />
+
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required />
+
+        <button class="btn btn-primary" type="submit" id="btn-submit">Sign in</button>
+        <button class="btn btn-google" type="button" id="btn-google">Continue with Google</button>
+      </form>
+
+      <div class="auth-footer">
+        <a href="/signup.html">Create an account</a>
+        <a href="#" id="link-forgot">Forgot password?</a>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { loginEmail, loginGoogle, resetPassword, onAuthReady } from './js/auth.js';
+    import { firebaseReady } from './js/firebase.js';
+
+    const $ = (id) => document.getElementById(id);
+    const msg = $('auth-msg');
+
+    function showErr(txt) { msg.innerHTML = `<div class="auth-error">${txt}</div>`; }
+    function showOk(txt) { msg.innerHTML = `<div class="auth-ok">${txt}</div>`; }
+    function clearMsg() { msg.innerHTML = ''; }
+
+    function nextUrl() {
+      const p = new URLSearchParams(location.search);
+      const n = p.get('next');
+      return n && n.startsWith('/') ? n : '/index.html';
+    }
+
+    if (!firebaseReady) {
+      showErr('Authentication service is unreachable. Check your connection and retry.');
+    }
+
+    // If already signed in, bounce to next.
+    onAuthReady((u) => { if (u) location.replace(nextUrl()); });
+
+    $('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearMsg();
+      const email = $('email').value.trim();
+      const password = $('password').value;
+      if (!email || !password) return showErr('Email and password required.');
+      $('btn-submit').disabled = true;
+      try {
+        await loginEmail(email, password);
+        location.replace(nextUrl());
+      } catch (err) {
+        showErr(err.message || 'Sign-in failed.');
+      } finally {
+        $('btn-submit').disabled = false;
+      }
+    });
+
+    $('btn-google').addEventListener('click', async () => {
+      clearMsg();
+      try {
+        await loginGoogle();
+        location.replace(nextUrl());
+      } catch (err) {
+        showErr(err.message || 'Google sign-in failed.');
+      }
+    });
+
+    $('link-forgot').addEventListener('click', async (e) => {
+      e.preventDefault();
+      clearMsg();
+      const email = $('email').value.trim();
+      if (!email) return showErr('Enter your email first, then click Forgot password.');
+      try {
+        await resetPassword(email);
+        showOk('Password reset email sent. Check your inbox.');
+      } catch (err) {
+        showErr(err.message || 'Could not send reset email.');
+      }
+    });
+  </script>
+</body>
+</html>

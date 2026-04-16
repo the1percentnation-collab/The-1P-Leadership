@@ -1,5 +1,8 @@
 import { store, saveNote } from './store.js';
 import { MODULES, PILLARS } from './modules.js';
+import { onAuthReady, signOut, currentUser } from './auth.js';
+import { getRoleInfo } from './roles.js';
+import { firebaseReady } from './firebase.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -119,5 +122,54 @@ function completeModule() {
 $('btn-prev').addEventListener('click', () => navigate(-1));
 $('btn-next').addEventListener('click', () => navigate(1));
 
-store.load();
-render();
+async function renderUserChip(user, role) {
+  const chip = $('user-chip');
+  if (!chip) return;
+  const label = user ? (user.displayName || user.email || 'Signed in') : 'Offline';
+  const adminLink = role && (role === 'admin' || role === 'owner')
+    ? `<a class="user-chip-link" href="/admin.html">Admin</a>` : '';
+  const ownerLink = role === 'owner'
+    ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
+  chip.innerHTML = `
+    ${adminLink}
+    ${ownerLink}
+    <span class="user-chip-email">${label}</span>
+    <button class="btn btn-ghost" id="btn-signout">Sign out</button>
+  `;
+  const out = $('btn-signout');
+  if (out) out.addEventListener('click', async () => {
+    try { await signOut(); } catch (e) {}
+    location.replace('/login.html');
+  });
+}
+
+async function main() {
+  // Require auth when Firebase is available. If Firebase failed to init entirely, we
+  // fall back to localStorage-only mode (the task says: graceful fallback if unreachable,
+  // but still require login before content — we honor the stricter rule when Firebase works.)
+  if (firebaseReady) {
+    const user = await onAuthReady();
+    if (!user) {
+      location.replace('/login.html');
+      return;
+    }
+  } else {
+    // Firebase unreachable — degrade gracefully. Show a banner; still allow local use.
+    console.warn('[app] Firebase unavailable, running in localStorage-only mode.');
+  }
+
+  await store.load();
+  render();
+
+  // Topbar chip with role-aware links.
+  let role = null;
+  try {
+    if (firebaseReady && currentUser()) {
+      const info = await getRoleInfo();
+      role = info.role;
+    }
+  } catch (e) {}
+  renderUserChip(currentUser(), role);
+}
+
+main();

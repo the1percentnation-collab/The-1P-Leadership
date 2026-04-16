@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Owner Console | 1P-CLC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+  <div class="console-shell">
+    <div class="console-topbar">
+      <div class="console-title">1P-CLC <span>OWNER</span></div>
+      <div class="user-chip" id="user-chip"></div>
+    </div>
+    <div class="console-body">
+      <div id="gate-msg"></div>
+      <div id="panel" style="display:none;">
+        <div class="card">
+          <h2>Bootstrap owner claim</h2>
+          <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+            One-time: run this if your account doesn't yet have the <code>role=owner</code> custom claim.
+            Your email must be the owner bootstrap email for this to succeed.
+          </p>
+          <button class="btn btn-primary" id="btn-bootstrap">Run bootstrapOwner</button>
+          <div id="bootstrap-result" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="card">
+          <h2>Create a company</h2>
+          <form class="inline-form" id="create-form">
+            <div class="field">
+              <label for="c-name">Company name</label>
+              <input id="c-name" type="text" required />
+            </div>
+            <div class="field">
+              <label for="c-admin-email">Admin email</label>
+              <input id="c-admin-email" type="email" required />
+            </div>
+            <div class="field" style="max-width:140px;">
+              <label for="c-seats">Seats</label>
+              <input id="c-seats" type="number" min="1" value="10" required />
+            </div>
+            <div class="field" style="max-width:160px;">
+              <label for="c-tier">Tier</label>
+              <input id="c-tier" type="text" value="team" />
+            </div>
+            <button class="btn btn-primary" type="submit">Create</button>
+          </form>
+          <div id="create-result" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="card">
+          <h2>All companies</h2>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>ID</th>
+                <th>Seats</th>
+                <th>Admins</th>
+                <th>Tier</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="companies-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/owner.js"></script>
+</body>
+</html>

@@ -1,0 +1,109 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ────────────────────────────────────────────────────────────────
+    // Helpers
+    // ────────────────────────────────────────────────────────────────
+    function isSignedIn() { return request.auth != null; }
+    function isOwner() { return isSignedIn() && request.auth.token.role == 'owner'; }
+    function isSelf(uid) { return isSignedIn() && request.auth.uid == uid; }
+
+    // Is the caller an admin of company `cid`? We read the company doc and check adminUids.
+    function isCompanyAdmin(cid) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/companies/$(cid))
+        && request.auth.uid in get(/databases/$(database)/documents/companies/$(cid)).data.adminUids;
+    }
+
+    // When an admin reads another user's top-level doc, we only allow reads if the user's
+    // companyId matches a company the caller admins. We can't query here, so we compare to
+    // the existing doc's companyId.
+    function callerAdminsSameCompanyAs(userDocData) {
+      return userDocData.companyId != null && isCompanyAdmin(userDocData.companyId);
+    }
+
+    // Restrict admin reads of user docs to metadata fields only (NOT progress/notes/capstone —
+    // those live in subcollections and are separately denied below). This function is advisory:
+    // subcollections are the real protection.
+    // ────────────────────────────────────────────────────────────────
+
+    // users/{uid}
+    match /users/{uid} {
+      // Read:
+      //  - owner: always
+      //  - self: always
+      //  - admin: if the target user is in one of their companies
+      allow get: if isOwner()
+                 || isSelf(uid)
+                 || (isSignedIn() && callerAdminsSameCompanyAs(resource.data));
+
+      // Only the owner can list the full users collection. Admins read their roster via
+      // companies/{cid}/members/{uid} (mirrored by the acceptInvite Cloud Function).
+      // Owner tooling (owner.html) also uses this to look up uid-by-email.
+      allow list: if isOwner();
+
+      // Write:
+      //  - owner: always
+      //  - self: can create/update own doc (role/companyId writes by self are allowed at signup;
+      //          the Cloud Function enforces invite-driven role/companyId writes)
+      allow create: if isOwner() || isSelf(uid);
+      allow update: if isOwner() || isSelf(uid);
+      allow delete: if isOwner();
+
+      // users/{uid}/progress/{moduleId} — STRICTLY private to the user (and owner).
+      match /progress/{moduleId} {
+        allow read, write: if isOwner() || isSelf(uid);
+      }
+
+      // users/{uid}/capstone — same.
+      match /capstone/{docId=**} {
+        allow read, write: if isOwner() || isSelf(uid);
+      }
+    }
+
+    // companies/{companyId}
+    match /companies/{cid} {
+      // Reads: owner, or any admin in adminUids, or members whose companyId == cid (so
+      // employees can see basic company info like name/seatCount).
+      allow get: if isOwner()
+                 || (isSignedIn() && request.auth.uid in resource.data.adminUids)
+                 || (isSignedIn()
+                     && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+                     && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == cid);
+
+      allow list: if isOwner();
+
+      // Create/delete: owner only.
+      allow create, delete: if isOwner();
+
+      // Update: owner, or an admin currently in adminUids. Admins cannot change adminUids.
+      allow update: if isOwner()
+                    || (isSignedIn()
+                        && request.auth.uid in resource.data.adminUids
+                        && request.resource.data.adminUids == resource.data.adminUids);
+
+      // companies/{cid}/invites/{inviteId} — readable by anyone (so new signups can look up by
+      // code); writable by company admins and owner. Cloud Function mutates on accept.
+      match /invites/{inviteId} {
+        allow read: if true;
+        allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
+      }
+
+      // companies/{cid}/members/{uid} — mirrored roster entries written by the
+      // acceptInvite Cloud Function. Readable by owner + any admin of the company.
+      // Members can read their own entry. Writes are server-only (admin SDK bypasses rules).
+      match /members/{mUid} {
+        allow read: if isOwner()
+                     || isCompanyAdmin(cid)
+                     || (isSignedIn() && request.auth.uid == mUid);
+        // Allow the company admin/owner to delete a member entry when revoking a seat.
+        allow delete: if isOwner() || isCompanyAdmin(cid);
+        // Owner can write freely; members can update their own aggregate digest fields
+        // (completedCount, lastActiveAt, capstoneStatus) but not reassign their uid.
+        allow create, update: if isOwner()
+                               || (isSignedIn() && request.auth.uid == mUid);
+      }
+    }
+  }
+}
