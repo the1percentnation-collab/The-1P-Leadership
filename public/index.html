@@ -3,10 +3,61 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The 1P Leadership</title>
+  <title>1P-CLC | The One Percent Certified Leader Coach</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h1>The 1P Leadership</h1>
-  <p>Coming soon.</p>
+
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <div class="brand-badge">1P-CLC Program</div>
+    <div class="sidebar-title">ONE PERCENT<br><span>CERTIFIED</span><br>LEADER COACH</div>
+    <div class="sidebar-sub">Redefining Leadership. One Percent at a Time.</div>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-label">
+      <span>Course Progress</span>
+      <span id="progress-pct">0%</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div id="nav-container"></div>
+
+  <div class="sidebar-footer">
+    <div class="cert-status">
+      <div class="cert-status-label">Certification Status</div>
+      <div class="cert-status-val" id="cert-status-val">Not Started</div>
+    </div>
+  </div>
+</aside>
+
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-breadcrumb" id="breadcrumb">
+        <span>1P-CLC</span> / Overview
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost" id="btn-prev">← Previous</button>
+      <button class="btn btn-primary" id="btn-next">Next Module →</button>
+    </div>
+  </div>
+
+  <div class="content" id="content-area"></div>
+
+  <div class="module-footer">
+    <div class="footer-progress" id="footer-progress">Module <span id="cur-mod">0</span> of <span id="total-mod">7</span></div>
+    <button class="btn btn-primary" id="btn-complete">Mark Complete & Continue →</button>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
 </body>
 </html>
