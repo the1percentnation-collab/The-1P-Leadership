@@ -143,6 +143,21 @@ service cloud.firestore {
           allow delete: if isOwner();
         }
       }
+
+      // ──────────────────────────────────────────────────────────────
+      // Campaigns (Phase 3): email broadcasts + per-event telemetry.
+      // ──────────────────────────────────────────────────────────────
+      match /campaigns/{campaignId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
+
+        // Events subcollection — written by the webhook via Admin SDK (bypasses rules).
+        // Clients get read access only.
+        match /events/{eventId} {
+          allow read: if isOwner() || isCompanyAdmin(cid);
+          allow write: if false;
+        }
+      }
     }
 
     // ────────────────────────────────────────────────────────────────
