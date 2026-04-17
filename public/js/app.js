@@ -132,6 +132,8 @@ async function renderUserChip(user, role, opts = {}) {
     ? `<a class="user-chip-link" href="/admin.html">Admin</a>` : '';
   const crmLink = role && (role === 'admin' || role === 'owner')
     ? `<a class="user-chip-link" href="/crm.html">CRM</a>` : '';
+  const campaignsLink = role && (role === 'admin' || role === 'owner')
+    ? `<a class="user-chip-link" href="/campaigns.html">Campaigns</a>` : '';
   const ownerLink = role === 'owner'
     ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
   const communityClass = hasNewCommunity ? 'c-has-badge' : '';
@@ -145,6 +147,7 @@ async function renderUserChip(user, role, opts = {}) {
     <a class="user-chip-link ${communityClass}" href="/community.html" title="Community">Community</a>
     <a class="user-chip-link" href="/members.html">Members</a>
     ${crmLink}
+    ${campaignsLink}
     ${adminLink}
     ${ownerLink}
     ${avatar}

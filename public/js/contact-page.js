@@ -1,9 +1,10 @@
 // Contact detail page — edits, notes feed, activity log.
 
-import { db, firebaseReady } from './firebase.js';
+import { db, functions, firebaseReady } from './firebase.js';
 import { onAuthReady, signOut } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { collection, getDocs, query, where, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import {
   STAGES, STAGE_IDS, SOURCES, stageMeta,
   getContact, updateContact, changeStage,
@@ -39,9 +40,12 @@ function renderChip(user, role) {
     ? `<a class="user-chip-link" href="/admin.html">Admin</a>` : '';
   const ownerLink = role === 'owner'
     ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
+  const campaignsLink = role === 'admin' || role === 'owner'
+    ? `<a class="user-chip-link" href="/campaigns.html">Campaigns</a>` : '';
   chip.innerHTML = `
     <a class="user-chip-link" href="/index.html">Dashboard</a>
     <a class="user-chip-link" href="/crm.html">CRM</a>
+    ${campaignsLink}
     <a class="user-chip-link" href="/community.html">Community</a>
     ${adminLink}${ownerLink}
     <span class="user-chip-email">${escapeHtml(user.email || '')}</span>
@@ -129,6 +133,8 @@ function iconFor(type) {
     case 'manual_meeting': return '🤝';
     case 'manual_email': return '✉';
     case 'manual_sms': return '💬';
+    case 'email_sent': return '✉';
+    case 'email_event': return '📬';
     default: return '•';
   }
 }
@@ -355,6 +361,82 @@ async function main() {
       await deleteContact(state.companyId, state.contactId);
       location.replace('/crm.html');
     } catch (err) { alert('Could not delete: ' + (err.message || err)); }
+  });
+
+  // Send Email
+  $('btn-send-email').addEventListener('click', openSendEmailModal);
+}
+
+function openSendEmailModal() {
+  const root = $('modal-root');
+  const c = state.contact || {};
+  if (!c.email) {
+    alert('This contact has no email address. Add one under the Email field first.');
+    return;
+  }
+  root.innerHTML = `
+    <div class="crm-modal-backdrop" id="modal-bd">
+      <div class="crm-modal send-email-modal auth-card">
+        <h1>Send <span>Email</span></h1>
+        <div class="camp-from-hint" style="margin-bottom:12px;">From: the1percentnation@gmail.com · To: ${escapeHtml(c.email)}</div>
+        <form id="send-email-form" class="crm-form">
+          <div class="crm-form-row">
+            <label>Subject</label>
+            <input class="c-input" id="se-subject" required placeholder="Subject line" />
+          </div>
+          <div class="crm-form-row">
+            <label>Body (plain text — line breaks become &lt;br&gt;)</label>
+            <textarea class="c-textarea" id="se-body" rows="10" required placeholder="Hi ${escapeHtml((c.name || '').split(' ')[0] || 'there')},\n\n"></textarea>
+          </div>
+          <div id="se-err" class="auth-error" style="display:none;"></div>
+          <div id="se-ok" class="auth-ok" style="display:none;"></div>
+          <div class="crm-modal-actions">
+            <button type="button" class="btn btn-ghost" id="se-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="se-send">Send</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  const close = () => { root.innerHTML = ''; };
+  $('se-cancel').addEventListener('click', close);
+  $('modal-bd').addEventListener('click', (e) => { if (e.target.id === 'modal-bd') close(); });
+
+  $('send-email-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const subject = $('se-subject').value.trim();
+    const bodyText = $('se-body').value;
+    if (!subject || !bodyText.trim()) return;
+
+    const bodyHtml = bodyText
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br/>');
+
+    $('se-err').style.display = 'none';
+    $('se-ok').style.display = 'none';
+    const btn = $('se-send');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+
+    try {
+      const call = httpsCallable(functions, 'sendContactEmail');
+      await call({
+        companyId: state.companyId,
+        contactId: state.contactId,
+        subject,
+        bodyHtml,
+        bodyText
+      });
+      $('se-ok').textContent = 'Email sent.';
+      $('se-ok').style.display = 'block';
+      await Promise.all([refreshActivities(), refreshContact()]);
+      setTimeout(close, 900);
+    } catch (err) {
+      $('se-err').textContent = err.message || String(err);
+      $('se-err').style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Send';
+    }
   });
 }
 

@@ -37,13 +37,15 @@ function renderChip(user, role) {
   if (!chip) return;
   const adminLink = role === 'admin' || role === 'owner'
     ? `<a class="user-chip-link" href="/admin.html">Admin</a>` : '';
+  const campaignsLink = role === 'admin' || role === 'owner'
+    ? `<a class="user-chip-link" href="/campaigns.html">Campaigns</a>` : '';
   const ownerLink = role === 'owner'
     ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
   chip.innerHTML = `
     <a class="user-chip-link" href="/index.html">Dashboard</a>
     <a class="user-chip-link" href="/community.html">Community</a>
     <a class="user-chip-link" href="/members.html">Members</a>
-    ${adminLink}${ownerLink}
+    ${campaignsLink}${adminLink}${ownerLink}
     <span class="user-chip-email">${escapeHtml(user.email || '')}</span>
     <button class="btn btn-ghost" id="btn-signout">Sign out</button>
   `;

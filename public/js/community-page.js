@@ -31,13 +31,15 @@ function renderChip() {
     ? `<a class="user-chip-link" href="/admin.html">Admin</a>` : '';
   const crmLink = state.role === 'admin' || state.role === 'owner'
     ? `<a class="user-chip-link" href="/crm.html">CRM</a>` : '';
+  const campaignsLink = state.role === 'admin' || state.role === 'owner'
+    ? `<a class="user-chip-link" href="/campaigns.html">Campaigns</a>` : '';
   const ownerLink = state.role === 'owner'
     ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
   chip.innerHTML = `
     <a class="user-chip-link" href="/index.html">Dashboard</a>
     <a class="user-chip-link" href="/members.html">Members</a>
     <a class="user-chip-link" href="/profile.html">Profile</a>
-    ${crmLink}${adminLink}${ownerLink}
+    ${crmLink}${campaignsLink}${adminLink}${ownerLink}
     <span class="c-avatar-link">${avatarHtml(state.me, 28)}</span>
     <span class="user-chip-email">${escapeHtml(state.me.displayName || state.me.email || '')}</span>
     <button class="btn btn-ghost" id="btn-signout">Sign out</button>

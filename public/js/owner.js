@@ -20,6 +20,7 @@ function renderUserChip(u) {
     <a class="user-chip-link" href="/index.html">Dashboard</a>
     <a class="user-chip-link" href="/admin.html">Admin</a>
     <a class="user-chip-link" href="/crm.html">CRM</a>
+    <a class="user-chip-link" href="/campaigns.html">Campaigns</a>
     <span class="user-chip-email">${u.email || ''}</span>
     <button class="btn btn-ghost" id="btn-signout">Sign out</button>
   `;

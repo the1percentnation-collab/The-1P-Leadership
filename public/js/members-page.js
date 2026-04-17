@@ -14,13 +14,15 @@ function renderChip(me, role) {
     ? `<a class="user-chip-link" href="/admin.html">Admin</a>` : '';
   const crmLink = role === 'admin' || role === 'owner'
     ? `<a class="user-chip-link" href="/crm.html">CRM</a>` : '';
+  const campaignsLink = role === 'admin' || role === 'owner'
+    ? `<a class="user-chip-link" href="/campaigns.html">Campaigns</a>` : '';
   const ownerLink = role === 'owner'
     ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
   chip.innerHTML = `
     <a class="user-chip-link" href="/index.html">Dashboard</a>
     <a class="user-chip-link" href="/community.html">Community</a>
     <a class="user-chip-link" href="/profile.html">Profile</a>
-    ${crmLink}${adminLink}${ownerLink}
+    ${crmLink}${campaignsLink}${adminLink}${ownerLink}
     <span class="c-avatar-link">${avatarHtml(me, 28)}</span>
     <span class="user-chip-email">${escapeHtml(me.displayName || me.email || '')}</span>
     <button class="btn btn-ghost" id="btn-signout">Sign out</button>

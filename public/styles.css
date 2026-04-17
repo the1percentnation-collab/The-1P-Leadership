@@ -2221,3 +2221,175 @@ body {
   .crm-contact-top { flex-direction: column; }
   .crm-form-row-grid { grid-template-columns: 1fr; }
 }
+
+/* ────────────────────────────────────────────────────────────────
+   Campaigns (Phase 3)
+   ──────────────────────────────────────────────────────────────── */
+.camp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.camp-toolbar-spacer { flex: 1; }
+
+.camp-table-wrap {
+  overflow-x: auto;
+}
+.camp-empty {
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--gray-mid);
+  font-size: 13px;
+}
+
+.camp-status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+.camp-status-draft    { background: rgba(160,160,160,0.15); color: var(--gray-light); }
+.camp-status-ready    { background: rgba(90,168,230,0.18); color: #6FB8EB; }
+.camp-status-sending  { background: rgba(232,197,71,0.18); color: var(--accent); }
+.camp-status-sent     { background: rgba(92,173,92,0.18); color: #8AD08A; }
+.camp-status-failed   { background: rgba(204,27,27,0.22); color: #FF7070; }
+
+.camp-name-link {
+  color: var(--white);
+  text-decoration: none;
+  font-weight: 500;
+}
+.camp-name-link:hover { color: var(--accent); }
+
+.camp-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 20px 0;
+}
+@media (max-width: 768px) {
+  .camp-stat-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.camp-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.camp-detail-title { font-family: var(--font-display); font-size: 28px; color: var(--white); letter-spacing: 0.03em; }
+.camp-detail-sub {
+  color: var(--gray-light);
+  font-size: 12px;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+}
+
+.camp-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.camp-event-row {
+  display: flex;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.camp-event-type {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  min-width: 82px;
+  color: var(--accent);
+}
+.camp-event-email { flex: 1; color: var(--white-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.camp-event-time { color: var(--gray-mid); font-family: var(--font-mono); font-size: 10px; }
+
+.camp-recipient-picker-opts { display: flex; flex-direction: column; gap: 10px; }
+.camp-recipient-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--white-dim);
+  cursor: pointer;
+}
+.camp-recipient-opt input[type="radio"] { accent-color: var(--red); }
+.camp-recipient-opt.active { color: var(--white); }
+.camp-recipient-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 8px;
+}
+.camp-recipient-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--gray-light);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+}
+.camp-recipient-checkbox:hover { border-color: var(--gray-mid); }
+.camp-recipient-checkbox input { accent-color: var(--red); }
+.camp-recipient-checkbox.checked { color: var(--white); background: rgba(204,27,27,0.08); border-color: rgba(204,27,27,0.4); }
+
+.camp-modal { max-width: 640px; }
+.camp-from-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--gray-mid);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: -4px;
+}
+
+.camp-error-sample {
+  background: rgba(204,27,27,0.08);
+  border: 1px solid rgba(204,27,27,0.3);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #FF9A9A;
+  white-space: pre-wrap;
+}
+
+/* Invite email status mini-badge */
+.invite-email-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.invite-email-status.sent    { color: #8AD08A; }
+.invite-email-status.failed  { color: #FF7070; }
+.invite-email-status.pending { color: var(--gray-mid); }
+
+/* Send email modal on contact page */
+.send-email-modal { max-width: 560px; }
+

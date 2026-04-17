@@ -35,6 +35,7 @@ function renderUserChip(u, role) {
   chip.innerHTML = `
     <a class="user-chip-link" href="/index.html">Dashboard</a>
     <a class="user-chip-link" href="/crm.html">CRM</a>
+    <a class="user-chip-link" href="/campaigns.html">Campaigns</a>
     ${ownerLink}
     <span class="user-chip-email">${u.email || ''}</span>
     <button class="btn btn-ghost" id="btn-signout">Sign out</button>
@@ -148,6 +149,28 @@ async function revokeSeat(uid) {
   }
 }
 
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function emailStatusHtml(i) {
+  // i.emailStatus may be: 'sent', 'failed', 'skipped', or undefined (pending).
+  const status = i.emailStatus;
+  if (status === 'sent') {
+    return `<span class="invite-email-status sent">✓ Sent</span>`;
+  }
+  if (status === 'failed') {
+    const err = i.emailError ? ` — ${escapeHtml(String(i.emailError).slice(0, 80))}` : '';
+    return `<span class="invite-email-status failed" title="${escapeHtml(i.emailError || '')}">✗ Failed${err}</span>`;
+  }
+  if (status === 'skipped') {
+    return `<span class="invite-email-status pending">(no email)</span>`;
+  }
+  return `<span class="invite-email-status pending">Pending</span>`;
+}
+
 async function loadInvites() {
   const body = $('invites-body');
   body.innerHTML = '';
@@ -162,15 +185,19 @@ async function loadInvites() {
       const i = d.data();
       const link = `${location.origin}/invite.html?code=${encodeURIComponent(i.code)}`;
       const statusPill = i.status === 'accepted' ? 'pill-ok' : (i.status === 'revoked' ? 'pill-red' : 'pill-warn');
+      const showEmail = i.status === 'pending' || !i.status;
       return `<tr>
-        <td>${i.email || '—'}</td>
-        <td class="num">${i.code}</td>
-        <td><span class="pill ${statusPill}">${i.status || 'pending'}</span></td>
-        <td><a href="${link}" target="_blank" style="color:var(--accent); font-family:var(--font-mono); font-size:11px;">${link}</a></td>
+        <td>${escapeHtml(i.email || '—')}</td>
+        <td class="num">${escapeHtml(i.code)}</td>
+        <td>
+          <span class="pill ${statusPill}">${escapeHtml(i.status || 'pending')}</span>
+          ${showEmail ? `<div style="margin-top:4px;">${emailStatusHtml(i)}</div>` : ''}
+        </td>
+        <td><a href="${link}" target="_blank" style="color:var(--accent); font-family:var(--font-mono); font-size:11px;">${escapeHtml(link)}</a></td>
       </tr>`;
     }).join('');
   } catch (e) {
-    body.innerHTML = `<tr><td colspan="4" style="color:var(--red);">Load error: ${e.message || e}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="4" style="color:var(--red);">Load error: ${escapeHtml(e.message || String(e))}</td></tr>`;
   }
 }
 
