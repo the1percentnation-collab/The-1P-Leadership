@@ -23,9 +23,10 @@ const FROM_NAME_DEFAULT = 'The One Percent Nation';
 const REPLY_TO = 'the1percentnation@gmail.com';
 const APP_BASE_URL = 'https://the-1p-leadership.web.app';
 
-// Secrets: SendGrid API key + (optional) webhook verification key.
+// Secret: SendGrid API key. Webhook verification key is optional and read
+// lazily at runtime via the Secret Manager client — this avoids requiring
+// SENDGRID_WEBHOOK_KEY to exist at deploy time.
 const sendgridKey = defineSecret('SENDGRID_API_KEY');
-const sendgridWebhookKey = defineSecret('SENDGRID_WEBHOOK_KEY');
 
 // ────────────────────────────────────────────────────────────────
 // Helpers
@@ -678,7 +679,7 @@ function verifySignature(publicKeyPem, payloadRaw, signature, timestamp) {
 }
 
 exports.sendgridEventWebhook = onRequest(
-  { secrets: [sendgridWebhookKey], cors: false, invoker: 'public' },
+  { cors: false, invoker: 'public' },
   async (req, res) => {
     try {
       if (req.method !== 'POST') {
@@ -689,8 +690,8 @@ exports.sendgridEventWebhook = onRequest(
       // Get raw body for signature verification. Firebase Functions v2 provides req.rawBody.
       const rawBody = req.rawBody ? Buffer.from(req.rawBody) : Buffer.from(JSON.stringify(req.body || []));
 
-      let webhookKey = '';
-      try { webhookKey = sendgridWebhookKey.value() || ''; } catch (e) { webhookKey = ''; }
+      // Webhook signing is optional. Read from env if set; otherwise accept unsigned.
+      const webhookKey = (process.env.SENDGRID_WEBHOOK_KEY || '').trim();
 
       if (webhookKey && webhookKey.trim()) {
         const signature = req.get('X-Twilio-Email-Event-Webhook-Signature');
