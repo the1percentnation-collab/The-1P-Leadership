@@ -9,57 +9,90 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body class="course-page">
+<body class="academy-course">
 
-<aside class="sidebar">
-  <div class="sidebar-header">
-    <div class="brand-badge">1P-CLC Program</div>
-    <div class="sidebar-title">ONE PERCENT<br><span>CERTIFIED</span><br>LEADER COACH</div>
-    <div class="sidebar-sub">Redefining Leadership. One Percent at a Time.</div>
-  </div>
-
-  <div class="progress-wrap">
-    <div class="progress-label">
-      <span>Course Progress</span>
-      <span id="progress-pct">0%</span>
-    </div>
-    <div class="progress-bar">
-      <div class="progress-fill" id="progress-fill" style="width:0%"></div>
-    </div>
-  </div>
-
-  <div id="nav-container"></div>
-
-  <div class="sidebar-footer">
-    <div class="cert-status">
-      <div class="cert-status-label">Certification Status</div>
-      <div class="cert-status-val" id="cert-status-val">Not Started</div>
+<header class="academy-header">
+  <div class="academy-header-inner">
+    <a class="academy-brand" href="/index.html" aria-label="The One Percent Academy">
+      <img src="/assets/academy-logo.svg" alt="" class="academy-brand-mark">
+      <span class="academy-brand-text">
+        <span class="academy-brand-line1">The One Percent</span>
+        <span class="academy-brand-line2">Academy</span>
+      </span>
+    </a>
+    <nav class="academy-tabs">
+      <a class="academy-tab" href="/index.html">Dashboard</a>
+      <a class="academy-tab active" href="/courses.html">Courses</a>
+      <a class="academy-tab" href="/community.html">Community</a>
+      <a class="academy-tab" href="/resources.html">Resources</a>
+      <a class="academy-tab" href="/profile.html">Profile</a>
+    </nav>
+    <div class="academy-header-right">
+      <div class="user-chip" id="user-chip"></div>
     </div>
   </div>
-</aside>
+</header>
 
-<div class="main">
-  <div class="topbar">
-    <div class="topbar-left">
-      <div class="topbar-breadcrumb" id="breadcrumb">
-        <a href="/index.html" class="breadcrumb-link">Academy</a> / <span>1P-CLC</span> / Overview
+<nav class="course-tabs-strip" id="course-tabs-strip" aria-label="Courses"></nav>
+
+<div id="course-workspace">
+
+  <!-- Live course: 1P-CLC sidebar + main. Shown when an active course is `status: 'live'`. -->
+  <div id="workspace-live" class="workspace-live" style="display:none;">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-badge">1P-CLC Program</div>
+        <div class="sidebar-title">ONE PERCENT<br><span>CERTIFIED</span><br>LEADER COACH</div>
+        <div class="sidebar-sub">Redefining Leadership. One Percent at a Time.</div>
+      </div>
+
+      <div class="progress-wrap">
+        <div class="progress-label">
+          <span>Course Progress</span>
+          <span id="progress-pct">0%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <div id="nav-container"></div>
+
+      <div class="sidebar-footer">
+        <div class="cert-status">
+          <div class="cert-status-label">Certification Status</div>
+          <div class="cert-status-val" id="cert-status-val">Not Started</div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="topbar">
+        <div class="topbar-left">
+          <div class="topbar-breadcrumb" id="breadcrumb">
+            <a href="/index.html" class="breadcrumb-link">Academy</a> / <a href="/courses.html" class="breadcrumb-link">Courses</a> / <span>1P-CLC</span> / Overview
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn btn-ghost" id="btn-prev">← Previous</button>
+          <button class="btn btn-primary" id="btn-next">Next Module →</button>
+        </div>
+      </div>
+
+      <div class="content" id="content-area"></div>
+
+      <div class="module-footer">
+        <div class="footer-progress" id="footer-progress">Module <span id="cur-mod">0</span> of <span id="total-mod">7</span></div>
+        <button class="btn btn-primary" id="btn-complete">Mark Complete & Continue →</button>
       </div>
     </div>
-    <div class="topbar-actions">
-      <div class="user-chip" id="user-chip"></div>
-      <button class="btn btn-ghost" id="btn-prev">← Previous</button>
-      <button class="btn btn-primary" id="btn-next">Next Module →</button>
-    </div>
   </div>
 
-  <div class="content" id="content-area"></div>
+  <!-- Coming-soon course: centered placeholder. Shown when active course is `status: 'coming-soon'`. -->
+  <div id="workspace-coming-soon" class="workspace-coming-soon" style="display:none;"></div>
 
-  <div class="module-footer">
-    <div class="footer-progress" id="footer-progress">Module <span id="cur-mod">0</span> of <span id="total-mod">7</span></div>
-    <button class="btn btn-primary" id="btn-complete">Mark Complete & Continue →</button>
-  </div>
 </div>
 
-<script type="module" src="js/app.js"></script>
+<script type="module" src="js/courses-page.js"></script>
 </body>
 </html>
