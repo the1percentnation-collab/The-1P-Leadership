@@ -3098,34 +3098,34 @@ body.academy-course #course-workspace {
 
 /* Course hero — lives at the top of the main area when a live course is active */
 .course-hero {
-  padding: 40px 48px 32px;
+  padding: 28px 48px 24px;
   border-bottom: 1px solid var(--border);
   background: var(--charcoal);
 }
 
-.course-hero .academy-eyebrow { margin-bottom: 14px; }
+.course-hero .academy-eyebrow { margin-bottom: 12px; }
 
 .course-hero h1 {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 44px;
+  font-size: 36px;
   line-height: 1.04;
   letter-spacing: -0.02em;
   color: var(--white);
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .course-hero p {
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.6;
   color: var(--white-dim);
   max-width: 680px;
 }
 
 .course-hero-meta {
-  margin-top: 28px;
+  margin-top: 20px;
   display: flex;
-  gap: 32px;
+  gap: 24px;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -3305,10 +3305,31 @@ body.academy-course #course-workspace {
 
 .workspace-live-content .topbar {
   position: static;
+  padding: 14px 48px;
 }
 
+/* Widen + center the course content so it fills the page rather than
+   sitting in a small column on the left. */
 .workspace-live-content .content {
   flex: 1;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 40px 48px 60px;
+}
+
+.workspace-live-content .module-footer {
+  padding: 18px 48px;
+}
+
+@media (max-width: 900px) {
+  .course-hero { padding: 22px 24px 18px; }
+  .course-hero h1 { font-size: 28px; }
+  .course-hero-meta { gap: 16px; margin-top: 16px; }
+  .course-modules-strip { padding: 12px 20px; }
+  .workspace-live-content .topbar { padding: 12px 20px; }
+  .workspace-live-content .content { padding: 28px 20px 40px; }
+  .workspace-live-content .module-footer { padding: 14px 20px; }
 }
 
 /* Coming-soon inside the main column */
