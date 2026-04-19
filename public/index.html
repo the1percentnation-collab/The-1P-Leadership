@@ -3,62 +3,119 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>1P-CLC | The One Percent Certified Leader Coach</title>
+  <title>The One Percent Academy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="academy-hub">
 
-<aside class="sidebar">
-  <div class="sidebar-header">
-    <div class="brand-badge">1P-CLC Program</div>
-    <div class="sidebar-title">ONE PERCENT<br><span>CERTIFIED</span><br>LEADER COACH</div>
-    <div class="sidebar-sub">Redefining Leadership. One Percent at a Time.</div>
-  </div>
+<div class="academy-shell">
 
-  <div class="progress-wrap">
-    <div class="progress-label">
-      <span>Course Progress</span>
-      <span id="progress-pct">0%</span>
-    </div>
-    <div class="progress-bar">
-      <div class="progress-fill" id="progress-fill" style="width:0%"></div>
-    </div>
-  </div>
+  <header class="academy-header">
+    <div class="academy-header-inner">
+      <a class="academy-brand" href="/index.html" aria-label="The One Percent Academy">
+        <img src="/assets/academy-logo.svg" alt="" class="academy-brand-mark">
+        <span class="academy-brand-text">
+          <span class="academy-brand-line1">The One Percent</span>
+          <span class="academy-brand-line2">Academy</span>
+        </span>
+      </a>
 
-  <div id="nav-container"></div>
+      <nav class="academy-tabs" id="academy-tabs">
+        <a class="academy-tab active" href="/index.html" data-tab="dashboard">Dashboard</a>
+        <a class="academy-tab" href="/courses.html" data-tab="courses">Courses</a>
+        <a class="academy-tab" href="/community.html" data-tab="community">Community</a>
+        <a class="academy-tab" href="/resources.html" data-tab="resources">Resources</a>
+        <a class="academy-tab" href="/profile.html" data-tab="profile">Profile</a>
+      </nav>
 
-  <div class="sidebar-footer">
-    <div class="cert-status">
-      <div class="cert-status-label">Certification Status</div>
-      <div class="cert-status-val" id="cert-status-val">Not Started</div>
-    </div>
-  </div>
-</aside>
-
-<div class="main">
-  <div class="topbar">
-    <div class="topbar-left">
-      <div class="topbar-breadcrumb" id="breadcrumb">
-        <span>1P-CLC</span> / Overview
+      <div class="academy-header-right">
+        <div class="user-chip" id="user-chip"></div>
       </div>
     </div>
-    <div class="topbar-actions">
-      <div class="user-chip" id="user-chip"></div>
-      <button class="btn btn-ghost" id="btn-prev">← Previous</button>
-      <button class="btn btn-primary" id="btn-next">Next Module →</button>
-    </div>
-  </div>
+  </header>
 
-  <div class="content" id="content-area"></div>
+  <main class="academy-container">
 
-  <div class="module-footer">
-    <div class="footer-progress" id="footer-progress">Module <span id="cur-mod">0</span> of <span id="total-mod">7</span></div>
-    <button class="btn btn-primary" id="btn-complete">Mark Complete & Continue →</button>
-  </div>
+    <section class="academy-hero">
+      <div class="academy-eyebrow">Academy Dashboard</div>
+      <h1 id="hub-greeting">Welcome back.</h1>
+      <p id="hub-subtitle">Continue your work. Stay grounded in purpose. Move forward with intention — one percent better every day.</p>
+      <div class="academy-tagline">
+        <strong>Redefining Success.</strong> Realigning Purpose. Releasing Potential.
+      </div>
+    </section>
+
+    <section id="hub-continue-slot"></section>
+
+    <section>
+      <div class="academy-section-head">
+        <h2>Quick access</h2>
+        <span class="academy-section-meta">Explore the Academy</span>
+      </div>
+      <div class="academy-grid">
+        <a class="academy-tile" href="/courses.html">
+          <span class="academy-tile-label">01 · Courses</span>
+          <span class="academy-tile-title">1P Certified Leader Coach</span>
+          <span class="academy-tile-desc">Seven-module certification built on mindset, structure, and consistent action.</span>
+          <span class="academy-tile-cta">Open course</span>
+        </a>
+        <a class="academy-tile" href="/community.html">
+          <span class="academy-tile-label">02 · Community</span>
+          <span class="academy-tile-title">Members Community</span>
+          <span class="academy-tile-desc">Share wins, ask questions, and stay accountable alongside other members.</span>
+          <span class="academy-tile-cta">Enter community</span>
+          <span class="academy-tile-badge" id="hub-community-badge" style="display:none;">New</span>
+        </a>
+        <a class="academy-tile" href="/resources.html">
+          <span class="academy-tile-label">03 · Resources</span>
+          <span class="academy-tile-title">Resource Library</span>
+          <span class="academy-tile-desc">Frameworks, worksheets, and reference material to put the work into practice.</span>
+          <span class="academy-tile-cta">Browse resources</span>
+        </a>
+        <a class="academy-tile" href="/profile.html">
+          <span class="academy-tile-label">04 · Profile</span>
+          <span class="academy-tile-title">Your Profile</span>
+          <span class="academy-tile-desc">Update your display name, bio, and avatar. Manage how you show up in the community.</span>
+          <span class="academy-tile-cta">Edit profile</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="academy-split">
+      <div>
+        <div class="academy-section-head">
+          <h2>Latest in Community</h2>
+          <a class="academy-section-meta" href="/community.html" style="text-decoration:none;">View all →</a>
+        </div>
+        <div id="hub-community-list" class="academy-list">
+          <div class="academy-empty">Loading community activity…</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="academy-section-head">
+          <h2>Your progress</h2>
+          <span class="academy-section-meta" id="hub-progress-label">0%</span>
+        </div>
+        <div class="academy-list">
+          <a class="academy-list-item" href="/courses.html">
+            <div class="academy-list-avatar">1P</div>
+            <div class="academy-list-main">
+              <div class="academy-list-title">1P Certified Leader Coach</div>
+              <div class="academy-list-sub" id="hub-course-sub">— of — modules complete</div>
+            </div>
+            <div class="academy-list-meta" id="hub-course-status">Not started</div>
+          </a>
+        </div>
+      </div>
+    </section>
+
+  </main>
 </div>
 
-<script type="module" src="js/app.js"></script>
+<script type="module" src="js/hub.js"></script>
 </body>
 </html>

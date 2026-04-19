@@ -37,7 +37,7 @@ function buildNav() {
 
 function updateTopBar() {
   const m = MODULES[store.currentModule];
-  $('breadcrumb').innerHTML = `<span>1P-CLC</span> / ${m.title}`;
+  $('breadcrumb').innerHTML = `<a href="/index.html" class="breadcrumb-link">Academy</a> / <span>1P-CLC</span> / ${m.title}`;
   $('cur-mod').textContent = store.currentModule;
   $('total-mod').textContent = MODULES.length - 1;
 
