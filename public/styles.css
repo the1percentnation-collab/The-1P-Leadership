@@ -3096,38 +3096,131 @@ body.academy-course #course-workspace {
   flex-shrink: 0;
 }
 
-/* Nested block: module nav + progress + cert status inside the active 1P-CLC entry */
-.course-entry-nested {
-  padding: 4px 8px 14px;
-  border-top: 1px solid var(--border);
-  margin-top: 4px;
+/* Course hero — lives at the top of the main area when a live course is active */
+.course-hero {
+  padding: 40px 48px 32px;
+  border-bottom: 1px solid var(--border);
+  background: var(--charcoal);
 }
 
-.course-entry-nested .progress-wrap {
-  padding: 14px 10px 10px;
-  border-bottom: none;
+.course-hero .academy-eyebrow { margin-bottom: 14px; }
+
+.course-hero h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 44px;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  color: var(--white);
+  margin-bottom: 10px;
 }
 
-.course-entry-nested .progress-label span:first-child { font-size: 10px; }
-.course-entry-nested .progress-label span:last-child { font-size: 11px; }
-
-.course-entry-nested #nav-container { padding: 0; }
-
-.course-entry-nested .pillar-section {
-  padding: 10px 6px 4px;
+.course-hero p {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--white-dim);
+  max-width: 680px;
 }
 
-.course-entry-nested .nav-item {
-  padding: 8px 10px;
+.course-hero-meta {
+  margin-top: 28px;
+  display: flex;
+  gap: 32px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
-.course-entry-nested .cert-status {
-  margin: 14px 10px 4px;
-  padding: 12px;
+.course-hero-meta .progress-wrap {
+  padding: 0;
+  border: none;
+  flex: 1;
+  min-width: 260px;
+  max-width: 460px;
 }
 
-.course-entry-nested .cert-status-label { font-size: 9px; }
-.course-entry-nested .cert-status-val { font-size: 16px; }
+.course-cert-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.course-cert-inline .cert-status-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+}
+
+.course-cert-inline .cert-status-val {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--gray-light);
+}
+
+.course-cert-inline .cert-status-val.active { color: var(--white); }
+
+/* Horizontal module strip — flattened pillar groups so modules appear on the main page */
+.course-modules-strip {
+  display: flex;
+  gap: 10px;
+  padding: 16px 32px;
+  background: var(--black);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+}
+
+.course-modules-strip::-webkit-scrollbar { height: 6px; }
+.course-modules-strip::-webkit-scrollbar-track { background: transparent; }
+.course-modules-strip::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.course-modules-strip .pillar-section {
+  padding: 0;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  flex-shrink: 0;
+  position: relative;
+  padding-right: 14px;
+  margin-right: 4px;
+}
+
+.course-modules-strip .pillar-section:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 12%;
+  bottom: 12%;
+  width: 1px;
+  background: var(--border);
+}
+
+.course-modules-strip .pillar-label {
+  /* Hide label in strip mode — the pillar tag pill on each nav-item already conveys grouping */
+  display: none;
+}
+
+.course-modules-strip .nav-item {
+  flex-shrink: 0;
+  width: 210px;
+  padding: 10px 12px;
+  margin-bottom: 0;
+  background: var(--surface);
+}
+
+.course-modules-strip .nav-item:hover { background: var(--surface2); }
+
+.course-modules-strip .nav-item.active { background: rgba(230,3,6,0.1); }
 
 /* Main area — welcome + course content. Each child workspace-* is its own
    scroll container so sticky topbars inside live courses work correctly. */
@@ -3211,9 +3304,7 @@ body.academy-course #course-workspace {
 }
 
 .workspace-live-content .topbar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
+  position: static;
 }
 
 .workspace-live-content .content {

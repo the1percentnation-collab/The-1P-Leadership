@@ -20,39 +20,15 @@ const $ = (id) => document.getElementById(id);
 function courseEntryHtml(course, { isActive, completedCount = 0 } = {}) {
   const isLive = course.status === 'live';
   const href = `/courses.html?course=${encodeURIComponent(course.slug)}`;
-  const badge = isLive
-    ? ''
-    : `<span class="course-entry-badge">Soon</span>`;
 
-  // Live 1P-CLC gets a progress chip; other live courses just show eyebrow.
+  // Live 1P-CLC gets a progress chip; other live courses show eyebrow on hover; soon shows badge.
   let chip = '';
   if (isLive && course.slug === '1p-clc') {
     const pct = Math.round((completedCount / MODULES.length) * 100);
     chip = `<span class="course-entry-pct">${pct}%</span>`;
   } else if (!isLive) {
-    chip = badge;
+    chip = `<span class="course-entry-badge">Soon</span>`;
   }
-
-  const nestedId = isActive && isLive ? 'course-entry-nested' : '';
-
-  // For the active 1P-CLC course, embed the module nav + progress + cert status
-  // inside the course entry. app.js's buildNav() / updateTopBar() target these.
-  const nested = (isActive && course.slug === '1p-clc') ? `
-    <div class="course-entry-nested" id="${nestedId}">
-      <div class="progress-wrap">
-        <div class="progress-label">
-          <span>Course Progress</span>
-          <span id="progress-pct">0%</span>
-        </div>
-        <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
-      </div>
-      <div id="nav-container"></div>
-      <div class="cert-status">
-        <div class="cert-status-label">Certification Status</div>
-        <div class="cert-status-val" id="cert-status-val">Not Started</div>
-      </div>
-    </div>
-  ` : '';
 
   return `
     <div class="course-entry ${isActive ? 'active' : ''} ${isLive ? '' : 'is-soon'}" data-slug="${escapeHtml(course.slug)}">
@@ -64,9 +40,17 @@ function courseEntryHtml(course, { isActive, completedCount = 0 } = {}) {
         </span>
         ${chip}
       </a>
-      ${nested}
     </div>
   `;
+}
+
+function renderCourseHero(course) {
+  const eye = $('course-eyebrow');
+  const title = $('course-title');
+  const sub = $('course-subtitle');
+  if (eye) eye.textContent = course.eyebrow || 'Course';
+  if (title) title.textContent = course.title || '—';
+  if (sub) sub.textContent = course.subtitle || '';
 }
 
 function renderSidebar(activeSlug) {
@@ -168,6 +152,7 @@ async function main() {
 
   if (course) {
     if (course.status === 'live' && typeof course.mount === 'function') {
+      renderCourseHero(course);
       try { await course.mount(); }
       catch (e) { console.warn('[courses-page] mount failed', e); }
     } else {

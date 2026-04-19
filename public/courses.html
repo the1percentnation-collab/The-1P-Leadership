@@ -61,6 +61,28 @@
 
     <!-- Live course body (e.g. 1P-CLC) — main column of the existing course UI -->
     <section id="workspace-live-content" class="workspace-live-content" hidden>
+
+      <div class="course-hero">
+        <div class="academy-eyebrow" id="course-eyebrow">Course</div>
+        <h1 id="course-title">—</h1>
+        <p id="course-subtitle">—</p>
+        <div class="course-hero-meta">
+          <div class="progress-wrap">
+            <div class="progress-label">
+              <span>Course Progress</span>
+              <span id="progress-pct">0%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+          </div>
+          <div class="course-cert-inline">
+            <div class="cert-status-label">Certification</div>
+            <div class="cert-status-val" id="cert-status-val">Not Started</div>
+          </div>
+        </div>
+      </div>
+
+      <nav class="course-modules-strip" id="nav-container" aria-label="Course modules"></nav>
+
       <div class="topbar">
         <div class="topbar-left">
           <div class="topbar-breadcrumb" id="breadcrumb"></div>
