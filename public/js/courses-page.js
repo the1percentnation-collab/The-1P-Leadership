@@ -1,97 +1,104 @@
-// /courses.html orchestrator — Courses section landing + individual course runner.
+// /courses.html orchestrator.
 //
-//   No ?course param → render the library (welcome + course grid). Hide tab strip.
-//   ?course=<slug>   → render the per-course tab strip and mount that course.
+//   No ?course param → sidebar shows courses; main shows welcome. Nothing auto-opens.
+//   ?course=<slug>   → sidebar highlights the course (and, for 1P-CLC, nests its
+//                      module nav + progress + cert status beneath it); main
+//                      shows the course content (live) or coming-soon card.
 
 import { COURSES, getActiveCourse } from './courses-registry.js';
+import { MODULES, PILLARS } from './modules.js';
 import { onAuthReady, signOut, currentUser } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { firebaseReady } from './firebase.js';
 import { getUserProfile, avatarHtml, escapeHtml } from './community.js';
+import { store } from './store.js';
 
 const $ = (id) => document.getElementById(id);
 
-function renderCourseTabs(activeSlug) {
-  const strip = $('course-tabs-strip');
-  if (!strip) return;
+// ─── Sidebar ──────────────────────────────────────────────────────────────
 
-  const allCoursesTab = `
-    <a class="course-tab course-tab-all" href="/courses.html" data-course="__library">
-      <span class="course-tab-label">← All Courses</span>
-    </a>
-  `;
+function courseEntryHtml(course, { isActive, completedCount = 0 } = {}) {
+  const isLive = course.status === 'live';
+  const href = `/courses.html?course=${encodeURIComponent(course.slug)}`;
+  const badge = isLive
+    ? ''
+    : `<span class="course-entry-badge">Soon</span>`;
 
-  const courseTabs = COURSES.map((c) => {
-    const isActive = c.slug === activeSlug;
-    const href = `/courses.html?course=${encodeURIComponent(c.slug)}`;
-    const badge = c.status === 'coming-soon'
-      ? `<span class="course-tab-badge">Soon</span>` : '';
-    return `
-      <a class="course-tab ${isActive ? 'active' : ''} ${c.status === 'coming-soon' ? 'is-soon' : ''}"
-         href="${href}"
-         data-course="${escapeHtml(c.slug)}">
-        <span class="course-tab-label">${escapeHtml(c.short || c.title)}</span>
-        ${badge}
+  // Live 1P-CLC gets a progress chip; other live courses just show eyebrow.
+  let chip = '';
+  if (isLive && course.slug === '1p-clc') {
+    const pct = Math.round((completedCount / MODULES.length) * 100);
+    chip = `<span class="course-entry-pct">${pct}%</span>`;
+  } else if (!isLive) {
+    chip = badge;
+  }
+
+  const nestedId = isActive && isLive ? 'course-entry-nested' : '';
+
+  // For the active 1P-CLC course, embed the module nav + progress + cert status
+  // inside the course entry. app.js's buildNav() / updateTopBar() target these.
+  const nested = (isActive && course.slug === '1p-clc') ? `
+    <div class="course-entry-nested" id="${nestedId}">
+      <div class="progress-wrap">
+        <div class="progress-label">
+          <span>Course Progress</span>
+          <span id="progress-pct">0%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+      </div>
+      <div id="nav-container"></div>
+      <div class="cert-status">
+        <div class="cert-status-label">Certification Status</div>
+        <div class="cert-status-val" id="cert-status-val">Not Started</div>
+      </div>
+    </div>
+  ` : '';
+
+  return `
+    <div class="course-entry ${isActive ? 'active' : ''} ${isLive ? '' : 'is-soon'}" data-slug="${escapeHtml(course.slug)}">
+      <a class="course-entry-head" href="${href}">
+        <span class="course-entry-indicator"></span>
+        <span class="course-entry-meta">
+          <span class="course-entry-title">${escapeHtml(course.short || course.title)}</span>
+          <span class="course-entry-sub">${escapeHtml(course.eyebrow || '')}</span>
+        </span>
+        ${chip}
       </a>
-    `;
-  }).join('');
-
-  strip.innerHTML = allCoursesTab + courseTabs;
-}
-
-function renderLibrary() {
-  const slot = $('workspace-library');
-  if (!slot) return;
-
-  const cards = COURSES.map((c) => {
-    const isLive = c.status === 'live';
-    const href = `/courses.html?course=${encodeURIComponent(c.slug)}`;
-    const statusBadge = isLive
-      ? `<span class="course-card-status is-live">Live</span>`
-      : `<span class="course-card-status is-soon">Coming Soon</span>`;
-    const cta = isLive
-      ? `<span class="course-card-cta">Open course →</span>`
-      : `<span class="course-card-cta is-soon">Coming Soon</span>`;
-    const meta = c.eyebrow
-      ? `<span class="course-card-meta">${escapeHtml(c.eyebrow)}</span>`
-      : '';
-    return `
-      <a class="course-card ${isLive ? '' : 'is-soon'}" href="${href}">
-        <div class="course-card-top">
-          ${statusBadge}
-          ${meta}
-        </div>
-        <div class="course-card-body">
-          <div class="course-card-title">${escapeHtml(c.title)}</div>
-          <div class="course-card-desc">${escapeHtml(c.subtitle || '')}</div>
-        </div>
-        ${cta}
-      </a>
-    `;
-  }).join('');
-
-  slot.innerHTML = `
-    <div class="library-container">
-      <section class="library-hero">
-        <div class="academy-eyebrow">Course Library</div>
-        <h1>Welcome to <span>the Academy</span>.</h1>
-        <p>Every course here is built to move you one percent better — grounded in mindset, structure, and consistent action. Pick the path you're ready to walk, and come back as often as you need to.</p>
-        <div class="academy-tagline">
-          <strong>Redefining Success.</strong> Realigning Purpose. Releasing Potential.
-        </div>
-      </section>
-
-      <section>
-        <div class="academy-section-head">
-          <h2>All Courses</h2>
-          <span class="academy-section-meta">${COURSES.length} in the library</span>
-        </div>
-        <div class="course-card-grid">
-          ${cards}
-        </div>
-      </section>
+      ${nested}
     </div>
   `;
+}
+
+function renderSidebar(activeSlug) {
+  const list = $('courses-sidebar-list');
+  if (!list) return;
+  const completedCount = store.completed ? store.completed.size : 0;
+  list.innerHTML = COURSES.map((c) => courseEntryHtml(c, {
+    isActive: c.slug === activeSlug,
+    completedCount
+  })).join('');
+}
+
+// ─── Main area ────────────────────────────────────────────────────────────
+
+function showMain(course) {
+  const welcome = $('workspace-welcome');
+  const live = $('workspace-live-content');
+  const soon = $('workspace-coming-soon');
+  if (!course) {
+    if (welcome) welcome.hidden = false;
+    if (live) live.hidden = true;
+    if (soon) soon.hidden = true;
+    return;
+  }
+  if (welcome) welcome.hidden = true;
+  if (course.status === 'live') {
+    if (live) live.hidden = false;
+    if (soon) soon.hidden = true;
+  } else {
+    if (live) live.hidden = true;
+    if (soon) soon.hidden = false;
+  }
 }
 
 function renderComingSoon(course) {
@@ -109,29 +116,7 @@ function renderComingSoon(course) {
   `;
 }
 
-function showWorkspace(course) {
-  const lib = $('workspace-library');
-  const live = $('workspace-live');
-  const soon = $('workspace-coming-soon');
-  const strip = $('course-tabs-strip');
-
-  if (!course) {
-    if (lib) lib.style.display = '';
-    if (live) live.style.display = 'none';
-    if (soon) soon.style.display = 'none';
-    if (strip) strip.style.display = 'none';
-    return;
-  }
-  if (strip) strip.style.display = '';
-  if (lib) lib.style.display = 'none';
-  if (course.status === 'live') {
-    if (live) live.style.display = '';
-    if (soon) soon.style.display = 'none';
-  } else {
-    if (live) live.style.display = 'none';
-    if (soon) soon.style.display = '';
-  }
-}
+// ─── User chip ────────────────────────────────────────────────────────────
 
 function renderUserChip(user, role, profile) {
   const chip = $('user-chip');
@@ -162,6 +147,8 @@ function renderUserChip(user, role, profile) {
   });
 }
 
+// ─── Main ─────────────────────────────────────────────────────────────────
+
 async function main() {
   if (firebaseReady) {
     const user = await onAuthReady();
@@ -171,15 +158,15 @@ async function main() {
     }
   }
 
+  // Preload progress so the sidebar chip reflects the user's real completion.
+  try { await store.load(); } catch (e) { /* non-fatal */ }
+
   const course = getActiveCourse();
 
-  if (!course) {
-    // Library landing.
-    renderLibrary();
-    showWorkspace(null);
-  } else {
-    renderCourseTabs(course.slug);
-    showWorkspace(course);
+  renderSidebar(course ? course.slug : null);
+  showMain(course);
+
+  if (course) {
     if (course.status === 'live' && typeof course.mount === 'function') {
       try { await course.mount(); }
       catch (e) { console.warn('[courses-page] mount failed', e); }

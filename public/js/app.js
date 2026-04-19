@@ -121,8 +121,10 @@ function navigate(dir) {
   if (next >= 0 && next < MODULES.length) {
     store.setCurrent(next);
     render();
-    const main = document.querySelector('.main');
-    if (main) main.scrollTo(0, 0);
+    const scroller = document.querySelector('.workspace-live-content')
+      || document.querySelector('.courses-main')
+      || document.querySelector('.main');
+    if (scroller) scroller.scrollTo(0, 0);
   }
 }
 

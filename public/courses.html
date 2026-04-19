@@ -33,67 +33,54 @@
   </div>
 </header>
 
-<nav class="course-tabs-strip" id="course-tabs-strip" aria-label="Courses"></nav>
-
 <div id="course-workspace">
 
-  <!-- Library: welcome + course grid. Default landing when no ?course param. -->
-  <div id="workspace-library" class="workspace-library" style="display:none;"></div>
+  <aside class="courses-sidebar">
+    <div class="courses-sidebar-header">
+      <div class="brand-badge">Course Library</div>
+      <div class="courses-sidebar-title">ALL <span>COURSES</span></div>
+      <div class="courses-sidebar-sub">Choose where you want to grow.</div>
+    </div>
+    <nav class="courses-sidebar-list" id="courses-sidebar-list" aria-label="Courses"></nav>
+  </aside>
 
-  <!-- Live course: 1P-CLC sidebar + main. Shown when an active course is `status: 'live'`. -->
-  <div id="workspace-live" class="workspace-live" style="display:none;">
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="brand-badge">1P-CLC Program</div>
-        <div class="sidebar-title">ONE PERCENT<br><span>CERTIFIED</span><br>LEADER COACH</div>
-        <div class="sidebar-sub">Redefining Leadership. One Percent at a Time.</div>
-      </div>
+  <main class="courses-main" id="courses-main">
 
-      <div class="progress-wrap">
-        <div class="progress-label">
-          <span>Course Progress</span>
-          <span id="progress-pct">0%</span>
+    <!-- Welcome — default landing when no ?course param is set -->
+    <section id="workspace-welcome" class="workspace-welcome">
+      <div class="welcome-inner">
+        <div class="academy-eyebrow">The Academy</div>
+        <h1>Welcome to <span>the Academy</span>.</h1>
+        <p>Every course here is built to move you one percent better — grounded in mindset, structure, and consistent action. Pick where you want to grow from the sidebar, and come back as often as you need to.</p>
+        <div class="academy-tagline">
+          <strong>Redefining Success.</strong> Realigning Purpose. Releasing Potential.
         </div>
-        <div class="progress-bar">
-          <div class="progress-fill" id="progress-fill" style="width:0%"></div>
-        </div>
+        <div class="welcome-hint">← Choose a course from the sidebar to begin.</div>
       </div>
+    </section>
 
-      <div id="nav-container"></div>
-
-      <div class="sidebar-footer">
-        <div class="cert-status">
-          <div class="cert-status-label">Certification Status</div>
-          <div class="cert-status-val" id="cert-status-val">Not Started</div>
-        </div>
-      </div>
-    </aside>
-
-    <div class="main">
+    <!-- Live course body (e.g. 1P-CLC) — main column of the existing course UI -->
+    <section id="workspace-live-content" class="workspace-live-content" hidden>
       <div class="topbar">
         <div class="topbar-left">
-          <div class="topbar-breadcrumb" id="breadcrumb">
-            <a href="/index.html" class="breadcrumb-link">Academy</a> / <a href="/courses.html" class="breadcrumb-link">Courses</a> / <span>1P-CLC</span> / Overview
-          </div>
+          <div class="topbar-breadcrumb" id="breadcrumb"></div>
         </div>
         <div class="topbar-actions">
           <button class="btn btn-ghost" id="btn-prev">← Previous</button>
           <button class="btn btn-primary" id="btn-next">Next Module →</button>
         </div>
       </div>
-
       <div class="content" id="content-area"></div>
-
       <div class="module-footer">
         <div class="footer-progress" id="footer-progress">Module <span id="cur-mod">0</span> of <span id="total-mod">7</span></div>
         <button class="btn btn-primary" id="btn-complete">Mark Complete & Continue →</button>
       </div>
-    </div>
-  </div>
+    </section>
 
-  <!-- Coming-soon course: centered placeholder. Shown when active course is `status: 'coming-soon'`. -->
-  <div id="workspace-coming-soon" class="workspace-coming-soon" style="display:none;"></div>
+    <!-- Coming-soon placeholder -->
+    <section id="workspace-coming-soon" class="workspace-coming-soon-main" hidden></section>
 
+  </main>
 </div>
 
 <script type="module" src="js/courses-page.js"></script>
