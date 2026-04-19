@@ -37,7 +37,11 @@ export const COURSES = [
   }
 ];
 
+// Returns the active course if ?course=<slug> matches a known course, else null
+// (null = library view). The first course is no longer auto-selected; users land
+// on the library and pick a course explicitly.
 export function getActiveCourse() {
   const slug = new URLSearchParams(location.search).get('course');
-  return COURSES.find((c) => c.slug === slug) || COURSES[0];
+  if (!slug) return null;
+  return COURSES.find((c) => c.slug === slug) || null;
 }
