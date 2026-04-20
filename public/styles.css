@@ -2409,6 +2409,145 @@ body {
 .send-email-modal { max-width: 560px; }
 
 /* ============================================================
+   ACADEMY HUB — module map widget ("Your course arc")
+   Horizontal row of module cards showing done/current/todo
+   ============================================================ */
+
+.hub-progress {
+  margin-bottom: 48px;
+}
+
+.hub-module-map {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  position: relative;
+}
+
+.hub-module-map::before {
+  content: '';
+  position: absolute;
+  left: 36px;
+  right: 36px;
+  top: 44px;
+  height: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+
+.hub-mm-cell {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 8px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--white);
+  transition: background 0.15s, transform 0.15s;
+  min-width: 0;
+}
+
+.hub-mm-cell:hover { background: var(--surface2); transform: translateY(-2px); }
+
+.hub-mm-marker {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  border: 2px solid var(--border);
+  background: var(--black);
+  color: var(--gray-light);
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.hub-mm-cell.is-done .hub-mm-marker {
+  background: var(--white);
+  border-color: var(--white);
+  color: var(--black);
+}
+
+.hub-mm-cell.is-current .hub-mm-marker {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(230,3,6,0.18);
+  animation: hub-mm-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes hub-mm-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(230,3,6,0.18); }
+  50%      { box-shadow: 0 0 0 7px rgba(230,3,6,0.08); }
+}
+
+.hub-mm-cell.is-todo .hub-mm-marker {
+  /* Default style is the todo state */
+}
+
+.hub-mm-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
+  width: 100%;
+}
+
+.hub-mm-pillar {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+}
+
+.hub-mm-cell.is-current .hub-mm-pillar { color: var(--red); }
+.hub-mm-cell.is-done .hub-mm-pillar { color: var(--gray-light); }
+
+.hub-mm-title {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--white);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.hub-mm-cell.is-todo .hub-mm-title { color: var(--white-dim); }
+
+.hub-mm-duration {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--gray-mid);
+}
+
+@media (max-width: 900px) {
+  .hub-module-map {
+    grid-template-columns: repeat(7, 140px);
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .hub-module-map::before { display: none; }
+}
+
+/* ============================================================
    THE ONE PERCENT ACADEMY — HUB SHELL
    The post-login landing wraps the existing app with a shared
    Academy header + tab bar. Course/community/admin pages keep

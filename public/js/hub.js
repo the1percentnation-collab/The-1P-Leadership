@@ -15,7 +15,7 @@ import {
   fmtRelative,
   initials
 } from './community.js';
-import { loadEnrollments, enrolledCourses } from './enrollments.js';
+import { loadEnrollments, enrolledCourses, isEnrolled } from './enrollments.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -88,6 +88,14 @@ function statusLabel(course) {
   return 'In progress';
 }
 
+// First module the user hasn't completed yet; -1 if all done.
+function nextIncompleteModuleId() {
+  for (let i = 0; i < MODULES.length; i++) {
+    if (!store.completed.has(i)) return i;
+  }
+  return -1;
+}
+
 function renderContinueCard() {
   const slot = $('hub-continue-slot');
   if (!slot) return;
@@ -115,33 +123,38 @@ function renderContinueCard() {
   const allDone = pct >= 100;
 
   let meta, title, sub, cta;
+  let href = `/courses.html?course=${encodeURIComponent(primary.slug)}`;
   if (primary.slug === '1p-clc') {
     const doneCount = store.completed.size;
     if (doneCount === 0) {
-      meta = 'Start your course';
-      title = primary.title;
-      sub = 'A seven-module path grounded in mindset, structure, and consistent action. Begin at your own pace.';
-      cta = 'Open course';
+      // First time — surface module 0 as the starting point.
+      const first = MODULES[0];
+      meta = `Start here · Module ${first.id} · ${first.pillar}`;
+      title = first.title;
+      sub = first.subtitle || 'A seven-module path grounded in mindset, structure, and consistent action.';
+      cta = `Begin Module ${first.id} →`;
+      href = `/courses.html?course=1p-clc&module=${first.id}`;
     } else if (allDone) {
       meta = 'You are certified';
       title = 'Revisit what matters';
       sub = 'The modules stay open. Return when you need to recalibrate or revisit a framework.';
-      cta = 'Open course';
+      cta = 'Open course →';
     } else {
-      const current = MODULES[store.currentModule] || MODULES[0];
-      meta = 'Continue where you left off';
-      title = current ? current.title : primary.title;
-      sub = 'Pick up where you left off. The work compounds when you stay consistent.';
-      cta = 'Resume course';
+      const nextId = nextIncompleteModuleId();
+      const next = MODULES[nextId] || MODULES[0];
+      meta = `Up next · Module ${next.id} · ${next.pillar}`;
+      title = next.title;
+      sub = next.subtitle || 'Pick up where you left off. The work compounds when you stay consistent.';
+      cta = `Resume Module ${next.id} →`;
+      href = `/courses.html?course=1p-clc&module=${next.id}`;
     }
   } else {
     meta = 'Continue your work';
     title = primary.title;
     sub = primary.subtitle || 'Open your course roadmap.';
-    cta = 'Open course';
+    cta = 'Open course →';
   }
 
-  const href = `/courses.html?course=${encodeURIComponent(primary.slug)}`;
   slot.innerHTML = `
     <div class="academy-continue">
       <div>
@@ -153,9 +166,42 @@ function renderContinueCard() {
           <div class="academy-continue-progress-label">${pct}%</div>
         </div>
       </div>
-      <a class="btn btn-primary" href="${href}">${escapeHtml(cta)} →</a>
+      <a class="btn btn-primary" href="${href}">${escapeHtml(cta)}</a>
     </div>
   `;
+}
+
+function renderModuleMap() {
+  const section = $('hub-progress');
+  const slot = $('hub-module-map');
+  if (!section || !slot) return;
+
+  // Only surface the map if the user is enrolled in 1P-CLC — the only course
+  // with real module data today.
+  if (!isEnrolled('1p-clc')) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+
+  const currentId = nextIncompleteModuleId();
+  slot.innerHTML = MODULES.map((m) => {
+    const done = store.completed.has(m.id);
+    const isCurrent = m.id === currentId && !done;
+    const state = done ? 'is-done' : (isCurrent ? 'is-current' : 'is-todo');
+    const marker = done ? '✓' : String(m.id).padStart(2, '0');
+    const href = `/courses.html?course=1p-clc&module=${m.id}`;
+    return `
+      <a class="hub-mm-cell ${state}" href="${href}" title="${escapeHtml(m.title)}">
+        <span class="hub-mm-marker">${marker}</span>
+        <span class="hub-mm-body">
+          <span class="hub-mm-pillar">${escapeHtml(m.pillarTag || m.pillar || '')}</span>
+          <span class="hub-mm-title">${escapeHtml(m.title)}</span>
+          <span class="hub-mm-duration">${escapeHtml(m.duration || '')}</span>
+        </span>
+      </a>
+    `;
+  }).join('');
 }
 
 function renderEnrolledList() {
@@ -273,6 +319,7 @@ async function main() {
 
   renderGreeting(currentUser(), profile);
   renderContinueCard();
+  renderModuleMap();
   renderEnrolledList();
   renderUserChip(currentUser(), role, { profile, hasNewCommunity });
   renderCommunityList({ role, companyId });
