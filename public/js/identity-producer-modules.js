@@ -388,6 +388,102 @@ export const LESSONS = [
         attr: 'Adapted from James Clear'
       }
     ]
+  },
+
+  // ───── Module 3: Emotional Detachment ─────
+  {
+    id: 3,
+    section: 'Module 3 — Emotional Detachment',
+    sectionTag: 'M03',
+    sectionColor: 'tag-p2',
+    title: 'Stop Letting Feelings Decide Revenue',
+    subtitle: 'Your feelings are information. They are not your instructions.',
+    duration: '25 min',
+    blocks: [
+      {
+        type: 'lead',
+        title: 'The hidden cost of emotional decision-making',
+        body: [
+          'Most people do not realize it, but their revenue rises and falls with their mood. They make the follow-up call when they feel confident. They skip it when they feel off. They post when they feel inspired. They go quiet when they feel unsure. Their business is, quietly, being run by feelings.',
+          'A Producer does not do that. Not because a Producer is cold or disconnected, but because a Producer has learned to honor feelings as information without handing feelings the steering wheel. Revenue cannot be entrusted to moods. It is too important for that.'
+        ]
+      },
+      {
+        type: 'callout',
+        label: 'Core Principle',
+        body: 'Emotional detachment is not the absence of emotion. It is the refusal to let emotion set the agenda. You can feel every feeling fully and still do the thing that needs to be done.'
+      },
+      {
+        type: 'framework',
+        title: 'Feelings as data vs. feelings as directive',
+        cards: [
+          { icon: '📊', title: 'Feelings as data', desc: 'A signal. You notice it, name it, and ask what it is pointing to. Then you decide what to do — consciously.' },
+          { icon: '🎚️', title: 'Feelings as directive', desc: 'An order. You obey it without examining it. "I don\'t feel like it" closes the laptop. "I feel anxious" cancels the call.' },
+          { icon: '🧭', title: 'The shift', desc: 'A Producer treats feelings as intelligence from the body. Useful, sometimes crucial — but never the final decision-maker on revenue behavior.' }
+        ]
+      },
+      {
+        type: 'list',
+        title: 'Signs your revenue is being run by feelings',
+        items: [
+          'Your income line chart looks like your mood chart.',
+          'You "don\'t feel like" making the call — and you don\'t make it.',
+          'You wait for motivation before doing the work you committed to yesterday.',
+          'One rejection throws off the rest of the day.',
+          'You need to "get in the right headspace" before every action that scares you.',
+          'You are most productive when things are going well — and most paralyzed when they are not.'
+        ]
+      },
+      {
+        type: 'framework',
+        title: 'How a Producer detaches',
+        cards: [
+          { icon: '🔔', title: 'Notice the feeling', desc: 'Name it out loud: "I am feeling resistance. I am feeling fear. I am feeling discouraged." Naming is the first act of separation.' },
+          { icon: '🪟', title: 'See it as a weather pattern', desc: 'This feeling is passing through you. It is not who you are. Observe it the way you would observe a storm — with respect, without surrender.' },
+          { icon: '✅', title: 'Do the committed thing anyway', desc: 'The commitment was made by a clearer version of you. Honor that version by acting as they would — even if today\'s version does not feel like it.' },
+          { icon: '🔁', title: 'Debrief afterward', desc: 'Ask what the feeling was actually about. Often the fear was pointing at something real. Learn from it — without having let it run the day.' }
+        ]
+      },
+      {
+        type: 'callout',
+        label: 'The 1P Standard',
+        body: 'Your commitments outrank your moods. When the two disagree, the commitment wins. This is not harshness — this is self-respect at a higher level. The Producer inside you is counting on you not to negotiate with the noise.'
+      },
+      {
+        type: 'list',
+        title: 'Practical detachment practices',
+        items: [
+          'Decide the week\'s non-negotiables on Sunday, when the emotion is neutral. Then execute them regardless of how the week feels.',
+          'Separate the decision from the execution. "Whether or not I make the call" is not a daily question — it is already decided. Only "when" is up for discussion.',
+          'Install a 90-second pause before obeying any "I don\'t feel like it." Nine times out of ten the feeling passes before the pause ends.',
+          'Track the behavior, not the mood. Did you do the committed thing? Yes or no. That is the only scoring that matters at the level of execution.',
+          'After an emotional day, do a short debrief: what was I feeling, where was it coming from, did I honor my commitments anyway? Build the muscle.'
+        ]
+      },
+      {
+        type: 'divider'
+      },
+      {
+        type: 'assignment',
+        title: 'The Emotional Audit',
+        intro: 'Look back at the last 30 days. Be honest — this is diagnostic, not a judgment.',
+        questions: [
+          'Which revenue-producing behaviors did you skip in the last 30 days because you "didn\'t feel like it"? Be specific.',
+          'What feeling was present in those moments? Fear, shame, resentment, overwhelm, something else? Name it without softening.',
+          'If you had treated that feeling as data instead of a directive, what would the decision have been?',
+          'What are your three revenue non-negotiables — the behaviors that must happen regardless of mood? Write them as sentences.',
+          'What 90-second pause or environmental cue will you install this week to interrupt the old pattern of obeying the feeling?'
+        ],
+        notesKey: 'ip_3_emotional_audit',
+        notesPlaceholder: 'Your audit — saved automatically as you type...',
+        notesMinHeight: '260px'
+      },
+      {
+        type: 'quote',
+        text: 'Feel everything. Decide anyway. That is the discipline of a Producer.',
+        attr: 'Anthony Brown'
+      }
+    ]
   }
 ];
 
