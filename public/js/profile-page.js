@@ -11,6 +11,7 @@ import {
 const $ = (id) => document.getElementById(id);
 const TOTAL_CLC_MODULES = 7;
 const TOTAL_TP_LESSONS = 55;
+const TOTAL_IP_MODULES = 6;
 
 function renderChip(me, role) {
   const chip = $('user-chip');
@@ -110,12 +111,14 @@ async function renderView(profile, viewer) {
     : role === 'admin' ? `<span class="c-role-badge c-role-admin">Admin</span>` : '';
 
   // Try to compute progress + post/comment counts (best-effort). Progress is
-  // stored with two doc-id conventions:
-  //   numeric (e.g. "0", "1")     → 1P-CLC module progress
-  //   "tp_<n>"                    → Trust The Process lesson progress
-  // Tally them separately so the UI can show each course's completion.
+  // stored with three doc-id conventions:
+  //   numeric (e.g. "0", "1")  → 1P-CLC module progress
+  //   "tp_<n>"                 → Trust The Process lesson progress
+  //   "ip_<n>"                 → The Identity of A Producer module progress
+  // Tally each course separately so the UI can show per-course completion.
   let clcDone = 0;
   let tpDone = 0;
+  let ipDone = 0;
   let postsCount = null;
   const canReadProgress = viewer && (viewer.uid === profile.uid || viewer.role === 'owner');
   try {
@@ -125,6 +128,7 @@ async function renderView(profile, viewer) {
         if (!d.data().completed) return;
         if (/^\d+$/.test(d.id)) clcDone++;
         else if (/^tp_\d+$/.test(d.id)) tpDone++;
+        else if (/^ip_\d+$/.test(d.id)) ipDone++;
       });
     }
   } catch (e) {}
@@ -135,6 +139,7 @@ async function renderView(profile, viewer) {
 
   const clcPct = Math.min(100, Math.round((clcDone / TOTAL_CLC_MODULES) * 100));
   const tpPct = Math.min(100, Math.round((tpDone / TOTAL_TP_LESSONS) * 100));
+  const ipPct = Math.min(100, Math.round((ipDone / TOTAL_IP_MODULES) * 100));
   const progressStatsHtml = canReadProgress ? `
     <div class="c-stat">
       <div class="c-stat-label">1P-CLC Modules</div>
@@ -145,7 +150,13 @@ async function renderView(profile, viewer) {
       <div class="c-stat">
         <div class="c-stat-label">Trust The Process</div>
         <div class="c-stat-value">${tpDone}/${TOTAL_TP_LESSONS}</div>
-        <div class="c-progress-bar" style="margin-top:6px;"><div class="c-progress-fill" style="width:${tpPct}%"></div></div>
+        <div class="c-progress-bar" style="margin-top:6px;"><div class="c-progress-fill" style="width:${tpPct}%; background:var(--gold,#d4a92e);"></div></div>
+      </div>` : ''}
+    ${ipDone > 0 ? `
+      <div class="c-stat">
+        <div class="c-stat-label">Identity of A Producer</div>
+        <div class="c-stat-value">${ipDone}/${TOTAL_IP_MODULES}</div>
+        <div class="c-progress-bar" style="margin-top:6px;"><div class="c-progress-fill" style="width:${ipPct}%; background:#4fa3d1;"></div></div>
       </div>` : ''}
   ` : '';
   panel.innerHTML = `

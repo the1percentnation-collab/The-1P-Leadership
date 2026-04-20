@@ -8,6 +8,7 @@ import { listMembers, getUserProfile, avatarHtml, escapeHtml } from './community
 const $ = (id) => document.getElementById(id);
 const TOTAL_CLC_MODULES = 7;
 const TOTAL_TP_LESSONS = 55;
+const TOTAL_IP_MODULES = 6;
 
 function renderChip(me, role) {
   const chip = $('user-chip');
@@ -35,12 +36,17 @@ function renderChip(me, role) {
 }
 
 function memberCardHtml(m) {
-  // Progress digests mirrored from the user's own client into the members
-  // subcollection: `completedCount` = 1P-CLC, `tpCompletedCount` = TP.
+  // Progress digests mirrored from each course's own client into the members
+  // subcollection:
+  //   completedCount   = 1P-CLC (red)
+  //   tpCompletedCount = Trust The Process (gold)
+  //   ipCompletedCount = The Identity of A Producer (blue)
   const cc = typeof m.completedCount === 'number' ? m.completedCount : 0;
   const tp = typeof m.tpCompletedCount === 'number' ? m.tpCompletedCount : 0;
+  const ip = typeof m.ipCompletedCount === 'number' ? m.ipCompletedCount : 0;
   const clcPct = Math.min(100, Math.round((cc / TOTAL_CLC_MODULES) * 100));
   const tpPct = Math.min(100, Math.round((tp / TOTAL_TP_LESSONS) * 100));
+  const ipPct = Math.min(100, Math.round((ip / TOTAL_IP_MODULES) * 100));
   const role = m.role || null;
   const roleBadge = role === 'owner'
     ? `<span class="c-role-badge c-role-owner">Owner</span>`
@@ -50,6 +56,12 @@ function memberCardHtml(m) {
     ? `<div class="c-member-progress" title="Trust The Process: ${tp}/${TOTAL_TP_LESSONS}">
          <div class="c-progress-bar"><div class="c-progress-fill" style="width:${tpPct}%; background:var(--gold,#d4a92e);"></div></div>
          <span class="c-progress-pct">${tpPct}%</span>
+       </div>`
+    : '';
+  const ipRow = ip > 0
+    ? `<div class="c-member-progress" title="The Identity of A Producer: ${ip}/${TOTAL_IP_MODULES}">
+         <div class="c-progress-bar"><div class="c-progress-fill" style="width:${ipPct}%; background:#4fa3d1;"></div></div>
+         <span class="c-progress-pct">${ipPct}%</span>
        </div>`
     : '';
   return `
@@ -62,6 +74,7 @@ function memberCardHtml(m) {
         <span class="c-progress-pct">${clcPct}%</span>
       </div>
       ${tpRow}
+      ${ipRow}
     </a>
   `;
 }

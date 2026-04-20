@@ -42,7 +42,7 @@ export const COURSES = [
     title: 'The Identity of A Producer',
     short: 'Identity of A Producer',
     subtitle: 'Install the internal standard of someone who produces by default — not by mood.',
-    status: 'coming-soon',
+    status: 'live',
     eyebrow: 'Self-paced · 6 Modules · Credential',
     price: 247,
     priceLabel: '$247',

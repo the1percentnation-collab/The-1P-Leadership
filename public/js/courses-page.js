@@ -53,6 +53,18 @@ async function getCourseData(course) {
       currentId: typeof s.store.currentModule === 'number' ? s.store.currentModule : 0
     };
   }
+  if (course.slug === 'identity-producer') {
+    const [m, s] = await Promise.all([
+      import('./identity-producer-modules.js'),
+      import('./identity-producer-store.js')
+    ]);
+    try { await s.store.load(); } catch (e) {}
+    return {
+      modules: m.MODULES,
+      completed: s.store.completed || new Set(),
+      currentId: typeof s.store.currentModule === 'number' ? s.store.currentModule : 0
+    };
+  }
   // Default: 1P-CLC (uses the globally imported MODULES + store).
   return {
     modules: MODULES,

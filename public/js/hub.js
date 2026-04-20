@@ -93,6 +93,24 @@ async function loadCourseCaches(enrolled) {
       console.warn('[hub] trust-process data load failed', e);
     }
   }
+
+  // The Identity of A Producer — same lazy-load pattern.
+  if (enrolled.some((c) => c.slug === 'identity-producer')) {
+    try {
+      const [m, s] = await Promise.all([
+        import('./identity-producer-modules.js'),
+        import('./identity-producer-store.js')
+      ]);
+      try { await s.store.load(); } catch (e) {}
+      _courseCache['identity-producer'] = {
+        modules: m.MODULES,
+        completed: s.store.completed || new Set(),
+        currentId: typeof s.store.currentModule === 'number' ? s.store.currentModule : 0
+      };
+    } catch (e) {
+      console.warn('[hub] identity-producer data load failed', e);
+    }
+  }
 }
 
 function courseCache(slug) {
@@ -118,7 +136,11 @@ function courseTotalSteps(course) {
 function statusLabel(course) {
   const pct = courseProgressPct(course);
   if (pct === 0) return 'Not started';
-  if (pct >= 100) return course.slug === '1p-clc' ? 'Certified' : 'Complete';
+  if (pct >= 100) {
+    if (course.slug === '1p-clc') return 'Certified';
+    if (course.slug === 'identity-producer') return 'Credential';
+    return 'Complete';
+  }
   return 'In progress';
 }
 
@@ -172,7 +194,9 @@ function renderContinueCard() {
       cta = `Begin ${unitLabel} ${first.id} →`;
       href = `/courses.html?course=${encodeURIComponent(primary.slug)}&module=${first.id}`;
     } else if (allDone) {
-      meta = primary.slug === '1p-clc' ? 'You are certified' : 'Course complete';
+      if (primary.slug === '1p-clc') meta = 'You are certified';
+      else if (primary.slug === 'identity-producer') meta = 'Credential earned';
+      else meta = 'Course complete';
       title = 'Revisit what matters';
       sub = 'The lessons stay open. Return when you need to recalibrate or revisit a framework.';
       cta = 'Open course →';
