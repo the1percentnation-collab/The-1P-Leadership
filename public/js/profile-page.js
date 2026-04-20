@@ -9,7 +9,8 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const $ = (id) => document.getElementById(id);
-const TOTAL_MODULES = 7;
+const TOTAL_CLC_MODULES = 7;
+const TOTAL_TP_LESSONS = 55;
 
 function renderChip(me, role) {
   const chip = $('user-chip');
@@ -108,16 +109,23 @@ async function renderView(profile, viewer) {
     ? `<span class="c-role-badge c-role-owner">Owner</span>`
     : role === 'admin' ? `<span class="c-role-badge c-role-admin">Admin</span>` : '';
 
-  // Try to compute progress + post/comment counts (best-effort).
-  let completedCount = 0;
+  // Try to compute progress + post/comment counts (best-effort). Progress is
+  // stored with two doc-id conventions:
+  //   numeric (e.g. "0", "1")     → 1P-CLC module progress
+  //   "tp_<n>"                    → Trust The Process lesson progress
+  // Tally them separately so the UI can show each course's completion.
+  let clcDone = 0;
+  let tpDone = 0;
   let postsCount = null;
-  let commentsCount = null;
+  const canReadProgress = viewer && (viewer.uid === profile.uid || viewer.role === 'owner');
   try {
-    // Progress reads are private (rules). We can only read progress for self or owner.
-    // Skip unless viewer is self or owner. For company admins we show 0 or 'private'.
-    if (viewer && (viewer.uid === profile.uid || viewer.role === 'owner')) {
+    if (canReadProgress) {
       const snap = await getDocs(collection(db, 'users', profile.uid, 'progress'));
-      snap.forEach((d) => { if (d.data().completed) completedCount++; });
+      snap.forEach((d) => {
+        if (!d.data().completed) return;
+        if (/^\d+$/.test(d.id)) clcDone++;
+        else if (/^tp_\d+$/.test(d.id)) tpDone++;
+      });
     }
   } catch (e) {}
   try {
@@ -125,7 +133,21 @@ async function renderView(profile, viewer) {
     postsCount = c.data().count;
   } catch (e) { /* count queries may not be allowed — fine */ }
 
-  const pct = Math.min(100, Math.round((completedCount / TOTAL_MODULES) * 100));
+  const clcPct = Math.min(100, Math.round((clcDone / TOTAL_CLC_MODULES) * 100));
+  const tpPct = Math.min(100, Math.round((tpDone / TOTAL_TP_LESSONS) * 100));
+  const progressStatsHtml = canReadProgress ? `
+    <div class="c-stat">
+      <div class="c-stat-label">1P-CLC Modules</div>
+      <div class="c-stat-value">${clcDone}/${TOTAL_CLC_MODULES}</div>
+      <div class="c-progress-bar" style="margin-top:6px;"><div class="c-progress-fill" style="width:${clcPct}%"></div></div>
+    </div>
+    ${tpDone > 0 ? `
+      <div class="c-stat">
+        <div class="c-stat-label">Trust The Process</div>
+        <div class="c-stat-value">${tpDone}/${TOTAL_TP_LESSONS}</div>
+        <div class="c-progress-bar" style="margin-top:6px;"><div class="c-progress-fill" style="width:${tpPct}%"></div></div>
+      </div>` : ''}
+  ` : '';
   panel.innerHTML = `
     <div class="card c-profile-card">
       <div class="c-profile-view">
@@ -134,12 +156,7 @@ async function renderView(profile, viewer) {
           <h2 class="c-profile-name">${escapeHtml(profile.displayName || profile.email || 'Member')} ${roleBadge}</h2>
           <p class="c-profile-bio">${profile.bio ? escapeHtml(profile.bio) : '<span style="color:var(--gray-mid)">No bio yet.</span>'}</p>
           <div class="c-profile-stats">
-            ${viewer && (viewer.uid === profile.uid || viewer.role === 'owner') ? `
-              <div class="c-stat">
-                <div class="c-stat-label">Modules</div>
-                <div class="c-stat-value">${completedCount}/${TOTAL_MODULES}</div>
-                <div class="c-progress-bar" style="margin-top:6px;"><div class="c-progress-fill" style="width:${pct}%"></div></div>
-              </div>` : ''}
+            ${progressStatsHtml}
             ${postsCount != null ? `
               <div class="c-stat">
                 <div class="c-stat-label">Posts</div>

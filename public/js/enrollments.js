@@ -11,7 +11,7 @@
 import { auth, db, firebaseReady } from './firebase.js';
 import {
   doc, getDoc, setDoc, serverTimestamp, arrayUnion,
-  collection, getDocs, limit, query
+  collection, getDocs
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { COURSES } from './courses-registry.js';
 
@@ -49,12 +49,15 @@ export async function loadEnrollments() {
     _cache = new Set([...local, ...slugs]);
     _cacheUid = uid;
 
-    // Legacy migration: if they have any progress in 1p-clc, auto-enroll.
+    // Legacy migration: if they have 1P-CLC progress (numeric doc ids like
+    // "0".."6") auto-enroll them. Trust The Process uses "tp_<n>" ids and
+    // must NOT trigger this — new TP-only users would otherwise be silently
+    // enrolled in 1P-CLC.
     if (!_cache.has('1p-clc')) {
       try {
-        const progQ = query(collection(db, 'users', uid, 'progress'), limit(1));
-        const progSnap = await getDocs(progQ);
-        if (!progSnap.empty) {
+        const progSnap = await getDocs(collection(db, 'users', uid, 'progress'));
+        const hasClcProgress = progSnap.docs.some((d) => /^\d+$/.test(d.id));
+        if (hasClcProgress) {
           await enrollInCourse('1p-clc');
         }
       } catch (e) { /* best-effort; ignore */ }
