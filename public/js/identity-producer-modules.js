@@ -295,6 +295,99 @@ export const LESSONS = [
         attr: 'Anthony Brown'
       }
     ]
+  },
+
+  // ───── Module 2: The Discipline Gap ─────
+  {
+    id: 2,
+    section: 'Module 2 — The Discipline Gap',
+    sectionTag: 'M02',
+    sectionColor: 'tag-p1',
+    title: 'The Gap Between Knowing and Doing',
+    subtitle: 'You are not missing the information. You are missing the identity that would make the information automatic.',
+    duration: '25 min',
+    blocks: [
+      {
+        type: 'lead',
+        title: 'The gap is not an information gap',
+        body: [
+          'If knowing was enough, everyone with access to the internet would be a Producer by now. The information is free. The frameworks are posted. The books are on the shelf. Yet the gap between people who know what to do and people who actually do it stays enormous.',
+          'That gap is not a knowledge gap. It is a discipline gap — and underneath the discipline gap is an identity gap. People do not execute what they know because executing it would require becoming someone they do not yet see themselves as.'
+        ]
+      },
+      {
+        type: 'callout',
+        label: 'Core Principle',
+        body: 'Behavior follows identity. If the identity has not shifted, willpower will close the gap for a week or two and then fail. Every time. This is not a flaw in you — it is how humans are wired.'
+      },
+      {
+        type: 'framework',
+        title: 'Why knowing does not produce doing',
+        cards: [
+          { icon: '🧠', title: 'Knowing is cheap', desc: 'Information costs nothing. Your brain can store it without any change in behavior required. This is why courses often feel productive but change little.' },
+          { icon: '💪', title: 'Doing is expensive', desc: 'Execution costs energy, comfort, and the old version of you. That is a price willpower alone cannot pay for long.' },
+          { icon: '🧬', title: 'Identity is the bridge', desc: 'When the identity shifts, the expensive action becomes cheap — because it is just "what I do." The cost drops because the friction drops.' }
+        ]
+      },
+      {
+        type: 'list',
+        title: 'Symptoms of a discipline gap',
+        items: [
+          'You can teach the principle but cannot quite live it.',
+          'You start strong on Monday and drift by Thursday — every single week.',
+          'You consume more than you apply. New course, new book, new podcast — same output.',
+          'You know exactly what you "should" be doing and feel vaguely ashamed that you are not.',
+          'Your plans are ambitious. Your execution is negotiable.'
+        ]
+      },
+      {
+        type: 'framework',
+        title: 'How a Producer closes the gap',
+        cards: [
+          { icon: '🎯', title: 'Name the identity', desc: 'State, in the present tense, who you are becoming: "I am the kind of person who ___." Vague intentions cannot produce specific action.' },
+          { icon: '📏', title: 'Shrink the rep', desc: 'Make the first action so small that your identity cannot argue with it. Tiny + daily beats massive + occasional every time.' },
+          { icon: '🪞', title: 'Cast the vote', desc: 'Every action is a vote for an identity. Ten daily votes for "Producer" beat one heroic weekend of effort. Consistency compounds. Intensity burns out.' },
+          { icon: '🛑', title: 'Remove the escape', desc: 'Design your environment so the old identity does not have a convenient place to hide. Friction toward the new, friction away from the old.' }
+        ]
+      },
+      {
+        type: 'callout',
+        label: 'The 1P Standard',
+        body: 'Discipline is not forcing yourself to do what you do not want to do. Discipline is becoming the kind of person for whom the right action is the default. That shift is installable — and it is the work of this course.'
+      },
+      {
+        type: 'list',
+        title: 'The three questions that close the gap',
+        items: [
+          'What would a Producer do in this exact situation?',
+          'What is the smallest version of that I can do in the next ten minutes?',
+          'If I did that every day for 90 days, who would I have become?'
+        ]
+      },
+      {
+        type: 'divider'
+      },
+      {
+        type: 'assignment',
+        title: 'The Discipline Gap Audit',
+        intro: 'Pick one specific thing you know you should be doing but are not consistently doing. This is your test case. Work through the questions below for that one thing.',
+        questions: [
+          'Name it plainly: the thing you know to do and are not consistently doing.',
+          'What would it say about your identity if you did this without negotiation, every day, for the next 90 days?',
+          'What is the identity you are currently operating from that makes this action feel heavy? Name it without judgment.',
+          'What is the smallest version of this action — the one your current identity cannot argue with? Commit to that version.',
+          'What one piece of your environment needs to change so the old identity cannot hide there anymore?'
+        ],
+        notesKey: 'ip_2_discipline_gap',
+        notesPlaceholder: 'Your audit — saved automatically as you type...',
+        notesMinHeight: '260px'
+      },
+      {
+        type: 'quote',
+        text: 'You do not rise to the level of your goals. You fall to the level of your identity. Raise the identity, and the goals take care of themselves.',
+        attr: 'Adapted from James Clear'
+      }
+    ]
   }
 ];
 
