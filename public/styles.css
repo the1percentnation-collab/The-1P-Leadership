@@ -23,6 +23,10 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* The HTML `hidden` attribute must always win over author `display` rules on
+   the same element — otherwise sections we toggle via el.hidden still render. */
+[hidden] { display: none !important; }
+
 body {
   background: var(--black);
   color: var(--white);
@@ -3534,11 +3538,33 @@ body.academy-course #course-workspace {
   flex: 1;
 }
 
+.available-card-price {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  color: var(--white);
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.available-card-pricenote {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+  margin-top: -6px;
+}
+
 .available-card-actions {
   margin-top: 4px;
   display: flex;
   gap: 8px;
 }
+
+.available-card-actions .btn { width: 100%; justify-content: center; }
 
 .available-empty {
   padding: 22px;

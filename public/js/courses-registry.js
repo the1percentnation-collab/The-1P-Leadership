@@ -14,6 +14,9 @@ export const COURSES = [
     subtitle: 'Mindset, structure, and disciplined progress — one percent at a time.',
     status: 'live',
     eyebrow: 'Certification · 7 Modules',
+    price: 497,
+    priceLabel: '$497',
+    priceNote: 'Full certification · lifetime access',
     mount: async (opts) => {
       const mod = await import('./app.js');
       if (mod && typeof mod.mount === 'function') await mod.mount(opts);
@@ -25,7 +28,9 @@ export const COURSES = [
     short: 'Mindset',
     subtitle: 'Rewire how you relate to success, setbacks, and self.',
     status: 'coming-soon',
-    eyebrow: 'Coming Soon'
+    eyebrow: 'Self-paced · 5 Modules',
+    price: 197,
+    priceLabel: '$197'
   },
   {
     slug: 'business-alignment',
@@ -33,7 +38,29 @@ export const COURSES = [
     short: 'Business',
     subtitle: 'Build a business that reflects your values and sustains your life.',
     status: 'coming-soon',
-    eyebrow: 'Coming Soon'
+    eyebrow: 'Self-paced · 6 Modules',
+    price: 297,
+    priceLabel: '$297'
+  },
+  {
+    slug: 'faith-leadership',
+    title: 'Faith & Leadership',
+    short: 'Faith',
+    subtitle: 'Lead from purpose — grounded in principle, not performance.',
+    status: 'coming-soon',
+    eyebrow: 'Self-paced · 4 Modules',
+    price: 197,
+    priceLabel: '$197'
+  },
+  {
+    slug: 'performance-discipline',
+    title: 'Performance & Discipline',
+    short: 'Performance',
+    subtitle: 'Daily structure and habits that compound into long-term results.',
+    status: 'coming-soon',
+    eyebrow: 'Self-paced · 5 Modules',
+    price: 247,
+    priceLabel: '$247'
   }
 ];
 

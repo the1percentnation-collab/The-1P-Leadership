@@ -104,9 +104,11 @@ function renderAvailableCourses() {
     const statusBadge = isLive
       ? `<span class="available-badge is-live">Available</span>`
       : `<span class="available-badge is-soon">Coming Soon</span>`;
+    const price = c.priceLabel ? `<div class="available-card-price">${escapeHtml(c.priceLabel)}</div>` : '';
+    const priceNote = c.priceNote ? `<div class="available-card-pricenote">${escapeHtml(c.priceNote)}</div>` : '';
     const action = isLive
-      ? `<button class="btn btn-primary available-enroll" data-slug="${escapeHtml(c.slug)}">Sign up →</button>`
-      : `<button class="btn btn-ghost" disabled>Coming Soon</button>`;
+      ? `<button class="btn btn-primary available-enroll" data-slug="${escapeHtml(c.slug)}">Enroll${c.priceLabel ? ' · ' + escapeHtml(c.priceLabel) : ''} →</button>`
+      : `<button class="btn btn-ghost" disabled>Notify me when live</button>`;
     return `
       <div class="available-card ${isLive ? '' : 'is-soon'}" data-slug="${escapeHtml(c.slug)}">
         <div class="available-card-top">
@@ -115,6 +117,8 @@ function renderAvailableCourses() {
         </div>
         <div class="available-card-title">${escapeHtml(c.title)}</div>
         <div class="available-card-desc">${escapeHtml(c.subtitle || '')}</div>
+        ${price}
+        ${priceNote}
         <div class="available-card-actions">${action}</div>
       </div>
     `;
@@ -122,8 +126,8 @@ function renderAvailableCourses() {
 
   slot.innerHTML = `
     <div class="academy-section-head">
-      <h2>Available Courses</h2>
-      <span class="academy-section-meta">Sign up to unlock</span>
+      <h2>Course Library</h2>
+      <span class="academy-section-meta">${available.length} courses · enroll to unlock</span>
     </div>
     <div class="available-grid">${cards}</div>
   `;
