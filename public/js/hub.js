@@ -63,35 +63,71 @@ function renderGreeting(user, profile) {
   $('hub-greeting').innerHTML = `Welcome back, <span>${escapeHtml(name)}</span>.`;
 }
 
-// Per-course progress helpers. Only 1P-CLC tracks real progress today; other
-// enrolled courses render as 0% until they ship real modules + store support.
-function courseProgressPct(course) {
-  if (course.slug === '1p-clc') {
-    return Math.round((store.completed.size / MODULES.length) * 100);
+// Per-course data cache, populated at main() time by loadCourseCaches().
+// Each entry: { modules, completed: Set<number>, currentId: number }.
+const _courseCache = {};
+
+async function loadCourseCaches(enrolled) {
+  // 1P-CLC uses the already-imported MODULES + store (synchronously available).
+  _courseCache['1p-clc'] = {
+    modules: MODULES,
+    completed: store.completed || new Set(),
+    currentId: typeof store.currentModule === 'number' ? store.currentModule : 0
+  };
+
+  // Trust The Process — dynamic import so the bundle stays small for users
+  // who aren't enrolled in it.
+  if (enrolled.some((c) => c.slug === 'trust-process')) {
+    try {
+      const [m, s] = await Promise.all([
+        import('./trust-process-modules.js'),
+        import('./trust-process-store.js')
+      ]);
+      try { await s.store.load(); } catch (e) {}
+      _courseCache['trust-process'] = {
+        modules: m.MODULES,
+        completed: s.store.completed || new Set(),
+        currentId: typeof s.store.currentModule === 'number' ? s.store.currentModule : 0
+      };
+    } catch (e) {
+      console.warn('[hub] trust-process data load failed', e);
+    }
   }
-  return 0;
+}
+
+function courseCache(slug) {
+  return _courseCache[slug] || null;
+}
+
+function courseProgressPct(course) {
+  const c = courseCache(course.slug);
+  if (!c || !c.modules.length) return 0;
+  return Math.round((c.completed.size / c.modules.length) * 100);
 }
 
 function courseCompletedCount(course) {
-  return course.slug === '1p-clc' ? store.completed.size : 0;
+  const c = courseCache(course.slug);
+  return c ? c.completed.size : 0;
 }
 
 function courseTotalSteps(course) {
-  if (course.slug === '1p-clc') return MODULES.length;
-  return 0;
+  const c = courseCache(course.slug);
+  return c ? c.modules.length : 0;
 }
 
 function statusLabel(course) {
   const pct = courseProgressPct(course);
   if (pct === 0) return 'Not started';
-  if (pct >= 100) return 'Certified';
+  if (pct >= 100) return course.slug === '1p-clc' ? 'Certified' : 'Complete';
   return 'In progress';
 }
 
-// First module the user hasn't completed yet; -1 if all done.
-function nextIncompleteModuleId() {
-  for (let i = 0; i < MODULES.length; i++) {
-    if (!store.completed.has(i)) return i;
+// First module the user hasn't completed yet for the given course; -1 if all done.
+function nextIncompleteIdFor(slug) {
+  const c = courseCache(slug);
+  if (!c) return -1;
+  for (let i = 0; i < c.modules.length; i++) {
+    if (!c.completed.has(c.modules[i].id)) return c.modules[i].id;
   }
   return -1;
 }
@@ -121,32 +157,33 @@ function renderContinueCard() {
   const primary = enrolled.find((c) => c.slug === '1p-clc') || enrolled[0];
   const pct = courseProgressPct(primary);
   const allDone = pct >= 100;
+  const cache = courseCache(primary.slug);
+  const unitLabel = primary.slug === 'trust-process' ? 'Lesson' : 'Module';
 
   let meta, title, sub, cta;
   let href = `/courses.html?course=${encodeURIComponent(primary.slug)}`;
-  if (primary.slug === '1p-clc') {
-    const doneCount = store.completed.size;
+  if (cache && cache.modules.length) {
+    const doneCount = cache.completed.size;
     if (doneCount === 0) {
-      // First time — surface module 0 as the starting point.
-      const first = MODULES[0];
-      meta = `Start here · Module ${first.id} · ${first.pillar}`;
+      const first = cache.modules[0];
+      meta = `Start here · ${unitLabel} ${first.id} · ${first.pillar}`;
       title = first.title;
-      sub = first.subtitle || 'A seven-module path grounded in mindset, structure, and consistent action.';
-      cta = `Begin Module ${first.id} →`;
-      href = `/courses.html?course=1p-clc&module=${first.id}`;
+      sub = first.subtitle || primary.subtitle || 'Begin the first lesson and build momentum.';
+      cta = `Begin ${unitLabel} ${first.id} →`;
+      href = `/courses.html?course=${encodeURIComponent(primary.slug)}&module=${first.id}`;
     } else if (allDone) {
-      meta = 'You are certified';
+      meta = primary.slug === '1p-clc' ? 'You are certified' : 'Course complete';
       title = 'Revisit what matters';
-      sub = 'The modules stay open. Return when you need to recalibrate or revisit a framework.';
+      sub = 'The lessons stay open. Return when you need to recalibrate or revisit a framework.';
       cta = 'Open course →';
     } else {
-      const nextId = nextIncompleteModuleId();
-      const next = MODULES[nextId] || MODULES[0];
-      meta = `Up next · Module ${next.id} · ${next.pillar}`;
+      const nextId = nextIncompleteIdFor(primary.slug);
+      const next = cache.modules.find((m) => m.id === nextId) || cache.modules[0];
+      meta = `Up next · ${unitLabel} ${next.id} · ${next.pillar}`;
       title = next.title;
       sub = next.subtitle || 'Pick up where you left off. The work compounds when you stay consistent.';
-      cta = `Resume Module ${next.id} →`;
-      href = `/courses.html?course=1p-clc&module=${next.id}`;
+      cta = `Resume ${unitLabel} ${next.id} →`;
+      href = `/courses.html?course=${encodeURIComponent(primary.slug)}&module=${next.id}`;
     }
   } else {
     meta = 'Continue your work';
@@ -184,7 +221,7 @@ function renderModuleMap() {
   }
   section.hidden = false;
 
-  const currentId = nextIncompleteModuleId();
+  const currentId = nextIncompleteIdFor('1p-clc');
   slot.innerHTML = MODULES.map((m) => {
     const done = store.completed.has(m.id);
     const isCurrent = m.id === currentId && !done;
@@ -301,6 +338,7 @@ async function main() {
 
   await store.load();
   try { await loadEnrollments(); } catch (e) {}
+  try { await loadCourseCaches(enrolledCourses()); } catch (e) {}
 
   let role = null;
   let companyId = null;
