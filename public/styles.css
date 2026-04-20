@@ -2937,8 +2937,33 @@ body.academy-hub {
   .academy-split { grid-template-columns: 1fr; }
   .academy-container { padding: 32px 20px 80px; }
   .academy-hero h1 { font-size: 40px; }
-  .academy-header-inner { padding: 14px 20px; gap: 16px; flex-wrap: wrap; }
-  .academy-tabs { order: 3; width: 100%; overflow-x: auto; justify-content: flex-start; padding-bottom: 4px; }
+  .academy-header-inner {
+    padding: 12px 16px;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+  /* Row 1: brand + user chip side-by-side (compact) */
+  .academy-brand { flex: 0 0 auto; gap: 10px; }
+  .academy-brand-mark { width: 36px; height: 36px; }
+  .academy-brand-line1 { font-size: 12px; }
+  .academy-brand-line2 { font-size: 9px; letter-spacing: 0.16em; }
+  .academy-header-right { flex: 0 0 auto; margin-left: auto; }
+  .academy-header-right .user-chip { gap: 8px; }
+  /* The displayed full name is hidden on mobile — the avatar is enough ID */
+  .academy-header-right .user-chip-email { display: none; }
+  .academy-header-right #btn-signout { padding: 6px 10px; font-size: 12px; }
+  .academy-header-right .user-chip-link { font-size: 10px; padding: 4px 8px; }
+  /* Row 2: tabs fill full width */
+  .academy-tabs {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    justify-content: flex-start;
+    gap: 4px;
+    padding-bottom: 4px;
+  }
+  .academy-tab { padding: 8px 12px; font-size: 12px; flex-shrink: 0; }
   .academy-continue { grid-template-columns: 1fr; }
 }
 
