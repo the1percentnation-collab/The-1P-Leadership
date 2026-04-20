@@ -6,7 +6,8 @@ import { getRoleInfo } from './roles.js';
 import { listMembers, getUserProfile, avatarHtml, escapeHtml } from './community.js';
 
 const $ = (id) => document.getElementById(id);
-const TOTAL_MODULES = 7; // 7 completable modules per spec (progress = completedCount / 7)
+const TOTAL_CLC_MODULES = 7;
+const TOTAL_TP_LESSONS = 55;
 
 function renderChip(me, role) {
   const chip = $('user-chip');
@@ -34,23 +35,33 @@ function renderChip(me, role) {
 }
 
 function memberCardHtml(m) {
-  // completedCount may come from members subcollection digest OR from the user doc (owner view).
+  // Progress digests mirrored from the user's own client into the members
+  // subcollection: `completedCount` = 1P-CLC, `tpCompletedCount` = TP.
   const cc = typeof m.completedCount === 'number' ? m.completedCount : 0;
-  const pct = Math.min(100, Math.round((cc / TOTAL_MODULES) * 100));
+  const tp = typeof m.tpCompletedCount === 'number' ? m.tpCompletedCount : 0;
+  const clcPct = Math.min(100, Math.round((cc / TOTAL_CLC_MODULES) * 100));
+  const tpPct = Math.min(100, Math.round((tp / TOTAL_TP_LESSONS) * 100));
   const role = m.role || null;
   const roleBadge = role === 'owner'
     ? `<span class="c-role-badge c-role-owner">Owner</span>`
     : role === 'admin' ? `<span class="c-role-badge c-role-admin">Admin</span>` : '';
   const bio = m.bio ? escapeHtml(m.bio).slice(0, 120) : 'No bio yet.';
+  const tpRow = tp > 0
+    ? `<div class="c-member-progress" title="Trust The Process: ${tp}/${TOTAL_TP_LESSONS}">
+         <div class="c-progress-bar"><div class="c-progress-fill" style="width:${tpPct}%; background:var(--gold,#d4a92e);"></div></div>
+         <span class="c-progress-pct">${tpPct}%</span>
+       </div>`
+    : '';
   return `
     <a class="c-member-card" href="/profile.html?uid=${encodeURIComponent(m.uid)}">
       ${avatarHtml(m, 56)}
       <div class="c-member-name">${escapeHtml(m.displayName || m.email || 'Member')} ${roleBadge}</div>
       <div class="c-member-bio">${bio}</div>
-      <div class="c-member-progress">
-        <div class="c-progress-bar"><div class="c-progress-fill" style="width:${pct}%"></div></div>
-        <span class="c-progress-pct">${pct}%</span>
+      <div class="c-member-progress" title="1P-CLC: ${cc}/${TOTAL_CLC_MODULES}">
+        <div class="c-progress-bar"><div class="c-progress-fill" style="width:${clcPct}%"></div></div>
+        <span class="c-progress-pct">${clcPct}%</span>
       </div>
+      ${tpRow}
     </a>
   `;
 }

@@ -144,6 +144,7 @@ export const store = {
         tpCurrentModule: id,
         lastActiveAt: serverTimestamp()
       }, { merge: true }).catch((e) => console.warn('[tp-store] setCurrent remote write:', e));
+      this._mirrorMemberDigest(user);
     }
   },
 
@@ -160,7 +161,28 @@ export const store = {
         lastActiveAt: serverTimestamp(),
         tpCurrentModule: this.currentModule
       }, { merge: true }).catch(() => {});
+      this._mirrorMemberDigest(user);
     }
+  },
+
+  // Mirrors TP progress into companies/{cid}/members/{uid} as `tpCompletedCount`
+  // / `tpCurrentModule` so company admins + peers can see Trust The Process
+  // progress alongside the 1P-CLC `completedCount` written by ./store.js. We
+  // use `merge: true` so we never clobber 1P-CLC fields on the same doc.
+  async _mirrorMemberDigest(user) {
+    try {
+      const uDoc = await getDoc(doc(db, 'users', user.uid));
+      if (!uDoc.exists()) return;
+      const data = uDoc.data();
+      const companyId = data.companyId;
+      if (!companyId) return;
+      await setDoc(doc(db, 'companies', companyId, 'members', user.uid), {
+        uid: user.uid,
+        tpCompletedCount: this.completed.size,
+        tpCurrentModule: this.currentModule,
+        lastActiveAt: serverTimestamp()
+      }, { merge: true });
+    } catch (e) { /* best-effort */ }
   },
 
   isComplete(id) { return this.completed.has(id); }

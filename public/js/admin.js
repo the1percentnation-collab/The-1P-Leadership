@@ -91,21 +91,38 @@ async function loadRoster() {
       displayName: u.displayName || '—',
       email: u.email || '—',
       completedCount: typeof u.completedCount === 'number' ? u.completedCount : 0,
+      tpCompletedCount: typeof u.tpCompletedCount === 'number' ? u.tpCompletedCount : 0,
       lastActiveAt: u.lastActiveAt,
       capstoneStatus: u.capstoneStatus || '—',
       role: 'user'
     });
   }
 
-  // Total modules — known to frontend but we don't import modules.js here; use 8 buckets max.
-  const TOTAL = 8;
+  // 1P-CLC has 7 core modules; Trust The Process has 55 lessons. These are
+  // known frontend constants — we don't import modules files into admin.js.
+  const CLC_TOTAL = 7;
+  const TP_TOTAL = 55;
   if (!rows.length) {
     body.innerHTML = `<tr><td colspan="7" style="color:var(--gray-mid);">No employees yet.</td></tr>`;
     return;
   }
   body.innerHTML = rows.map((r) => {
     const cc = typeof r.completedCount === 'number' ? r.completedCount : 0;
-    const pct = Math.min(100, Math.round((cc / TOTAL) * 100));
+    const tp = typeof r.tpCompletedCount === 'number' ? r.tpCompletedCount : 0;
+    const pct = Math.min(100, Math.round((cc / CLC_TOTAL) * 100));
+    const tpPct = Math.min(100, Math.round((tp / TP_TOTAL) * 100));
+    const tpChip = tp > 0
+      ? `<div style="margin-top:4px; display:flex; align-items:center; gap:6px;" title="Trust The Process: ${tp}/${TP_TOTAL} lessons">
+           <span style="font-family:var(--font-mono); font-size:10px; color:var(--gray-mid);">TP</span>
+           <div style="flex:1; max-width:120px; height:3px; background:var(--border); border-radius:2px; overflow:hidden;">
+             <div style="height:100%; width:${tpPct}%; background:var(--gold,#d4a92e);"></div>
+           </div>
+           <span class="num" style="color:var(--gray-light); font-family:var(--font-mono); font-size:10px;">${tpPct}%</span>
+         </div>`
+      : '';
+    const countCell = tp > 0
+      ? `<div class="num">${cc}</div><div class="num" style="color:var(--gray-mid); font-size:11px; margin-top:2px;">+${tp} TP</div>`
+      : `<div class="num">${cc}</div>`;
     return `<tr>
       <td>${r.displayName}</td>
       <td>${r.email}</td>
@@ -116,8 +133,9 @@ async function loadRoster() {
           </div>
           <span class="num" style="color:var(--white); font-family:var(--font-mono); font-size:11px;">${pct}%</span>
         </div>
+        ${tpChip}
       </td>
-      <td class="num">${cc}</td>
+      <td>${countCell}</td>
       <td>${fmtTs(r.lastActiveAt)}</td>
       <td><span class="pill ${r.capstoneStatus === '—' ? 'pill-muted' : 'pill-warn'}">${r.capstoneStatus}</span></td>
       <td style="display:flex; gap:6px; white-space:nowrap;">
