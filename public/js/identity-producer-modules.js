@@ -581,6 +581,108 @@ export const LESSONS = [
         attr: 'Anthony Brown'
       }
     ]
+  },
+
+  // ───── Module 5: Installing the New Identity ─────
+  {
+    id: 5,
+    section: 'Module 5 — Installing the New Identity',
+    sectionTag: 'M05',
+    sectionColor: 'tag-p3',
+    title: 'Identity Is Installed Through Repetition',
+    subtitle: 'You do not declare a new identity. You vote for one — in small, daily, boring repetitions — until it becomes who you are.',
+    duration: '30 min',
+    blocks: [
+      {
+        type: 'lead',
+        title: 'Identity is installed, not declared',
+        body: [
+          'Everything in this course has been building toward one idea: the person you are becoming is not the one who gave a rousing speech in their own head. It is the one who showed up today and did the reps — the conversation, the committed behavior, the protected calendar block, the follow-through even when the feelings were loud.',
+          'You cannot decide once to be a Producer. You vote for it — or vote against it — every time a moment asks who you actually are. Repetition is not the decoration of identity change. Repetition is the mechanism.'
+        ]
+      },
+      {
+        type: 'callout',
+        label: 'Core Principle',
+        body: 'Every action you take is a vote for an identity. Enough votes in the same direction and the identity becomes self-evident — to you, and to everyone around you. That is how it installs.'
+      },
+      {
+        type: 'framework',
+        title: 'The four mechanics of installation',
+        cards: [
+          { icon: '👁️', title: 'Awareness', desc: 'You catch the old identity in real time. "That was the employee version of me." Naming it is how it loses authority.' },
+          { icon: '🎯', title: 'Choice', desc: 'In the gap between stimulus and response, you choose the Producer behavior — even when it is inconvenient, especially when it is inconvenient.' },
+          { icon: '🔁', title: 'Repetition', desc: 'You do it again. Then again. Then the next day. This is the part nobody wants to hear, and it is the only part that works.' },
+          { icon: '🪞', title: 'Integration', desc: 'After enough reps, the behavior stops feeling like effort. It becomes who you are. At that point, you are no longer "trying to be" a Producer — you just are one.' }
+        ]
+      },
+      {
+        type: 'list',
+        title: 'Why one-time declarations fail',
+        items: [
+          'A declaration is an event. An identity is a pattern. Patterns are not built in a single evening.',
+          'Motivation is the fuel that gets you to the starting line. Repetition is what keeps you on the track.',
+          'The old identity does not die loudly. It just keeps whispering — and repetition is what out-votes it.',
+          'New-year resolutions fail for the same reason weekend retreats do: no daily reps to cash the declaration.',
+          'Identity change happens in private, on unremarkable days, when nobody is watching.'
+        ]
+      },
+      {
+        type: 'framework',
+        title: 'The 90-day Producer install',
+        cards: [
+          { icon: '🟥', title: 'Weeks 1–4 · Prove', desc: 'Hit the minimum daily reps — one revenue block, one Producer conversation, one calendar boundary held. Ugly consistency beats beautiful intention.' },
+          { icon: '🟧', title: 'Weeks 5–8 · Pattern', desc: 'The reps become routine. Notice where the old identity still hides. Raise the floor — what was barely acceptable is no longer good enough.' },
+          { icon: '🟨', title: 'Weeks 9–12 · Personify', desc: 'You catch yourself acting like a Producer without trying. Compliments arrive. Results arrive. The identity has installed — now hold the line.' }
+        ]
+      },
+      {
+        type: 'callout',
+        label: 'The 1P Standard',
+        body: 'A Producer does not need to feel like a Producer to act like one. They act like one until the feeling catches up. And when it does, it stays — because it was built, not borrowed.'
+      },
+      {
+        type: 'list',
+        title: 'The non-negotiable daily reps',
+        items: [
+          'One Producer-standard conversation — a real one, where you held the frame and named the truth. (M1)',
+          'One action from the "I know I should" list you closed in Module 2. The smallest version. Every day. (M2)',
+          'One moment where you noticed a feeling, treated it as data, and acted on your commitment anyway. (M3)',
+          'One protected revenue block on the calendar, honored — phone off, door closed, output delivered. (M4)',
+          'A 60-second evening reflection: "Did I vote for the Producer today? Where did I waver? Where did I hold?"'
+        ]
+      },
+      {
+        type: 'divider'
+      },
+      {
+        type: 'assignment',
+        title: 'Your Producer Install Plan',
+        intro: 'This is the capstone assignment. Pull from every module. Write it like you are signing a contract with the version of you who is arriving in 90 days.',
+        questions: [
+          'Complete this sentence in one line: "I am the kind of person who ___." Make it concrete enough that another person could tell if you lived it this week.',
+          'From Module 1 — what is the conversation standard you are installing? Write it as a sentence you could read before every call.',
+          'From Module 2 — what is the one "I know I should" behavior you will turn into a daily rep, starting tomorrow?',
+          'From Module 3 — what is the feeling you most often obey, and what is the new response you will practice when it shows up?',
+          'From Module 4 — what does your first architected Producer week look like? Commit to the days and times for revenue and build blocks.',
+          'What will you do on day 7, day 30, and day 60 to review, adjust, and hold the line? Write the dates down now.',
+          'Who will you tell about this plan — and when will you next speak with them about it?'
+        ],
+        notesKey: 'ip_5_install_plan',
+        notesPlaceholder: 'Your 90-day Producer Install Plan — saved automatically as you type...',
+        notesMinHeight: '320px'
+      },
+      {
+        type: 'callout',
+        label: 'Course Completion Credential',
+        body: 'Complete all six modules and your status flips to Credential Earned. That credential is not a certificate — it is proof to yourself that you did the reps. Revisit the modules whenever the old identity starts whispering. This course stays open for you.'
+      },
+      {
+        type: 'quote',
+        text: 'You become what you repeat. So choose carefully — and then repeat.',
+        attr: 'Anthony Brown'
+      }
+    ]
   }
 ];
 
