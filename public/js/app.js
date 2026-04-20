@@ -6,6 +6,7 @@ import { store, saveNote } from './store.js';
 import { MODULES, PILLARS } from './modules.js';
 import { onAuthReady } from './auth.js';
 import { firebaseReady } from './firebase.js';
+import { escapeHtml } from './community.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -41,7 +42,7 @@ function buildNav() {
 function updateTopBar() {
   const m = MODULES[store.currentModule];
   const bc = $('breadcrumb');
-  if (bc) bc.innerHTML = `<a href="/index.html" class="breadcrumb-link">Academy</a> / <a href="/courses.html" class="breadcrumb-link">Courses</a> / <span>1P-CLC</span> / ${m.title}`;
+  if (bc) bc.innerHTML = `<a href="/index.html" class="breadcrumb-link">Academy</a> / <a href="/courses.html" class="breadcrumb-link">Courses</a> / <a href="/courses.html?course=1p-clc" class="breadcrumb-link">1P-CLC</a> / <span>${escapeHtml(m.title)}</span>`;
   const cur = $('cur-mod');
   const total = $('total-mod');
   if (cur) cur.textContent = store.currentModule;
@@ -139,10 +140,7 @@ function completeModule() {
 
 let _mounted = false;
 
-export async function mount() {
-  if (_mounted) return;
-  _mounted = true;
-
+export async function mount({ startAt } = {}) {
   // Auth check — courses-page.js also does this, but guard for direct entry.
   if (firebaseReady) {
     const user = await onAuthReady();
@@ -153,7 +151,15 @@ export async function mount() {
   }
 
   await store.load();
+
+  if (typeof startAt === 'number' && startAt >= 0 && startAt < MODULES.length) {
+    store.setCurrent(startAt);
+  }
+
   render();
+
+  if (_mounted) return;
+  _mounted = true;
 
   const prev = $('btn-prev');
   const next = $('btn-next');

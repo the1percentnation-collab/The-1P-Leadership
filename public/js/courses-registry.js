@@ -14,9 +14,9 @@ export const COURSES = [
     subtitle: 'Mindset, structure, and disciplined progress — one percent at a time.',
     status: 'live',
     eyebrow: 'Certification · 7 Modules',
-    mount: async () => {
+    mount: async (opts) => {
       const mod = await import('./app.js');
-      if (mod && typeof mod.mount === 'function') await mod.mount();
+      if (mod && typeof mod.mount === 'function') await mod.mount(opts);
     }
   },
   {

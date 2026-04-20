@@ -50,14 +50,19 @@
     <section id="workspace-welcome" class="workspace-welcome">
       <div class="welcome-inner">
         <div class="academy-eyebrow">The Academy</div>
-        <h1>Welcome to <span>the Academy</span>.</h1>
-        <p>Every course here is built to move you one percent better — grounded in mindset, structure, and consistent action. Pick where you want to grow from the sidebar, and come back as often as you need to.</p>
+        <h1 id="welcome-title">Welcome to <span>the Academy</span>.</h1>
+        <p id="welcome-sub">Every course here is built to move you one percent better — grounded in mindset, structure, and consistent action. Pick where you want to grow and come back as often as you need to.</p>
         <div class="academy-tagline">
           <strong>Redefining Success.</strong> Realigning Purpose. Releasing Potential.
         </div>
-        <div class="welcome-hint">← Choose a course from the sidebar to begin.</div>
+        <div class="welcome-hint" id="welcome-hint">← Choose one of your courses from the sidebar to begin.</div>
       </div>
+
+      <div class="welcome-available" id="welcome-available"></div>
     </section>
+
+    <!-- Roadmap — default view for an enrolled course (click a step to open that module) -->
+    <section id="workspace-roadmap" class="workspace-roadmap" hidden></section>
 
     <!-- Live course body (e.g. 1P-CLC) — main column of the existing course UI -->
     <section id="workspace-live-content" class="workspace-live-content" hidden>
