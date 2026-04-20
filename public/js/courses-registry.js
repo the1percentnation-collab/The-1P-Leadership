@@ -38,6 +38,21 @@ export const COURSES = [
     }
   },
   {
+    slug: 'identity-producer',
+    title: 'The Identity of A Producer',
+    short: 'Identity of A Producer',
+    subtitle: 'Install the internal standard of someone who produces by default — not by mood.',
+    status: 'coming-soon',
+    eyebrow: 'Self-paced · 6 Modules · Credential',
+    price: 247,
+    priceLabel: '$247',
+    priceNote: 'Lifetime access · Course Completion Credential',
+    mount: async (opts) => {
+      const mod = await import('./identity-producer-app.js');
+      if (mod && typeof mod.mount === 'function') await mod.mount(opts);
+    }
+  },
+  {
     slug: 'mindset-foundations',
     title: 'Mindset Foundations',
     short: 'Mindset',
