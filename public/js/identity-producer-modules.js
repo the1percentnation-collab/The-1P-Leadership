@@ -484,6 +484,103 @@ export const LESSONS = [
         attr: 'Anthony Brown'
       }
     ]
+  },
+
+  // ───── Module 4: The Producer Calendar ─────
+  {
+    id: 4,
+    section: 'Module 4 — The Producer Calendar',
+    sectionTag: 'M04',
+    sectionColor: 'tag-p2',
+    title: 'The Producer Calendar',
+    subtitle: 'Constant activity does not guarantee meaningful results. A Producer\'s calendar is architected, not reactive.',
+    duration: '25 min',
+    blocks: [
+      {
+        type: 'lead',
+        title: 'The trap of constant activity',
+        body: [
+          'Busy has become a badge. We admire people whose calendars are packed to the minute, whose inboxes never empty, whose days run on adrenaline. But busy is not the same as productive. Reactive is not the same as intentional. Motion is not the same as progress.',
+          'Constant activity does not guarantee meaningful results. In fact, it usually guarantees the opposite — because the highest-leverage work always requires space to think, space to execute deeply, and space to prepare before the conversation, the launch, the decision that actually moves revenue.'
+        ]
+      },
+      {
+        type: 'callout',
+        label: 'Core Principle',
+        body: 'If you did not design the day, the day was designed for you — by notifications, inboxes, and other people\'s urgency. A Producer refuses to let the urgent edit the important.'
+      },
+      {
+        type: 'framework',
+        title: 'Reactive calendar vs. Producer calendar',
+        cards: [
+          { icon: '🌪️', title: 'Reactive calendar', desc: 'Filled by whoever asks first. Meetings stack. Revenue behaviors get whatever is left — usually nothing. Ends each day exhausted and vaguely behind.' },
+          { icon: '🏛️', title: 'Producer calendar', desc: 'Architected before the week starts. Revenue-producing behaviors are placed first, protected, and non-negotiable. Everything else fits around them.' },
+          { icon: '🎯', title: 'The shift', desc: 'Stop asking "what do I have to do today?" and start asking "what must be true by the end of this week — and when is it scheduled?"' }
+        ]
+      },
+      {
+        type: 'list',
+        title: 'Signs your calendar is running you',
+        items: [
+          'You schedule your day around meetings — and hope revenue work fits in the cracks.',
+          'You cannot point to a block on your calendar labeled "revenue" or "deep work."',
+          'You finish the day tired but cannot name what actually moved.',
+          'Your highest-leverage work consistently gets pushed to "tomorrow."',
+          'You respond to email faster than you execute your own priorities.',
+          'You say yes to invitations before you check what they are displacing.'
+        ]
+      },
+      {
+        type: 'framework',
+        title: 'The four Producer blocks',
+        cards: [
+          { icon: '💰', title: 'Revenue blocks', desc: 'Direct income-producing behavior — offers, outreach, conversations that close. Scheduled first. Protected. Daily, if possible.' },
+          { icon: '🔨', title: 'Build blocks', desc: 'Creation — the product, the content, the systems. Deep work. Phone on do-not-disturb. Minimum 90 minutes.' },
+          { icon: '🤝', title: 'Connection blocks', desc: 'People conversations — team, clients, partners. Batched into a window so they do not fragment the rest of the day.' },
+          { icon: '♻️', title: 'Admin + recovery blocks', desc: 'Email, logistics, rest. Contained to specific windows so they cannot colonize the rest of the calendar.' }
+        ]
+      },
+      {
+        type: 'callout',
+        label: 'The 1P Standard',
+        body: 'Your calendar is the clearest picture of your identity. Show me your week and I will show you the version of yourself you are currently voting for. If the calendar says "reactive employee," the identity will follow.'
+      },
+      {
+        type: 'list',
+        title: 'Architecting the week — a Producer\'s Sunday',
+        items: [
+          'Name the one or two outcomes that must be true by Friday. If everything else failed and those happened, the week was a win.',
+          'Place the revenue blocks on the calendar first — before anyone else has access to your time.',
+          'Place the build blocks next — protected, labeled, non-negotiable.',
+          'Batch connection and admin into windows. No scattered calls. No all-day email.',
+          'Leave at least one unscheduled block per day for the unexpected — so the unexpected does not steal from the revenue block.',
+          'Finish with a rest block. Rest is a Producer\'s investment, not a reward.'
+        ]
+      },
+      {
+        type: 'divider'
+      },
+      {
+        type: 'assignment',
+        title: 'The Calendar Architect',
+        intro: 'Open your calendar for next week. Do not just read this assignment — build the week as you work through it.',
+        questions: [
+          'What are the one or two outcomes that must be true by the end of next week for it to count as a win?',
+          'Which revenue-producing behaviors directly create those outcomes? Name them as specific actions.',
+          'Place them on the calendar — at least one revenue block per day. Write down the days and times.',
+          'Where are the build blocks going? Phone off, door closed, minimum 90 minutes. Name the days and times.',
+          'What are you consciously saying no to or batching away (email, meetings, "quick questions") so the important can survive?'
+        ],
+        notesKey: 'ip_4_calendar_architect',
+        notesPlaceholder: 'Your architected week — saved automatically as you type...',
+        notesMinHeight: '260px'
+      },
+      {
+        type: 'quote',
+        text: 'Your calendar does not lie. It tells you — honestly — what you actually believe about what matters.',
+        attr: 'Anthony Brown'
+      }
+    ]
   }
 ];
 
