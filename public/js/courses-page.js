@@ -33,15 +33,41 @@ function moduleParam() {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+// ─── Per-course data adapter ─────────────────────────────────────────────
+//
+// Each live course tracks progress with its own store + modules file. This
+// helper centralises the lookup so renderSidebar / renderRoadmap can stay
+// course-agnostic.
+
+async function getCourseData(course) {
+  if (!course) return { modules: [], completed: new Set(), currentId: 0 };
+  if (course.slug === 'trust-process') {
+    const [m, s] = await Promise.all([
+      import('./trust-process-modules.js'),
+      import('./trust-process-store.js')
+    ]);
+    try { await s.store.load(); } catch (e) {}
+    return {
+      modules: m.MODULES,
+      completed: s.store.completed || new Set(),
+      currentId: typeof s.store.currentModule === 'number' ? s.store.currentModule : 0
+    };
+  }
+  // Default: 1P-CLC (uses the globally imported MODULES + store).
+  return {
+    modules: MODULES,
+    completed: store.completed || new Set(),
+    currentId: typeof store.currentModule === 'number' ? store.currentModule : 0
+  };
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────
 
-function sidebarEntryHtml(course, { isActive, completedCount = 0 } = {}) {
+function sidebarEntryHtml(course, { isActive, pct = null } = {}) {
   const href = `/courses.html?course=${encodeURIComponent(course.slug)}`;
-  let chip = '';
-  if (course.slug === '1p-clc') {
-    const pct = Math.round((completedCount / MODULES.length) * 100);
-    chip = `<span class="course-entry-pct">${pct}%</span>`;
-  }
+  const chip = pct != null
+    ? `<span class="course-entry-pct">${pct}%</span>`
+    : '';
   return `
     <div class="course-entry ${isActive ? 'active' : ''}" data-slug="${escapeHtml(course.slug)}">
       <a class="course-entry-head" href="${href}">
@@ -56,11 +82,10 @@ function sidebarEntryHtml(course, { isActive, completedCount = 0 } = {}) {
   `;
 }
 
-function renderSidebar(activeSlug) {
+async function renderSidebar(activeSlug) {
   const list = $('courses-sidebar-list');
   if (!list) return;
   const enrolled = enrolledCourses();
-  const completedCount = store.completed ? store.completed.size : 0;
 
   if (enrolled.length === 0) {
     list.innerHTML = `
@@ -72,9 +97,17 @@ function renderSidebar(activeSlug) {
     return;
   }
 
-  const entries = enrolled.map((c) => sidebarEntryHtml(c, {
+  // Resolve per-course pct in parallel — cheap because stores cache after first load.
+  const pcts = await Promise.all(enrolled.map(async (c) => {
+    if (c.status !== 'live') return null;
+    const { modules, completed } = await getCourseData(c);
+    if (!modules.length) return null;
+    return Math.round((completed.size / modules.length) * 100);
+  }));
+
+  const entries = enrolled.map((c, i) => sidebarEntryHtml(c, {
     isActive: c.slug === activeSlug,
-    completedCount
+    pct: pcts[i]
   })).join('');
 
   list.innerHTML = entries + `
@@ -162,9 +195,8 @@ function updateWelcomeCopy() {
 
 // ─── Roadmap ─────────────────────────────────────────────────────────────
 
-function roadmapHtml(course, { completedSet, currentId }) {
-  // Currently 1P-CLC is the only live course. Pull its modules.
-  const modules = MODULES.map((m) => ({
+function roadmapHtml(course, { modules: rawModules, completedSet, currentId }) {
+  const modules = (rawModules || []).map((m) => ({
     id: m.id,
     title: m.title,
     subtitle: m.subtitle || '',
@@ -225,7 +257,7 @@ function roadmapHtml(course, { completedSet, currentId }) {
           <div class="roadmap-hero-stats">
             <div><span class="roadmap-stat-val">${completedCount}</span><span class="roadmap-stat-lbl">Done</span></div>
             <div><span class="roadmap-stat-val">${modules.length - completedCount}</span><span class="roadmap-stat-lbl">To go</span></div>
-            <div><span class="roadmap-stat-val">${modules.length}</span><span class="roadmap-stat-lbl">Modules</span></div>
+            <div><span class="roadmap-stat-val">${modules.length}</span><span class="roadmap-stat-lbl">${modules.length > 20 ? 'Lessons' : 'Modules'}</span></div>
           </div>
         </div>
 
@@ -245,12 +277,11 @@ function roadmapHtml(course, { completedSet, currentId }) {
   `;
 }
 
-function renderRoadmap(course) {
+async function renderRoadmap(course) {
   const slot = $('workspace-roadmap');
   if (!slot) return;
-  const completedSet = store.completed || new Set();
-  const currentId = typeof store.currentModule === 'number' ? store.currentModule : 0;
-  slot.innerHTML = roadmapHtml(course, { completedSet, currentId });
+  const { modules, completed, currentId } = await getCourseData(course);
+  slot.innerHTML = roadmapHtml(course, { modules, completedSet: completed, currentId });
 }
 
 // ─── Workspace swap ───────────────────────────────────────────────────────
@@ -359,20 +390,20 @@ async function main() {
   updateWelcomeCopy();
 
   if (!course) {
-    renderSidebar(null);
+    await renderSidebar(null);
     showWelcome();
   } else if (course.status !== 'live') {
-    renderSidebar(null);
+    await renderSidebar(null);
     renderComingSoon(course);
     showComingSoon();
   } else if (!isEnrolled(course.slug)) {
     // User landed on a course they aren't enrolled in — bounce back to welcome
     // and surface it in the Available list.
-    renderSidebar(null);
+    await renderSidebar(null);
     showWelcome();
   } else if (moduleId != null) {
     // Module view — mount the course workspace and start at the requested module.
-    renderSidebar(course.slug);
+    await renderSidebar(course.slug);
     renderCourseHero(course);
     showModule();
     if (typeof course.mount === 'function') {
@@ -381,8 +412,8 @@ async function main() {
     }
   } else {
     // Roadmap view — default landing for an enrolled course.
-    renderSidebar(course.slug);
-    renderRoadmap(course);
+    await renderSidebar(course.slug);
+    await renderRoadmap(course);
     showRoadmap();
   }
 

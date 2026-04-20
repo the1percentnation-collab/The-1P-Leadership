@@ -23,6 +23,21 @@ export const COURSES = [
     }
   },
   {
+    slug: 'trust-process',
+    title: 'Trust The Process',
+    short: 'Trust The Process',
+    subtitle: 'Resilience, purpose, and the quiet discipline of trusting the path — 55 lessons with Anthony Brown.',
+    status: 'live',
+    eyebrow: 'Self-paced · 10 Modules · 55 Lessons',
+    price: 297,
+    priceLabel: '$297',
+    priceNote: 'Lifetime access · Anthony Brown, Founder & CEO',
+    mount: async (opts) => {
+      const mod = await import('./trust-process-app.js');
+      if (mod && typeof mod.mount === 'function') await mod.mount(opts);
+    }
+  },
+  {
     slug: 'mindset-foundations',
     title: 'Mindset Foundations',
     short: 'Mindset',
