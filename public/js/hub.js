@@ -15,6 +15,7 @@ import {
   fmtRelative,
   initials
 } from './community.js';
+import { loadEnrollments, enrolledCourses } from './enrollments.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -62,33 +63,85 @@ function renderGreeting(user, profile) {
   $('hub-greeting').innerHTML = `Welcome back, <span>${escapeHtml(name)}</span>.`;
 }
 
+// Per-course progress helpers. Only 1P-CLC tracks real progress today; other
+// enrolled courses render as 0% until they ship real modules + store support.
+function courseProgressPct(course) {
+  if (course.slug === '1p-clc') {
+    return Math.round((store.completed.size / MODULES.length) * 100);
+  }
+  return 0;
+}
+
+function courseCompletedCount(course) {
+  return course.slug === '1p-clc' ? store.completed.size : 0;
+}
+
+function courseTotalSteps(course) {
+  if (course.slug === '1p-clc') return MODULES.length;
+  return 0;
+}
+
+function statusLabel(course) {
+  const pct = courseProgressPct(course);
+  if (pct === 0) return 'Not started';
+  if (pct >= 100) return 'Certified';
+  return 'In progress';
+}
+
 function renderContinueCard() {
   const slot = $('hub-continue-slot');
   if (!slot) return;
 
-  const totalModules = MODULES.length - 1; // module 0 is an overview/index in the existing app
-  const doneCount = store.completed.size;
-  const pct = totalModules > 0 ? Math.round((doneCount / MODULES.length) * 100) : 0;
+  const enrolled = enrolledCourses();
 
-  const current = MODULES[store.currentModule] || MODULES[0];
-  const allDone = doneCount >= MODULES.length;
+  // No enrollments yet — prompt the user to browse the course library.
+  if (enrolled.length === 0) {
+    slot.innerHTML = `
+      <div class="academy-continue">
+        <div>
+          <div class="academy-continue-meta">Start your journey</div>
+          <div class="academy-continue-title">No active courses yet</div>
+          <div class="academy-continue-sub">Browse the Academy library and sign up for your first course — the work starts when you choose.</div>
+        </div>
+        <a class="btn btn-primary" href="/courses.html">Browse courses →</a>
+      </div>
+    `;
+    return;
+  }
 
-  let meta = 'Continue your work';
-  let title = current ? current.title : 'Start here';
-  let sub = 'Pick up where you left off. The work compounds when you stay consistent.';
-  let cta = 'Resume course';
-  if (doneCount === 0) {
-    meta = 'Start your journey';
-    title = 'The 1P Certified Leader Coach';
-    sub = 'A seven-module path grounded in mindset, structure, and consistent action. Begin at your own pace.';
-    cta = 'Begin course';
-  } else if (allDone) {
-    meta = 'You are certified';
-    title = 'Revisit what matters';
-    sub = 'The modules stay open. Return when you need to recalibrate or revisit a framework.';
+  // Pick the "primary" enrolled course — prefer 1P-CLC if enrolled, else first.
+  const primary = enrolled.find((c) => c.slug === '1p-clc') || enrolled[0];
+  const pct = courseProgressPct(primary);
+  const allDone = pct >= 100;
+
+  let meta, title, sub, cta;
+  if (primary.slug === '1p-clc') {
+    const doneCount = store.completed.size;
+    if (doneCount === 0) {
+      meta = 'Start your course';
+      title = primary.title;
+      sub = 'A seven-module path grounded in mindset, structure, and consistent action. Begin at your own pace.';
+      cta = 'Open course';
+    } else if (allDone) {
+      meta = 'You are certified';
+      title = 'Revisit what matters';
+      sub = 'The modules stay open. Return when you need to recalibrate or revisit a framework.';
+      cta = 'Open course';
+    } else {
+      const current = MODULES[store.currentModule] || MODULES[0];
+      meta = 'Continue where you left off';
+      title = current ? current.title : primary.title;
+      sub = 'Pick up where you left off. The work compounds when you stay consistent.';
+      cta = 'Resume course';
+    }
+  } else {
+    meta = 'Continue your work';
+    title = primary.title;
+    sub = primary.subtitle || 'Open your course roadmap.';
     cta = 'Open course';
   }
 
+  const href = `/courses.html?course=${encodeURIComponent(primary.slug)}`;
   slot.innerHTML = `
     <div class="academy-continue">
       <div>
@@ -100,22 +153,51 @@ function renderContinueCard() {
           <div class="academy-continue-progress-label">${pct}%</div>
         </div>
       </div>
-      <a class="btn btn-primary" href="/courses.html">${escapeHtml(cta)} →</a>
+      <a class="btn btn-primary" href="${href}">${escapeHtml(cta)} →</a>
     </div>
   `;
+}
 
-  const label = $('hub-progress-label');
-  if (label) label.textContent = `${pct}%`;
+function renderEnrolledList() {
+  const list = $('hub-courses-list');
+  if (!list) return;
 
-  const courseSub = $('hub-course-sub');
-  if (courseSub) courseSub.textContent = `${doneCount} of ${MODULES.length} modules complete`;
-
-  const courseStatus = $('hub-course-status');
-  if (courseStatus) {
-    if (doneCount === 0) courseStatus.textContent = 'Not started';
-    else if (allDone) courseStatus.textContent = 'Certified';
-    else courseStatus.textContent = 'In progress';
+  const enrolled = enrolledCourses();
+  if (enrolled.length === 0) {
+    list.innerHTML = `
+      <a class="academy-list-item" href="/courses.html" style="text-decoration:none;">
+        <div class="academy-list-avatar">+</div>
+        <div class="academy-list-main">
+          <div class="academy-list-title">Browse available courses</div>
+          <div class="academy-list-sub">You haven't signed up for any courses yet.</div>
+        </div>
+        <div class="academy-list-meta">Start</div>
+      </a>
+    `;
+    return;
   }
+
+  list.innerHTML = enrolled.map((c) => {
+    const pct = courseProgressPct(c);
+    const total = courseTotalSteps(c);
+    const done = courseCompletedCount(c);
+    const href = `/courses.html?course=${encodeURIComponent(c.slug)}`;
+    const subParts = [];
+    if (total > 0) subParts.push(`${done} of ${total} modules`);
+    subParts.push(`${pct}%`);
+    const sub = subParts.join(' · ');
+    const avatarInitials = (c.short || c.title).split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+    return `
+      <a class="academy-list-item" href="${href}">
+        <div class="academy-list-avatar">${escapeHtml(avatarInitials)}</div>
+        <div class="academy-list-main">
+          <div class="academy-list-title">${escapeHtml(c.title)}</div>
+          <div class="academy-list-sub">${escapeHtml(sub)}</div>
+        </div>
+        <div class="academy-list-meta">${escapeHtml(statusLabel(c))}</div>
+      </a>
+    `;
+  }).join('');
 }
 
 async function renderCommunityList({ role, companyId }) {
@@ -172,6 +254,7 @@ async function main() {
   }
 
   await store.load();
+  try { await loadEnrollments(); } catch (e) {}
 
   let role = null;
   let companyId = null;
@@ -190,6 +273,7 @@ async function main() {
 
   renderGreeting(currentUser(), profile);
   renderContinueCard();
+  renderEnrolledList();
   renderUserChip(currentUser(), role, { profile, hasNewCommunity });
   renderCommunityList({ role, companyId });
 }
