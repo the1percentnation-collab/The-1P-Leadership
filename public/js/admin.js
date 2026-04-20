@@ -1,12 +1,13 @@
 // Admin console: company roster, invites, seats.
 // Only visible to admins of a company (or owners, who can manage any).
 
-import { db, firebaseReady } from './firebase.js';
+import { db, firebaseReady, functions } from './firebase.js';
 import { onAuthReady, signOut } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import {
   collection, doc, getDoc, getDocs, query, where, setDoc, deleteDoc, serverTimestamp, limit
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -119,13 +120,43 @@ async function loadRoster() {
       <td class="num">${cc}</td>
       <td>${fmtTs(r.lastActiveAt)}</td>
       <td><span class="pill ${r.capstoneStatus === '—' ? 'pill-muted' : 'pill-warn'}">${r.capstoneStatus}</span></td>
-      <td><button class="btn btn-ghost" data-revoke="${r.uid}">Revoke seat</button></td>
+      <td style="display:flex; gap:6px; white-space:nowrap;">
+        <button class="btn btn-ghost" data-revoke="${r.uid}" title="Remove from this company — keeps user account + personal progress.">Remove from company</button>
+        <button class="btn btn-ghost roster-delete" data-delete="${r.uid}" data-email="${escapeHtml(r.email)}" title="Permanently delete this user — wipes account, progress, enrollments.">Delete user</button>
+      </td>
     </tr>`;
   }).join('');
 
   body.querySelectorAll('[data-revoke]').forEach((b) => {
     b.addEventListener('click', () => revokeSeat(b.dataset.revoke));
   });
+  body.querySelectorAll('[data-delete]').forEach((b) => {
+    b.addEventListener('click', () => deleteUser(b.dataset.delete, b.dataset.email));
+  });
+}
+
+async function deleteUser(uid, email) {
+  const confirmMsg = `Permanently delete ${email || uid}?\n\n` +
+    `This wipes:\n` +
+    `  • Their Firebase Auth account (they cannot sign back in)\n` +
+    `  • Their user doc + all progress, capstone, and enrollments\n` +
+    `  • Their entry in this company's roster and any admin role\n\n` +
+    `This cannot be undone.`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const call = httpsCallable(functions, 'deleteUser');
+    const res = await call({ uid });
+    const deleted = (res && res.data && res.data.deleted) || 0;
+    alert(`User deleted. ${deleted} Firestore doc(s) removed.`);
+    // Refresh — seat count + roster should reflect the change.
+    const snap = await getDoc(doc(db, 'companies', _state.companyId));
+    if (snap.exists()) _state.company = snap.data();
+    await loadCompany();
+    await loadRoster();
+  } catch (e) {
+    alert('Could not delete user: ' + (e.message || e));
+  }
 }
 
 async function revokeSeat(uid) {

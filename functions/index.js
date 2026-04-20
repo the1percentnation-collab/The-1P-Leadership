@@ -200,6 +200,116 @@ exports.deleteContact = onCall(async (request) => {
 });
 
 /**
+ * deleteUser({ uid })
+ *
+ * Fully removes a user from the platform — Firestore user doc + subcollections
+ * (progress, capstone, enrollments) + Firebase Auth account + company roster
+ * entry. Decrements the company's seatsUsed and strips the user from adminUids.
+ *
+ * Permission: caller must be the bootstrap owner (custom claim role=owner), or
+ * an admin of the target user's company (uid in companies/{cid}.adminUids).
+ *
+ * Refuses to delete self or the bootstrap owner account.
+ */
+exports.deleteUser = onCall(async (request) => {
+  const callerUid = request.auth && request.auth.uid;
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const targetUid = (request.data && request.data.uid || '').toString().trim();
+  if (!targetUid) throw new HttpsError('invalid-argument', 'Target uid is required.');
+
+  if (callerUid === targetUid) {
+    throw new HttpsError('failed-precondition', 'Cannot delete your own account here.');
+  }
+
+  const db = admin.firestore();
+  const targetUserRef = db.collection('users').doc(targetUid);
+  const targetUserSnap = await targetUserRef.get();
+
+  // If the user doc is already gone, still try to clean up Auth as a best-effort.
+  if (!targetUserSnap.exists) {
+    const isOwnerClaim = request.auth.token && request.auth.token.role === 'owner';
+    if (!isOwnerClaim) {
+      throw new HttpsError('permission-denied', 'User not found and caller is not owner.');
+    }
+    try { await admin.auth().deleteUser(targetUid); } catch (e) {}
+    return { ok: true, deleted: 0, note: 'User doc already gone.' };
+  }
+
+  const targetData = targetUserSnap.data() || {};
+  const targetCompanyId = targetData.companyId || null;
+  const targetEmail = (targetData.email || '').toLowerCase();
+
+  if (targetEmail === OWNER_EMAIL.toLowerCase()) {
+    throw new HttpsError('failed-precondition', 'Cannot delete the bootstrap owner account.');
+  }
+
+  // Permission: owner OR admin of the target's company.
+  const isOwnerClaim = request.auth.token && request.auth.token.role === 'owner';
+  let isCompanyAdmin = false;
+  if (!isOwnerClaim && targetCompanyId) {
+    const compSnap = await db.collection('companies').doc(targetCompanyId).get();
+    if (compSnap.exists) {
+      const adminUids = (compSnap.data() && compSnap.data().adminUids) || [];
+      isCompanyAdmin = adminUids.includes(callerUid);
+    }
+  }
+  if (!isOwnerClaim && !isCompanyAdmin) {
+    throw new HttpsError('permission-denied', 'You do not have permission to delete this user.');
+  }
+
+  async function deleteCollection(colRef) {
+    let deleted = 0;
+    while (true) {
+      const snap = await colRef.limit(400).get();
+      if (snap.empty) break;
+      const batch = db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      deleted += snap.size;
+      if (snap.size < 400) break;
+    }
+    return deleted;
+  }
+
+  const progressDeleted = await deleteCollection(targetUserRef.collection('progress'));
+  const capstoneDeleted = await deleteCollection(targetUserRef.collection('capstone'));
+  const enrollDeleted  = await deleteCollection(targetUserRef.collection('enrollments'));
+
+  // Remove from company roster + decrement seat + strip from adminUids.
+  if (targetCompanyId) {
+    const companyRef = db.collection('companies').doc(targetCompanyId);
+    const memberRef = companyRef.collection('members').doc(targetUid);
+    try { await memberRef.delete(); } catch (e) { /* best-effort */ }
+    try {
+      await db.runTransaction(async (tx) => {
+        const s = await tx.get(companyRef);
+        if (!s.exists) return;
+        const c = s.data() || {};
+        const newUsed = Math.max(0, (c.seatsUsed || 0) - 1);
+        const adminUids = (c.adminUids || []).filter((u) => u !== targetUid);
+        tx.update(companyRef, { seatsUsed: newUsed, adminUids });
+      });
+    } catch (e) { /* best-effort */ }
+  }
+
+  await targetUserRef.delete();
+
+  try {
+    await admin.auth().deleteUser(targetUid);
+  } catch (e) {
+    if (e && e.code !== 'auth/user-not-found') {
+      console.warn('[deleteUser] auth.deleteUser failed:', e.message);
+    }
+  }
+
+  return {
+    ok: true,
+    deleted: progressDeleted + capstoneDeleted + enrollDeleted + 1
+  };
+});
+
+/**
  * bootstrapOwner()
  */
 exports.bootstrapOwner = onCall(async (request) => {

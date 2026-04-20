@@ -2408,6 +2408,13 @@ body {
 /* Send email modal on contact page */
 .send-email-modal { max-width: 560px; }
 
+/* Destructive "Delete user" button on the admin roster */
+.roster-delete:hover {
+  color: #fff;
+  background: var(--red);
+  border-color: var(--red);
+}
+
 /* ============================================================
    ACADEMY HUB — module map widget ("Your course arc")
    Horizontal row of module cards showing done/current/todo
