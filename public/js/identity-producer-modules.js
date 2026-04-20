@@ -200,6 +200,101 @@ export const LESSONS = [
         attr: 'Anthony Brown'
       }
     ]
+  },
+
+  // ───── Module 1: The Conversation Standard ─────
+  {
+    id: 1,
+    section: 'Module 1 — The Conversation Standard',
+    sectionTag: 'M01',
+    sectionColor: 'tag-p1',
+    title: 'You Don\'t Have an Activity Problem',
+    subtitle: 'You have a conversation problem. And the fix is not more outreach — it is a higher standard of conversation.',
+    duration: '25 min',
+    blocks: [
+      {
+        type: 'lead',
+        title: 'The wrong diagnosis',
+        body: [
+          'Most people, when their numbers are down, reach for the same prescription: do more. Make more calls. Send more messages. Run more ads. Post more content. Hustle harder. The assumption underneath all of it is that the problem is activity — not enough of it.',
+          'That diagnosis is almost always wrong. The real problem is rarely the volume of activity. The real problem is the caliber of conversation that activity leads to. You can 10x the volume of low-caliber conversations and still produce the same weak result.'
+        ]
+      },
+      {
+        type: 'callout',
+        label: 'Core Principle',
+        body: 'You do not have an activity problem. You have a conversation problem. Until the conversation changes, adding activity only makes you tired faster.'
+      },
+      {
+        type: 'framework',
+        title: 'Volume activity vs. Producer conversation',
+        cards: [
+          { icon: '📢', title: 'Volume activity', desc: 'Outputs. Touches. Sends. Measured in quantity. Driven by the belief that "enough attempts" will eventually convert.' },
+          { icon: '🗣️', title: 'Producer conversation', desc: 'Depth. Discernment. Direction. Measured in clarity earned and decisions moved. One good one outproduces fifty shallow ones.' },
+          { icon: '🎯', title: 'The standard', desc: 'Every conversation has a job. You walk in knowing what needs to be true by the end — and you have the internal capacity to actually get there.' }
+        ]
+      },
+      {
+        type: 'list',
+        title: 'Signs you have a conversation problem (not an activity one)',
+        items: [
+          'Your pipeline is full but very little closes.',
+          'People like you, nod along — then nothing happens after the call.',
+          'You end conversations and cannot name what specifically shifted.',
+          'You avoid the hard question because you are afraid it will cost you the "yes."',
+          'You leave the conversation performing, not leading.',
+          'You are exhausted by the end of your day but not clear on what actually moved.'
+        ]
+      },
+      {
+        type: 'framework',
+        title: 'What a Producer\'s conversation does differently',
+        cards: [
+          { icon: '🔎', title: 'Names reality', desc: 'A Producer will say the true thing — gently, but without flinching — even when it is uncomfortable for both people.' },
+          { icon: '🧱', title: 'Sets the frame', desc: 'A Producer does not let the other person\'s anxiety, objections, or stories set the tone. They hold the frame.' },
+          { icon: '⚖️', title: 'Earns the decision', desc: 'A Producer is not attached to the outcome, but they are attached to the person leaving with clarity — yes or no.' },
+          { icon: '🪞', title: 'Reflects the cost', desc: 'A Producer makes the cost of inaction visible. Not pressure — just the truth of what "no change" actually produces.' }
+        ]
+      },
+      {
+        type: 'callout',
+        label: 'The 1P Standard',
+        body: 'The conversation is your real product. Everything else — the platform, the pitch, the pipeline — exists to create more of those conversations. If the conversation is weak, every other lever is also weak.'
+      },
+      {
+        type: 'list',
+        title: 'A new measurement',
+        items: [
+          'Stop tracking only activity (how many calls, how many messages).',
+          'Start tracking conversation quality — did it move, did they leave clearer, did you hold the frame?',
+          'Review your last five "didn\'t close" conversations. Find the exact moment you failed to lead the frame. That is your real homework.',
+          'Raise the floor: the lowest-quality conversation you are willing to have is the actual ceiling of your production.'
+        ]
+      },
+      {
+        type: 'divider'
+      },
+      {
+        type: 'assignment',
+        title: 'The Conversation Audit',
+        intro: 'Look at the last week of conversations you had that were supposed to move something — sales calls, coaching sessions, negotiations, partnership chats. Be honest. No one else reads this.',
+        questions: [
+          'Pick one conversation this week that did not produce what you hoped. Describe in plain language what actually happened.',
+          'Where in that conversation did you lower your standard — softening the truth, avoiding a question, letting them set the frame?',
+          'What would a Producer have said at that exact moment — without being harsh, but also without shrinking?',
+          'What is the conversation standard you are willing to hold from this point forward? Write it as a single sentence you could read before every call.',
+          'Who in your world already holds this standard? What do you observe about how they show up?'
+        ],
+        notesKey: 'ip_1_conversation_audit',
+        notesPlaceholder: 'Your audit — saved automatically as you type...',
+        notesMinHeight: '260px'
+      },
+      {
+        type: 'quote',
+        text: 'A Producer does not do more. A Producer does differently. And the difference shows up first in how they speak.',
+        attr: 'Anthony Brown'
+      }
+    ]
   }
 ];
 
