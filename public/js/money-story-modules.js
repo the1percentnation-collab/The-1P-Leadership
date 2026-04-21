@@ -196,6 +196,111 @@ export const LESSONS = [
         attr: 'Anthony Brown'
       }
     ]
+  },
+
+  // ───── Module 1: Who Taught You What Money Means? ─────
+  {
+    id: 1,
+    section: 'Module 1 — Family of Origin',
+    sectionTag: 'M01',
+    sectionColor: 'tag-p1',
+    title: 'Who Taught You What Money Means?',
+    subtitle: 'You adopted your money beliefs before you were old enough to refuse them. Time to meet the people who handed them to you.',
+    duration: '30 min',
+    blocks: [
+      {
+        type: 'lead',
+        title: 'The beliefs were installed before you had a vote',
+        body: [
+          'Long before you ever earned a dollar, you were being taught what money meant. You were taught by how your parents spoke about it — and by how they avoided speaking about it. You were taught by the tension at the kitchen table on the first of the month, and by the silence after the envelope was opened. You were taught by what got celebrated, what got hidden, and what got weaponized.',
+          'Most adults are running money software that was written when they were seven years old, by people whose own money software was written at seven. Before we can rewrite anything, we have to see what was installed — and by whom.'
+        ]
+      },
+      {
+        type: 'callout',
+        label: 'Core Principle',
+        body: 'You did not choose your money beliefs. You inherited them. That is not your fault. But what you do with them from this moment forward — that is entirely yours.'
+      },
+      {
+        type: 'framework',
+        title: 'The four channels of installation',
+        cards: [
+          { icon: '👀', title: 'Watching', desc: 'What you saw adults do with money. Spending patterns, work habits, reactions to bills, attitudes toward wealthier or poorer people.' },
+          { icon: '👂', title: 'Hearing', desc: 'What was said out loud — directly to you or within earshot. "Money doesn\'t grow on trees." "Rich people are greedy." "We can\'t afford that."' },
+          { icon: '⚡', title: 'Tension', desc: 'The feelings in the room around money. Arguments, anxiety, relief, shame. Your body logged each one and built associations you still carry.' },
+          { icon: '🕳️', title: 'Absence', desc: 'What was never said. If no one taught you about money directly, you filled the silence with your own theory. Often a fearful one.' }
+        ]
+      },
+      {
+        type: 'list',
+        title: 'Common scripts that get inherited',
+        items: [
+          '"Money doesn\'t grow on trees." — installs scarcity as the default posture.',
+          '"We\'re not those kinds of people." — installs class as destiny, wealth as for somebody else.',
+          '"Rich people are greedy / corrupt / lost their soul." — installs shame on the path to your own prosperity.',
+          '"You have to work yourself to death for every dollar." — installs hustle as the only acceptable relationship with money.',
+          '"We don\'t talk about money." — installs secrecy, which is the soil shame grows in.',
+          '"Just be grateful you have anything." — installs the belief that wanting more is ungrateful.',
+          '"Money changes people." — installs fear of your own future success.',
+          '"Your father was bad with money." — installs an inherited identity about who you will be with money.'
+        ]
+      },
+      {
+        type: 'framework',
+        title: 'Where the inherited belief shows up now',
+        cards: [
+          { icon: '💸', title: 'Earning', desc: 'The ceiling you hit, the raise you did not ask for, the offer you under-priced, the pay you accept without negotiation.' },
+          { icon: '🛒', title: 'Spending', desc: 'What you deny yourself and what you compulsively allow. What you cannot spend on yourself without guilt. What you overspend on to soothe.' },
+          { icon: '🔐', title: 'Saving + investing', desc: 'Whether you can hold money or whether it seems to "leak" out. Whether you trust yourself — or the future — enough to plant.' },
+          { icon: '🗣️', title: 'Talking', desc: 'Whether you can say numbers out loud. Whether you avoid conversations about rates, contracts, household finances, or debt.' }
+        ]
+      },
+      {
+        type: 'callout',
+        label: 'Key Insight',
+        body: 'The belief is not the enemy. The hidden belief is. A belief you can see and name loses most of its power the moment it is brought into the light.'
+      },
+      {
+        type: 'list',
+        title: 'Questions that surface what was installed',
+        items: [
+          'What was said about money in your house — and how was it said? Whispered? Shouted? Avoided entirely?',
+          'Who handled the money? What did that person\'s face look like when they did?',
+          'When was the first time money made you feel afraid, ashamed, or small?',
+          'Who in your family was labeled "good with money"? Who was labeled "bad"? What did those labels teach you about who you were allowed to become?',
+          'What did money "mean" in your house — safety, status, love, control, survival, freedom, all of the above?'
+        ]
+      },
+      {
+        type: 'callout',
+        label: 'A note on honoring where it came from',
+        body: 'Naming an inherited belief is not betraying the people who installed it. They gave you what they had. You can love them, honor their effort, and still refuse to keep paying the price of a belief that no longer fits the life you are building.'
+      },
+      {
+        type: 'divider'
+      },
+      {
+        type: 'assignment',
+        title: 'Excavate the First Installation',
+        intro: 'Set aside 30 quiet minutes. Answer in writing — not in your head. Specific memories hold more truth than general summaries, so be specific.',
+        questions: [
+          'Describe the earliest memory you have involving money. Not the cleanest memory — the earliest. Where were you, who was there, what did you feel?',
+          'List three specific things that were said about money in your home. Quote them as closely as you can remember — phrasing matters.',
+          'Who in your family had what role around money — the earner, the spender, the saver, the hider, the enforcer, the avoider? Name them by name.',
+          'What did money seem to mean in your house? Pick the closest two or three: safety, status, love, control, survival, freedom, shame, power.',
+          'Pick one belief from Module 1 that you now suspect you carry. Write it in one sentence — exactly as it would sound in your own head when money gets tight.',
+          'What did this belief cost you in the last year? Be specific — an offer you did not make, a price you did not raise, a conversation you did not have.'
+        ],
+        notesKey: 'ms_1_origin',
+        notesPlaceholder: 'Your excavation — saved automatically as you type. No one else can read this...',
+        notesMinHeight: '300px'
+      },
+      {
+        type: 'quote',
+        text: 'You cannot out-earn a money belief you have not yet been brave enough to look at.',
+        attr: 'Anthony Brown'
+      }
+    ]
   }
 ];
 
