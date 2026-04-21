@@ -53,6 +53,21 @@ export const COURSES = [
     }
   },
   {
+    slug: 'money-story',
+    title: 'The Money Story',
+    short: 'Money Story',
+    subtitle: 'Excavate the beliefs about money you inherited — and rewrite the ones that are quietly ceiling your life.',
+    status: 'coming-soon',
+    eyebrow: 'Self-paced · 6 Modules · Deeply personal',
+    price: 247,
+    priceLabel: '$247',
+    priceNote: 'Lifetime access · Private reflection notes',
+    mount: async (opts) => {
+      const mod = await import('./money-story-app.js');
+      if (mod && typeof mod.mount === 'function') await mod.mount(opts);
+    }
+  },
+  {
     slug: 'mindset-foundations',
     title: 'Mindset Foundations',
     short: 'Mindset',
