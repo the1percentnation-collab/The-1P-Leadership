@@ -189,10 +189,16 @@ service cloud.firestore {
 
       // Create: authorUid must match auth.uid. Counters must start at 0. companyId must be
       // null (global) only if the caller is owner, otherwise it must match caller's own cid.
+      // Category (Phase 1 channels) must be one of the allowed enum values when present.
       allow create: if isSignedIn()
         && request.resource.data.authorUid == request.auth.uid
         && request.resource.data.likeCount == 0
         && request.resource.data.commentCount == 0
+        && (
+          !('category' in request.resource.data)
+          || request.resource.data.category in ['general','wins','questions','announcements']
+        )
+        && (!('pinned' in request.resource.data) || request.resource.data.pinned == false)
         && (
           (request.resource.data.companyId == null && isOwner())
           || (request.resource.data.companyId != null
@@ -200,9 +206,10 @@ service cloud.firestore {
         );
 
       // Update:
-      //   - author may update their own post (text, imageUrl, updatedAt) but not counters directly
+      //   - author may update their own post (text, imageUrl, category, updatedAt) but not counters or `pinned`
       //   - any signed-in reader may increment/decrement likeCount by ±1 (via toggleLike txn)
       //   - any signed-in reader may increment/decrement commentCount by ±1 (via addComment txn)
+      //   - owner or same-company admin may flip `pinned` (and only `pinned`); counters/content unchanged.
       // We enforce ±1 delta on counters; content edits only if authorUid matches.
       allow update: if isSignedIn() && canReadPost() && (
         (
@@ -212,6 +219,8 @@ service cloud.firestore {
           && request.resource.data.text == resource.data.text
           && request.resource.data.imageUrl == resource.data.imageUrl
           && request.resource.data.commentCount == resource.data.commentCount
+          && request.resource.data.get('category', null) == resource.data.get('category', null)
+          && request.resource.data.get('pinned', false) == resource.data.get('pinned', false)
           && (
             request.resource.data.likeCount == resource.data.likeCount + 1
             || request.resource.data.likeCount == resource.data.likeCount - 1
@@ -224,17 +233,37 @@ service cloud.firestore {
           && request.resource.data.text == resource.data.text
           && request.resource.data.imageUrl == resource.data.imageUrl
           && request.resource.data.likeCount == resource.data.likeCount
+          && request.resource.data.get('category', null) == resource.data.get('category', null)
+          && request.resource.data.get('pinned', false) == resource.data.get('pinned', false)
           && (
             request.resource.data.commentCount == resource.data.commentCount + 1
             || request.resource.data.commentCount == resource.data.commentCount - 1
           )
         )
         || (
-          // Author editing own post content — counters must be unchanged.
+          // Author editing own post content — counters and `pinned` unchanged. Category may
+          // be changed (treated as a content edit) but must remain in the allowed enum.
           resource.data.authorUid == request.auth.uid
           && request.resource.data.likeCount == resource.data.likeCount
           && request.resource.data.commentCount == resource.data.commentCount
           && request.resource.data.authorUid == resource.data.authorUid
+          && request.resource.data.get('pinned', false) == resource.data.get('pinned', false)
+          && (
+            !('category' in request.resource.data)
+            || request.resource.data.category in ['general','wins','questions','announcements']
+          )
+        )
+        || (
+          // Moderator pinning — owner or same-company admin may flip `pinned` only.
+          // Everything else (counters, content, scope, category) must be unchanged.
+          (isOwner() || (resource.data.companyId != null && isCompanyAdmin(resource.data.companyId)))
+          && request.resource.data.authorUid == resource.data.authorUid
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.text == resource.data.text
+          && request.resource.data.imageUrl == resource.data.imageUrl
+          && request.resource.data.likeCount == resource.data.likeCount
+          && request.resource.data.commentCount == resource.data.commentCount
+          && request.resource.data.get('category', null) == resource.data.get('category', null)
         )
       );
 
@@ -282,6 +311,16 @@ service cloud.firestore {
         allow create, delete: if isSignedIn() && request.auth.uid == likeUid;
         allow update: if false;
       }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Channels (Phase 1) — categories for the community feed.
+    // Doc id == channel key (e.g. 'general', 'wins'). Owner-only writes;
+    // any signed-in user may read so the sidebar can render the list.
+    // ────────────────────────────────────────────────────────────────
+    match /channels/{key} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isOwner();
     }
   }
 }

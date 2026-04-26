@@ -7,10 +7,16 @@ import {
   listPosts, createPost, deletePost, toggleLike, hasLiked,
   listComments, addComment, deleteComment,
   getUserProfile, touchCommunityVisit,
+  listChannels, getPinnedPostForChannel, setPostPinned, CHANNEL_KEYS,
   avatarHtml, fmtRelative, escapeHtml, linkify
 } from './community.js';
 
 const $ = (id) => document.getElementById(id);
+
+function urlChannel() {
+  const v = new URLSearchParams(location.search).get('channel');
+  return v && CHANNEL_KEYS.includes(v) ? v : null;
+}
 
 const state = {
   me: null,           // { uid, displayName, avatarUrl, role, companyId }
@@ -21,7 +27,11 @@ const state = {
   done: false,
   loading: false,
   commentsOpen: new Set(),
-  likedIds: new Set()
+  likedIds: new Set(),
+  // Phase 1 — channels
+  channels: [],
+  activeChannel: urlChannel() || 'general',
+  pinnedPost: null
 };
 
 function renderChip() {
@@ -51,17 +61,24 @@ function renderChip() {
 }
 
 function renderComposer() {
-  const who = state.role === 'owner'
-    ? 'global feed'
-    : (state.companyId ? 'your company feed' : 'the feed');
+  const ch = activeChannelMeta();
   const composer = $('composer');
+  const channelOpts = state.channels.map((c) => `
+    <option value="${escapeHtml(c.key)}" ${c.key === state.activeChannel ? 'selected' : ''}>
+      ${escapeHtml((c.emoji ? c.emoji + ' ' : '') + c.name)}
+    </option>
+  `).join('');
   composer.innerHTML = `
     <div class="c-composer-row">
       ${avatarHtml(state.me, 44)}
       <div style="flex:1; min-width:0;">
-        <textarea id="composer-text" class="c-textarea" rows="3" placeholder="Share something with ${who}…"></textarea>
+        <textarea id="composer-text" class="c-textarea" rows="3" placeholder="Share something with #${escapeHtml(ch.name.toLowerCase())}…"></textarea>
         <div id="composer-preview"></div>
         <div class="c-composer-actions">
+          <label class="c-composer-channel" title="Post into channel">
+            <span class="c-composer-channel-label">In</span>
+            <select id="composer-channel" class="c-composer-channel-select">${channelOpts}</select>
+          </label>
           <label class="btn btn-ghost c-file-btn">
             <span>Attach image</span>
             <input id="composer-file" type="file" accept="image/*" hidden>
@@ -88,6 +105,81 @@ function renderComposer() {
   $('btn-post').addEventListener('click', submitPost);
 }
 
+function activeChannelMeta() {
+  return state.channels.find((c) => c.key === state.activeChannel)
+    || { key: 'general', name: 'General', emoji: '💬', description: '' };
+}
+
+function renderSidebar() {
+  const sidebar = $('sidebar');
+  if (!sidebar) return;
+  const items = state.channels.map((c) => `
+    <a class="c-channel-link ${c.key === state.activeChannel ? 'is-active' : ''}"
+       href="?channel=${encodeURIComponent(c.key)}"
+       data-channel="${escapeHtml(c.key)}">
+      <span class="c-channel-emoji">${escapeHtml(c.emoji || '#')}</span>
+      <span class="c-channel-name">${escapeHtml(c.name)}</span>
+    </a>
+  `).join('');
+  sidebar.innerHTML = `
+    <div class="c-sidebar-eyebrow">Channels</div>
+    <nav class="c-channel-list">${items}</nav>
+  `;
+  sidebar.querySelectorAll('.c-channel-link').forEach((a) => {
+    a.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const next = a.dataset.channel;
+      if (!next || next === state.activeChannel) return;
+      switchChannel(next);
+    });
+  });
+}
+
+function renderChannelHeader() {
+  const root = $('channel-header');
+  if (!root) return;
+  const ch = activeChannelMeta();
+  const pinned = state.pinnedPost;
+  const pinnedHtml = pinned ? `
+    <div class="c-pinned-banner">
+      <span class="c-pinned-eyebrow">📌 Pinned</span>
+      <a class="c-pinned-link" href="#post-${escapeHtml(pinned.id)}">
+        <span class="c-pinned-author">${escapeHtml(pinned.authorName || 'Unknown')}</span>
+        <span class="c-pinned-text">${escapeHtml((pinned.text || '').slice(0, 140))}${(pinned.text || '').length > 140 ? '…' : ''}</span>
+      </a>
+    </div>
+  ` : '';
+  root.innerHTML = `
+    <div class="c-channel-title">
+      <span class="c-channel-title-emoji">${escapeHtml(ch.emoji || '#')}</span>
+      <span class="c-channel-title-name">${escapeHtml(ch.name)}</span>
+    </div>
+    ${ch.description ? `<div class="c-channel-desc">${escapeHtml(ch.description)}</div>` : ''}
+    ${pinnedHtml}
+  `;
+}
+
+async function switchChannel(nextKey) {
+  state.activeChannel = nextKey;
+  state.posts = [];
+  state.lastDoc = null;
+  state.done = false;
+  state.likedIds = new Set();
+  state.commentsOpen = new Set();
+  // Reflect in URL without a full reload.
+  try {
+    const next = new URL(location.href);
+    next.searchParams.set('channel', nextKey);
+    history.replaceState(null, '', next.toString());
+  } catch (e) {}
+  renderSidebar();
+  renderComposer();
+  // Refresh pinned post for new channel and re-render header.
+  state.pinnedPost = await getPinnedPostForChannel(nextKey).catch(() => null);
+  renderChannelHeader();
+  await loadMore(true);
+}
+
 async function submitPost() {
   const text = $('composer-text').value.trim();
   const file = $('composer-file').files[0] || null;
@@ -106,16 +198,25 @@ async function submitPost() {
     // Scope: owner posts global (companyId=null). Admins/users post to their companyId if they have one,
     // otherwise global (individual buyers).
     const scopeCompanyId = state.role === 'owner' ? null : (state.companyId || null);
+    const channelSel = $('composer-channel');
+    const chosenCategory = (channelSel && channelSel.value) || state.activeChannel || 'general';
     await createPost({
       text: text || '',
       imageFile: file,
       companyId: scopeCompanyId,
-      author: state.me
+      author: state.me,
+      category: chosenCategory
     });
     $('composer-text').value = '';
     $('composer-file').value = '';
     $('composer-filename').textContent = '';
     $('composer-preview').innerHTML = '';
+    // If the user posted into a different channel than the one they're viewing,
+    // jump to that channel so they see their post immediately.
+    if (chosenCategory !== state.activeChannel) {
+      await switchChannel(chosenCategory);
+      return;
+    }
     // Reset feed and reload from top.
     state.posts = [];
     state.lastDoc = null;
@@ -142,7 +243,8 @@ async function loadMore(reset = false) {
       pageSize: 20,
       after: state.lastDoc,
       role: state.role,
-      companyId: state.companyId
+      companyId: state.companyId,
+      category: state.activeChannel
     });
     state.posts = state.posts.concat(posts);
     state.lastDoc = lastDoc;
@@ -169,6 +271,13 @@ function canDeletePost(post) {
   return false;
 }
 
+function canPinPost(post) {
+  if (!state.me) return false;
+  if (state.role === 'owner') return true;
+  if (state.role === 'admin' && state.companyId && post.companyId === state.companyId) return true;
+  return false;
+}
+
 function canDeleteComment(comment, post) {
   if (!state.me) return false;
   if (comment.authorUid === state.me.uid) return true;
@@ -180,18 +289,16 @@ function canDeleteComment(comment, post) {
 function renderFeed() {
   const feed = $('feed');
   if (!state.posts.length) {
-    const ownerEmpty = state.role === 'owner'
-      ? `<div class="c-empty">
-          <div class="c-empty-title">No posts yet</div>
-          <p>Post your first update to the community. Your team is watching.</p>
-        </div>`
-      : `<div class="c-empty">
-          <div class="c-empty-title">The feed is quiet</div>
-          <p>Be the first to share something.</p>
-        </div>`;
-    feed.innerHTML = ownerEmpty;
+    const ch = activeChannelMeta();
+    feed.innerHTML = `
+      <div class="c-empty">
+        <div class="c-empty-title">No posts in #${escapeHtml(ch.name.toLowerCase())} yet</div>
+        <p>Be the first to share something. Your channel is waiting.</p>
+      </div>`;
     const lm = $('load-more');
     if (lm) lm.style.display = 'none';
+    const feedLoading = $('feed-loading');
+    if (feedLoading) feedLoading.textContent = '';
     return;
   }
   feed.innerHTML = state.posts.map((p) => postCardHtml(p)).join('');
@@ -219,22 +326,32 @@ function postCardHtml(p) {
   const liked = state.likedIds.has(p.id);
   const delBtn = canDeletePost(p)
     ? `<button class="c-post-menu-btn" data-del="${p.id}" title="Delete">✕</button>` : '';
+  const pinBtn = canPinPost(p)
+    ? `<button class="c-post-menu-btn c-pin-btn ${p.pinned ? 'is-pinned' : ''}" data-pin="${p.id}" title="${p.pinned ? 'Unpin from channel' : 'Pin to channel'}">${p.pinned ? '📌' : '📍'}</button>`
+    : '';
   const img = p.imageUrl
     ? `<div class="c-post-image"><img src="${escapeHtml(p.imageUrl)}" alt="" loading="lazy"></div>` : '';
   const commentsBlock = state.commentsOpen.has(p.id)
     ? `<div class="c-comments" id="c-comments-${p.id}"><div class="c-comments-loading">Loading…</div></div>`
     : '';
+  const pinnedTag = p.pinned ? `<span class="c-channel-pill is-pinned">📌 Pinned</span>` : '';
+  const channelTag = (p.category && p.category !== state.activeChannel)
+    ? `<span class="c-channel-pill">${escapeHtml('#' + p.category)}</span>`
+    : '';
   return `
-    <article class="c-post" data-post="${p.id}">
+    <article class="c-post ${p.pinned ? 'is-pinned' : ''}" id="post-${p.id}" data-post="${p.id}">
       <header class="c-post-head">
         <a class="c-post-author" href="/profile.html?uid=${encodeURIComponent(p.authorUid)}">
           ${avatarHtml({ authorAvatar: p.authorAvatar, authorName: p.authorName }, 40)}
           <div class="c-post-who">
             <div class="c-post-name">${escapeHtml(p.authorName || 'Unknown')} ${roleBadgeHtml(p.authorRole)}</div>
-            <div class="c-post-meta">${fmtRelative(p.createdAt)} · ${scopeBadgeHtml(p)}</div>
+            <div class="c-post-meta">${fmtRelative(p.createdAt)} · ${scopeBadgeHtml(p)} ${pinnedTag} ${channelTag}</div>
           </div>
         </a>
-        ${delBtn}
+        <div class="c-post-menu">
+          ${pinBtn}
+          ${delBtn}
+        </div>
       </header>
       ${p.text ? `<div class="c-post-body">${linkify(p.text)}</div>` : ''}
       ${img}
@@ -262,7 +379,26 @@ function bindPostCard(p) {
   if (commentBtn) commentBtn.addEventListener('click', () => toggleComments(p));
   const delBtn = card.querySelector(`[data-del="${p.id}"]`);
   if (delBtn) delBtn.addEventListener('click', () => handleDelete(p));
+  const pinBtn = card.querySelector(`[data-pin="${p.id}"]`);
+  if (pinBtn) pinBtn.addEventListener('click', () => handlePin(p));
   if (state.commentsOpen.has(p.id)) loadCommentsInto(p);
+}
+
+async function handlePin(p) {
+  const next = !p.pinned;
+  const channelKey = p.category || state.activeChannel || 'general';
+  try {
+    await setPostPinned(p.id, next, channelKey);
+    p.pinned = next;
+    // Update the channel pinned-banner in place if we're viewing the same channel.
+    if (channelKey === state.activeChannel) {
+      state.pinnedPost = next ? p : null;
+      renderChannelHeader();
+    }
+    renderFeed();
+  } catch (e) {
+    alert('Could not update pin: ' + (e.message || e));
+  }
 }
 
 async function handleLike(p) {
@@ -420,8 +556,20 @@ async function main() {
     companyId: info.companyId || null
   };
 
+  // Load channels (Phase 1) before rendering so the sidebar + composer have data.
+  state.channels = await listChannels();
+  if (!state.channels.find((c) => c.key === state.activeChannel)) {
+    state.activeChannel = 'general';
+  }
+
   renderChip();
+  renderSidebar();
   renderComposer();
+
+  // Pinned post for the active channel (best-effort; skipped silently if missing).
+  state.pinnedPost = await getPinnedPostForChannel(state.activeChannel).catch(() => null);
+  renderChannelHeader();
+
   await loadMore(true);
 
   // Touch last-visit timestamp so the "new" badge clears.

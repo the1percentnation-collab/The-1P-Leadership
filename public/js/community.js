@@ -78,13 +78,26 @@ export async function uploadPostImage(postId, file) {
 // Scope rule: individual users see companyId==null only; company users see their
 // company + null; owner sees all. We implement this client-side with two queries
 // and merge — Firestore doesn't allow OR across different fields cleanly in v1.
-export async function listPosts({ pageSize = 20, after = null, role = 'user', companyId = null } = {}) {
+//
+// `category` (Phase 1 channels) is optional. When passed, the feed is filtered
+// to posts where category == <value>. Legacy posts without a category field
+// are treated as 'general' client-side: when category === 'general' we run a
+// SECOND pass without the where('category') clause and merge, dropping any
+// post that has a non-general category set. This keeps the rollout zero-write.
+export async function listPosts({ pageSize = 20, after = null, role = 'user', companyId = null, category = null } = {}) {
   if (!firebaseReady) return { posts: [], lastDoc: null, done: true };
   const results = [];
   let lastDoc = null;
+  const includeLegacyAsGeneral = category === 'general';
+
+  function applyCategoryClause(parts) {
+    if (category) parts.push(where('category', '==', category));
+    return parts;
+  }
 
   async function runQ(base) {
-    const parts = [base, orderBy('createdAt', 'desc')];
+    const parts = applyCategoryClause([base]);
+    parts.push(orderBy('createdAt', 'desc'));
     if (after) parts.push(startAfter(after));
     parts.push(limit(pageSize));
     const q = query(...parts);
@@ -95,21 +108,48 @@ export async function listPosts({ pageSize = 20, after = null, role = 'user', co
     if (!snap.empty) lastDoc = snap.docs[snap.docs.length - 1];
   }
 
+  // Second-pass fetch for legacy posts (no `category` field) — only when the
+  // active channel is 'general'. We can't directly query "missing field", so
+  // we re-fetch without the where clause and filter client-side, dedup by id.
+  async function runLegacyMerge(base, into) {
+    const parts = [base, orderBy('createdAt', 'desc')];
+    if (after) parts.push(startAfter(after));
+    parts.push(limit(pageSize));
+    const snap = await getDocs(query(...parts));
+    const seen = new Set(into.map((p) => p.id));
+    snap.forEach((d) => {
+      if (seen.has(d.id)) return;
+      const data = d.data();
+      // Treat missing category as 'general'. Anything else is excluded.
+      if (data.category && data.category !== 'general') return;
+      into.push({ id: d.id, ...data, _snap: d });
+    });
+  }
+
   try {
     if (role === 'owner') {
       // Owner: all posts.
       await runQ(collection(db, 'posts'));
+      if (includeLegacyAsGeneral) await runLegacyMerge(collection(db, 'posts'), results);
     } else if (companyId) {
       // Company user: company posts + global.
       await runQ(query(collection(db, 'posts'), where('companyId', '==', companyId)));
+      if (includeLegacyAsGeneral) {
+        await runLegacyMerge(query(collection(db, 'posts'), where('companyId', '==', companyId)), results);
+      }
       // Second fetch for global posts.
       const globalResults = [];
-      const gq = [collection(db, 'posts'), where('companyId', '==', null), orderBy('createdAt', 'desc')];
-      if (after) gq.push(startAfter(after));
-      gq.push(limit(pageSize));
+      const gqBase = [collection(db, 'posts'), where('companyId', '==', null)];
+      if (category) gqBase.push(where('category', '==', category));
+      gqBase.push(orderBy('createdAt', 'desc'));
+      if (after) gqBase.push(startAfter(after));
+      gqBase.push(limit(pageSize));
       try {
-        const gsnap = await getDocs(query(...gq));
+        const gsnap = await getDocs(query(...gqBase));
         gsnap.forEach((d) => globalResults.push({ id: d.id, ...d.data(), _snap: d }));
+        if (includeLegacyAsGeneral) {
+          await runLegacyMerge(query(collection(db, 'posts'), where('companyId', '==', null)), globalResults);
+        }
       } catch (e) { /* missing index tolerated for v1 */ }
       // Merge + resort.
       const merged = [...results, ...globalResults];
@@ -122,13 +162,23 @@ export async function listPosts({ pageSize = 20, after = null, role = 'user', co
     } else {
       // Individual buyer: only global posts.
       await runQ(query(collection(db, 'posts'), where('companyId', '==', null)));
+      if (includeLegacyAsGeneral) {
+        await runLegacyMerge(query(collection(db, 'posts'), where('companyId', '==', null)), results);
+      }
     }
   } catch (e) {
     console.warn('[community] listPosts failed', e);
     return { posts: [], lastDoc: null, done: true, error: e };
   }
 
-  return { posts: results, lastDoc, done: results.length < pageSize };
+  // Re-sort owner/individual paths after potential legacy merge.
+  results.sort((a, b) => {
+    const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+    const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+    return tb - ta;
+  });
+
+  return { posts: results.slice(0, pageSize), lastDoc, done: results.length < pageSize };
 }
 
 export async function getLatestPostTimestamp({ role = 'user', companyId = null } = {}) {
@@ -156,11 +206,14 @@ export async function getLatestPostTimestamp({ role = 'user', companyId = null }
   }
 }
 
-export async function createPost({ text, imageFile, companyId = null, author }) {
+export const CHANNEL_KEYS = ['general', 'wins', 'questions', 'announcements'];
+
+export async function createPost({ text, imageFile, companyId = null, author, category = 'general' }) {
   if (!firebaseReady) throw new Error('Firebase unavailable');
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
   if (!text || !text.trim()) throw new Error('Post text is required');
+  const cat = CHANNEL_KEYS.includes(category) ? category : 'general';
 
   // Create post doc first (we need postId for the storage path).
   const docRef = await addDoc(collection(db, 'posts'), {
@@ -173,6 +226,8 @@ export async function createPost({ text, imageFile, companyId = null, author }) 
     likeCount: 0,
     commentCount: 0,
     companyId: companyId || null,
+    category: cat,
+    pinned: false,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
@@ -275,6 +330,73 @@ export async function deleteComment(postId, commentId) {
     tx.delete(commentRef);
     tx.update(postRef, { commentCount: increment(-1) });
   });
+}
+
+// ────────────────────────────────────────────────────────────────
+// Channels (Phase 1) — categories that organize the feed.
+// Channel docs live at `channels/{key}` and carry display metadata
+// + an optional `pinnedPostId`. The four core channel keys are seeded
+// by the owner; the client falls back to a hardcoded default list so
+// the page renders even before the docs exist.
+// ────────────────────────────────────────────────────────────────
+
+const DEFAULT_CHANNELS = [
+  { key: 'general',       name: 'General',       emoji: '💬', order: 0, description: 'Open conversation. Anything goes.' },
+  { key: 'wins',          name: 'Wins',          emoji: '🏆', order: 1, description: 'Share what\'s working. Celebrate progress.' },
+  { key: 'questions',     name: 'Questions',     emoji: '❓', order: 2, description: 'Ask the community. Help each other out.' },
+  { key: 'announcements', name: 'Announcements', emoji: '📣', order: 3, description: 'Important updates from the team.' }
+];
+
+export async function listChannels() {
+  if (!firebaseReady) return DEFAULT_CHANNELS.slice();
+  try {
+    const snap = await getDocs(query(collection(db, 'channels'), orderBy('order', 'asc')));
+    if (snap.empty) return DEFAULT_CHANNELS.slice();
+    const remote = snap.docs.map((d) => ({ key: d.id, ...d.data() }));
+    // Merge: remote overrides defaults; missing defaults are appended so the
+    // sidebar always shows the four core channels even if seeding is partial.
+    const byKey = new Map(remote.map((c) => [c.key, c]));
+    DEFAULT_CHANNELS.forEach((d) => { if (!byKey.has(d.key)) byKey.set(d.key, d); });
+    return Array.from(byKey.values()).sort((a, b) => (a.order || 0) - (b.order || 0));
+  } catch (e) {
+    console.warn('[community] listChannels failed, using defaults', e);
+    return DEFAULT_CHANNELS.slice();
+  }
+}
+
+export async function getPinnedPostForChannel(channelKey) {
+  if (!firebaseReady || !channelKey) return null;
+  try {
+    const cSnap = await getDoc(doc(db, 'channels', channelKey));
+    const pid = cSnap.exists() ? cSnap.data().pinnedPostId : null;
+    if (!pid) return null;
+    const pSnap = await getDoc(doc(db, 'posts', pid));
+    if (!pSnap.exists()) return null;
+    return { id: pSnap.id, ...pSnap.data() };
+  } catch (e) {
+    return null;
+  }
+}
+
+// Owner / company-admin pin toggle — updates the post's `pinned` flag and
+// mirrors the post id onto the channel doc so the sidebar can show one
+// pinned post per channel without a query.
+export async function setPostPinned(postId, pinned, channelKey) {
+  if (!firebaseReady) throw new Error('Firebase unavailable');
+  await updateDoc(doc(db, 'posts', postId), { pinned: !!pinned });
+  if (channelKey) {
+    try {
+      await setDoc(doc(db, 'channels', channelKey), {
+        pinnedPostId: pinned ? postId : null,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (e) {
+      // Channel doc write is owner-only per rules. If the caller is an admin,
+      // the post-level pin still succeeds; the channel-level mirror will be
+      // out-of-sync until an owner reconciles. Acceptable for v1.
+      console.warn('[community] channel pin mirror failed', e);
+    }
+  }
 }
 
 // ────────────────────────────────────────────────────────────────
