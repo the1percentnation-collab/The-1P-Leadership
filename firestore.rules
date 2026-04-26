@@ -283,6 +283,35 @@ service cloud.firestore {
         allow update: if false;
       }
     }
+
+    // ────────────────────────────────────────────────────────────────
+    // Courses (Firestore source of truth for status flips).
+    // The Cloud Function `onCourseStatusUpdated` watches this collection;
+    // when an owner sets status='live', subscribers get email + push.
+    // ────────────────────────────────────────────────────────────────
+    match /courses/{slug} {
+      allow read: if true;
+      allow create, update, delete: if isOwner();
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Course-launch notification subscribers.
+    // Each user owns one doc per course they want to be notified about.
+    // The parent `courseSubscribers/{slug}` doc itself is metadata-only
+    // and read-only to clients (the Cloud Function reads subscribers
+    // server-side via the Admin SDK, which bypasses these rules).
+    // ────────────────────────────────────────────────────────────────
+    match /courseSubscribers/{slug} {
+      allow read: if isSignedIn();
+      allow write: if isOwner();
+
+      match /subscribers/{uid} {
+        // Users see/manage their own subscription; owner sees all.
+        allow get: if isOwner() || isSelf(uid);
+        allow list: if isOwner();
+        allow create, update, delete: if isOwner() || isSelf(uid);
+      }
+    }
   }
 }
 

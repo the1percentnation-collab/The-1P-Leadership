@@ -5,7 +5,7 @@
 // Deploy: `npx firebase-tools deploy --only functions --project the-1p-leadership`
 
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
@@ -913,5 +913,247 @@ exports.sendgridEventWebhook = onRequest(
       console.error('[webhook] fatal:', err && err.message);
       res.status(200).send('ok'); // Always 200 to prevent SendGrid from retrying.
     }
+  }
+);
+
+// ────────────────────────────────────────────────────────────────
+// Course launch notifications — email + FCM push to all subscribers
+// when a course's status flips to 'live'.
+// ────────────────────────────────────────────────────────────────
+
+const APP_BASE_URL_COURSES = `${APP_BASE_URL}/courses.html`;
+
+async function dispatchCourseLaunchNotifications(db, courseSlug, courseDoc) {
+  const courseTitle = (courseDoc && courseDoc.title) || courseSlug;
+  const courseSubtitle = (courseDoc && courseDoc.subtitle) || '';
+  const courseUrl = `${APP_BASE_URL_COURSES}?course=${encodeURIComponent(courseSlug)}`;
+
+  const subsSnap = await db
+    .collection('courseSubscribers').doc(courseSlug)
+    .collection('subscribers').get();
+
+  if (subsSnap.empty) {
+    return { recipients: 0, emailsSent: 0, pushSent: 0, pushFailed: 0 };
+  }
+
+  const subscribers = subsSnap.docs.map((d) => d.data() || {});
+
+  // ── Email via SendGrid ──
+  let emailsSent = 0;
+  try {
+    sgMail.setApiKey(sendgridKey.value());
+
+    const subject = `${courseTitle} is live on 1P Leadership`;
+    const personalizations = subscribers
+      .filter((s) => s.email)
+      .map((s) => ({
+        to: [{ email: s.email, name: s.displayName || undefined }]
+      }));
+
+    if (personalizations.length) {
+      const textBody =
+        `${courseTitle} just went live on The 1P Leadership dashboard.\n\n` +
+        (courseSubtitle ? `${courseSubtitle}\n\n` : '') +
+        `Enroll now: ${courseUrl}\n\n— The One Percent Nation`;
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;color:#222;max-width:560px;margin:0 auto;">
+          <h2 style="color:#CC1B1B;margin-bottom:8px;">${courseTitle} is live</h2>
+          ${courseSubtitle ? `<p>${courseSubtitle}</p>` : ''}
+          <p>You asked us to let you know — it's ready for you now.</p>
+          <p><a href="${courseUrl}" style="display:inline-block;background:#CC1B1B;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:600;">Open the course →</a></p>
+          <p style="color:#666;font-size:12px;">Or paste this link into your browser:<br/><a href="${courseUrl}">${courseUrl}</a></p>
+          <hr style="border:none;border-top:1px solid #eee;margin:24px 0;"/>
+          <p style="color:#999;font-size:11px;">The One Percent Nation</p>
+        </div>`;
+
+      // Chunk personalizations to keep payloads under SendGrid's limits.
+      const BATCH = 1000;
+      for (let i = 0; i < personalizations.length; i += BATCH) {
+        const chunk = personalizations.slice(i, i + BATCH);
+        await sgMail.send({
+          from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+          replyTo: REPLY_TO,
+          subject,
+          text: textBody,
+          html: htmlBody,
+          personalizations: chunk,
+          customArgs: { type: 'course_launch', courseSlug }
+        });
+        emailsSent += chunk.length;
+      }
+    }
+  } catch (err) {
+    console.error('[courseLaunch] email send failed:', err && err.message);
+  }
+
+  // ── FCM push notifications ──
+  let pushSent = 0;
+  let pushFailed = 0;
+  try {
+    const uids = subscribers.map((s) => s.uid).filter(Boolean);
+    const tokens = [];
+    const tokenToUid = new Map();
+
+    // Read each subscriber's user doc to grab fcmTokens.
+    const userSnaps = await Promise.all(
+      uids.map((uid) => db.collection('users').doc(uid).get().catch(() => null))
+    );
+    for (const snap of userSnaps) {
+      if (!snap || !snap.exists) continue;
+      const data = snap.data() || {};
+      const userTokens = Array.isArray(data.fcmTokens) ? data.fcmTokens : [];
+      for (const t of userTokens) {
+        if (typeof t === 'string' && t && !tokenToUid.has(t)) {
+          tokens.push(t);
+          tokenToUid.set(t, snap.id);
+        }
+      }
+    }
+
+    if (tokens.length) {
+      const messaging = admin.messaging();
+      const baseMessage = {
+        notification: {
+          title: `${courseTitle} is live`,
+          body: courseSubtitle || 'Open it now on 1P Leadership.'
+        },
+        data: {
+          courseSlug,
+          courseTitle,
+          url: courseUrl,
+          click_action: courseUrl
+        },
+        webpush: {
+          fcmOptions: { link: courseUrl }
+        }
+      };
+
+      // sendEachForMulticast caps at 500 tokens per call.
+      const BATCH = 500;
+      const staleTokensByUid = new Map();
+      for (let i = 0; i < tokens.length; i += BATCH) {
+        const chunk = tokens.slice(i, i + BATCH);
+        try {
+          const resp = await messaging.sendEachForMulticast({ ...baseMessage, tokens: chunk });
+          pushSent += resp.successCount || 0;
+          pushFailed += resp.failureCount || 0;
+
+          (resp.responses || []).forEach((r, idx) => {
+            if (r.success) return;
+            const code = r.error && r.error.code;
+            const stale =
+              code === 'messaging/registration-token-not-registered' ||
+              code === 'messaging/invalid-registration-token' ||
+              code === 'messaging/invalid-argument';
+            if (!stale) return;
+            const tok = chunk[idx];
+            const uid = tokenToUid.get(tok);
+            if (!uid) return;
+            const arr = staleTokensByUid.get(uid) || [];
+            arr.push(tok);
+            staleTokensByUid.set(uid, arr);
+          });
+        } catch (err) {
+          console.error('[courseLaunch] fcm batch failed:', err && err.message);
+          pushFailed += chunk.length;
+        }
+      }
+
+      // Best-effort: prune stale tokens from user docs so we don't keep
+      // hammering dead subscriptions on the next launch.
+      for (const [uid, stale] of staleTokensByUid.entries()) {
+        try {
+          await db.collection('users').doc(uid).set({
+            fcmTokens: admin.firestore.FieldValue.arrayRemove(...stale)
+          }, { merge: true });
+        } catch (e) { /* ignore */ }
+      }
+    }
+  } catch (err) {
+    console.error('[courseLaunch] push dispatch failed:', err && err.message);
+  }
+
+  return { recipients: subscribers.length, emailsSent, pushSent, pushFailed };
+}
+
+/**
+ * onCourseStatusUpdated — Firestore trigger on courses/{slug}.
+ * Fires when a course doc is written; if status transitioned to 'live',
+ * notifies every subscriber via email + FCM push. Idempotent: stamps
+ * `notifiedAt` on the course doc and skips if already stamped.
+ */
+exports.onCourseStatusUpdated = onDocumentWritten(
+  { document: 'courses/{slug}', secrets: [sendgridKey] },
+  async (event) => {
+    const after = event.data && event.data.after;
+    const before = event.data && event.data.before;
+    if (!after || !after.exists) return;
+
+    const courseDoc = after.data() || {};
+    const newStatus = (courseDoc.status || '').toLowerCase();
+    const prevStatus = (before && before.exists ? (before.data().status || '') : '').toLowerCase();
+
+    if (newStatus !== 'live') return;
+    if (prevStatus === 'live') return; // already live; not a transition
+    if (courseDoc.notifiedAt) return;  // idempotency guard
+
+    const slug = event.params.slug;
+    const db = admin.firestore();
+
+    let result = { recipients: 0, emailsSent: 0, pushSent: 0, pushFailed: 0 };
+    try {
+      result = await dispatchCourseLaunchNotifications(db, slug, courseDoc);
+    } catch (err) {
+      console.error('[onCourseStatusUpdated] dispatch failed:', err && err.message);
+    }
+
+    try {
+      await after.ref.update({
+        notifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+        notifyResult: result
+      });
+    } catch (e) { /* ignore */ }
+  }
+);
+
+/**
+ * notifyCourseLaunch({ slug, title?, subtitle? }) — owner-only callable.
+ *
+ * Manually dispatches the launch email + push for a course (useful when the
+ * course-status doc was already 'live' before subscribers existed, or for
+ * resending). Also upserts courses/{slug} so the trigger above sees the
+ * canonical state.
+ */
+exports.notifyCourseLaunch = onCall(
+  { secrets: [sendgridKey] },
+  async (request) => {
+    const isOwnerClaim = request.auth && request.auth.token && request.auth.token.role === 'owner';
+    if (!isOwnerClaim) throw new HttpsError('permission-denied', 'Owner only.');
+
+    const data = request.data || {};
+    const slug = (data.slug || '').toString().trim();
+    if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
+
+    const db = admin.firestore();
+    const courseRef = db.collection('courses').doc(slug);
+
+    const courseDoc = {
+      slug,
+      title: (data.title || '').toString() || slug,
+      subtitle: (data.subtitle || '').toString() || '',
+      status: 'live',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    await courseRef.set(courseDoc, { merge: true });
+
+    const result = await dispatchCourseLaunchNotifications(db, slug, courseDoc);
+
+    await courseRef.update({
+      notifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+      notifyResult: result
+    });
+
+    return { ok: true, ...result };
   }
 );

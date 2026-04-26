@@ -19,6 +19,11 @@ import { firebaseReady } from './firebase.js';
 import { getUserProfile, avatarHtml, escapeHtml } from './community.js';
 import { store } from './store.js';
 import { loadEnrollments, enrollInCourse, isEnrolled, enrolledCourses, availableCourses } from './enrollments.js';
+import {
+  loadCourseSubscriptions,
+  isSubscribedToCourse,
+  subscribeToCourseLaunch
+} from './course-notifications.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -106,9 +111,12 @@ function renderAvailableCourses() {
       : `<span class="available-badge is-soon">Coming Soon</span>`;
     const price = c.priceLabel ? `<div class="available-card-price">${escapeHtml(c.priceLabel)}</div>` : '';
     const priceNote = c.priceNote ? `<div class="available-card-pricenote">${escapeHtml(c.priceNote)}</div>` : '';
+    const subscribed = !isLive && isSubscribedToCourse(c.slug);
     const action = isLive
       ? `<button class="btn btn-primary available-enroll" data-slug="${escapeHtml(c.slug)}">Enroll${c.priceLabel ? ' · ' + escapeHtml(c.priceLabel) : ''} →</button>`
-      : `<button class="btn btn-ghost" disabled>Notify me when live</button>`;
+      : (subscribed
+          ? `<button class="btn btn-ghost available-notify is-subscribed" data-slug="${escapeHtml(c.slug)}" disabled>Notified ✓ — we'll email + ping you</button>`
+          : `<button class="btn btn-ghost available-notify" data-slug="${escapeHtml(c.slug)}">Notify me when live</button>`);
     return `
       <div class="available-card ${isLive ? '' : 'is-soon'}" data-slug="${escapeHtml(c.slug)}">
         <div class="available-card-top">
@@ -146,6 +154,30 @@ function renderAvailableCourses() {
         btn.disabled = false;
         btn.textContent = 'Sign up →';
         alert(err.message || 'Could not enroll. Please try again.');
+      }
+    });
+  });
+
+  slot.querySelectorAll('.available-notify:not(.is-subscribed)').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const slug = btn.dataset.slug;
+      const course = COURSES.find((c) => c.slug === slug);
+      if (!course) return;
+      btn.disabled = true;
+      btn.textContent = 'Subscribing…';
+      try {
+        const result = await subscribeToCourseLaunch(course);
+        btn.classList.add('is-subscribed');
+        if (result && result.pushEnabled) {
+          btn.textContent = 'Notified ✓ — we\'ll email + ping you';
+        } else {
+          btn.textContent = 'Notified ✓ — we\'ll email you';
+        }
+      } catch (err) {
+        console.warn('[courses-page] notify-me failed', err);
+        btn.disabled = false;
+        btn.textContent = 'Notify me when live';
+        alert(err && err.message || 'Could not subscribe. Please try again.');
       }
     });
   });
@@ -349,6 +381,7 @@ async function main() {
   // Load progress + enrollments before deciding what to render.
   try { await store.load(); } catch (e) {}
   try { await loadEnrollments(); } catch (e) {}
+  try { await loadCourseSubscriptions(); } catch (e) {}
 
   const slug = courseSlug();
   const moduleId = moduleParam();
