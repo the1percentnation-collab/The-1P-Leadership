@@ -398,6 +398,19 @@ service cloud.firestore {
     match /communityInvites/{tokenId} {
       allow read, write: if false;
     }
+
+    // ────────────────────────────────────────────────────────────────
+    // Events (Stage 4) — community events visible to any signed-in
+    // user; owner / company-admin can create / update / delete.
+    // No field-level validation in v1; the events-page UI gates input.
+    // ────────────────────────────────────────────────────────────────
+    match /events/{eventId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isOwner()
+        || (isSignedIn()
+            && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
   }
 }
 

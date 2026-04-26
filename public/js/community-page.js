@@ -598,9 +598,11 @@ async function refreshLeaderboard() {
 // we re-render the rail inline as a fallback section).
 const TABS = [
   { key: 'discussion', label: 'Discussion', href: null },
+  { key: 'learning',   label: 'Learning',   href: '/courses.html' },
+  { key: 'events',     label: 'Events',     href: '/events.html' },
   { key: 'leaderboard', label: 'Leaderboard', href: null },
-  { key: 'members', label: 'Members', href: '/members.html' },
-  { key: 'about', label: 'About', href: null }
+  { key: 'members',    label: 'Members',    href: '/members.html' },
+  { key: 'about',      label: 'About',      href: null }
 ];
 
 function renderTabs() {
