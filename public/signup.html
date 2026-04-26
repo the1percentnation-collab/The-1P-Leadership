@@ -42,7 +42,7 @@
   </div>
 
   <script type="module">
-    import { signupEmail, loginGoogle, acceptInvite, onAuthReady } from './js/auth.js';
+    import { signupEmail, loginGoogle, acceptInvite, acceptCommunityInvite, onAuthReady } from './js/auth.js';
     import { firebaseReady } from './js/firebase.js';
 
     const $ = (id) => document.getElementById(id);
@@ -55,6 +55,14 @@
     const params = new URLSearchParams(location.search);
     const preCode = params.get('code');
     if (preCode) $('inviteCode').value = preCode;
+
+    // Community invite token (?invite=) — surface a brief banner so the
+    // user knows they're joining via someone's link, then quietly attach
+    // it to the signup call so the server records the use.
+    const communityInviteToken = params.get('invite') || null;
+    if (communityInviteToken) {
+      showOk('You\'ve been invited to The One Percent Academy. Create your account to accept.');
+    }
 
     if (!firebaseReady) {
       showErr('Authentication service is unreachable. Check your connection and retry.');
@@ -73,7 +81,7 @@
       }
       $('btn-submit').disabled = true;
       try {
-        await signupEmail({ email, password, displayName, inviteCode });
+        await signupEmail({ email, password, displayName, inviteCode, communityInviteToken });
         location.replace('/index.html');
       } catch (err) {
         showErr(err.message || 'Sign-up failed.');
@@ -89,6 +97,9 @@
         const code = $('inviteCode').value.trim();
         if (code) {
           try { await acceptInvite(code); } catch (err) { showErr('Signed in but invite failed: ' + (err.message || err)); return; }
+        }
+        if (communityInviteToken) {
+          try { await acceptCommunityInvite(communityInviteToken); } catch (err) { /* tolerated */ }
         }
         location.replace('/index.html');
       } catch (err) {

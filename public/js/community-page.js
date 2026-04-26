@@ -1,7 +1,7 @@
 // Community feed page — composer + paginated feed + comments + likes.
 
 import { auth, firebaseReady } from './firebase.js';
-import { onAuthReady } from './auth.js';
+import { onAuthReady, createCommunityInvite } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { renderTopbar, teardownTopbar } from './topbar.js';
 import {
@@ -590,10 +590,13 @@ function renderGroupInfoCard() {
       </div>
       ${memberRows.length ? `<div class="c-group-card-avatars">${avatarsHtml}</div>` : ''}
       ${canInvite
-        ? `<a class="btn btn-primary c-group-card-cta" href="/admin.html">Invite members</a>`
+        ? `<button class="btn btn-primary c-group-card-cta" id="c-group-card-invite">Invite members</button>`
         : `<button class="btn btn-ghost c-group-card-cta" id="c-group-card-share">Share community</button>`}
     </div>
   `;
+
+  const inviteBtn = $('c-group-card-invite');
+  if (inviteBtn) inviteBtn.addEventListener('click', () => openInviteModal());
 
   const shareBtn = $('c-group-card-share');
   if (shareBtn) shareBtn.addEventListener('click', async () => {
@@ -607,6 +610,95 @@ function renderGroupInfoCard() {
         setTimeout(() => { shareBtn.textContent = 'Share community'; }, 1800);
       }
     } catch (e) { /* user cancelled or unsupported — no-op */ }
+  });
+}
+
+// ── Invite-link modal — owner / admin only. Calls createCommunityInvite
+// to mint a fresh server-side token, then renders the URL with a Copy
+// button. The modal is created on demand and removed on close.
+function openInviteModal() {
+  // Don't double-open.
+  if (document.getElementById('c-invite-modal')) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'c-modal-overlay';
+  overlay.id = 'c-invite-modal';
+  overlay.innerHTML = `
+    <div class="c-modal" role="dialog" aria-modal="true" aria-labelledby="c-invite-title">
+      <button class="c-modal-close" id="c-invite-close" aria-label="Close">✕</button>
+      <h2 id="c-invite-title" class="c-modal-title">Invite members</h2>
+      <p class="c-modal-sub">Generate a single-use-per-person link. Anyone with the link can sign up and join the community.</p>
+      <div class="c-modal-body" id="c-invite-body">
+        <button class="btn btn-primary" id="c-invite-generate">Generate invite link</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => { overlay.remove(); };
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.getElementById('c-invite-close').addEventListener('click', close);
+  document.addEventListener('keydown', function escClose(e) {
+    if (e.key === 'Escape') {
+      close();
+      document.removeEventListener('keydown', escClose);
+    }
+  });
+
+  document.getElementById('c-invite-generate').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Generating…';
+    try {
+      const result = await createCommunityInvite({});
+      const url = result.url;
+      const expires = result.expiresAt
+        ? new Date(result.expiresAt).toLocaleDateString()
+        : '';
+      const body = document.getElementById('c-invite-body');
+      body.innerHTML = `
+        <label class="c-invite-label">Your invite link</label>
+        <div class="c-invite-link-row">
+          <input id="c-invite-url" class="c-invite-url" type="text" readonly value="${escapeHtml(url)}">
+          <button class="btn btn-primary" id="c-invite-copy">Copy</button>
+        </div>
+        <div class="c-invite-meta">
+          ${expires ? `Expires ${escapeHtml(expires)}` : ''} · Up to ${result.usesAllowed || '—'} uses
+        </div>
+        <div class="c-invite-actions">
+          <button class="btn btn-ghost" id="c-invite-another">Generate another</button>
+        </div>
+      `;
+      const copyBtn = document.getElementById('c-invite-copy');
+      const urlInput = document.getElementById('c-invite-url');
+      urlInput.select();
+      copyBtn.addEventListener('click', async () => {
+        try {
+          if (navigator.clipboard) await navigator.clipboard.writeText(url);
+          else { urlInput.select(); document.execCommand('copy'); }
+          copyBtn.textContent = 'Copied ✓';
+          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1800);
+        } catch (er) { /* tolerated */ }
+      });
+      document.getElementById('c-invite-another').addEventListener('click', () => {
+        body.innerHTML = `<button class="btn btn-primary" id="c-invite-generate">Generate invite link</button>`;
+        body.querySelector('#c-invite-generate').addEventListener('click', (ev) => {
+          // Recurse — re-run the generator on the new button.
+          openInviteModal();
+          close();
+        });
+      });
+    } catch (err) {
+      const body = document.getElementById('c-invite-body');
+      body.innerHTML = `
+        <div class="auth-error">${escapeHtml(err.message || 'Could not generate invite.')}</div>
+        <button class="btn btn-ghost" id="c-invite-retry">Try again</button>
+      `;
+      body.querySelector('#c-invite-retry').addEventListener('click', () => {
+        openInviteModal();
+        close();
+      });
+    }
   });
 }
 

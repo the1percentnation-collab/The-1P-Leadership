@@ -1577,4 +1577,147 @@ exports.searchMembers = onCall(async (request) => {
   return { ok: true, results };
 });
 
+// ────────────────────────────────────────────────────────────────
+// Community invite tokens.
+//
+// Owner / admin generates a shareable invite link; recipient signs up
+// via /signup.html?invite=<token>; the signup flow calls
+// acceptCommunityInvite to record the use. Server-only collection so
+// tokens never leak via client list operations.
+// ────────────────────────────────────────────────────────────────
+
+const COMMUNITY_INVITE_DEFAULT_USES = 100;
+const COMMUNITY_INVITE_DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function makeInviteToken() {
+  // 12 URL-safe characters via base64url of 9 random bytes.
+  return crypto.randomBytes(9).toString('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * createCommunityInvite({ usesAllowed?, ttlMs? }) — owner / admin only.
+ * Returns { token, url, expiresAt }.
+ */
+exports.createCommunityInvite = onCall(async (request) => {
+  const callerUid = request.auth && request.auth.uid;
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const isOwnerClaim = request.auth.token && request.auth.token.role === 'owner';
+
+  const db = admin.firestore();
+
+  // Owner is always allowed; otherwise the caller must be a company admin.
+  if (!isOwnerClaim) {
+    let isAnyCompanyAdmin = false;
+    try {
+      const meSnap = await db.collection('users').doc(callerUid).get();
+      const cid = meSnap.exists ? (meSnap.data().companyId || null) : null;
+      if (cid) {
+        const compSnap = await db.collection('companies').doc(cid).get();
+        const adminUids = compSnap.exists ? (compSnap.data().adminUids || []) : [];
+        isAnyCompanyAdmin = adminUids.includes(callerUid);
+      }
+    } catch (e) { /* best-effort */ }
+    if (!isAnyCompanyAdmin) {
+      throw new HttpsError('permission-denied', 'Only owners and admins can create invites.');
+    }
+  }
+
+  const data = request.data || {};
+  const usesAllowed = Math.max(1, Math.min(1000, Number(data.usesAllowed) || COMMUNITY_INVITE_DEFAULT_USES));
+  const ttlMs = Math.max(60 * 60 * 1000, Math.min(365 * 24 * 60 * 60 * 1000, Number(data.ttlMs) || COMMUNITY_INVITE_DEFAULT_TTL_MS));
+  const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + ttlMs);
+
+  // Look up creator's display name for analytics.
+  let createdByName = (request.auth.token && request.auth.token.name) || null;
+  if (!createdByName) {
+    try {
+      const meSnap = await db.collection('users').doc(callerUid).get();
+      if (meSnap.exists) createdByName = meSnap.data().displayName || meSnap.data().email || null;
+    } catch (e) { /* tolerated */ }
+  }
+
+  // Generate a token and ensure no collision (extremely unlikely; one retry).
+  let token = makeInviteToken();
+  for (let i = 0; i < 3; i++) {
+    const probe = await db.collection('communityInvites').doc(token).get();
+    if (!probe.exists) break;
+    token = makeInviteToken();
+  }
+
+  await db.collection('communityInvites').doc(token).set({
+    token,
+    createdByUid: callerUid,
+    createdByName: createdByName || 'Unknown',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAt,
+    usesAllowed,
+    usesUsed: 0,
+    usedBy: []
+  });
+
+  const url = `${APP_BASE_URL}/signup.html?invite=${encodeURIComponent(token)}`;
+  return { ok: true, token, url, expiresAt: expiresAt.toMillis(), usesAllowed };
+});
+
+/**
+ * acceptCommunityInvite({ token }) — any authenticated user.
+ *
+ * Validates the token (exists, not expired, has uses remaining) and
+ * records this user's acceptance. Idempotent: a user accepting twice is
+ * a no-op (their uid is added to usedBy at most once). Returns
+ * { ok, alreadyAccepted? } so the client can decide whether to celebrate.
+ */
+exports.acceptCommunityInvite = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const token = (request.data && request.data.token || '').toString().trim();
+  if (!token) throw new HttpsError('invalid-argument', 'Token is required.');
+
+  const db = admin.firestore();
+  const ref = db.collection('communityInvites').doc(token);
+
+  const result = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) {
+      throw new HttpsError('not-found', 'Invite not found.');
+    }
+    const inv = snap.data() || {};
+
+    const now = Date.now();
+    const exp = inv.expiresAt && inv.expiresAt.toMillis ? inv.expiresAt.toMillis() : 0;
+    if (exp && exp < now) {
+      throw new HttpsError('failed-precondition', 'Invite has expired.');
+    }
+    const used = Number(inv.usesUsed || 0);
+    const allowed = Number(inv.usesAllowed || COMMUNITY_INVITE_DEFAULT_USES);
+    if (used >= allowed) {
+      throw new HttpsError('resource-exhausted', 'Invite has no uses remaining.');
+    }
+    const usedBy = Array.isArray(inv.usedBy) ? inv.usedBy : [];
+    if (usedBy.includes(uid)) {
+      return { alreadyAccepted: true };
+    }
+    tx.update(ref, {
+      usesUsed: used + 1,
+      usedBy: admin.firestore.FieldValue.arrayUnion(uid),
+      lastAcceptedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    return { alreadyAccepted: false };
+  });
+
+  // Stamp the accepting user's doc with referral info so the inviter
+  // can be credited in future analytics. Best-effort.
+  try {
+    await db.collection('users').doc(uid).set({
+      invitedByToken: token,
+      invitedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch (e) { /* tolerated */ }
+
+  return { ok: true, ...result };
+});
+
+
 

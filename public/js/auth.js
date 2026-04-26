@@ -76,7 +76,7 @@ export async function loginEmail(email, password) {
   return cred.user;
 }
 
-export async function signupEmail({ email, password, displayName, inviteCode }) {
+export async function signupEmail({ email, password, displayName, inviteCode, communityInviteToken }) {
   const cred = await createUserWithEmailAndPassword(auth, email, password);
   if (displayName) {
     try { await updateProfile(cred.user, { displayName }); } catch (e) {}
@@ -84,6 +84,10 @@ export async function signupEmail({ email, password, displayName, inviteCode }) 
   await ensureUserDoc(cred.user, { displayName });
   if (inviteCode) {
     await acceptInvite(inviteCode);
+  }
+  if (communityInviteToken) {
+    try { await acceptCommunityInvite(communityInviteToken); }
+    catch (e) { console.warn('[auth] community invite accept failed', e); }
   }
   return cred.user;
 }
@@ -106,6 +110,18 @@ export async function signOut() {
 export async function acceptInvite(code) {
   const call = httpsCallable(functions, 'acceptInvite');
   const res = await call({ code });
+  return res.data;
+}
+
+export async function acceptCommunityInvite(token) {
+  const call = httpsCallable(functions, 'acceptCommunityInvite');
+  const res = await call({ token });
+  return res.data;
+}
+
+export async function createCommunityInvite(opts = {}) {
+  const call = httpsCallable(functions, 'createCommunityInvite');
+  const res = await call(opts);
   return res.data;
 }
 

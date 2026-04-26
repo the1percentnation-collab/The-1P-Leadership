@@ -388,6 +388,16 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create, update, delete: if isOwner();
     }
+
+    // ────────────────────────────────────────────────────────────────
+    // Community invite tokens. Server-only — clients reach them via
+    // the createCommunityInvite / acceptCommunityInvite callables.
+    // Tokens are sensitive (anyone with one can be tied to your account
+    // on signup), so the collection is invisible to clients.
+    // ────────────────────────────────────────────────────────────────
+    match /communityInvites/{tokenId} {
+      allow read, write: if false;
+    }
   }
 }
 
