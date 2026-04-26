@@ -21,11 +21,12 @@
 // listener. Cost per page: one bounded onSnapshot (limit 20) on the
 // caller's notifications subcollection.
 
-import { auth, db, firebaseReady } from './firebase.js';
+import { auth, db, functions, firebaseReady } from './firebase.js';
 import { signOut } from './auth.js';
 import {
   collection, doc, query, where, orderBy, limit, onSnapshot, updateDoc
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 // ────────────────────────────────────────────────────────────────
 // Default link set
@@ -268,6 +269,162 @@ function startBellListener(uid) {
 }
 
 // ────────────────────────────────────────────────────────────────
+// Search overlay — command-palette-style search across posts +
+// people. Triggered by the topbar 🔍 button or Cmd/Ctrl-K. Calls
+// the searchPosts and searchMembers callables in parallel.
+// ────────────────────────────────────────────────────────────────
+
+const searchState = {
+  open: false,
+  overlay: null,
+  debounce: null,
+  lastQuery: '',
+  keyboundGlobal: false
+};
+
+function notifHrefForSearchPost(p) {
+  if (!p || !p.id) return '/community.html';
+  const ch = p.category || 'general';
+  return `/community.html?channel=${encodeURIComponent(ch)}#post-${encodeURIComponent(p.id)}`;
+}
+
+function relativeTimeShort(ms) {
+  if (!ms) return '';
+  const diff = Date.now() - ms;
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  return `${d}d`;
+}
+
+function openSearchOverlay() {
+  if (searchState.open) return;
+  if (!firebaseReady || !functions) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'c-search-overlay';
+  overlay.id = 'c-search-overlay';
+  overlay.innerHTML = `
+    <div class="c-search-card" role="dialog" aria-label="Search">
+      <div class="c-search-input-row">
+        <span class="c-search-icon-lg">🔍</span>
+        <input id="c-search-input" class="c-search-input" type="text"
+               placeholder="Search posts and people…" autocomplete="off"
+               spellcheck="false">
+        <span class="c-search-kbd">esc</span>
+      </div>
+      <div class="c-search-results" id="c-search-results">
+        <div class="c-search-hint">Type at least 2 characters to search.</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  searchState.overlay = overlay;
+  searchState.open = true;
+
+  const input = document.getElementById('c-search-input');
+  setTimeout(() => input && input.focus(), 0);
+
+  const close = () => {
+    if (searchState.debounce) { clearTimeout(searchState.debounce); searchState.debounce = null; }
+    if (searchState.overlay) searchState.overlay.remove();
+    searchState.overlay = null;
+    searchState.open = false;
+    searchState.lastQuery = '';
+  };
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', function escClose(e) {
+    if (e.key === 'Escape') {
+      close();
+      document.removeEventListener('keydown', escClose);
+    }
+  });
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    if (searchState.debounce) clearTimeout(searchState.debounce);
+    if (!q || q.length < 2) {
+      renderSearchResults({ posts: [], people: [], hint: 'Type at least 2 characters to search.' });
+      return;
+    }
+    renderSearchResults({ loading: true });
+    searchState.debounce = setTimeout(() => runSearch(q), 220);
+  });
+}
+
+async function runSearch(q) {
+  if (q === searchState.lastQuery && searchState.lastQuery !== '') return;
+  searchState.lastQuery = q;
+  try {
+    const [postsRes, peopleRes] = await Promise.all([
+      httpsCallable(functions, 'searchPosts')({ query: q }).then((r) => r.data).catch(() => ({ results: [] })),
+      httpsCallable(functions, 'searchMembers')({ query: q }).then((r) => r.data).catch(() => ({ results: [] }))
+    ]);
+    renderSearchResults({
+      posts: (postsRes && postsRes.results) || [],
+      people: (peopleRes && peopleRes.results) || []
+    });
+  } catch (err) {
+    renderSearchResults({ posts: [], people: [], hint: 'Search failed. Try again.' });
+  }
+}
+
+function renderSearchResults({ posts = [], people = [], loading = false, hint = null }) {
+  const root = document.getElementById('c-search-results');
+  if (!root) return;
+  if (loading) {
+    root.innerHTML = `<div class="c-search-hint">Searching…</div>`;
+    return;
+  }
+  if (hint && !posts.length && !people.length) {
+    root.innerHTML = `<div class="c-search-hint">${escapeHtml(hint)}</div>`;
+    return;
+  }
+  if (!posts.length && !people.length) {
+    root.innerHTML = `<div class="c-search-hint">No matches.</div>`;
+    return;
+  }
+
+  const peopleHtml = people.length ? `
+    <div class="c-search-section">
+      <div class="c-search-section-title">People</div>
+      ${people.slice(0, 5).map((p) => `
+        <a class="c-search-row" href="/profile.html?uid=${encodeURIComponent(p.uid)}">
+          ${avatarHtml({ avatarUrl: p.avatarUrl, displayName: p.displayName }, 28)}
+          <div class="c-search-row-body">
+            <div class="c-search-row-title">${escapeHtml(p.displayName || 'Unknown')}</div>
+          </div>
+          <span class="c-search-row-meta">profile</span>
+        </a>
+      `).join('')}
+    </div>
+  ` : '';
+
+  const postsHtml = posts.length ? `
+    <div class="c-search-section">
+      <div class="c-search-section-title">Posts</div>
+      ${posts.slice(0, 5).map((p) => `
+        <a class="c-search-row" href="${escapeHtml(notifHrefForSearchPost(p))}">
+          ${avatarHtml({ avatarUrl: p.authorAvatar, displayName: p.authorName }, 28)}
+          <div class="c-search-row-body">
+            <div class="c-search-row-title">${escapeHtml((p.text || '').slice(0, 80))}${(p.text || '').length > 80 ? '…' : ''}</div>
+            <div class="c-search-row-sub">${escapeHtml(p.authorName || 'Unknown')} · #${escapeHtml(p.category || 'general')} · ${escapeHtml(relativeTimeShort(p.createdAt))}</div>
+          </div>
+          <span class="c-search-row-meta">${p.likeCount || 0} ❤</span>
+        </a>
+      `).join('')}
+    </div>
+  ` : '';
+
+  root.innerHTML = peopleHtml + postsHtml;
+}
+
+// ────────────────────────────────────────────────────────────────
 // renderTopbar — the public entry point
 // ────────────────────────────────────────────────────────────────
 
@@ -283,6 +440,7 @@ export function renderTopbar({
   links = null,
   mountId = 'user-chip',
   withBell = true,
+  withSearch = true,
   withSignOut = true,
   signOutLabel = 'Sign out'
 } = {}) {
@@ -309,12 +467,19 @@ export function renderTopbar({
     <div class="c-notif-popover" id="notif-popover" hidden></div>
   ` : '';
 
+  const searchHtml = withSearch ? `
+    <button class="c-search-btn" id="btn-search" title="Search" aria-label="Search">
+      <span class="c-search-icon">🔍</span>
+    </button>
+  ` : '';
+
   const signOutHtml = withSignOut
     ? `<button class="btn btn-ghost" id="btn-signout">${escapeHtml(signOutLabel)}</button>`
     : '';
 
   chip.innerHTML = `
     ${linksHtml}
+    ${searchHtml}
     ${bellHtml}
     ${avatarHtmlStr}
     <span class="user-chip-email">${escapeHtml(displayName)}</span>
@@ -327,6 +492,23 @@ export function renderTopbar({
       try { await signOut(); } catch (e) {}
       location.replace('/login.html');
     });
+  }
+
+  if (withSearch) {
+    const sb = chip.querySelector('#btn-search');
+    if (sb) sb.addEventListener('click', openSearchOverlay);
+    if (!searchState.keyboundGlobal) {
+      searchState.keyboundGlobal = true;
+      document.addEventListener('keydown', (e) => {
+        // Cmd/Ctrl-K opens search from anywhere.
+        const isMac = navigator.platform.toUpperCase().includes('MAC');
+        const meta = isMac ? e.metaKey : e.ctrlKey;
+        if (meta && (e.key === 'k' || e.key === 'K')) {
+          e.preventDefault();
+          openSearchOverlay();
+        }
+      });
+    }
   }
 
   if (withBell) {

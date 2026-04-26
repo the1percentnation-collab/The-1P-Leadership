@@ -1719,5 +1719,98 @@ exports.acceptCommunityInvite = onCall(async (request) => {
   return { ok: true, ...result };
 });
 
+// ────────────────────────────────────────────────────────────────
+// Search (Stage 2 — topbar search overlay).
+//
+// Server-side substring match on the latest N posts visible to the
+// caller. Bounded by a hard limit so an unbounded query can't drain
+// reads. Pairs with the existing searchMembers callable on the
+// frontend (called in parallel) to populate the topbar overlay.
+// ────────────────────────────────────────────────────────────────
+
+const SEARCH_POSTS_POOL = 200;       // recent posts inspected per call
+const SEARCH_POSTS_RESULTS = 10;     // results returned
+
+exports.searchPosts = onCall(async (request) => {
+  const callerUid = request.auth && request.auth.uid;
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const data = request.data || {};
+  const q = (data.query || '').toString().trim().toLowerCase();
+  if (!q) return { ok: true, results: [] };
+  if (q.length < 2) return { ok: true, results: [] };
+
+  const isOwnerClaim = request.auth.token && request.auth.token.role === 'owner';
+  const db = admin.firestore();
+
+  let callerCompanyId = null;
+  if (!isOwnerClaim) {
+    try {
+      const meSnap = await db.collection('users').doc(callerUid).get();
+      if (meSnap.exists) callerCompanyId = meSnap.data().companyId || null;
+    } catch (e) { /* tolerated */ }
+  }
+
+  const pool = [];
+  const seen = new Set();
+  function add(d) {
+    if (seen.has(d.id)) return;
+    seen.add(d.id);
+    pool.push({ id: d.id, ...d.data() });
+  }
+
+  try {
+    if (isOwnerClaim) {
+      const snap = await db.collection('posts').orderBy('createdAt', 'desc').limit(SEARCH_POSTS_POOL).get();
+      snap.docs.forEach(add);
+    } else if (callerCompanyId) {
+      const [companySnap, globalSnap] = await Promise.all([
+        db.collection('posts').where('companyId', '==', callerCompanyId).orderBy('createdAt', 'desc').limit(SEARCH_POSTS_POOL).get(),
+        db.collection('posts').where('companyId', '==', null).orderBy('createdAt', 'desc').limit(SEARCH_POSTS_POOL).get()
+      ]);
+      companySnap.docs.forEach(add);
+      globalSnap.docs.forEach(add);
+    } else {
+      const snap = await db.collection('posts').where('companyId', '==', null).orderBy('createdAt', 'desc').limit(SEARCH_POSTS_POOL).get();
+      snap.docs.forEach(add);
+    }
+  } catch (err) {
+    console.error('[searchPosts] pool fetch failed:', err && err.message);
+    return { ok: false, results: [] };
+  }
+
+  const results = pool
+    .filter((p) => {
+      const text = (p.text || '').toLowerCase();
+      const author = (p.authorName || '').toLowerCase();
+      return text.includes(q) || author.includes(q);
+    })
+    .sort((a, b) => {
+      // Title-text matches first, then author matches; within each group,
+      // recency (descending createdAt).
+      const at = (a.text || '').toLowerCase().includes(q) ? 0 : 1;
+      const bt = (b.text || '').toLowerCase().includes(q) ? 0 : 1;
+      if (at !== bt) return at - bt;
+      const am = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+      const bm = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+      return bm - am;
+    })
+    .slice(0, SEARCH_POSTS_RESULTS)
+    .map((p) => ({
+      id: p.id,
+      text: (p.text || '').slice(0, 200),
+      authorName: p.authorName || 'Unknown',
+      authorUid: p.authorUid || null,
+      authorAvatar: p.authorAvatar || null,
+      category: p.category || 'general',
+      createdAt: p.createdAt && p.createdAt.toMillis ? p.createdAt.toMillis() : null,
+      likeCount: p.likeCount || 0,
+      commentCount: p.commentCount || 0
+    }));
+
+  return { ok: true, results };
+});
+
+
 
 
