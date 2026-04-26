@@ -1,37 +1,13 @@
 // Members directory — cards showing avatar, name, bio preview, progress %.
 
 import { firebaseReady } from './firebase.js';
-import { onAuthReady, signOut } from './auth.js';
+import { onAuthReady } from './auth.js';
+import { renderTopbar } from './topbar.js';
 import { getRoleInfo } from './roles.js';
 import { listMembers, getUserProfile, avatarHtml, escapeHtml } from './community.js';
 
 const $ = (id) => document.getElementById(id);
 const TOTAL_MODULES = 7; // 7 completable modules per spec (progress = completedCount / 7)
-
-function renderChip(me, role) {
-  const chip = $('user-chip');
-  const adminLink = role === 'admin' || role === 'owner'
-    ? `<a class="user-chip-link" href="/admin.html">Admin</a>` : '';
-  const crmLink = role === 'admin' || role === 'owner'
-    ? `<a class="user-chip-link" href="/crm.html">CRM</a>` : '';
-  const campaignsLink = role === 'admin' || role === 'owner'
-    ? `<a class="user-chip-link" href="/campaigns.html">Campaigns</a>` : '';
-  const ownerLink = role === 'owner'
-    ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
-  chip.innerHTML = `
-    <a class="user-chip-link" href="/index.html">Dashboard</a>
-    <a class="user-chip-link" href="/community.html">Community</a>
-    <a class="user-chip-link" href="/profile.html">Profile</a>
-    ${crmLink}${campaignsLink}${adminLink}${ownerLink}
-    <span class="c-avatar-link">${avatarHtml(me, 28)}</span>
-    <span class="user-chip-email">${escapeHtml(me.displayName || me.email || '')}</span>
-    <button class="btn btn-ghost" id="btn-signout">Sign out</button>
-  `;
-  $('btn-signout').addEventListener('click', async () => {
-    try { await signOut(); } catch (e) {}
-    location.replace('/login.html');
-  });
-}
 
 function memberCardHtml(m) {
   // completedCount may come from members subcollection digest OR from the user doc (owner view).
@@ -73,7 +49,7 @@ async function main() {
     displayName: profile.displayName || u.displayName || u.email,
     avatarUrl: profile.avatarUrl || null
   };
-  renderChip(me, info.role);
+  renderTopbar({ user: me, profile, role: info.role, currentPage: 'members' });
 
   const members = await listMembers({ role: info.role, companyId: info.companyId });
   if (!members.length) {

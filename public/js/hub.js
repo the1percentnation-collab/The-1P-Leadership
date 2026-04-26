@@ -3,9 +3,10 @@
 
 import { store } from './store.js';
 import { MODULES } from './modules.js';
-import { onAuthReady, signOut, currentUser } from './auth.js';
+import { onAuthReady, currentUser } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { firebaseReady } from './firebase.js';
+import { renderTopbar } from './topbar.js';
 import {
   getUserProfile,
   hasNewPostsSinceVisit,
@@ -27,33 +28,7 @@ function firstName(nameOrEmail) {
 }
 
 function renderUserChip(user, role, { profile = null, hasNewCommunity = false } = {}) {
-  const chip = $('user-chip');
-  if (!chip) return;
-  const adminLink = role === 'admin' || role === 'owner'
-    ? `<a class="user-chip-link" href="/admin.html">Admin</a>` : '';
-  const crmLink = role === 'admin' || role === 'owner'
-    ? `<a class="user-chip-link" href="/crm.html">CRM</a>` : '';
-  const campaignsLink = role === 'admin' || role === 'owner'
-    ? `<a class="user-chip-link" href="/campaigns.html">Campaigns</a>` : '';
-  const ownerLink = role === 'owner'
-    ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
-  const displayName = (profile && profile.displayName) || user.displayName || user.email || '';
-  const avatar = `<a href="/profile.html" class="c-avatar-link" title="Your profile">${avatarHtml({
-    displayName,
-    avatarUrl: profile && profile.avatarUrl || null
-  }, 28)}</a>`;
-  chip.innerHTML = `
-    ${crmLink}${campaignsLink}${adminLink}${ownerLink}
-    ${avatar}
-    <span class="user-chip-email">${escapeHtml(displayName)}</span>
-    <button class="btn btn-ghost" id="btn-signout">Sign out</button>
-  `;
-  const out = $('btn-signout');
-  if (out) out.addEventListener('click', async () => {
-    try { await signOut(); } catch (e) {}
-    location.replace('/login.html');
-  });
-
+  renderTopbar({ user, profile, role, currentPage: 'dashboard' });
   const badge = $('hub-community-badge');
   if (badge) badge.style.display = hasNewCommunity ? '' : 'none';
 }

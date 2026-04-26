@@ -13,7 +13,8 @@
 
 import { COURSES, getActiveCourse } from './courses-registry.js';
 import { MODULES, PILLARS } from './modules.js';
-import { onAuthReady, signOut, currentUser } from './auth.js';
+import { onAuthReady, currentUser } from './auth.js';
+import { renderTopbar } from './topbar.js';
 import { getRoleInfo } from './roles.js';
 import { firebaseReady } from './firebase.js';
 import { getUserProfile, avatarHtml, escapeHtml } from './community.js';
@@ -304,37 +305,6 @@ function renderCourseHero(course) {
   if (sub) sub.textContent = course.subtitle || '';
 }
 
-// ─── User chip ────────────────────────────────────────────────────────────
-
-function renderUserChip(user, role, profile) {
-  const chip = $('user-chip');
-  if (!chip) return;
-  const adminLink = role === 'admin' || role === 'owner'
-    ? `<a class="user-chip-link" href="/admin.html">Admin</a>` : '';
-  const crmLink = role === 'admin' || role === 'owner'
-    ? `<a class="user-chip-link" href="/crm.html">CRM</a>` : '';
-  const campaignsLink = role === 'admin' || role === 'owner'
-    ? `<a class="user-chip-link" href="/campaigns.html">Campaigns</a>` : '';
-  const ownerLink = role === 'owner'
-    ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
-  const displayName = (profile && profile.displayName) || (user && (user.displayName || user.email)) || '';
-  const avatar = user ? `<a href="/profile.html" class="c-avatar-link" title="Your profile">${avatarHtml({
-    displayName,
-    avatarUrl: profile && profile.avatarUrl || null
-  }, 28)}</a>` : '';
-  chip.innerHTML = `
-    ${crmLink}${campaignsLink}${adminLink}${ownerLink}
-    ${avatar}
-    <span class="user-chip-email">${escapeHtml(displayName)}</span>
-    <button class="btn btn-ghost" id="btn-signout">Sign out</button>
-  `;
-  const out = $('btn-signout');
-  if (out) out.addEventListener('click', async () => {
-    try { await signOut(); } catch (e) {}
-    location.replace('/login.html');
-  });
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -396,7 +366,7 @@ async function main() {
       try { profile = await getUserProfile(currentUser().uid); } catch (e) {}
     }
   } catch (e) {}
-  renderUserChip(currentUser(), role, profile);
+  renderTopbar({ user: currentUser(), profile, role, currentPage: null });
 }
 
 main();

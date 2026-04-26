@@ -2,8 +2,9 @@
 // Requires role == 'owner' (either custom claim or users/{uid}.role == 'owner').
 
 import { db, firebaseReady } from './firebase.js';
-import { onAuthReady, signOut, bootstrapOwner } from './auth.js';
+import { onAuthReady, bootstrapOwner } from './auth.js';
 import { getRoleInfo } from './roles.js';
+import { renderTopbar } from './topbar.js';
 import {
   collection, doc, getDoc, getDocs, query, where, setDoc, serverTimestamp, limit
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -12,22 +13,6 @@ const $ = (id) => document.getElementById(id);
 
 function gate(msg) {
   $('gate-msg').innerHTML = `<div class="card"><div class="auth-error">${msg}</div></div>`;
-}
-
-function renderUserChip(u) {
-  const chip = $('user-chip');
-  chip.innerHTML = `
-    <a class="user-chip-link" href="/index.html">Dashboard</a>
-    <a class="user-chip-link" href="/admin.html">Admin</a>
-    <a class="user-chip-link" href="/crm.html">CRM</a>
-    <a class="user-chip-link" href="/campaigns.html">Campaigns</a>
-    <span class="user-chip-email">${u.email || ''}</span>
-    <button class="btn btn-ghost" id="btn-signout">Sign out</button>
-  `;
-  $('btn-signout').addEventListener('click', async () => {
-    try { await signOut(); } catch (e) {}
-    location.replace('/login.html');
-  });
 }
 
 function rand(len) {
@@ -110,7 +95,7 @@ async function main() {
   const u = await onAuthReady();
   if (!u) { location.replace('/login.html?next=' + encodeURIComponent('/owner.html')); return; }
 
-  renderUserChip(u);
+  renderTopbar({ user: u, role: 'owner', currentPage: 'owner' });
 
   const info = await getRoleInfo(true);
   if (info.role !== 'owner') {

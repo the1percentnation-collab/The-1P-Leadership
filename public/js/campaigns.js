@@ -2,7 +2,8 @@
 // Admin + owner only.
 
 import { db, functions, firebaseReady } from './firebase.js';
-import { onAuthReady, signOut } from './auth.js';
+import { onAuthReady } from './auth.js';
+import { renderTopbar } from './topbar.js';
 import { getRoleInfo } from './roles.js';
 import {
   collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
@@ -27,27 +28,6 @@ const state = {
 
 function gate(msg) {
   $('gate-msg').innerHTML = `<div class="card"><div class="auth-error">${escapeHtml(msg)}</div></div>`;
-}
-
-function renderChip(user, role) {
-  const chip = $('user-chip');
-  if (!chip) return;
-  const adminLink = role === 'admin' || role === 'owner'
-    ? `<a class="user-chip-link" href="/admin.html">Admin</a>` : '';
-  const ownerLink = role === 'owner'
-    ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
-  chip.innerHTML = `
-    <a class="user-chip-link" href="/index.html">Dashboard</a>
-    <a class="user-chip-link" href="/community.html">Community</a>
-    <a class="user-chip-link" href="/crm.html">CRM</a>
-    ${adminLink}${ownerLink}
-    <span class="user-chip-email">${escapeHtml(user.email || '')}</span>
-    <button class="btn btn-ghost" id="btn-signout">Sign out</button>
-  `;
-  $('btn-signout').addEventListener('click', async () => {
-    try { await signOut(); } catch (e) {}
-    location.replace('/login.html');
-  });
 }
 
 function statusBadge(status) {
@@ -444,7 +424,7 @@ async function main() {
   const info = await getRoleInfo(true);
   state.uid = u.uid;
   state.role = info.role;
-  renderChip(u, info.role);
+  renderTopbar({ user: u, role: info.role, currentPage: 'campaigns' });
 
   if (!info.isAdmin) {
     gate('Admin access required.');

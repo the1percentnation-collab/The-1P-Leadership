@@ -1,7 +1,8 @@
 // Profile page — edit own profile (no ?uid) OR view any member by uid.
 
 import { db, firebaseReady, auth } from './firebase.js';
-import { onAuthReady, signOut } from './auth.js';
+import { onAuthReady } from './auth.js';
+import { renderTopbar } from './topbar.js';
 import { getRoleInfo } from './roles.js';
 import { getUserProfile, updateOwnProfile, uploadAvatar, avatarHtml, escapeHtml } from './community.js';
 import {
@@ -10,31 +11,6 @@ import {
 
 const $ = (id) => document.getElementById(id);
 const TOTAL_MODULES = 7;
-
-function renderChip(me, role) {
-  const chip = $('user-chip');
-  const adminLink = role === 'admin' || role === 'owner'
-    ? `<a class="user-chip-link" href="/admin.html">Admin</a>` : '';
-  const crmLink = role === 'admin' || role === 'owner'
-    ? `<a class="user-chip-link" href="/crm.html">CRM</a>` : '';
-  const campaignsLink = role === 'admin' || role === 'owner'
-    ? `<a class="user-chip-link" href="/campaigns.html">Campaigns</a>` : '';
-  const ownerLink = role === 'owner'
-    ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
-  chip.innerHTML = `
-    <a class="user-chip-link" href="/index.html">Dashboard</a>
-    <a class="user-chip-link" href="/community.html">Community</a>
-    <a class="user-chip-link" href="/members.html">Members</a>
-    ${crmLink}${campaignsLink}${adminLink}${ownerLink}
-    <span class="c-avatar-link">${avatarHtml(me, 28)}</span>
-    <span class="user-chip-email">${escapeHtml(me.displayName || me.email || '')}</span>
-    <button class="btn btn-ghost" id="btn-signout">Sign out</button>
-  `;
-  $('btn-signout').addEventListener('click', async () => {
-    try { await signOut(); } catch (e) {}
-    location.replace('/login.html');
-  });
-}
 
 // ─── Edit mode ────────────────────────────────────────────────────────────
 function renderEdit(me) {
@@ -172,7 +148,7 @@ async function main() {
     bio: myProfile.bio || '',
     role: info.role
   };
-  renderChip(me, info.role);
+  renderTopbar({ user: me, profile: me, role: info.role, currentPage: 'profile' });
 
   const urlUid = new URLSearchParams(location.search).get('uid');
   if (!urlUid || urlUid === u.uid) {

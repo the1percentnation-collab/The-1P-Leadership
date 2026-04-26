@@ -2,8 +2,9 @@
 // Only visible to admins of a company (or owners, who can manage any).
 
 import { db, firebaseReady, functions } from './firebase.js';
-import { onAuthReady, signOut } from './auth.js';
+import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
+import { renderTopbar } from './topbar.js';
 import {
   collection, doc, getDoc, getDocs, query, where, setDoc, deleteDoc, serverTimestamp, limit
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -28,23 +29,6 @@ function fmtTs(ts) {
     const d = ts.toDate ? ts.toDate() : new Date(ts);
     return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   } catch (e) { return '—'; }
-}
-
-function renderUserChip(u, role) {
-  const chip = $('user-chip');
-  const ownerLink = role === 'owner' ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
-  chip.innerHTML = `
-    <a class="user-chip-link" href="/index.html">Dashboard</a>
-    <a class="user-chip-link" href="/crm.html">CRM</a>
-    <a class="user-chip-link" href="/campaigns.html">Campaigns</a>
-    ${ownerLink}
-    <span class="user-chip-email">${u.email || ''}</span>
-    <button class="btn btn-ghost" id="btn-signout">Sign out</button>
-  `;
-  $('btn-signout').addEventListener('click', async () => {
-    try { await signOut(); } catch (e) {}
-    location.replace('/login.html');
-  });
 }
 
 let _state = {
@@ -257,7 +241,7 @@ async function main() {
 
   const info = await getRoleInfo(true);
   _state.role = info.role;
-  renderUserChip(u, info.role);
+  renderTopbar({ user: u, role: info.role, currentPage: 'admin' });
 
   // Owner path: find or let them pick a company via ?companyId=
   let companyId = new URLSearchParams(location.search).get('companyId') || info.companyId;

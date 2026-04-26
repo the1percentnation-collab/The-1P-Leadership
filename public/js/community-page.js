@@ -1,16 +1,16 @@
 // Community feed page — composer + paginated feed + comments + likes.
 
 import { auth, firebaseReady } from './firebase.js';
-import { onAuthReady, signOut } from './auth.js';
+import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
+import { renderTopbar, teardownTopbar } from './topbar.js';
 import {
   listPosts, createPost, deletePost, toggleLike, hasLiked,
   listComments, addComment, deleteComment,
   getUserProfile, touchCommunityVisit,
   listChannels, getPinnedPostForChannel, setPostPinned, CHANNEL_KEYS,
   getLeaderboard, getMyStats, levelFromPoints, levelProgress,
-  subscribeToFeed, subscribeToUnreadNotifs, markNotifRead, markAllNotifsRead,
-  searchMembers, renderTextWithMentions,
+  subscribeToFeed, searchMembers, renderTextWithMentions,
   avatarHtml, fmtRelative, escapeHtml, linkify
 } from './community.js';
 
@@ -39,156 +39,35 @@ const state = {
   leaderboard: [],
   authorLevels: new Map(),
   myStats: null,
-  // Phase 3 — realtime feed + notifications + mentions
+  // Phase 3 — realtime feed + mentions (notifications now live in topbar.js)
   feedUnsub: null,         // teardown for the active onSnapshot listeners
-  notifUnsub: null,
   pendingPosts: [],        // new posts that arrived while user was scrolled away
   livePostIds: new Set(),  // ids currently in the live window
-  unreadNotifs: [],        // newest-first, capped at 20
-  showingNotifs: false,
   mentionUids: new Set(),  // ids referenced by composer @[uid:Name] tokens
   mentionLookup: new Map() // uid → { displayName, avatarUrl }
 };
 
-function renderChip() {
-  const chip = $('user-chip');
-  if (!chip || !state.me) return;
-  const adminLink = state.role === 'admin' || state.role === 'owner'
-    ? `<a class="user-chip-link" href="/admin.html">Admin</a>` : '';
-  const crmLink = state.role === 'admin' || state.role === 'owner'
-    ? `<a class="user-chip-link" href="/crm.html">CRM</a>` : '';
-  const campaignsLink = state.role === 'admin' || state.role === 'owner'
-    ? `<a class="user-chip-link" href="/campaigns.html">Campaigns</a>` : '';
-  const ownerLink = state.role === 'owner'
-    ? `<a class="user-chip-link" href="/owner.html">Owner</a>` : '';
-  chip.innerHTML = `
-    <a class="user-chip-link" href="/index.html">Dashboard</a>
-    <a class="user-chip-link" href="/members.html">Members</a>
-    <a class="user-chip-link" href="/profile.html">Profile</a>
-    ${crmLink}${campaignsLink}${adminLink}${ownerLink}
-    <button class="c-bell" id="btn-bell" title="Notifications" aria-label="Notifications">
-      <span class="c-bell-icon">🔔</span>
-      <span class="c-bell-badge" id="bell-badge" hidden>0</span>
-    </button>
-    <span class="c-avatar-link">${avatarHtml(state.me, 28)}</span>
-    <span class="user-chip-email">${escapeHtml(state.me.displayName || state.me.email || '')}</span>
-    <button class="btn btn-ghost" id="btn-signout">Sign out</button>
-    <div class="c-notif-popover" id="notif-popover" hidden></div>
-  `;
-  $('btn-signout').addEventListener('click', async () => {
-    try { await signOut(); } catch (e) {}
-    location.replace('/login.html');
-  });
-  $('btn-bell').addEventListener('click', toggleNotifPopover);
-  document.addEventListener('click', (e) => {
-    if (!state.showingNotifs) return;
-    const pop = $('notif-popover');
-    const bell = $('btn-bell');
-    if (!pop || !bell) return;
-    if (pop.contains(e.target) || bell.contains(e.target)) return;
-    state.showingNotifs = false;
-    pop.hidden = true;
-  });
-  renderBellBadge();
-}
-
-function renderBellBadge() {
-  const badge = $('bell-badge');
-  if (!badge) return;
-  const count = state.unreadNotifs.length;
-  if (count <= 0) {
-    badge.hidden = true;
-    badge.textContent = '0';
-    return;
+// Notification deep-link handler — when a bell-popover row navigates with
+// `#post-X`, smooth-scroll to that card if it's in the live window and
+// briefly flash it. The bell + popover themselves live in topbar.js.
+function handleHashScroll() {
+  const hash = location.hash || '';
+  const m = hash.match(/^#post-(.+)$/);
+  if (!m) return;
+  const postId = decodeURIComponent(m[1]);
+  // Try a few times — the live snapshot can lag a tick on first paint.
+  let tries = 0;
+  function tick() {
+    const card = document.getElementById(`post-${postId}`);
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('c-post-flash');
+      setTimeout(() => card.classList.remove('c-post-flash'), 1500);
+      return;
+    }
+    if (++tries < 12) setTimeout(tick, 200);
   }
-  badge.hidden = false;
-  badge.textContent = count >= 20 ? '20+' : String(count);
-}
-
-function notifIcon(type) {
-  if (type === 'like') return '❤️';
-  if (type === 'comment') return '💬';
-  if (type === 'mention') return '@';
-  return '🔔';
-}
-
-function notifLine(n) {
-  const who = escapeHtml(n.fromName || 'Someone');
-  if (n.type === 'like') return `${who} liked your post`;
-  if (n.type === 'comment') return `${who} commented on your post`;
-  if (n.type === 'mention') return `${who} mentioned you`;
-  return `${who} did something`;
-}
-
-function renderNotifPopover() {
-  const pop = $('notif-popover');
-  if (!pop) return;
-  const rows = state.unreadNotifs;
-  const headerHtml = `
-    <div class="c-notif-head">
-      <span class="c-notif-title">Notifications</span>
-      <button class="c-notif-mark-all" id="notif-mark-all" ${rows.length ? '' : 'disabled'}>Mark all read</button>
-    </div>
-  `;
-  const bodyHtml = rows.length ? rows.map((n) => `
-    <a class="c-notif-row unread" data-notif="${escapeHtml(n.id)}"
-       data-post="${escapeHtml(n.postId || '')}"
-       data-channel="${escapeHtml(n.category || '')}">
-      <span class="c-notif-icon">${notifIcon(n.type)}</span>
-      ${avatarHtml({ avatarUrl: n.fromAvatar, displayName: n.fromName }, 28)}
-      <div class="c-notif-body">
-        <div class="c-notif-line">${notifLine(n)}</div>
-        ${n.preview ? `<div class="c-notif-preview">${escapeHtml(n.preview)}</div>` : ''}
-        <div class="c-notif-time">${fmtRelative(n.createdAt)}</div>
-      </div>
-    </a>
-  `).join('') : `<div class="c-notif-empty">You're all caught up.</div>`;
-  pop.innerHTML = headerHtml + `<div class="c-notif-list">${bodyHtml}</div>`;
-
-  pop.querySelectorAll('.c-notif-row').forEach((a) => {
-    a.addEventListener('click', async (e) => {
-      e.preventDefault();
-      const id = a.dataset.notif;
-      const postId = a.dataset.post;
-      const channel = a.dataset.channel;
-      try { await markNotifRead(id, { read: true }); } catch (er) {}
-      // If we're already on community, just switch channels + scroll. Else navigate.
-      if (postId) {
-        if (channel && channel !== state.activeChannel) {
-          await switchChannel(channel || 'general');
-        }
-        // Scroll to the post if it's in the live window. If not, navigate.
-        const card = document.getElementById(`post-${postId}`);
-        if (card) {
-          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          card.classList.add('c-post-flash');
-          setTimeout(() => card.classList.remove('c-post-flash'), 1500);
-        } else {
-          location.assign(`/community.html?channel=${encodeURIComponent(channel || 'general')}#post-${encodeURIComponent(postId)}`);
-        }
-      }
-      state.showingNotifs = false;
-      const pop2 = $('notif-popover');
-      if (pop2) pop2.hidden = true;
-    });
-  });
-  const markAllBtn = $('notif-mark-all');
-  if (markAllBtn) markAllBtn.addEventListener('click', async () => {
-    const ids = state.unreadNotifs.map((n) => n.id);
-    try { await markAllNotifsRead(ids); } catch (e) {}
-  });
-}
-
-function toggleNotifPopover() {
-  state.showingNotifs = !state.showingNotifs;
-  const pop = $('notif-popover');
-  if (!pop) return;
-  if (state.showingNotifs) {
-    renderNotifPopover();
-    pop.hidden = false;
-  } else {
-    pop.hidden = true;
-  }
+  tick();
 }
 
 function renderComposer() {
@@ -1050,7 +929,14 @@ async function main() {
     state.activeChannel = 'general';
   }
 
-  renderChip();
+  // Shared topbar — paints the user-chip, owns the notification bell +
+  // popover, and wires the sign-out button.
+  renderTopbar({
+    user: state.me,
+    profile: { displayName: state.me.displayName, avatarUrl: state.me.avatarUrl },
+    role: state.role,
+    currentPage: 'community'
+  });
   renderSidebar();
   renderComposer();
 
@@ -1065,13 +951,11 @@ async function main() {
   // Phase 3 — replace the polling feed with a bounded realtime listener.
   subscribeToActiveChannel();
 
-  // Phase 3 — listen for unread notifications on the current user.
-  if (state.notifUnsub) { try { state.notifUnsub(); } catch (e) {} }
-  state.notifUnsub = subscribeToUnreadNotifs(state.me.uid, (rows) => {
-    state.unreadNotifs = rows || [];
-    renderBellBadge();
-    if (state.showingNotifs) renderNotifPopover();
-  });
+  // Notification deep-link: handle existing #post-X on initial load and any
+  // hashchange that follows (e.g. clicking another notif from the bell while
+  // already on the page).
+  handleHashScroll();
+  window.addEventListener('hashchange', handleHashScroll);
 
   // Touch last-visit timestamp so the "new" badge clears.
   touchCommunityVisit().catch(() => {});
@@ -1081,7 +965,7 @@ async function main() {
   // Tear down listeners cleanly when the user leaves the page.
   window.addEventListener('beforeunload', () => {
     if (state.feedUnsub) { try { state.feedUnsub(); } catch (e) {} }
-    if (state.notifUnsub) { try { state.notifUnsub(); } catch (e) {} }
+    teardownTopbar();
   });
 }
 
