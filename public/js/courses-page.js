@@ -366,7 +366,9 @@ async function main() {
       try { profile = await getUserProfile(currentUser().uid); } catch (e) {}
     }
   } catch (e) {}
-  renderTopbar({ user: currentUser(), profile, role, currentPage: null });
+  // courses.html has its own primary nav (academy-tabs); chip carries
+  // only the bell + avatar + sign-out so we don't duplicate the nav.
+  renderTopbar({ user: currentUser(), profile, role, currentPage: null, links: [] });
 }
 
 main();

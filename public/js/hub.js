@@ -28,7 +28,9 @@ function firstName(nameOrEmail) {
 }
 
 function renderUserChip(user, role, { profile = null, hasNewCommunity = false } = {}) {
-  renderTopbar({ user, profile, role, currentPage: 'dashboard' });
+  // index.html has its own primary nav (academy-tabs); the chip should
+  // only carry the bell + avatar + sign-out so the two don't duplicate.
+  renderTopbar({ user, profile, role, currentPage: 'dashboard', links: [] });
   const badge = $('hub-community-badge');
   if (badge) badge.style.display = hasNewCommunity ? '' : 'none';
 }
