@@ -1190,10 +1190,10 @@ body {
    classes all use the `c-` prefix so they don't collide with anything else. */
 
 .c-shell {
-  max-width: 1040px;
+  max-width: 1320px;
   display: grid;
-  grid-template-columns: 220px 1fr;
-  gap: 28px;
+  grid-template-columns: 220px 1fr 280px;
+  gap: 24px;
   align-items: start;
 }
 .c-shell > #gate-msg { grid-column: 1 / -1; }
@@ -1203,10 +1203,15 @@ body {
   flex-direction: column;
   gap: 14px;
 }
+@media (max-width: 1180px) {
+  .c-shell { grid-template-columns: 220px 1fr; max-width: 1040px; }
+  .c-leaderboard { display: none; }
+}
 @media (max-width: 820px) {
   .c-shell { grid-template-columns: 1fr; gap: 16px; }
   .c-sidebar { order: 2; }
   .c-main { order: 1; }
+  .c-leaderboard { display: none; }
 }
 
 .c-avatar {
@@ -4155,3 +4160,136 @@ body.academy-course #course-workspace {
   outline: none;
   border-color: rgba(204,27,27,0.5);
 }
+
+/* ───────────────────────────────────────────────────────────────────────
+   Community leaderboard (Phase 2) — right rail with top members + the
+   caller's own level / progress bar. Level pills use a 10-step color ramp
+   from gray (Lv 1) → red (Lv 10) so rank is readable at a glance. */
+
+.c-leaderboard {
+  position: sticky;
+  top: 18px;
+  align-self: start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.c-leader-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+}
+.c-leader-self {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.c-leader-self-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+}
+.c-leader-self-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.c-leader-self-pts {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--white);
+}
+.c-leader-self-next {
+  font-size: 11px;
+  color: var(--gray-light);
+}
+.c-progress-bar {
+  height: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.c-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #FF7070 0%, var(--red) 100%);
+  transition: width 0.3s;
+}
+.c-leader-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.c-leader-row {
+  display: grid;
+  grid-template-columns: 22px 28px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--gray-light);
+  transition: background 0.12s, color 0.12s;
+}
+.c-leader-row:hover { background: rgba(255,255,255,0.04); color: var(--white); }
+.c-leader-rank {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+  color: var(--gray-mid);
+}
+.c-leader-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: var(--white);
+}
+.c-leader-points {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-light);
+}
+.c-leader-empty {
+  font-size: 12px;
+  color: var(--gray-mid);
+  padding: 12px 0;
+  text-align: center;
+}
+
+.c-level-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.05);
+  color: var(--gray-light);
+  white-space: nowrap;
+}
+.c-level-1  { color: #B8B8B8; }
+.c-level-2  { color: #C5BC9D; border-color: rgba(197,188,157,0.30); }
+.c-level-3  { color: #D9C77A; border-color: rgba(217,199,122,0.32); }
+.c-level-4  { color: #E5B95F; border-color: rgba(229,185,95,0.34); }
+.c-level-5  { color: #EFA050; border-color: rgba(239,160,80,0.36); background: rgba(239,160,80,0.06); }
+.c-level-6  { color: #F38560; border-color: rgba(243,133,96,0.38); background: rgba(243,133,96,0.07); }
+.c-level-7  { color: #F36F58; border-color: rgba(243,111,88,0.42); background: rgba(243,111,88,0.08); }
+.c-level-8  { color: #EE5450; border-color: rgba(238,84,80,0.45); background: rgba(238,84,80,0.10); }
+.c-level-9  { color: #E0383E; border-color: rgba(224,56,62,0.50); background: rgba(224,56,62,0.12); }
+.c-level-10 { color: #FFD56F; border-color: rgba(255,213,111,0.55); background: rgba(204,27,27,0.18); }
+

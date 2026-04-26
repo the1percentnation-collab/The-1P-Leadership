@@ -2,7 +2,7 @@
 // Designed to match the existing `store.js` / `auth.js` style: CDN modular Firebase imports,
 // no bundler, graceful degradation when offline.
 
-import { app, auth, db, firebaseReady } from './firebase.js';
+import { app, auth, db, functions, firebaseReady } from './firebase.js';
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
   collection, query, where, orderBy, limit, startAfter, getDocs,
@@ -11,6 +11,7 @@ import {
 import {
   getStorage, ref as storageRef, uploadBytes, getDownloadURL
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 // ────────────────────────────────────────────────────────────────
 // Storage (lazy, so pages that don't need uploads don't pay the cost)
@@ -396,6 +397,70 @@ export async function setPostPinned(postId, pinned, channelKey) {
       // out-of-sync until an owner reconciles. Acceptable for v1.
       console.warn('[community] channel pin mirror failed', e);
     }
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
+// Leaderboard, points & levels (Phase 2)
+//
+// Levels are derived purely client-side from a points lookup table — never
+// written to Firestore. The leaderboard query goes through a callable Cloud
+// Function so we can project safe fields (uid/displayName/avatar/points)
+// without loosening the strict `users` list rule.
+// ────────────────────────────────────────────────────────────────
+
+// Threshold[i] is the points needed to reach level (i+1). 10 levels total.
+export const LEVEL_THRESHOLDS = [0, 5, 50, 150, 400, 1000, 2500, 6000, 12000, 25000];
+
+export function levelFromPoints(points) {
+  const p = Number(points) || 0;
+  let lvl = 1;
+  for (let i = 0; i < LEVEL_THRESHOLDS.length; i++) {
+    if (p >= LEVEL_THRESHOLDS[i]) lvl = i + 1;
+  }
+  return lvl;
+}
+
+export function levelProgress(points) {
+  const p = Number(points) || 0;
+  const lvl = levelFromPoints(p);
+  const idx = lvl - 1;
+  const floor = LEVEL_THRESHOLDS[idx];
+  const ceiling = LEVEL_THRESHOLDS[idx + 1];
+  if (ceiling == null) {
+    return { level: lvl, points: p, floor, ceiling: null, pct: 100, toNext: 0 };
+  }
+  const pct = Math.max(0, Math.min(100, Math.round(((p - floor) / (ceiling - floor)) * 100)));
+  return { level: lvl, points: p, floor, ceiling, pct, toNext: Math.max(0, ceiling - p) };
+}
+
+export async function getLeaderboard({ scope = 'global', limit: lim = 20 } = {}) {
+  if (!firebaseReady || !functions) return { rows: [] };
+  try {
+    const call = httpsCallable(functions, 'getLeaderboard');
+    const res = await call({ scope, limit: lim });
+    const rows = (res.data && res.data.rows) || [];
+    // Hydrate level locally so the server doesn't need to know thresholds.
+    return {
+      rows: rows.map((r) => ({ ...r, level: levelFromPoints(r.statsPoints) }))
+    };
+  } catch (e) {
+    console.warn('[community] getLeaderboard failed', e);
+    return { rows: [] };
+  }
+}
+
+export async function getMyStats() {
+  if (!firebaseReady || !auth || !auth.currentUser) return null;
+  try {
+    const snap = await getDoc(doc(db, 'users', auth.currentUser.uid, 'stats', 'aggregate'));
+    if (!snap.exists()) {
+      return { points: 0, postCount: 0, commentCount: 0, likesReceived: 0, likesGiven: 0, level: 1 };
+    }
+    const data = snap.data() || {};
+    return { ...data, level: levelFromPoints(data.points || 0) };
+  } catch (e) {
+    return null;
   }
 }
 

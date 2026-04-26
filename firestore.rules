@@ -41,14 +41,22 @@ service cloud.firestore {
       // Only the owner can list the full users collection. Admins read their roster via
       // companies/{cid}/members/{uid} (mirrored by the acceptInvite Cloud Function).
       // Owner tooling (owner.html) also uses this to look up uid-by-email.
+      // Leaderboard reads happen server-side via the `getLeaderboard` callable.
       allow list: if isOwner();
 
       // Write:
       //  - owner: always
       //  - self: can create/update own doc (role/companyId writes by self are allowed at signup;
       //          the Cloud Function enforces invite-driven role/companyId writes)
-      allow create: if isOwner() || isSelf(uid);
-      allow update: if isOwner() || isSelf(uid);
+      //          BUT self may not write the leaderboard mirror fields; those are server-only.
+      allow create: if isOwner() || (isSelf(uid)
+                     && (!('statsPoints' in request.resource.data)
+                         || request.resource.data.statsPoints == 0)
+                     && (!('statsWeekPoints' in request.resource.data)
+                         || request.resource.data.statsWeekPoints == 0));
+      allow update: if isOwner() || (isSelf(uid)
+                     && request.resource.data.get('statsPoints', 0) == resource.data.get('statsPoints', 0)
+                     && request.resource.data.get('statsWeekPoints', 0) == resource.data.get('statsWeekPoints', 0));
       allow delete: if isOwner();
 
       // users/{uid}/progress/{moduleId} — STRICTLY private to the user (and owner).
@@ -59,6 +67,15 @@ service cloud.firestore {
       // users/{uid}/capstone — same.
       match /capstone/{docId=**} {
         allow read, write: if isOwner() || isSelf(uid);
+      }
+
+      // users/{uid}/stats/{statId} (Phase 2 leaderboard) — server-only writes.
+      // Reads are permitted to any signed-in user so client-side leaderboard
+      // panels can hydrate level badges via the getLeaderboard callable's
+      // returned uids. (The callable itself uses Admin SDK and bypasses rules.)
+      match /stats/{statId} {
+        allow read: if isSignedIn();
+        allow write: if false;
       }
     }
 

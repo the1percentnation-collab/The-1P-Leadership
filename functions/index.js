@@ -5,7 +5,7 @@
 // Deploy: `npx firebase-tools deploy --only functions --project the-1p-leadership`
 
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
@@ -915,3 +915,319 @@ exports.sendgridEventWebhook = onRequest(
     }
   }
 );
+
+// ────────────────────────────────────────────────────────────────
+// Phase 2 — Community leaderboard, points & levels.
+//
+// Three Firestore triggers (post create, comment create, like write) maintain
+// a per-user stats subcollection at users/{uid}/stats/aggregate, plus mirror
+// fields `statsPoints` / `statsWeekPoints` on the parent user doc so the
+// leaderboard query can `orderBy('statsPoints')` without a collectionGroup.
+//
+// Points formula:
+//   - post created      +5 points (+10 if category=='wins')
+//   - comment created   +1 point
+//   - like received     +2 points to the post author
+//   - like given        0 points (vanity stat)
+//
+// Levels are computed client-side from `points` — never written to Firestore.
+//
+// Weekly reset is "lazy": each trigger compares the stat doc's
+// `weekStartedAt` to the current Monday-00:00-UTC. If older, weekPoints
+// resets to the current delta; otherwise it increments. No Pub/Sub needed.
+// ────────────────────────────────────────────────────────────────
+
+const POINTS = {
+  POST: 5,
+  POST_WIN: 10,
+  COMMENT: 1,
+  LIKE_RECEIVED: 2
+};
+
+function currentWeekStartUTC() {
+  // Monday 00:00:00.000 UTC of the current week.
+  const now = new Date();
+  const day = now.getUTCDay(); // 0=Sun..6=Sat
+  const offsetToMonday = (day + 6) % 7; // Mon=0, Tue=1, .., Sun=6
+  const monday = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() - offsetToMonday,
+    0, 0, 0, 0
+  ));
+  return monday;
+}
+
+/**
+ * Apply a points delta to a user's stat aggregate doc + mirror fields on the
+ * parent user doc, with lazy week-roll. Also bumps the named counter (e.g.
+ * 'postCount', 'commentCount', 'likesReceived') by `counterDelta`.
+ *
+ * Single transaction for read-then-write atomicity. Cheap (1 read + 2 writes).
+ */
+async function applyPointsDelta(db, uid, pointsDelta, counters) {
+  if (!uid) return;
+  const userRef = db.collection('users').doc(uid);
+  const statRef = userRef.collection('stats').doc('aggregate');
+  const weekStart = currentWeekStartUTC();
+
+  await db.runTransaction(async (tx) => {
+    const [statSnap, userSnap] = await Promise.all([tx.get(statRef), tx.get(userRef)]);
+    const stat = statSnap.exists ? statSnap.data() : {};
+    const prevWeekStart = stat.weekStartedAt && stat.weekStartedAt.toMillis
+      ? new Date(stat.weekStartedAt.toMillis())
+      : null;
+    const sameWeek = prevWeekStart && prevWeekStart.getTime() >= weekStart.getTime();
+
+    const nextPoints = Math.max(0, (stat.points || 0) + pointsDelta);
+    const nextWeekPoints = sameWeek
+      ? Math.max(0, (stat.weekPoints || 0) + pointsDelta)
+      : Math.max(0, pointsDelta);
+
+    const statPatch = {
+      points: nextPoints,
+      weekPoints: nextWeekPoints,
+      weekStartedAt: admin.firestore.Timestamp.fromDate(weekStart),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    if (counters) {
+      Object.keys(counters).forEach((k) => {
+        statPatch[k] = Math.max(0, (stat[k] || 0) + counters[k]);
+      });
+    }
+    tx.set(statRef, statPatch, { merge: true });
+
+    // Mirror onto user doc so the leaderboard query can orderBy without a
+    // collectionGroup on the subcollection. Only write if the user doc exists
+    // (otherwise we'd create a doc lacking auth-bound fields like email).
+    if (userSnap.exists) {
+      tx.set(userRef, {
+        statsPoints: nextPoints,
+        statsWeekPoints: nextWeekPoints
+      }, { merge: true });
+    }
+  });
+}
+
+/**
+ * onPostCreated — award the author for posting. +5 base, +10 for #wins.
+ * Reads: 0 (uses event.data.data()). Writes: 1 stat + 1 mirror.
+ */
+exports.onPostCreated = onDocumentCreated(
+  { document: 'posts/{postId}' },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const post = snap.data() || {};
+    const author = post.authorUid;
+    if (!author) return;
+
+    const isWin = post.category === 'wins';
+    const delta = isWin ? POINTS.POST_WIN : POINTS.POST;
+    try {
+      await applyPointsDelta(admin.firestore(), author, delta, { postCount: 1 });
+    } catch (err) {
+      console.error('[onPostCreated] points apply failed:', err && err.message);
+    }
+  }
+);
+
+/**
+ * onCommentCreated — award the commenter +1 point.
+ */
+exports.onCommentCreated = onDocumentCreated(
+  { document: 'posts/{postId}/comments/{commentId}' },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const comment = snap.data() || {};
+    const author = comment.authorUid;
+    if (!author) return;
+    try {
+      await applyPointsDelta(admin.firestore(), author, POINTS.COMMENT, { commentCount: 1 });
+    } catch (err) {
+      console.error('[onCommentCreated] points apply failed:', err && err.message);
+    }
+  }
+);
+
+/**
+ * onLikeWritten — track likes given + likes received.
+ *
+ * On create: liker's likesGiven++; post author's likesReceived++ AND +2 points.
+ * On delete: reverse.
+ *
+ * Reads: 1 (the parent post, to find authorUid). Writes: up to 4
+ * (2 stat docs + 2 mirrors). Skipped if liker == author (defensive — UX
+ * shouldn't allow it but rules don't forbid it explicitly).
+ */
+exports.onLikeWritten = onDocumentWritten(
+  { document: 'posts/{postId}/likes/{uid}' },
+  async (event) => {
+    const beforeExists = event.data && event.data.before && event.data.before.exists;
+    const afterExists = event.data && event.data.after && event.data.after.exists;
+    if (beforeExists === afterExists) return; // no transition (shouldn't happen for create-only ops)
+
+    const liker = event.params.uid;
+    const postId = event.params.postId;
+    if (!liker || !postId) return;
+
+    const isLikeAdded = !beforeExists && afterExists;
+    const sign = isLikeAdded ? 1 : -1;
+
+    const db = admin.firestore();
+    let postAuthor = null;
+    try {
+      const postSnap = await db.collection('posts').doc(postId).get();
+      if (postSnap.exists) postAuthor = postSnap.data().authorUid || null;
+    } catch (err) {
+      console.warn('[onLikeWritten] post fetch failed:', err && err.message);
+    }
+
+    try {
+      await applyPointsDelta(db, liker, 0, { likesGiven: sign });
+    } catch (err) {
+      console.error('[onLikeWritten] liker stat update failed:', err && err.message);
+    }
+
+    if (postAuthor && postAuthor !== liker) {
+      try {
+        await applyPointsDelta(
+          db,
+          postAuthor,
+          sign * POINTS.LIKE_RECEIVED,
+          { likesReceived: sign }
+        );
+      } catch (err) {
+        console.error('[onLikeWritten] author stat update failed:', err && err.message);
+      }
+    }
+  }
+);
+
+/**
+ * getLeaderboard({ scope='global'|'company', limit=20 }) — callable.
+ *
+ * Returns the top N users by all-time `statsPoints`. Server-side because the
+ * `users` collection has `allow list: if isOwner()` — going through Admin SDK
+ * lets us project ONLY the safe fields (uid, displayName, avatarUrl,
+ * statsPoints, statsWeekPoints, level) without leaking emails / companyIds.
+ *
+ * scope='company' restricts to caller's companyId. Owner sees global.
+ */
+exports.getLeaderboard = onCall(async (request) => {
+  const callerUid = request.auth && request.auth.uid;
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const data = request.data || {};
+  const scope = data.scope === 'company' ? 'company' : 'global';
+  const lim = Math.max(1, Math.min(50, Number(data.limit) || 20));
+
+  const db = admin.firestore();
+
+  // Resolve caller context for company scoping.
+  let callerCompanyId = null;
+  try {
+    const meSnap = await db.collection('users').doc(callerUid).get();
+    if (meSnap.exists) callerCompanyId = meSnap.data().companyId || null;
+  } catch (e) { /* best-effort */ }
+
+  let q;
+  if (scope === 'company' && callerCompanyId) {
+    q = db.collection('users')
+      .where('companyId', '==', callerCompanyId)
+      .orderBy('statsPoints', 'desc')
+      .limit(lim);
+  } else {
+    q = db.collection('users')
+      .orderBy('statsPoints', 'desc')
+      .limit(lim);
+  }
+
+  let snap;
+  try {
+    snap = await q.get();
+  } catch (err) {
+    console.error('[getLeaderboard] query failed:', err && err.message);
+    throw new HttpsError('internal', 'Could not load leaderboard.');
+  }
+
+  const rows = snap.docs.map((d) => {
+    const u = d.data() || {};
+    return {
+      uid: d.id,
+      displayName: u.displayName || u.email || 'Unknown',
+      avatarUrl: u.avatarUrl || null,
+      statsPoints: Number(u.statsPoints || 0),
+      statsWeekPoints: Number(u.statsWeekPoints || 0)
+    };
+  }).filter((r) => r.statsPoints > 0); // Hide users who never engaged.
+
+  return { ok: true, scope, rows };
+});
+
+/**
+ * recomputeUserStats({ uid }) — owner-only callable. Repair / backfill path.
+ *
+ * Paginates the target user's posts + likes-received and rewrites the stat
+ * aggregate from scratch. Comments aren't easily countable across all parent
+ * posts without a collectionGroup query, so commentCount is reset to 0 — the
+ * trigger will re-accumulate going forward. Acceptable for v1.
+ */
+exports.recomputeUserStats = onCall(async (request) => {
+  const isOwnerClaim = request.auth && request.auth.token && request.auth.token.role === 'owner';
+  if (!isOwnerClaim) throw new HttpsError('permission-denied', 'Owner only.');
+
+  const uid = (request.data && request.data.uid || '').toString().trim();
+  if (!uid) throw new HttpsError('invalid-argument', 'uid is required.');
+
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+  const statRef = userRef.collection('stats').doc('aggregate');
+
+  // Posts authored by this user — drives postCount + base post points.
+  let postCount = 0;
+  let winsCount = 0;
+  let likesReceived = 0;
+  const authoredPostIds = [];
+  try {
+    const postsSnap = await db.collection('posts').where('authorUid', '==', uid).get();
+    postsSnap.forEach((d) => {
+      const p = d.data() || {};
+      postCount += 1;
+      if (p.category === 'wins') winsCount += 1;
+      likesReceived += Number(p.likeCount || 0);
+      authoredPostIds.push(d.id);
+    });
+  } catch (err) {
+    console.error('[recomputeUserStats] posts query failed:', err && err.message);
+    throw new HttpsError('internal', 'Could not read posts.');
+  }
+
+  const points =
+    (postCount - winsCount) * POINTS.POST +
+    winsCount * POINTS.POST_WIN +
+    likesReceived * POINTS.LIKE_RECEIVED;
+
+  const weekStart = currentWeekStartUTC();
+
+  await db.runTransaction(async (tx) => {
+    tx.set(statRef, {
+      points,
+      postCount,
+      commentCount: 0,
+      likesReceived,
+      likesGiven: 0,
+      weekPoints: 0,
+      weekStartedAt: admin.firestore.Timestamp.fromDate(weekStart),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    tx.set(userRef, {
+      statsPoints: points,
+      statsWeekPoints: 0
+    }, { merge: true });
+  });
+
+  return { ok: true, uid, points, postCount, winsCount, likesReceived };
+});
+

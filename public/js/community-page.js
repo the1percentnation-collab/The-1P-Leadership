@@ -8,6 +8,7 @@ import {
   listComments, addComment, deleteComment,
   getUserProfile, touchCommunityVisit,
   listChannels, getPinnedPostForChannel, setPostPinned, CHANNEL_KEYS,
+  getLeaderboard, getMyStats, levelFromPoints, levelProgress,
   avatarHtml, fmtRelative, escapeHtml, linkify
 } from './community.js';
 
@@ -31,7 +32,11 @@ const state = {
   // Phase 1 — channels
   channels: [],
   activeChannel: urlChannel() || 'general',
-  pinnedPost: null
+  pinnedPost: null,
+  // Phase 2 — leaderboard, points, levels
+  leaderboard: [],
+  authorLevels: new Map(),
+  myStats: null
 };
 
 function renderChip() {
@@ -159,6 +164,65 @@ function renderChannelHeader() {
   `;
 }
 
+function renderLeaderboard() {
+  const root = $('leaderboard');
+  if (!root) return;
+  const rows = state.leaderboard;
+  const myStats = state.myStats;
+  const myStatsHtml = myStats ? (() => {
+    const prog = levelProgress(myStats.points || 0);
+    const ceiling = prog.ceiling != null ? prog.ceiling : prog.points;
+    return `
+      <div class="c-leader-self">
+        <div class="c-leader-self-eyebrow">Your level</div>
+        <div class="c-leader-self-row">
+          <span class="c-level-badge c-level-${Math.min(10, prog.level)}">Lv ${prog.level}</span>
+          <span class="c-leader-self-pts">${prog.points} pts</span>
+        </div>
+        <div class="c-progress-bar"><div class="c-progress-fill" style="width:${prog.pct}%"></div></div>
+        <div class="c-leader-self-next">
+          ${prog.ceiling != null
+            ? `${prog.toNext} pts to Lv ${prog.level + 1}`
+            : `Max level reached`}
+        </div>
+      </div>
+    `;
+  })() : '';
+
+  const rowsHtml = rows.length
+    ? rows.slice(0, 10).map((r, i) => `
+        <a class="c-leader-row" href="/profile.html?uid=${encodeURIComponent(r.uid)}">
+          <span class="c-leader-rank">${i + 1}</span>
+          ${avatarHtml({ avatarUrl: r.avatarUrl, displayName: r.displayName }, 28)}
+          <span class="c-leader-name">${escapeHtml(r.displayName || 'Unknown')}</span>
+          <span class="c-level-badge c-level-${Math.min(10, r.level)}">Lv ${r.level}</span>
+          <span class="c-leader-points">${r.statsPoints}</span>
+        </a>
+      `).join('')
+    : `<div class="c-leader-empty">No engagement yet — be the first.</div>`;
+
+  root.innerHTML = `
+    <div class="c-leader-eyebrow">Leaderboard</div>
+    ${myStatsHtml}
+    <div class="c-leader-list">${rowsHtml}</div>
+  `;
+}
+
+async function refreshLeaderboard() {
+  // Company-scoped if the caller has a companyId; otherwise global.
+  const scope = state.companyId ? 'company' : 'global';
+  const [board, mine] = await Promise.all([
+    getLeaderboard({ scope, limit: 50 }).catch(() => ({ rows: [] })),
+    getMyStats().catch(() => null)
+  ]);
+  state.leaderboard = board.rows || [];
+  state.myStats = mine;
+  // Hydrate the author-level cache so post cards can show level pills.
+  state.authorLevels = new Map();
+  state.leaderboard.forEach((r) => state.authorLevels.set(r.uid, r.level));
+  renderLeaderboard();
+}
+
 async function switchChannel(nextKey) {
   state.activeChannel = nextKey;
   state.posts = [];
@@ -211,6 +275,9 @@ async function submitPost() {
     $('composer-file').value = '';
     $('composer-filename').textContent = '';
     $('composer-preview').innerHTML = '';
+    // Stat trigger fires async — schedule a refresh so the user sees their
+    // points / level update without a manual reload. Cheap (one callable).
+    setTimeout(() => { refreshLeaderboard().catch(() => {}); }, 2500);
     // If the user posted into a different channel than the one they're viewing,
     // jump to that channel so they see their post immediately.
     if (chosenCategory !== state.activeChannel) {
@@ -315,6 +382,19 @@ function roleBadgeHtml(role) {
   return '';
 }
 
+// Level pill — color-shaded by level. Only renders if we have a cached level
+// for the given uid (i.e. they appear in the loaded leaderboard or it's the
+// current user). Authors outside the top-N render with no pill, by design.
+function levelBadgeHtml(uid) {
+  if (!uid) return '';
+  let lvl = state.authorLevels.get(uid);
+  if (!lvl && state.me && uid === state.me.uid && state.myStats) {
+    lvl = state.myStats.level;
+  }
+  if (!lvl || lvl < 1) return '';
+  return `<span class="c-level-badge c-level-${Math.min(10, lvl)}" title="Level ${lvl}">Lv ${lvl}</span>`;
+}
+
 function scopeBadgeHtml(post) {
   if (post.companyId == null) {
     return `<span class="c-scope-badge c-scope-global">Global</span>`;
@@ -344,7 +424,7 @@ function postCardHtml(p) {
         <a class="c-post-author" href="/profile.html?uid=${encodeURIComponent(p.authorUid)}">
           ${avatarHtml({ authorAvatar: p.authorAvatar, authorName: p.authorName }, 40)}
           <div class="c-post-who">
-            <div class="c-post-name">${escapeHtml(p.authorName || 'Unknown')} ${roleBadgeHtml(p.authorRole)}</div>
+            <div class="c-post-name">${escapeHtml(p.authorName || 'Unknown')} ${roleBadgeHtml(p.authorRole)} ${levelBadgeHtml(p.authorUid)}</div>
             <div class="c-post-meta">${fmtRelative(p.createdAt)} · ${scopeBadgeHtml(p)} ${pinnedTag} ${channelTag}</div>
           </div>
         </a>
@@ -569,6 +649,10 @@ async function main() {
   // Pinned post for the active channel (best-effort; skipped silently if missing).
   state.pinnedPost = await getPinnedPostForChannel(state.activeChannel).catch(() => null);
   renderChannelHeader();
+
+  // Phase 2 — kick off leaderboard hydration in parallel with the feed so it
+  // doesn't block initial paint. Re-render once it lands.
+  refreshLeaderboard().catch(() => {});
 
   await loadMore(true);
 
