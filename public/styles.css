@@ -4204,9 +4204,6 @@ body.academy-course #course-workspace {
    from gray (Lv 1) → red (Lv 10) so rank is readable at a glance. */
 
 .c-leaderboard {
-  position: sticky;
-  top: 18px;
-  align-self: start;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -4852,6 +4849,198 @@ body.academy-course #course-workspace {
   color: var(--gray-mid);
   line-height: 1.45;
 }
+
+/* ───────────────────────────────────────────────────────────────────────
+   Right rail wrapper — stacks the group info card on top of the
+   leaderboard. Replaces the previous "leaderboard is the grid item"
+   layout. The wrapper holds the sticky/align rules; the inner cards
+   are pure visual blocks. */
+
+.c-rightrail {
+  position: sticky;
+  top: 18px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+@media (max-width: 1180px) {
+  .c-rightrail { display: none; }
+}
+
+/* ───────────────────────────────────────────────────────────────────────
+   Group info card — community identity block at the top of the right
+   rail. Banner with monogram, name + private-community line, brief
+   description, 3-cell stat row, member avatar strip, big CTA button.
+   Modeled after the reference Skool screenshot. */
+
+.c-group-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.c-group-card-banner {
+  height: 90px;
+  background:
+    radial-gradient(ellipse at 20% 80%, rgba(204,27,27,0.45) 0%, transparent 60%),
+    linear-gradient(135deg, #1a1a1a 0%, #2a1212 60%, #1a0808 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.c-group-card-monogram {
+  font-family: var(--font-display, var(--font-sans));
+  font-weight: 700;
+  font-size: 38px;
+  letter-spacing: 0.04em;
+  color: var(--white);
+  text-shadow: 0 2px 12px rgba(0,0,0,0.55);
+}
+.c-group-card-monogram::after {
+  content: '';
+  display: block;
+  width: 32px;
+  height: 2px;
+  background: var(--red);
+  margin: 4px auto 0;
+}
+.c-group-card-body {
+  padding: 14px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.c-group-card-title {
+  font-family: var(--font-display, var(--font-sans));
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--white);
+  line-height: 1.2;
+}
+.c-group-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--gray-mid);
+}
+.c-group-card-lock { font-size: 11px; }
+.c-group-card-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--gray-light);
+  margin: 0;
+}
+.c-group-card-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0;
+}
+.c-group-card-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.c-group-card-stat-value {
+  font-family: var(--font-display, var(--font-sans));
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--white);
+  line-height: 1;
+}
+.c-group-card-stat-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+}
+.c-group-card-avatars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.c-group-card-avatar {
+  display: inline-flex;
+  text-decoration: none;
+  border-radius: 50%;
+  outline: 2px solid transparent;
+  transition: outline-color 0.12s, transform 0.12s;
+}
+.c-group-card-avatar:hover {
+  outline-color: rgba(204,27,27,0.55);
+  transform: translateY(-1px);
+}
+.c-group-card-cta {
+  margin-top: 4px;
+  text-align: center;
+  text-decoration: none;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ───────────────────────────────────────────────────────────────────────
+   Tabs row — Discussion / Leaderboard / Members / About. Skool-style
+   underlined active state. */
+
+.c-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: -2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.c-tabs::-webkit-scrollbar { display: none; }
+.c-tab {
+  background: transparent;
+  border: 0;
+  padding: 10px 16px;
+  font-size: 14px;
+  color: var(--gray-light);
+  cursor: pointer;
+  position: relative;
+  white-space: nowrap;
+  transition: color 0.12s;
+}
+.c-tab:hover { color: var(--white); }
+.c-tab.is-active { color: var(--white); font-weight: 500; }
+.c-tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--red);
+  border-radius: 2px;
+}
+@media (max-width: 600px) {
+  .c-tab { padding: 9px 12px; font-size: 13px; }
+}
+
+/* Tighten the hero a touch so the right-rail group card has visual room
+   to breathe without the page feeling top-heavy. */
+.c-dashboard-hero { padding: 18px 22px; }
+.c-hero-title { font-size: 22px; }
+@media (max-width: 600px) {
+  .c-dashboard-hero { padding: 14px 14px; }
+  .c-hero-title { font-size: 19px; }
+}
+
 
 
 

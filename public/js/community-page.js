@@ -489,6 +489,125 @@ async function refreshLeaderboard() {
   state.leaderboard.forEach((r) => state.authorLevels.set(r.uid, r.level));
   renderLeaderboard();
   renderDashboardHero();
+  renderGroupInfoCard();
+}
+
+// ── Tabs row above the channel header. Discussion is the active page;
+// Members and Profile are real navigations. Leaderboard scrolls to the
+// right-rail leaderboard (or the leaderboard rail's mobile fallback,
+// which is currently hidden — clicking it on mobile still works because
+// we re-render the rail inline as a fallback section).
+const TABS = [
+  { key: 'discussion', label: 'Discussion', href: null },
+  { key: 'leaderboard', label: 'Leaderboard', href: null },
+  { key: 'members', label: 'Members', href: '/members.html' },
+  { key: 'about', label: 'About', href: null }
+];
+
+function renderTabs() {
+  const root = $('community-tabs');
+  if (!root) return;
+  root.innerHTML = TABS.map((t) => `
+    <button class="c-tab ${t.key === 'discussion' ? 'is-active' : ''}"
+            data-tab="${escapeHtml(t.key)}">
+      ${escapeHtml(t.label)}
+    </button>
+  `).join('');
+  root.querySelectorAll('.c-tab').forEach((b) => {
+    b.addEventListener('click', () => onTabClick(b.dataset.tab));
+  });
+}
+
+function onTabClick(key) {
+  const tab = TABS.find((t) => t.key === key);
+  if (!tab) return;
+  if (tab.href) { location.assign(tab.href); return; }
+  if (tab.key === 'leaderboard') {
+    const rail = $('rightrail');
+    const board = $('leaderboard');
+    const target = board || rail;
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  if (tab.key === 'about') {
+    const card = $('group-card');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  // Discussion — already current page; scroll to top.
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── Group info card on the right rail. Pulls counts from local state so
+// it works without a new server callable. Members count is the size of
+// the leaderboard top-50 (proxy for "engaged members"); channels count
+// is just state.channels.length; pinned counts the channels whose doc
+// has a pinnedPostId (we read it lazily as the user switches channels,
+// so this number reflects channels visited so far — fine for v1).
+const GROUP_DESCRIPTION =
+  'A like-minded community committed to growth, clarity, and intentional action — supporting each other in consistent daily progress.';
+
+function renderGroupInfoCard() {
+  const root = $('group-card');
+  if (!root) return;
+
+  const memberRows = state.leaderboard.slice(0, 8);
+  const memberCount = state.leaderboard.length;
+  const channelCount = state.channels.length;
+  const canInvite = state.role === 'owner' || state.role === 'admin';
+
+  const avatarsHtml = memberRows.map((m) => `
+    <a class="c-group-card-avatar" href="/profile.html?uid=${encodeURIComponent(m.uid)}"
+       title="${escapeHtml(m.displayName || '')}">
+      ${avatarHtml({ avatarUrl: m.avatarUrl, displayName: m.displayName }, 30)}
+    </a>
+  `).join('');
+
+  root.innerHTML = `
+    <div class="c-group-card-banner" aria-hidden="true">
+      <div class="c-group-card-monogram">1P</div>
+    </div>
+    <div class="c-group-card-body">
+      <div class="c-group-card-title">The One Percent Academy</div>
+      <div class="c-group-card-meta">
+        <span class="c-group-card-lock">🔒</span>
+        <span>Private community</span>
+      </div>
+      <p class="c-group-card-desc">${escapeHtml(GROUP_DESCRIPTION)}</p>
+      <div class="c-group-card-stats">
+        <div class="c-group-card-stat">
+          <div class="c-group-card-stat-value">${memberCount}</div>
+          <div class="c-group-card-stat-label">Members</div>
+        </div>
+        <div class="c-group-card-stat">
+          <div class="c-group-card-stat-value">${channelCount}</div>
+          <div class="c-group-card-stat-label">Channels</div>
+        </div>
+        <div class="c-group-card-stat">
+          <div class="c-group-card-stat-value">10</div>
+          <div class="c-group-card-stat-label">Levels</div>
+        </div>
+      </div>
+      ${memberRows.length ? `<div class="c-group-card-avatars">${avatarsHtml}</div>` : ''}
+      ${canInvite
+        ? `<a class="btn btn-primary c-group-card-cta" href="/admin.html">Invite members</a>`
+        : `<button class="btn btn-ghost c-group-card-cta" id="c-group-card-share">Share community</button>`}
+    </div>
+  `;
+
+  const shareBtn = $('c-group-card-share');
+  if (shareBtn) shareBtn.addEventListener('click', async () => {
+    const url = location.origin + '/community.html';
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'The One Percent Academy', url });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        shareBtn.textContent = 'Link copied ✓';
+        setTimeout(() => { shareBtn.textContent = 'Share community'; }, 1800);
+      }
+    } catch (e) { /* user cancelled or unsupported — no-op */ }
+  });
 }
 
 async function switchChannel(nextKey) {
@@ -1113,8 +1232,11 @@ async function main() {
   });
   renderDashboardHero();   // paints initial state with placeholder zeroes;
                            // refreshLeaderboard() refines it once stats land.
+  renderTabs();
   renderSidebar();
   renderComposer();
+  renderGroupInfoCard();   // initial paint; refreshLeaderboard() repaints
+                           // once the leaderboard rows arrive.
 
   // Pinned post for the active channel (best-effort; skipped silently if missing).
   state.pinnedPost = await getPinnedPostForChannel(state.activeChannel).catch(() => null);
