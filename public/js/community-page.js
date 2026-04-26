@@ -8,7 +8,7 @@ import {
   listPosts, createPost, deletePost, toggleLike, hasLiked,
   listComments, addComment, deleteComment,
   getUserProfile, touchCommunityVisit,
-  listChannels, getPinnedPostForChannel, setPostPinned, CHANNEL_KEYS,
+  listChannels, getPinnedPostForChannel, setPostPinned, createChannelDoc, CHANNEL_KEYS,
   getLeaderboard, getMyStats, levelFromPoints, levelProgress,
   subscribeToFeed, searchMembers, renderTextWithMentions,
   avatarHtml, fmtRelative, escapeHtml, linkify
@@ -264,9 +264,15 @@ function renderSidebar() {
       <span class="c-channel-name">${escapeHtml(c.name)}</span>
     </a>
   `).join('');
+  // Owner-only "+ Add channel" footer. Rules also enforce owner-only writes,
+  // so non-owners can't escalate by injecting the button via the console.
+  const addChannelBtn = state.role === 'owner'
+    ? `<button class="c-channel-add" id="c-channel-add">+ Add channel</button>`
+    : '';
   sidebar.innerHTML = `
     <div class="c-sidebar-eyebrow">Channels</div>
     <nav class="c-channel-list">${items}</nav>
+    ${addChannelBtn}
   `;
   sidebar.querySelectorAll('.c-channel-link').forEach((a) => {
     a.addEventListener('click', (ev) => {
@@ -276,7 +282,100 @@ function renderSidebar() {
       switchChannel(next);
     });
   });
+  const addBtn = $('c-channel-add');
+  if (addBtn) addBtn.addEventListener('click', openAddChannelModal);
   renderChannelChips();
+}
+
+// Owner-only modal for creating a new channel. Validates name + emoji
+// + description, then writes via createChannelDoc(). On success refreshes
+// the channels cache, repaints the sidebar, and switches to the new
+// channel so the owner sees their work.
+function openAddChannelModal() {
+  if (document.getElementById('c-add-channel-modal')) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'c-modal-overlay';
+  overlay.id = 'c-add-channel-modal';
+  overlay.innerHTML = `
+    <div class="c-modal" role="dialog" aria-modal="true" aria-labelledby="c-add-channel-title">
+      <button class="c-modal-close" id="c-add-channel-close" aria-label="Close">✕</button>
+      <h2 id="c-add-channel-title" class="c-modal-title">Add channel</h2>
+      <p class="c-modal-sub">Channels group conversations. The key in the URL auto-derives from the name.</p>
+      <div class="c-modal-body">
+        <label class="c-invite-label" for="c-ch-emoji">Emoji</label>
+        <input id="c-ch-emoji" class="c-ch-input" type="text" maxlength="4" value="💬" placeholder="💬">
+
+        <label class="c-invite-label" for="c-ch-name">Name</label>
+        <input id="c-ch-name" class="c-ch-input" type="text" maxlength="40" placeholder="e.g. Resources">
+
+        <label class="c-invite-label" for="c-ch-desc">Description (optional)</label>
+        <textarea id="c-ch-desc" class="c-ch-input" rows="2" maxlength="200" placeholder="What belongs in this channel?"></textarea>
+
+        <div class="c-ch-keyhint">URL: <span id="c-ch-keyhint-val">/community.html?channel=…</span></div>
+
+        <div class="c-invite-actions">
+          <button class="btn btn-primary" id="c-ch-create">Create channel</button>
+          <button class="btn btn-ghost" id="c-ch-cancel">Cancel</button>
+        </div>
+        <div class="auth-error" id="c-ch-err" style="display:none;"></div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.getElementById('c-add-channel-close').addEventListener('click', close);
+  document.getElementById('c-ch-cancel').addEventListener('click', close);
+
+  const nameInput = document.getElementById('c-ch-name');
+  const keyHint = document.getElementById('c-ch-keyhint-val');
+  nameInput.addEventListener('input', () => {
+    const slug = simpleSlug(nameInput.value);
+    keyHint.textContent = slug
+      ? `/community.html?channel=${slug}`
+      : '/community.html?channel=…';
+  });
+  setTimeout(() => nameInput.focus(), 0);
+
+  document.getElementById('c-ch-create').addEventListener('click', async () => {
+    const errEl = document.getElementById('c-ch-err');
+    errEl.style.display = 'none';
+    const name = nameInput.value.trim();
+    const emoji = document.getElementById('c-ch-emoji').value.trim() || '#';
+    const description = document.getElementById('c-ch-desc').value.trim();
+
+    const btn = document.getElementById('c-ch-create');
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+    try {
+      const created = await createChannelDoc({ name, emoji, description });
+      // Refresh the channels cache + repaint sidebar and chips.
+      state.channels = await listChannels();
+      renderSidebar();
+      renderChannelChips();
+      close();
+      // Jump to the new channel.
+      switchChannel(created.key);
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Create channel';
+      errEl.textContent = err.message || 'Could not create channel.';
+      errEl.style.display = 'block';
+    }
+  });
+}
+
+function simpleSlug(s) {
+  if (!s) return '';
+  return String(s)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32);
 }
 
 // Mobile-only horizontal channel chip strip — visible at the top of the

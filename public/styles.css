@@ -5136,6 +5136,51 @@ body.academy-course #course-workspace {
   gap: 8px;
 }
 
+/* Owner-only "+ Add channel" footer button at the bottom of the
+   channel sidebar. Subtle by default; lights up red on hover. */
+.c-channel-add {
+  margin-top: 4px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--gray-mid);
+  font-size: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.c-channel-add:hover {
+  color: var(--white);
+  border-color: rgba(204,27,27,0.4);
+  background: rgba(204,27,27,0.06);
+}
+
+/* Add-channel modal inputs (reuses the .c-modal shell from the invite
+   modal). Stacked layout, full-width inputs. */
+.c-ch-input {
+  width: 100%;
+  background: var(--charcoal);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--white);
+  font-size: 14px;
+  padding: 10px 12px;
+  font-family: var(--font-sans);
+}
+.c-ch-input:focus { outline: none; border-color: rgba(204,27,27,0.5); }
+.c-ch-keyhint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-mid);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ───────────────────────────────────────────────────────────────────────
    Topbar search — small icon button in the chip + a centered overlay
    that opens on click or Cmd/Ctrl-K. Bears no default visible text on

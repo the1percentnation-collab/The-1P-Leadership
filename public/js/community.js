@@ -408,6 +408,74 @@ export async function setPostPinned(postId, pinned, channelKey) {
   }
 }
 
+// Slugify a channel name into a URL-/Firestore-safe key. lowercase,
+// alphanumerics + dashes only, collapses repeats, trims edges, capped
+// at 32 chars.
+export function slugifyChannelKey(name) {
+  if (!name) return '';
+  // Normalize then strip combining diacritical marks (U+0300–U+036F).
+  return String(name)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-')
+    .slice(0, 32);
+}
+
+/**
+ * createChannelDoc({ name, emoji, description, order? })
+ *
+ * Owner-only by Firestore rules. Returns the created channel object.
+ * Throws on validation failure or rule denial. The key is auto-derived
+ * from the name unless an explicit `key` is passed.
+ */
+export async function createChannelDoc({ key, name, emoji = '#', description = '', order = null } = {}) {
+  if (!firebaseReady) throw new Error('Firebase unavailable');
+  const cleanName = String(name || '').trim();
+  if (cleanName.length < 2 || cleanName.length > 40) {
+    throw new Error('Channel name must be 2–40 characters.');
+  }
+  const finalKey = (key || slugifyChannelKey(cleanName)).trim();
+  if (!/^[a-z0-9-]{2,32}$/.test(finalKey)) {
+    throw new Error('Channel key must be 2–32 lowercase letters, digits, or dashes.');
+  }
+  // Reject collision with existing docs (best-effort — rules will also enforce).
+  try {
+    const existing = await getDoc(doc(db, 'channels', finalKey));
+    if (existing.exists()) throw new Error(`Channel "${finalKey}" already exists.`);
+  } catch (e) {
+    if (/already exists/i.test(e.message)) throw e;
+    // Fall through on read errors — let the write path surface a real error.
+  }
+
+  // Pick an order at the end of the list if not provided.
+  let nextOrder = order;
+  if (nextOrder == null) {
+    try {
+      const snap = await getDocs(query(collection(db, 'channels'), orderBy('order', 'desc'), limit(1)));
+      const top = snap.empty ? -1 : Number((snap.docs[0].data().order) || 0);
+      nextOrder = top + 1;
+    } catch (e) {
+      nextOrder = 100;
+    }
+  }
+
+  const data = {
+    key: finalKey,
+    name: cleanName,
+    emoji: (emoji || '#').slice(0, 8),
+    description: String(description || '').slice(0, 200),
+    order: Number(nextOrder),
+    scope: 'global',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  await setDoc(doc(db, 'channels', finalKey), data);
+  return { ...data, key: finalKey };
+}
+
 // ────────────────────────────────────────────────────────────────
 // Leaderboard, points & levels (Phase 2)
 //
