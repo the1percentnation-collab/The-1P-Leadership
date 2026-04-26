@@ -276,6 +276,106 @@ function renderSidebar() {
       switchChannel(next);
     });
   });
+  renderChannelChips();
+}
+
+// Mobile-only horizontal channel chip strip — visible at the top of the
+// feed when the sidebar is collapsed below the fold (≤820px). Same
+// click handler as the sidebar so behavior stays identical.
+function renderChannelChips() {
+  const root = $('channel-chips');
+  if (!root) return;
+  root.innerHTML = state.channels.map((c) => `
+    <button class="c-channel-chip ${c.key === state.activeChannel ? 'is-active' : ''}"
+            data-channel="${escapeHtml(c.key)}">
+      <span class="c-channel-chip-emoji">${escapeHtml(c.emoji || '#')}</span>
+      <span class="c-channel-chip-name">${escapeHtml(c.name)}</span>
+    </button>
+  `).join('');
+  root.querySelectorAll('.c-channel-chip').forEach((b) => {
+    b.addEventListener('click', () => {
+      const next = b.dataset.channel;
+      if (!next || next === state.activeChannel) return;
+      switchChannel(next);
+    });
+  });
+  // Scroll the active chip into view so it's visible on first paint.
+  const active = root.querySelector('.c-channel-chip.is-active');
+  if (active && typeof active.scrollIntoView === 'function') {
+    try { active.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (e) {}
+  }
+}
+
+function firstName(s) {
+  if (!s) return 'there';
+  const trimmed = String(s).split('@')[0].replace(/[._-]+/g, ' ').trim();
+  const parts = trimmed.split(/\s+/);
+  return parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : 'there';
+}
+
+// Dashboard hero — greeting strip + 4 KPI tiles. Re-renders whenever
+// `state.myStats` changes (after refreshLeaderboard), so the level /
+// week-points tiles update without a manual reload.
+function renderDashboardHero() {
+  const root = $('dashboard-hero');
+  if (!root || !state.me) return;
+  const name = firstName(state.me.displayName || state.me.email || '');
+  const stats = state.myStats || { points: 0, postCount: 0, likesReceived: 0, weekPoints: 0 };
+  const prog = levelProgress(stats.points || 0);
+  const lvl = prog.level;
+  const subline = prog.ceiling != null
+    ? `Level ${lvl} · ${stats.points || 0} pts · ${prog.toNext} to Lv ${lvl + 1}`
+    : `Level ${lvl} · ${stats.points || 0} pts · max level`;
+
+  root.innerHTML = `
+    <div class="c-hero-row">
+      <div class="c-hero-greet">
+        <div class="c-hero-eyebrow">Community</div>
+        <h1 class="c-hero-title">Welcome back, <span class="c-hero-name">${escapeHtml(name)}</span></h1>
+        <div class="c-hero-sub">${escapeHtml(subline)}</div>
+        <div class="c-hero-progress" aria-hidden="true">
+          <div class="c-progress-bar"><div class="c-progress-fill" style="width:${prog.pct}%"></div></div>
+        </div>
+      </div>
+      <div class="c-hero-stats">
+        <div class="c-stat-tile">
+          <div class="c-stat-label">Level</div>
+          <div class="c-stat-value">
+            <span class="c-level-badge c-level-${Math.min(10, lvl)}">Lv ${lvl}</span>
+          </div>
+        </div>
+        <div class="c-stat-tile">
+          <div class="c-stat-label">This week</div>
+          <div class="c-stat-value">${stats.weekPoints || 0}<span class="c-stat-unit">pts</span></div>
+        </div>
+        <div class="c-stat-tile">
+          <div class="c-stat-label">Posts</div>
+          <div class="c-stat-value">${stats.postCount || 0}</div>
+        </div>
+        <div class="c-stat-tile">
+          <div class="c-stat-label">Likes</div>
+          <div class="c-stat-value">${stats.likesReceived || 0}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function skeletonCardsHtml(n = 3) {
+  const card = `
+    <article class="c-post c-skel">
+      <header class="c-post-head">
+        <div class="c-skel-avatar"></div>
+        <div class="c-skel-stack">
+          <div class="c-skel-line c-skel-line-w-40"></div>
+          <div class="c-skel-line c-skel-line-w-25"></div>
+        </div>
+      </header>
+      <div class="c-skel-line c-skel-line-w-90"></div>
+      <div class="c-skel-line c-skel-line-w-80"></div>
+      <div class="c-skel-line c-skel-line-w-60"></div>
+    </article>`;
+  return new Array(n).fill(card).join('');
 }
 
 function renderChannelHeader() {
@@ -359,6 +459,7 @@ async function refreshLeaderboard() {
   state.authorLevels = new Map();
   state.leaderboard.forEach((r) => state.authorLevels.set(r.uid, r.level));
   renderLeaderboard();
+  renderDashboardHero();
 }
 
 async function switchChannel(nextKey) {
@@ -456,12 +557,14 @@ function subscribeToActiveChannel() {
   }
   state.livePostIds = new Set();
   state.pendingPosts = [];
-  // Show a "Loading…" until the first snapshot lands so the empty state
-  // doesn't flash for ~200ms on every channel switch.
+
+  // Skeleton cards so the user sees structure while the live snapshot lands
+  // (also masks the longer delay if Firestore is still building the channel
+  // composite index after a fresh deploy).
   const feed = $('feed');
-  if (feed) feed.innerHTML = '';
+  if (feed) feed.innerHTML = skeletonCardsHtml(3);
   const loadingEl = $('feed-loading');
-  if (loadingEl) loadingEl.textContent = 'Loading…';
+  if (loadingEl) loadingEl.textContent = '';
 
   state.feedUnsub = subscribeToFeed({
     category: state.activeChannel,
@@ -937,6 +1040,8 @@ async function main() {
     role: state.role,
     currentPage: 'community'
   });
+  renderDashboardHero();   // paints initial state with placeholder zeroes;
+                           // refreshLeaderboard() refines it once stats land.
   renderSidebar();
   renderComposer();
 
