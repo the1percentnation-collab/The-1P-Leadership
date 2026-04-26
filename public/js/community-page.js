@@ -378,11 +378,28 @@ function skeletonCardsHtml(n = 3) {
   return new Array(n).fill(card).join('');
 }
 
+function channelMetaTags(ch) {
+  const tags = [];
+  if (ch.key === 'announcements') {
+    tags.push({ label: 'Official channel', tone: 'red' });
+    tags.push({ label: 'Owners & admins post', tone: 'plain' });
+  } else if (ch.key === 'wins') {
+    tags.push({ label: 'Earns 2× points', tone: 'red' });
+  } else if (ch.key === 'questions') {
+    tags.push({ label: 'Ask freely', tone: 'plain' });
+  } else {
+    tags.push({ label: 'Open channel', tone: 'plain' });
+  }
+  return tags;
+}
+
 function renderChannelHeader() {
   const root = $('channel-header');
   if (!root) return;
   const ch = activeChannelMeta();
   const pinned = state.pinnedPost;
+  const tags = channelMetaTags(ch);
+
   const pinnedHtml = pinned ? `
     <div class="c-pinned-banner">
       <span class="c-pinned-eyebrow">📌 Pinned</span>
@@ -392,12 +409,20 @@ function renderChannelHeader() {
       </a>
     </div>
   ` : '';
+
+  const tagsHtml = tags.length ? `
+    <div class="c-channel-meta">
+      ${tags.map((t) => `<span class="c-channel-tag c-channel-tag-${escapeHtml(t.tone)}">${escapeHtml(t.label)}</span>`).join('')}
+    </div>
+  ` : '';
+
   root.innerHTML = `
     <div class="c-channel-title">
       <span class="c-channel-title-emoji">${escapeHtml(ch.emoji || '#')}</span>
       <span class="c-channel-title-name">${escapeHtml(ch.name)}</span>
     </div>
     ${ch.description ? `<div class="c-channel-desc">${escapeHtml(ch.description)}</div>` : ''}
+    ${tagsHtml}
     ${pinnedHtml}
   `;
 }
@@ -437,7 +462,11 @@ function renderLeaderboard() {
           <span class="c-leader-points">${r.statsPoints}</span>
         </a>
       `).join('')
-    : `<div class="c-leader-empty">No engagement yet — be the first.</div>`;
+    : `<div class="c-leader-empty">
+         <div class="c-leader-empty-art" aria-hidden="true">🏁</div>
+         <div class="c-leader-empty-title">Nobody's on the board</div>
+         <div class="c-leader-empty-body">Post, comment, or earn a like to put yourself on the leaderboard.</div>
+       </div>`;
 
   root.innerHTML = `
     <div class="c-leader-eyebrow">Leaderboard</div>
@@ -738,19 +767,61 @@ function canDeleteComment(comment, post) {
   return false;
 }
 
+function emptyChannelCopy(ch) {
+  switch (ch.key) {
+    case 'wins':
+      return {
+        title: 'No wins shared yet',
+        body: 'Celebrate a small one — a habit kept, a contract signed, a hard call made. Wins compound.',
+        cta: 'Share a win'
+      };
+    case 'questions':
+      return {
+        title: 'No questions yet',
+        body: 'Stuck on something? Ask. Someone here has hit the same wall and made it through.',
+        cta: 'Ask a question'
+      };
+    case 'announcements':
+      return {
+        title: 'Nothing to announce',
+        body: 'Updates from the team will land here. Owners and admins post; everyone reads.',
+        cta: 'Post an announcement'
+      };
+    default:
+      return {
+        title: `No posts in #${ch.name.toLowerCase()} yet`,
+        body: 'Be the first to start the conversation. Drop a thought below.',
+        cta: 'Write a post'
+      };
+  }
+}
+
+function focusComposer() {
+  const ta = $('composer-text');
+  if (!ta) return;
+  ta.focus({ preventScroll: false });
+  // Scroll the composer card into view in case the user is far down.
+  ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 function renderFeed() {
   const feed = $('feed');
   if (!state.posts.length) {
     const ch = activeChannelMeta();
+    const copy = emptyChannelCopy(ch);
     feed.innerHTML = `
-      <div class="c-empty">
-        <div class="c-empty-title">No posts in #${escapeHtml(ch.name.toLowerCase())} yet</div>
-        <p>Be the first to share something. Your channel is waiting.</p>
+      <div class="c-empty c-empty-large">
+        <div class="c-empty-art" aria-hidden="true">${escapeHtml(ch.emoji || '#')}</div>
+        <div class="c-empty-title">${escapeHtml(copy.title)}</div>
+        <p class="c-empty-body">${escapeHtml(copy.body)}</p>
+        <button class="btn btn-primary c-empty-cta" id="c-empty-cta">${escapeHtml(copy.cta)}</button>
       </div>`;
     const lm = $('load-more');
     if (lm) lm.style.display = 'none';
     const feedLoading = $('feed-loading');
     if (feedLoading) feedLoading.textContent = '';
+    const cta = $('c-empty-cta');
+    if (cta) cta.addEventListener('click', focusComposer);
     return;
   }
   feed.innerHTML = state.posts.map((p) => postCardHtml(p)).join('');

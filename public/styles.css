@@ -4751,5 +4751,108 @@ body.academy-course #course-workspace {
   .c-composer-card { padding: 14px 14px; }
 }
 
+/* ───────────────────────────────────────────────────────────────────────
+   Channel polish — meta-tag row under the header description, beefed-up
+   empty states for the feed and the leaderboard rail. */
+
+.c-channel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.c-channel-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  color: var(--gray-light);
+}
+.c-channel-tag-red {
+  border-color: rgba(204,27,27,0.35);
+  background: rgba(204,27,27,0.10);
+  color: #FF9090;
+}
+
+/* Feed empty state — illustrated card with CTA. Replaces the bare two
+   lines of text and gives sparse channels visual weight. */
+.c-empty-large {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
+  padding: 48px 24px;
+  background:
+    radial-gradient(ellipse at top, rgba(204,27,27,0.06) 0%, transparent 60%),
+    var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  min-height: 280px;
+}
+.c-empty-art {
+  font-size: 48px;
+  line-height: 1;
+  opacity: 0.85;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(204,27,27,0.08);
+  border: 1px solid rgba(204,27,27,0.20);
+}
+.c-empty-large .c-empty-title {
+  font-family: var(--font-display, var(--font-sans));
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--white);
+  margin: 0;
+}
+.c-empty-large .c-empty-body {
+  font-size: 13px;
+  color: var(--gray-light);
+  max-width: 380px;
+  margin: 0;
+}
+.c-empty-cta {
+  margin-top: 8px;
+}
+
+/* Leaderboard rail empty — small icon + two-line copy. */
+.c-leader-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 18px 12px 10px;
+}
+.c-leader-empty-art {
+  font-size: 26px;
+  line-height: 1;
+  margin-bottom: 2px;
+  opacity: 0.85;
+}
+.c-leader-empty-title {
+  font-size: 13px;
+  color: var(--white);
+  font-weight: 500;
+}
+.c-leader-empty-body {
+  font-size: 11px;
+  color: var(--gray-mid);
+  line-height: 1.45;
+}
+
+
 
 
