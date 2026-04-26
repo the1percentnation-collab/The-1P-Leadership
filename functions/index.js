@@ -1009,101 +1009,9 @@ async function applyPointsDelta(db, uid, pointsDelta, counters) {
   });
 }
 
-/**
- * onPostCreated — award the author for posting. +5 base, +10 for #wins.
- * Reads: 0 (uses event.data.data()). Writes: 1 stat + 1 mirror.
- */
-exports.onPostCreated = onDocumentCreated(
-  { document: 'posts/{postId}' },
-  async (event) => {
-    const snap = event.data;
-    if (!snap) return;
-    const post = snap.data() || {};
-    const author = post.authorUid;
-    if (!author) return;
-
-    const isWin = post.category === 'wins';
-    const delta = isWin ? POINTS.POST_WIN : POINTS.POST;
-    try {
-      await applyPointsDelta(admin.firestore(), author, delta, { postCount: 1 });
-    } catch (err) {
-      console.error('[onPostCreated] points apply failed:', err && err.message);
-    }
-  }
-);
-
-/**
- * onCommentCreated — award the commenter +1 point.
- */
-exports.onCommentCreated = onDocumentCreated(
-  { document: 'posts/{postId}/comments/{commentId}' },
-  async (event) => {
-    const snap = event.data;
-    if (!snap) return;
-    const comment = snap.data() || {};
-    const author = comment.authorUid;
-    if (!author) return;
-    try {
-      await applyPointsDelta(admin.firestore(), author, POINTS.COMMENT, { commentCount: 1 });
-    } catch (err) {
-      console.error('[onCommentCreated] points apply failed:', err && err.message);
-    }
-  }
-);
-
-/**
- * onLikeWritten — track likes given + likes received.
- *
- * On create: liker's likesGiven++; post author's likesReceived++ AND +2 points.
- * On delete: reverse.
- *
- * Reads: 1 (the parent post, to find authorUid). Writes: up to 4
- * (2 stat docs + 2 mirrors). Skipped if liker == author (defensive — UX
- * shouldn't allow it but rules don't forbid it explicitly).
- */
-exports.onLikeWritten = onDocumentWritten(
-  { document: 'posts/{postId}/likes/{uid}' },
-  async (event) => {
-    const beforeExists = event.data && event.data.before && event.data.before.exists;
-    const afterExists = event.data && event.data.after && event.data.after.exists;
-    if (beforeExists === afterExists) return; // no transition (shouldn't happen for create-only ops)
-
-    const liker = event.params.uid;
-    const postId = event.params.postId;
-    if (!liker || !postId) return;
-
-    const isLikeAdded = !beforeExists && afterExists;
-    const sign = isLikeAdded ? 1 : -1;
-
-    const db = admin.firestore();
-    let postAuthor = null;
-    try {
-      const postSnap = await db.collection('posts').doc(postId).get();
-      if (postSnap.exists) postAuthor = postSnap.data().authorUid || null;
-    } catch (err) {
-      console.warn('[onLikeWritten] post fetch failed:', err && err.message);
-    }
-
-    try {
-      await applyPointsDelta(db, liker, 0, { likesGiven: sign });
-    } catch (err) {
-      console.error('[onLikeWritten] liker stat update failed:', err && err.message);
-    }
-
-    if (postAuthor && postAuthor !== liker) {
-      try {
-        await applyPointsDelta(
-          db,
-          postAuthor,
-          sign * POINTS.LIKE_RECEIVED,
-          { likesReceived: sign }
-        );
-      } catch (err) {
-        console.error('[onLikeWritten] author stat update failed:', err && err.message);
-      }
-    }
-  }
-);
+// Trigger handlers (onPostCreated / onCommentCreated / onLikeWritten) are
+// defined further down in the Phase 3 block; they handle BOTH the points
+// updates and the notification fan-out so the trigger boundary stays simple.
 
 /**
  * getLeaderboard({ scope='global'|'company', limit=20 }) — callable.
@@ -1230,4 +1138,443 @@ exports.recomputeUserStats = onCall(async (request) => {
 
   return { ok: true, uid, points, postCount, winsCount, likesReceived };
 });
+
+// ────────────────────────────────────────────────────────────────
+// Phase 3 — Notifications (mention / like / comment) + FCM push
+// + member search.
+//
+// Triggers fan out one Firestore notification doc per recipient. Doc IDs
+// are deterministic so re-firing (e.g. unlike → like) collapses into a
+// single row instead of spamming the inbox. unreadNotifCount on the user
+// doc mirrors the count of unread notifs, used to badge the bell icon
+// without an extra query.
+// ────────────────────────────────────────────────────────────────
+
+const NOTIF_TRUNCATE = 140;
+
+function clampPreview(text) {
+  if (!text) return '';
+  const t = String(text).trim();
+  return t.length > NOTIF_TRUNCATE ? t.slice(0, NOTIF_TRUNCATE) + '…' : t;
+}
+
+/**
+ * Send a multicast FCM push to a user's registered tokens. Best-effort:
+ * never throws. Prunes tokens that come back as not-registered.
+ */
+async function pushToUser(db, uid, payload) {
+  if (!uid || !payload) return { sent: 0, failed: 0 };
+  try {
+    const userSnap = await db.collection('users').doc(uid).get();
+    if (!userSnap.exists) return { sent: 0, failed: 0 };
+    const data = userSnap.data() || {};
+    const prefs = data.notifPrefs || {};
+    if (prefs.push === false) return { sent: 0, failed: 0 };
+    const tokens = Array.isArray(data.fcmTokens) ? data.fcmTokens.filter((t) => typeof t === 'string' && t) : [];
+    if (!tokens.length) return { sent: 0, failed: 0 };
+
+    const messaging = admin.messaging();
+    const message = {
+      tokens,
+      notification: {
+        title: payload.title || '1P Leadership',
+        body: payload.body || ''
+      },
+      data: payload.data || {},
+      webpush: {
+        fcmOptions: { link: (payload.data && payload.data.url) || `${APP_BASE_URL}/community.html` }
+      }
+    };
+    const resp = await messaging.sendEachForMulticast(message);
+    const stale = [];
+    (resp.responses || []).forEach((r, i) => {
+      if (r.success) return;
+      const code = r.error && r.error.code;
+      if (
+        code === 'messaging/registration-token-not-registered' ||
+        code === 'messaging/invalid-registration-token' ||
+        code === 'messaging/invalid-argument'
+      ) stale.push(tokens[i]);
+    });
+    if (stale.length) {
+      try {
+        await db.collection('users').doc(uid).set({
+          fcmTokens: admin.firestore.FieldValue.arrayRemove(...stale)
+        }, { merge: true });
+      } catch (e) { /* ignore */ }
+    }
+    return { sent: resp.successCount || 0, failed: resp.failureCount || 0 };
+  } catch (err) {
+    console.error('[pushToUser] failed:', err && err.message);
+    return { sent: 0, failed: 0 };
+  }
+}
+
+/**
+ * Write a notification with a deterministic ID. If it already exists
+ * AND was unread, this is a no-op (avoids double-counting on re-fire).
+ * If it was read or didn't exist, sets to unread and bumps the parent
+ * user doc's unreadNotifCount. Returns true iff this was a new unread.
+ *
+ * Uses a transaction so the count + doc stay consistent.
+ */
+async function notifyUser(db, recipientUid, notif, { typePrefKey } = {}) {
+  if (!recipientUid || !notif || !notif.id) return false;
+  const userRef = db.collection('users').doc(recipientUid);
+  const notifRef = userRef.collection('notifications').doc(notif.id);
+
+  const result = await db.runTransaction(async (tx) => {
+    const [notifSnap, userSnap] = await Promise.all([tx.get(notifRef), tx.get(userRef)]);
+
+    // Respect per-user opt-out (notifPrefs.mentions / .likes / .comments).
+    if (typePrefKey && userSnap.exists) {
+      const prefs = (userSnap.data() && userSnap.data().notifPrefs) || {};
+      if (prefs[typePrefKey] === false) return { newUnread: false, skipped: true };
+    }
+
+    const wasUnread = notifSnap.exists && notifSnap.data().read === false;
+    const willBeUnread = true;
+
+    const patch = {
+      type: notif.type,
+      fromUid: notif.fromUid || null,
+      fromName: notif.fromName || '',
+      fromAvatar: notif.fromAvatar || null,
+      postId: notif.postId || null,
+      commentId: notif.commentId || null,
+      category: notif.category || null,
+      preview: notif.preview || '',
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    tx.set(notifRef, patch, { merge: true });
+
+    if (!wasUnread && willBeUnread && userSnap.exists) {
+      tx.set(userRef, {
+        unreadNotifCount: admin.firestore.FieldValue.increment(1)
+      }, { merge: true });
+      return { newUnread: true, skipped: false };
+    }
+    return { newUnread: false, skipped: false };
+  });
+
+  return result.newUnread;
+}
+
+/**
+ * Fan out @mention notifications to a set of recipients. Filters out the
+ * actor (no self-notify) and dedupes. Caller passes the surrounding post
+ * info so we don't re-read it. Optionally pushes FCM after the Firestore
+ * write so badge counts are accurate even if push fails.
+ */
+async function fanOutMentions(db, mentionedUids, ctx) {
+  if (!Array.isArray(mentionedUids) || !mentionedUids.length) return;
+  const seen = new Set();
+  for (const uid of mentionedUids) {
+    if (!uid || uid === ctx.fromUid || seen.has(uid)) continue;
+    seen.add(uid);
+    const notifId = ctx.commentId
+      ? `mention_comment_${ctx.commentId}_${ctx.fromUid}`
+      : `mention_post_${ctx.postId}_${ctx.fromUid}`;
+    const wasNew = await notifyUser(db, uid, {
+      id: notifId,
+      type: 'mention',
+      fromUid: ctx.fromUid,
+      fromName: ctx.fromName,
+      fromAvatar: ctx.fromAvatar,
+      postId: ctx.postId,
+      commentId: ctx.commentId || null,
+      category: ctx.category || null,
+      preview: clampPreview(ctx.preview)
+    }, { typePrefKey: 'mentions' });
+    if (wasNew) {
+      pushToUser(db, uid, {
+        title: `${ctx.fromName || 'Someone'} mentioned you`,
+        body: clampPreview(ctx.preview),
+        data: {
+          url: `${APP_BASE_URL}/community.html?post=${encodeURIComponent(ctx.postId)}`,
+          type: 'mention',
+          postId: ctx.postId
+        }
+      }).catch(() => {});
+    }
+  }
+}
+
+// Replace the Phase 2 onPostCreated to also fan out mention notifs, and
+// piggyback the activity timestamp on the user doc.
+exports.onPostCreated = onDocumentCreated(
+  { document: 'posts/{postId}' },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const post = snap.data() || {};
+    const author = post.authorUid;
+    if (!author) return;
+
+    const isWin = post.category === 'wins';
+    const delta = isWin ? POINTS.POST_WIN : POINTS.POST;
+    const db = admin.firestore();
+    try {
+      await applyPointsDelta(db, author, delta, { postCount: 1 });
+    } catch (err) {
+      console.error('[onPostCreated] points apply failed:', err && err.message);
+    }
+
+    // Mention fan-out.
+    try {
+      await fanOutMentions(db, post.mentionedUids || [], {
+        fromUid: author,
+        fromName: post.authorName || '',
+        fromAvatar: post.authorAvatar || null,
+        postId: snap.id,
+        commentId: null,
+        category: post.category || null,
+        preview: post.text || ''
+      });
+    } catch (err) {
+      console.error('[onPostCreated] mention fan-out failed:', err && err.message);
+    }
+  }
+);
+
+// Replace the Phase 2 onCommentCreated to also fan out comment + mention notifs.
+exports.onCommentCreated = onDocumentCreated(
+  { document: 'posts/{postId}/comments/{commentId}' },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const comment = snap.data() || {};
+    const commenter = comment.authorUid;
+    const postId = event.params.postId;
+    const commentId = event.params.commentId;
+    if (!commenter || !postId) return;
+
+    const db = admin.firestore();
+    try {
+      await applyPointsDelta(db, commenter, POINTS.COMMENT, { commentCount: 1 });
+    } catch (err) {
+      console.error('[onCommentCreated] points apply failed:', err && err.message);
+    }
+
+    // Notify the post author (skip if commenter == author).
+    let postData = null;
+    try {
+      const postSnap = await db.collection('posts').doc(postId).get();
+      if (postSnap.exists) postData = postSnap.data();
+    } catch (e) { /* tolerated */ }
+
+    if (postData && postData.authorUid && postData.authorUid !== commenter) {
+      try {
+        const wasNew = await notifyUser(db, postData.authorUid, {
+          id: `comment_${commentId}`,
+          type: 'comment',
+          fromUid: commenter,
+          fromName: comment.authorName || '',
+          fromAvatar: comment.authorAvatar || null,
+          postId,
+          commentId,
+          category: postData.category || null,
+          preview: clampPreview(comment.text || '')
+        }, { typePrefKey: 'comments' });
+        if (wasNew) {
+          pushToUser(db, postData.authorUid, {
+            title: `${comment.authorName || 'Someone'} commented on your post`,
+            body: clampPreview(comment.text || ''),
+            data: {
+              url: `${APP_BASE_URL}/community.html?post=${encodeURIComponent(postId)}`,
+              type: 'comment',
+              postId
+            }
+          }).catch(() => {});
+        }
+      } catch (err) {
+        console.error('[onCommentCreated] author notify failed:', err && err.message);
+      }
+    }
+
+    // Mention fan-out for @mentions in the comment body.
+    try {
+      await fanOutMentions(db, comment.mentionedUids || [], {
+        fromUid: commenter,
+        fromName: comment.authorName || '',
+        fromAvatar: comment.authorAvatar || null,
+        postId,
+        commentId,
+        category: postData ? (postData.category || null) : null,
+        preview: comment.text || ''
+      });
+    } catch (err) {
+      console.error('[onCommentCreated] mention fan-out failed:', err && err.message);
+    }
+  }
+);
+
+// Replace the Phase 2 onLikeWritten to also write a like notif on like-add.
+// (Like-remove leaves the existing notif in place — typical social UX.)
+exports.onLikeWritten = onDocumentWritten(
+  { document: 'posts/{postId}/likes/{uid}' },
+  async (event) => {
+    const beforeExists = event.data && event.data.before && event.data.before.exists;
+    const afterExists = event.data && event.data.after && event.data.after.exists;
+    if (beforeExists === afterExists) return;
+
+    const liker = event.params.uid;
+    const postId = event.params.postId;
+    if (!liker || !postId) return;
+
+    const isLikeAdded = !beforeExists && afterExists;
+    const sign = isLikeAdded ? 1 : -1;
+
+    const db = admin.firestore();
+    let post = null;
+    try {
+      const postSnap = await db.collection('posts').doc(postId).get();
+      if (postSnap.exists) post = { id: postSnap.id, ...postSnap.data() };
+    } catch (err) {
+      console.warn('[onLikeWritten] post fetch failed:', err && err.message);
+    }
+
+    try {
+      await applyPointsDelta(db, liker, 0, { likesGiven: sign });
+    } catch (err) {
+      console.error('[onLikeWritten] liker stat update failed:', err && err.message);
+    }
+
+    if (post && post.authorUid && post.authorUid !== liker) {
+      try {
+        await applyPointsDelta(
+          db,
+          post.authorUid,
+          sign * POINTS.LIKE_RECEIVED,
+          { likesReceived: sign }
+        );
+      } catch (err) {
+        console.error('[onLikeWritten] author stat update failed:', err && err.message);
+      }
+
+      // Only write a notif on like-add. We need the liker's display info; pull
+      // it from the like-doc's parent author lookup if present, else fall back
+      // to a fetch on the liker's user doc.
+      if (isLikeAdded) {
+        let likerName = '';
+        let likerAvatar = null;
+        try {
+          const likerSnap = await db.collection('users').doc(liker).get();
+          if (likerSnap.exists) {
+            const u = likerSnap.data() || {};
+            likerName = u.displayName || u.email || '';
+            likerAvatar = u.avatarUrl || null;
+          }
+        } catch (e) { /* tolerated */ }
+
+        try {
+          const wasNew = await notifyUser(db, post.authorUid, {
+            id: `like_${postId}_${liker}`,
+            type: 'like',
+            fromUid: liker,
+            fromName: likerName,
+            fromAvatar: likerAvatar,
+            postId,
+            commentId: null,
+            category: post.category || null,
+            preview: clampPreview(post.text || '')
+          }, { typePrefKey: 'likes' });
+          if (wasNew) {
+            pushToUser(db, post.authorUid, {
+              title: `${likerName || 'Someone'} liked your post`,
+              body: clampPreview(post.text || ''),
+              data: {
+                url: `${APP_BASE_URL}/community.html?post=${encodeURIComponent(postId)}`,
+                type: 'like',
+                postId
+              }
+            }).catch(() => {});
+          }
+        } catch (err) {
+          console.error('[onLikeWritten] author notify failed:', err && err.message);
+        }
+      }
+    }
+  }
+);
+
+/**
+ * searchMembers({ query }) — autocomplete for @mention picking.
+ *
+ * Server-side because the `users` collection has `allow list: if isOwner()`.
+ * We project safe fields only (uid, displayName, avatarUrl) and scope the
+ * candidate set to the caller's visibility:
+ *   - owner → all users
+ *   - team user / admin → company members + owner
+ *   - individual buyer → owner only (closest thing to a "global" they share with)
+ *
+ * Returns up to 10 matches sorted by displayName asc.
+ */
+exports.searchMembers = onCall(async (request) => {
+  const callerUid = request.auth && request.auth.uid;
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const data = request.data || {};
+  const q = (data.query || '').toString().trim().toLowerCase();
+  if (!q) return { ok: true, results: [] };
+
+  const isOwnerClaim = request.auth.token && request.auth.token.role === 'owner';
+  const db = admin.firestore();
+
+  let callerCompanyId = null;
+  if (!isOwnerClaim) {
+    try {
+      const meSnap = await db.collection('users').doc(callerUid).get();
+      if (meSnap.exists) callerCompanyId = meSnap.data().companyId || null;
+    } catch (e) { /* best-effort */ }
+  }
+
+  // Collect a candidate pool, then filter by prefix match in JS. Prefix-only
+  // matching ('alex' matches 'Alex Chen', 'alexandra'; not 'sandra alex').
+  const pool = new Map(); // uid → { uid, displayName, avatarUrl }
+  function add(uid, doc) {
+    if (!uid || pool.has(uid)) return;
+    const u = doc || {};
+    pool.set(uid, {
+      uid,
+      displayName: u.displayName || u.email || 'Unknown',
+      avatarUrl: u.avatarUrl || null
+    });
+  }
+
+  try {
+    if (isOwnerClaim) {
+      const snap = await db.collection('users').limit(500).get();
+      snap.docs.forEach((d) => add(d.id, d.data()));
+    } else if (callerCompanyId) {
+      const memSnap = await db.collection('companies').doc(callerCompanyId).collection('members').limit(500).get();
+      memSnap.docs.forEach((d) => add(d.id, d.data()));
+      // Also include owner so users can @mention support.
+      const ownerSnap = await db.collection('users').where('email', '==', OWNER_EMAIL).limit(1).get();
+      ownerSnap.docs.forEach((d) => add(d.id, d.data()));
+    } else {
+      // Individual buyer — only owner is visible to them via @mention.
+      const ownerSnap = await db.collection('users').where('email', '==', OWNER_EMAIL).limit(1).get();
+      ownerSnap.docs.forEach((d) => add(d.id, d.data()));
+    }
+  } catch (err) {
+    console.error('[searchMembers] candidate pool fetch failed:', err && err.message);
+    return { ok: false, results: [] };
+  }
+
+  const results = Array.from(pool.values())
+    .filter((u) => (u.displayName || '').toLowerCase().includes(q))
+    .sort((a, b) => {
+      // Prefix matches first, then alphabetical.
+      const ap = (a.displayName || '').toLowerCase().startsWith(q) ? 0 : 1;
+      const bp = (b.displayName || '').toLowerCase().startsWith(q) ? 0 : 1;
+      if (ap !== bp) return ap - bp;
+      return (a.displayName || '').localeCompare(b.displayName || '');
+    })
+    .slice(0, 10);
+
+  return { ok: true, results };
+});
+
 

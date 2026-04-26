@@ -9,6 +9,8 @@ import {
   getUserProfile, touchCommunityVisit,
   listChannels, getPinnedPostForChannel, setPostPinned, CHANNEL_KEYS,
   getLeaderboard, getMyStats, levelFromPoints, levelProgress,
+  subscribeToFeed, subscribeToUnreadNotifs, markNotifRead, markAllNotifsRead,
+  searchMembers, renderTextWithMentions,
   avatarHtml, fmtRelative, escapeHtml, linkify
 } from './community.js';
 
@@ -36,7 +38,16 @@ const state = {
   // Phase 2 — leaderboard, points, levels
   leaderboard: [],
   authorLevels: new Map(),
-  myStats: null
+  myStats: null,
+  // Phase 3 — realtime feed + notifications + mentions
+  feedUnsub: null,         // teardown for the active onSnapshot listeners
+  notifUnsub: null,
+  pendingPosts: [],        // new posts that arrived while user was scrolled away
+  livePostIds: new Set(),  // ids currently in the live window
+  unreadNotifs: [],        // newest-first, capped at 20
+  showingNotifs: false,
+  mentionUids: new Set(),  // ids referenced by composer @[uid:Name] tokens
+  mentionLookup: new Map() // uid → { displayName, avatarUrl }
 };
 
 function renderChip() {
@@ -55,14 +66,129 @@ function renderChip() {
     <a class="user-chip-link" href="/members.html">Members</a>
     <a class="user-chip-link" href="/profile.html">Profile</a>
     ${crmLink}${campaignsLink}${adminLink}${ownerLink}
+    <button class="c-bell" id="btn-bell" title="Notifications" aria-label="Notifications">
+      <span class="c-bell-icon">🔔</span>
+      <span class="c-bell-badge" id="bell-badge" hidden>0</span>
+    </button>
     <span class="c-avatar-link">${avatarHtml(state.me, 28)}</span>
     <span class="user-chip-email">${escapeHtml(state.me.displayName || state.me.email || '')}</span>
     <button class="btn btn-ghost" id="btn-signout">Sign out</button>
+    <div class="c-notif-popover" id="notif-popover" hidden></div>
   `;
   $('btn-signout').addEventListener('click', async () => {
     try { await signOut(); } catch (e) {}
     location.replace('/login.html');
   });
+  $('btn-bell').addEventListener('click', toggleNotifPopover);
+  document.addEventListener('click', (e) => {
+    if (!state.showingNotifs) return;
+    const pop = $('notif-popover');
+    const bell = $('btn-bell');
+    if (!pop || !bell) return;
+    if (pop.contains(e.target) || bell.contains(e.target)) return;
+    state.showingNotifs = false;
+    pop.hidden = true;
+  });
+  renderBellBadge();
+}
+
+function renderBellBadge() {
+  const badge = $('bell-badge');
+  if (!badge) return;
+  const count = state.unreadNotifs.length;
+  if (count <= 0) {
+    badge.hidden = true;
+    badge.textContent = '0';
+    return;
+  }
+  badge.hidden = false;
+  badge.textContent = count >= 20 ? '20+' : String(count);
+}
+
+function notifIcon(type) {
+  if (type === 'like') return '❤️';
+  if (type === 'comment') return '💬';
+  if (type === 'mention') return '@';
+  return '🔔';
+}
+
+function notifLine(n) {
+  const who = escapeHtml(n.fromName || 'Someone');
+  if (n.type === 'like') return `${who} liked your post`;
+  if (n.type === 'comment') return `${who} commented on your post`;
+  if (n.type === 'mention') return `${who} mentioned you`;
+  return `${who} did something`;
+}
+
+function renderNotifPopover() {
+  const pop = $('notif-popover');
+  if (!pop) return;
+  const rows = state.unreadNotifs;
+  const headerHtml = `
+    <div class="c-notif-head">
+      <span class="c-notif-title">Notifications</span>
+      <button class="c-notif-mark-all" id="notif-mark-all" ${rows.length ? '' : 'disabled'}>Mark all read</button>
+    </div>
+  `;
+  const bodyHtml = rows.length ? rows.map((n) => `
+    <a class="c-notif-row unread" data-notif="${escapeHtml(n.id)}"
+       data-post="${escapeHtml(n.postId || '')}"
+       data-channel="${escapeHtml(n.category || '')}">
+      <span class="c-notif-icon">${notifIcon(n.type)}</span>
+      ${avatarHtml({ avatarUrl: n.fromAvatar, displayName: n.fromName }, 28)}
+      <div class="c-notif-body">
+        <div class="c-notif-line">${notifLine(n)}</div>
+        ${n.preview ? `<div class="c-notif-preview">${escapeHtml(n.preview)}</div>` : ''}
+        <div class="c-notif-time">${fmtRelative(n.createdAt)}</div>
+      </div>
+    </a>
+  `).join('') : `<div class="c-notif-empty">You're all caught up.</div>`;
+  pop.innerHTML = headerHtml + `<div class="c-notif-list">${bodyHtml}</div>`;
+
+  pop.querySelectorAll('.c-notif-row').forEach((a) => {
+    a.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const id = a.dataset.notif;
+      const postId = a.dataset.post;
+      const channel = a.dataset.channel;
+      try { await markNotifRead(id, { read: true }); } catch (er) {}
+      // If we're already on community, just switch channels + scroll. Else navigate.
+      if (postId) {
+        if (channel && channel !== state.activeChannel) {
+          await switchChannel(channel || 'general');
+        }
+        // Scroll to the post if it's in the live window. If not, navigate.
+        const card = document.getElementById(`post-${postId}`);
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.classList.add('c-post-flash');
+          setTimeout(() => card.classList.remove('c-post-flash'), 1500);
+        } else {
+          location.assign(`/community.html?channel=${encodeURIComponent(channel || 'general')}#post-${encodeURIComponent(postId)}`);
+        }
+      }
+      state.showingNotifs = false;
+      const pop2 = $('notif-popover');
+      if (pop2) pop2.hidden = true;
+    });
+  });
+  const markAllBtn = $('notif-mark-all');
+  if (markAllBtn) markAllBtn.addEventListener('click', async () => {
+    const ids = state.unreadNotifs.map((n) => n.id);
+    try { await markAllNotifsRead(ids); } catch (e) {}
+  });
+}
+
+function toggleNotifPopover() {
+  state.showingNotifs = !state.showingNotifs;
+  const pop = $('notif-popover');
+  if (!pop) return;
+  if (state.showingNotifs) {
+    renderNotifPopover();
+    pop.hidden = false;
+  } else {
+    pop.hidden = true;
+  }
 }
 
 function renderComposer() {
@@ -108,6 +234,139 @@ function renderComposer() {
     }
   });
   $('btn-post').addEventListener('click', submitPost);
+  attachMentionAutocomplete($('composer-text'));
+}
+
+const MENTION_TOKEN_RE_INLINE = /@\[([^\]:]+):([^\]]+)\]/g;
+
+function collectMentionedUidsFromText(text) {
+  if (!text) return [];
+  const ids = new Set();
+  String(text).replace(MENTION_TOKEN_RE_INLINE, (_m, uid) => { ids.add(uid); return _m; });
+  return Array.from(ids);
+}
+
+// @-mention autocomplete on a textarea. Watches for `@<query>` immediately
+// before the caret, debounces a server search, and lets the user pick a
+// candidate. Selected mentions are inserted as `@[uid:Name]` tokens that
+// renderTextWithMentions() turns into safe anchors at display time.
+function attachMentionAutocomplete(textarea) {
+  if (!textarea) return;
+  let drop = null;
+  let activeIdx = 0;
+  let candidates = [];
+  let queryStart = -1;
+  let debounceT = null;
+
+  function close() {
+    if (drop) { drop.remove(); drop = null; }
+    candidates = [];
+    activeIdx = 0;
+    queryStart = -1;
+  }
+
+  function ensureDropdown() {
+    if (drop) return drop;
+    drop = document.createElement('div');
+    drop.className = 'c-mention-dropdown';
+    drop.setAttribute('role', 'listbox');
+    document.body.appendChild(drop);
+    // Position once now; reposition on input/scroll.
+    positionDropdown();
+    return drop;
+  }
+
+  function positionDropdown() {
+    if (!drop) return;
+    const rect = textarea.getBoundingClientRect();
+    drop.style.position = 'fixed';
+    drop.style.top = `${rect.bottom + 4}px`;
+    drop.style.left = `${rect.left}px`;
+    drop.style.width = `${Math.min(320, rect.width)}px`;
+  }
+
+  function render() {
+    if (!candidates.length) { close(); return; }
+    ensureDropdown();
+    drop.innerHTML = candidates.map((c, i) => `
+      <div class="c-mention-option ${i === activeIdx ? 'is-active' : ''}" data-idx="${i}">
+        ${avatarHtml({ avatarUrl: c.avatarUrl, displayName: c.displayName }, 22)}
+        <span class="c-mention-option-name">${escapeHtml(c.displayName)}</span>
+      </div>
+    `).join('');
+    drop.querySelectorAll('.c-mention-option').forEach((el) => {
+      el.addEventListener('mousedown', (ev) => {
+        ev.preventDefault();
+        const idx = Number(el.dataset.idx);
+        commit(idx);
+      });
+    });
+  }
+
+  function commit(idx) {
+    const c = candidates[idx];
+    if (!c) return close();
+    const value = textarea.value;
+    const before = value.slice(0, queryStart);
+    const cursor = textarea.selectionStart || value.length;
+    const after = value.slice(cursor);
+    const token = `@[${c.uid}:${c.displayName}] `;
+    const next = before + token + after;
+    textarea.value = next;
+    const newCursor = (before + token).length;
+    textarea.setSelectionRange(newCursor, newCursor);
+    state.mentionUids.add(c.uid);
+    state.mentionLookup.set(c.uid, { displayName: c.displayName, avatarUrl: c.avatarUrl });
+    close();
+    textarea.focus();
+  }
+
+  textarea.addEventListener('input', () => {
+    const val = textarea.value;
+    const cursor = textarea.selectionStart || 0;
+    // Find the most recent `@` before cursor on the same word.
+    let i = cursor - 1;
+    let foundAt = -1;
+    while (i >= 0) {
+      const ch = val[i];
+      if (ch === '@') { foundAt = i; break; }
+      if (/\s/.test(ch) || ch === '\n') break;
+      i--;
+    }
+    if (foundAt === -1) { close(); return; }
+    const q = val.slice(foundAt + 1, cursor);
+    if (q.length === 0 || q.length > 30 || /[\[\]\s]/.test(q)) { close(); return; }
+    queryStart = foundAt;
+    if (debounceT) clearTimeout(debounceT);
+    debounceT = setTimeout(async () => {
+      const results = await searchMembers(q);
+      candidates = results;
+      activeIdx = 0;
+      render();
+    }, 200);
+  });
+
+  textarea.addEventListener('keydown', (e) => {
+    if (!drop || !candidates.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIdx = (activeIdx + 1) % candidates.length;
+      render();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIdx = (activeIdx - 1 + candidates.length) % candidates.length;
+      render();
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      commit(activeIdx);
+    } else if (e.key === 'Escape') {
+      close();
+    }
+  });
+
+  textarea.addEventListener('blur', () => setTimeout(close, 120));
+  window.addEventListener('scroll', positionDropdown, { passive: true });
+  window.addEventListener('resize', positionDropdown);
 }
 
 function activeChannelMeta() {
@@ -230,6 +489,7 @@ async function switchChannel(nextKey) {
   state.done = false;
   state.likedIds = new Set();
   state.commentsOpen = new Set();
+  state.pendingPosts = [];
   // Reflect in URL without a full reload.
   try {
     const next = new URL(location.href);
@@ -241,7 +501,12 @@ async function switchChannel(nextKey) {
   // Refresh pinned post for new channel and re-render header.
   state.pinnedPost = await getPinnedPostForChannel(nextKey).catch(() => null);
   renderChannelHeader();
-  await loadMore(true);
+  // Re-subscribe to the new channel; the snapshot listener will paint the
+  // initial 20 posts when it lands.
+  subscribeToActiveChannel();
+  // Tear down any pending-posts toast.
+  const t = document.getElementById('c-new-posts-toast');
+  if (t) t.remove();
 }
 
 async function submitPost() {
@@ -264,31 +529,33 @@ async function submitPost() {
     const scopeCompanyId = state.role === 'owner' ? null : (state.companyId || null);
     const channelSel = $('composer-channel');
     const chosenCategory = (channelSel && channelSel.value) || state.activeChannel || 'general';
+    // Mentions referenced in the textarea via the @[uid:Name] tokens.
+    // We rebuild the list from the current text so deletions are honored.
+    const composerText = text || '';
+    const mentionedUids = collectMentionedUidsFromText(composerText);
     await createPost({
-      text: text || '',
+      text: composerText,
       imageFile: file,
       companyId: scopeCompanyId,
       author: state.me,
-      category: chosenCategory
+      category: chosenCategory,
+      mentionedUids
     });
     $('composer-text').value = '';
     $('composer-file').value = '';
     $('composer-filename').textContent = '';
     $('composer-preview').innerHTML = '';
+    state.mentionUids = new Set();
     // Stat trigger fires async — schedule a refresh so the user sees their
     // points / level update without a manual reload. Cheap (one callable).
     setTimeout(() => { refreshLeaderboard().catch(() => {}); }, 2500);
     // If the user posted into a different channel than the one they're viewing,
-    // jump to that channel so they see their post immediately.
+    // switch (which retears down + opens a new realtime listener). Otherwise
+    // the active listener will pick up the new post on its own.
     if (chosenCategory !== state.activeChannel) {
       await switchChannel(chosenCategory);
       return;
     }
-    // Reset feed and reload from top.
-    state.posts = [];
-    state.lastDoc = null;
-    state.done = false;
-    await loadMore(true);
   } catch (e) {
     errEl.textContent = e.message || 'Failed to post';
     errEl.style.display = 'block';
@@ -298,6 +565,140 @@ async function submitPost() {
   }
 }
 
+// Open / replace the realtime listener for the active channel. Bounded to
+// the latest 20 posts; older pages still use the one-shot listPosts path
+// via loadMore(). New posts that arrive while the user has scrolled away
+// from the top accumulate in state.pendingPosts and surface as a "X new"
+// toast; live-window edits (like / comment count changes) update in place.
+function subscribeToActiveChannel() {
+  if (state.feedUnsub) {
+    try { state.feedUnsub(); } catch (e) {}
+    state.feedUnsub = null;
+  }
+  state.livePostIds = new Set();
+  state.pendingPosts = [];
+  // Show a "Loading…" until the first snapshot lands so the empty state
+  // doesn't flash for ~200ms on every channel switch.
+  const feed = $('feed');
+  if (feed) feed.innerHTML = '';
+  const loadingEl = $('feed-loading');
+  if (loadingEl) loadingEl.textContent = 'Loading…';
+
+  state.feedUnsub = subscribeToFeed({
+    category: state.activeChannel,
+    role: state.role,
+    companyId: state.companyId,
+    pageSize: 20
+  }, ({ posts, changes }) => onFeedSnapshot(posts, changes));
+}
+
+function isUserScrolledAwayFromTop() {
+  // Treat anything past the top of the feed as "scrolled away".
+  const feed = $('feed');
+  if (!feed) return false;
+  const rect = feed.getBoundingClientRect();
+  return rect.top < -60;
+}
+
+async function onFeedSnapshot(nextPosts, changes) {
+  const wasFirstLoad = state.posts.length === 0;
+  const visibleIds = new Set(state.posts.slice(0, 20).map((p) => p.id));
+
+  if (wasFirstLoad) {
+    state.posts = nextPosts.slice();
+    state.livePostIds = new Set(nextPosts.map((p) => p.id));
+    // Hydrate liked state once; later changes are surgical.
+    await Promise.all(nextPosts.map(async (p) => {
+      const liked = await hasLiked(p.id).catch(() => false);
+      if (liked) state.likedIds.add(p.id);
+    }));
+    renderFeed();
+    return;
+  }
+
+  // Diff-driven updates so the user's open comment composer doesn't get
+  // ripped out from under them on every snapshot tick.
+  const adds = [];
+  const mods = [];
+  const removes = [];
+  for (const c of changes) {
+    if (c.type === 'added' && !visibleIds.has(c.post.id)) adds.push(c.post);
+    else if (c.type === 'modified') mods.push(c.post);
+    else if (c.type === 'removed') removes.push(c.post);
+  }
+
+  // Removals: drop from state + DOM.
+  if (removes.length) {
+    const removed = new Set(removes.map((p) => p.id));
+    state.posts = state.posts.filter((p) => !removed.has(p.id));
+    removes.forEach((p) => {
+      const card = document.getElementById(`post-${p.id}`);
+      if (card) card.remove();
+    });
+  }
+
+  // Modifications: in-place patch of the like / comment counters in the DOM,
+  // plus update the in-memory copy so `handleLike` etc. read fresh values.
+  mods.forEach((p) => {
+    const idx = state.posts.findIndex((x) => x.id === p.id);
+    if (idx === -1) return;
+    state.posts[idx] = { ...state.posts[idx], ...p };
+    const lc = document.querySelector(`[data-like-count="${p.id}"]`);
+    if (lc) lc.textContent = String(p.likeCount || 0);
+    const cc = document.querySelector(`[data-comment-count="${p.id}"]`);
+    if (cc) cc.textContent = String(p.commentCount || 0);
+  });
+
+  // New posts: prepend if user is at the top of the feed; otherwise buffer.
+  if (adds.length) {
+    if (isUserScrolledAwayFromTop()) {
+      const have = new Set(state.pendingPosts.map((p) => p.id));
+      adds.forEach((p) => { if (!have.has(p.id)) state.pendingPosts.push(p); });
+      renderNewPostsToast();
+    } else {
+      const have = new Set(state.posts.map((p) => p.id));
+      const fresh = adds.filter((p) => !have.has(p.id));
+      state.posts = [...fresh, ...state.posts];
+      renderFeed();
+    }
+  }
+
+  state.livePostIds = new Set(nextPosts.map((p) => p.id));
+}
+
+function renderNewPostsToast() {
+  let toast = document.getElementById('c-new-posts-toast');
+  if (!state.pendingPosts.length) {
+    if (toast) toast.remove();
+    return;
+  }
+  if (!toast) {
+    toast = document.createElement('button');
+    toast.id = 'c-new-posts-toast';
+    toast.className = 'c-new-posts-toast';
+    toast.addEventListener('click', () => {
+      const merged = [...state.pendingPosts, ...state.posts];
+      const seen = new Set();
+      state.posts = merged.filter((p) => {
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+      });
+      state.pendingPosts = [];
+      renderFeed();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      toast.remove();
+    });
+    const channelHeader = $('channel-header');
+    if (channelHeader && channelHeader.parentNode) {
+      channelHeader.parentNode.insertBefore(toast, channelHeader.nextSibling);
+    }
+  }
+  const n = state.pendingPosts.length;
+  toast.textContent = `${n} new ${n === 1 ? 'post' : 'posts'} ↑`;
+}
+
+// Kept for the "Load more" pagination path (older posts beyond live window).
 async function loadMore(reset = false) {
   if (state.loading || state.done) return;
   state.loading = true;
@@ -313,11 +714,13 @@ async function loadMore(reset = false) {
       companyId: state.companyId,
       category: state.activeChannel
     });
-    state.posts = state.posts.concat(posts);
+    // Merge into existing array, dedup by id.
+    const have = new Set(state.posts.map((p) => p.id));
+    const fresh = posts.filter((p) => !have.has(p.id));
+    state.posts = state.posts.concat(fresh);
     state.lastDoc = lastDoc;
     state.done = done;
-    // Preload like state for visible posts.
-    await Promise.all(posts.map(async (p) => {
+    await Promise.all(fresh.map(async (p) => {
       const liked = await hasLiked(p.id);
       if (liked) state.likedIds.add(p.id);
     }));
@@ -433,7 +836,7 @@ function postCardHtml(p) {
           ${delBtn}
         </div>
       </header>
-      ${p.text ? `<div class="c-post-body">${linkify(p.text)}</div>` : ''}
+      ${p.text ? `<div class="c-post-body">${renderTextWithMentions(p.text).html}</div>` : ''}
       ${img}
       <footer class="c-post-actions">
         <button class="c-action ${liked ? 'c-liked' : ''}" data-like="${p.id}">
@@ -556,12 +959,14 @@ async function loadCommentsInto(p) {
   `;
   const submit = root.querySelector(`[data-comment-submit="${p.id}"]`);
   const input = root.querySelector(`#comment-input-${p.id}`);
+  attachMentionAutocomplete(input);
   const send = async () => {
     const text = input.value.trim();
     if (!text) return;
     submit.disabled = true;
     try {
-      await addComment(p.id, { text, author: state.me });
+      const mentionedUids = collectMentionedUidsFromText(text);
+      await addComment(p.id, { text, author: state.me, mentionedUids });
       // Update counter in memory + DOM.
       p.commentCount = (p.commentCount || 0) + 1;
       const cc = document.querySelector(`[data-comment-count="${p.id}"]`);
@@ -575,7 +980,10 @@ async function loadCommentsInto(p) {
     }
   };
   submit.addEventListener('click', send);
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+  input.addEventListener('keydown', (e) => {
+    // Don't submit while the autocomplete is intercepting Enter.
+    if (e.key === 'Enter' && !document.querySelector('.c-mention-dropdown')) send();
+  });
   // Delete buttons.
   root.querySelectorAll('[data-comment-del]').forEach((b) => {
     b.addEventListener('click', async () => {
@@ -605,7 +1013,7 @@ function commentHtml(c, p) {
           <span class="c-comment-time">${fmtRelative(c.createdAt)}</span>
           ${del}
         </div>
-        <div class="c-comment-text">${linkify(c.text || '')}</div>
+        <div class="c-comment-text">${renderTextWithMentions(c.text || '').html}</div>
       </div>
     </div>
   `;
@@ -654,12 +1062,27 @@ async function main() {
   // doesn't block initial paint. Re-render once it lands.
   refreshLeaderboard().catch(() => {});
 
-  await loadMore(true);
+  // Phase 3 — replace the polling feed with a bounded realtime listener.
+  subscribeToActiveChannel();
+
+  // Phase 3 — listen for unread notifications on the current user.
+  if (state.notifUnsub) { try { state.notifUnsub(); } catch (e) {} }
+  state.notifUnsub = subscribeToUnreadNotifs(state.me.uid, (rows) => {
+    state.unreadNotifs = rows || [];
+    renderBellBadge();
+    if (state.showingNotifs) renderNotifPopover();
+  });
 
   // Touch last-visit timestamp so the "new" badge clears.
   touchCommunityVisit().catch(() => {});
 
   $('load-more').addEventListener('click', () => loadMore(false));
+
+  // Tear down listeners cleanly when the user leaves the page.
+  window.addEventListener('beforeunload', () => {
+    if (state.feedUnsub) { try { state.feedUnsub(); } catch (e) {} }
+    if (state.notifUnsub) { try { state.notifUnsub(); } catch (e) {} }
+  });
 }
 
 main();

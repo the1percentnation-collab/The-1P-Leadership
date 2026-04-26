@@ -53,10 +53,13 @@ service cloud.firestore {
                      && (!('statsPoints' in request.resource.data)
                          || request.resource.data.statsPoints == 0)
                      && (!('statsWeekPoints' in request.resource.data)
-                         || request.resource.data.statsWeekPoints == 0));
+                         || request.resource.data.statsWeekPoints == 0)
+                     && (!('unreadNotifCount' in request.resource.data)
+                         || request.resource.data.unreadNotifCount == 0));
       allow update: if isOwner() || (isSelf(uid)
                      && request.resource.data.get('statsPoints', 0) == resource.data.get('statsPoints', 0)
-                     && request.resource.data.get('statsWeekPoints', 0) == resource.data.get('statsWeekPoints', 0));
+                     && request.resource.data.get('statsWeekPoints', 0) == resource.data.get('statsWeekPoints', 0)
+                     && request.resource.data.get('unreadNotifCount', 0) == resource.data.get('unreadNotifCount', 0));
       allow delete: if isOwner();
 
       // users/{uid}/progress/{moduleId} — STRICTLY private to the user (and owner).
@@ -76,6 +79,27 @@ service cloud.firestore {
       match /stats/{statId} {
         allow read: if isSignedIn();
         allow write: if false;
+      }
+
+      // users/{uid}/notifications/{notifId} (Phase 3) — per-user inbox.
+      // Server fan-out (Admin SDK) creates notifications when someone likes,
+      // comments on, or @mentions the user. Self can mark them read; only
+      // self/owner can read or delete.
+      match /notifications/{notifId} {
+        allow read: if isOwner() || isSelf(uid);
+        allow create: if false;
+        // Self may mark a notification read (or unread). All other fields
+        // must be unchanged.
+        allow update: if isSelf(uid)
+          && request.resource.data.fromUid == resource.data.fromUid
+          && request.resource.data.type == resource.data.type
+          && request.resource.data.postId == resource.data.postId
+          && request.resource.data.get('commentId', null) == resource.data.get('commentId', null)
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.get('preview', '') == resource.data.get('preview', '')
+          && request.resource.data.get('fromName', '') == resource.data.get('fromName', '')
+          && request.resource.data.get('fromAvatar', null) == resource.data.get('fromAvatar', null);
+        allow delete: if isOwner() || isSelf(uid);
       }
     }
 
@@ -207,6 +231,7 @@ service cloud.firestore {
       // Create: authorUid must match auth.uid. Counters must start at 0. companyId must be
       // null (global) only if the caller is owner, otherwise it must match caller's own cid.
       // Category (Phase 1 channels) must be one of the allowed enum values when present.
+      // mentionedUids (Phase 3) must be a list of strings, capped at 10 to bound trigger fan-out.
       allow create: if isSignedIn()
         && request.resource.data.authorUid == request.auth.uid
         && request.resource.data.likeCount == 0
@@ -216,6 +241,11 @@ service cloud.firestore {
           || request.resource.data.category in ['general','wins','questions','announcements']
         )
         && (!('pinned' in request.resource.data) || request.resource.data.pinned == false)
+        && (
+          !('mentionedUids' in request.resource.data)
+          || (request.resource.data.mentionedUids is list
+              && request.resource.data.mentionedUids.size() <= 10)
+        )
         && (
           (request.resource.data.companyId == null && isOwner())
           || (request.resource.data.companyId != null
@@ -238,6 +268,7 @@ service cloud.firestore {
           && request.resource.data.commentCount == resource.data.commentCount
           && request.resource.data.get('category', null) == resource.data.get('category', null)
           && request.resource.data.get('pinned', false) == resource.data.get('pinned', false)
+          && request.resource.data.get('mentionedUids', []) == resource.data.get('mentionedUids', [])
           && (
             request.resource.data.likeCount == resource.data.likeCount + 1
             || request.resource.data.likeCount == resource.data.likeCount - 1
@@ -252,14 +283,16 @@ service cloud.firestore {
           && request.resource.data.likeCount == resource.data.likeCount
           && request.resource.data.get('category', null) == resource.data.get('category', null)
           && request.resource.data.get('pinned', false) == resource.data.get('pinned', false)
+          && request.resource.data.get('mentionedUids', []) == resource.data.get('mentionedUids', [])
           && (
             request.resource.data.commentCount == resource.data.commentCount + 1
             || request.resource.data.commentCount == resource.data.commentCount - 1
           )
         )
         || (
-          // Author editing own post content — counters and `pinned` unchanged. Category may
-          // be changed (treated as a content edit) but must remain in the allowed enum.
+          // Author editing own post content — counters and `pinned` unchanged. Category and
+          // mentionedUids may change (treated as content edits); category stays in enum, and
+          // mentionedUids stays a list capped at 10.
           resource.data.authorUid == request.auth.uid
           && request.resource.data.likeCount == resource.data.likeCount
           && request.resource.data.commentCount == resource.data.commentCount
@@ -269,10 +302,15 @@ service cloud.firestore {
             !('category' in request.resource.data)
             || request.resource.data.category in ['general','wins','questions','announcements']
           )
+          && (
+            !('mentionedUids' in request.resource.data)
+            || (request.resource.data.mentionedUids is list
+                && request.resource.data.mentionedUids.size() <= 10)
+          )
         )
         || (
           // Moderator pinning — owner or same-company admin may flip `pinned` only.
-          // Everything else (counters, content, scope, category) must be unchanged.
+          // Everything else (counters, content, scope, category, mentions) must be unchanged.
           (isOwner() || (resource.data.companyId != null && isCompanyAdmin(resource.data.companyId)))
           && request.resource.data.authorUid == resource.data.authorUid
           && request.resource.data.companyId == resource.data.companyId
@@ -281,6 +319,7 @@ service cloud.firestore {
           && request.resource.data.likeCount == resource.data.likeCount
           && request.resource.data.commentCount == resource.data.commentCount
           && request.resource.data.get('category', null) == resource.data.get('category', null)
+          && request.resource.data.get('mentionedUids', []) == resource.data.get('mentionedUids', [])
         )
       );
 
@@ -311,10 +350,20 @@ service cloud.firestore {
 
         allow read: if isSignedIn();
         allow create: if isSignedIn() && canReadParent()
-          && request.resource.data.authorUid == request.auth.uid;
+          && request.resource.data.authorUid == request.auth.uid
+          && (
+            !('mentionedUids' in request.resource.data)
+            || (request.resource.data.mentionedUids is list
+                && request.resource.data.mentionedUids.size() <= 10)
+          );
         allow update: if isSignedIn()
           && resource.data.authorUid == request.auth.uid
-          && request.resource.data.authorUid == resource.data.authorUid;
+          && request.resource.data.authorUid == resource.data.authorUid
+          && (
+            !('mentionedUids' in request.resource.data)
+            || (request.resource.data.mentionedUids is list
+                && request.resource.data.mentionedUids.size() <= 10)
+          );
         allow delete: if isSignedIn() && (
           resource.data.authorUid == request.auth.uid
           || isOwner()

@@ -6,7 +6,7 @@ import { app, auth, db, functions, firebaseReady } from './firebase.js';
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
   collection, query, where, orderBy, limit, startAfter, getDocs,
-  serverTimestamp, increment, runTransaction
+  serverTimestamp, increment, runTransaction, onSnapshot
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import {
   getStorage, ref as storageRef, uploadBytes, getDownloadURL
@@ -209,12 +209,15 @@ export async function getLatestPostTimestamp({ role = 'user', companyId = null }
 
 export const CHANNEL_KEYS = ['general', 'wins', 'questions', 'announcements'];
 
-export async function createPost({ text, imageFile, companyId = null, author, category = 'general' }) {
+export async function createPost({ text, imageFile, companyId = null, author, category = 'general', mentionedUids = [] }) {
   if (!firebaseReady) throw new Error('Firebase unavailable');
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
   if (!text || !text.trim()) throw new Error('Post text is required');
   const cat = CHANNEL_KEYS.includes(category) ? category : 'general';
+  const mentions = Array.isArray(mentionedUids)
+    ? Array.from(new Set(mentionedUids.filter((u) => typeof u === 'string' && u))).slice(0, 10)
+    : [];
 
   // Create post doc first (we need postId for the storage path).
   const docRef = await addDoc(collection(db, 'posts'), {
@@ -229,6 +232,7 @@ export async function createPost({ text, imageFile, companyId = null, author, ca
     companyId: companyId || null,
     category: cat,
     pinned: false,
+    mentionedUids: mentions,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
@@ -298,12 +302,15 @@ export async function listComments(postId) {
   }
 }
 
-export async function addComment(postId, { text, author }) {
+export async function addComment(postId, { text, author, mentionedUids = [] }) {
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
   if (!text || !text.trim()) throw new Error('Comment required');
   const postRef = doc(db, 'posts', postId);
   const commentsCol = collection(db, 'posts', postId, 'comments');
+  const mentions = Array.isArray(mentionedUids)
+    ? Array.from(new Set(mentionedUids.filter((u) => typeof u === 'string' && u))).slice(0, 10)
+    : [];
   // Two-step: create comment, then increment counter. We do them in a transaction
   // so the counter stays honest even under concurrent adds.
   return await runTransaction(db, async (tx) => {
@@ -315,6 +322,7 @@ export async function addComment(postId, { text, author }) {
       authorName: author.displayName || user.displayName || user.email || 'Unknown',
       authorAvatar: author.avatarUrl || null,
       text: text.trim(),
+      mentionedUids: mentions,
       createdAt: serverTimestamp()
     });
     tx.update(postRef, { commentCount: increment(1) });
@@ -571,4 +579,223 @@ export function linkify(text) {
   return esc.replace(/(https?:\/\/[^\s<]+)/g, (m) =>
     `<a href="${m}" target="_blank" rel="noopener" class="c-link">${m}</a>`
   );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Phase 3 — Realtime feed, mentions, and notifications.
+//
+// `subscribeToFeed` opens a bounded onSnapshot listener over the latest
+// 20 posts in the active channel, scoped by the caller's role/company.
+// Pagination beyond the live window stays one-shot via listPosts() — the
+// older pages don't update in real time, which keeps cost flat.
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * subscribeToFeed({ category, role, companyId }, onChange) → unsubscribe()
+ *
+ * onChange receives `{ posts, changes }`:
+ *   posts   — current array (newest-first), capped at the live window
+ *   changes — [{ type: 'added' | 'modified' | 'removed', post, oldIndex }]
+ *
+ * Owner / company-scoped callers internally run TWO snapshot listeners
+ * (company posts + global posts) and merge in JS — same OR-emulation
+ * pattern listPosts uses for one-shot fetches.
+ */
+export function subscribeToFeed({ category = null, role = 'user', companyId = null, pageSize = 20 } = {}, onChange) {
+  if (!firebaseReady) {
+    if (typeof onChange === 'function') onChange({ posts: [], changes: [] });
+    return () => {};
+  }
+
+  // Map<postId → post> aggregating all live listeners. Sorted on emit.
+  const merged = new Map();
+  const includeLegacyAsGeneral = category === 'general';
+  let live = true;
+
+  function buildQuery(base) {
+    const parts = [base];
+    if (category && !includeLegacyAsGeneral) parts.push(where('category', '==', category));
+    parts.push(orderBy('createdAt', 'desc'));
+    parts.push(limit(pageSize));
+    return query(...parts);
+  }
+
+  function emit(diffsBatch) {
+    if (!live || typeof onChange !== 'function') return;
+    const sorted = Array.from(merged.values()).sort((a, b) => {
+      const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+      const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+      return tb - ta;
+    });
+    onChange({ posts: sorted.slice(0, pageSize), changes: diffsBatch });
+  }
+
+  function handleSnap(snap, sourceTag) {
+    const changes = [];
+    snap.docChanges().forEach((c) => {
+      const data = { id: c.doc.id, ...c.doc.data(), _snap: c.doc };
+      // Legacy fallback for #general: only include posts where category is
+      // missing or === 'general'. Same logic listPosts uses.
+      if (includeLegacyAsGeneral && data.category && data.category !== 'general') {
+        if (merged.has(data.id)) {
+          merged.delete(data.id);
+          changes.push({ type: 'removed', post: data, oldIndex: c.oldIndex });
+        }
+        return;
+      }
+      if (c.type === 'removed') {
+        merged.delete(data.id);
+        changes.push({ type: 'removed', post: data, oldIndex: c.oldIndex });
+      } else {
+        merged.set(data.id, data);
+        changes.push({ type: c.type, post: data, oldIndex: c.oldIndex });
+      }
+    });
+    emit(changes);
+  }
+
+  const unsubs = [];
+  function watch(qry, tag) {
+    const u = onSnapshot(
+      qry,
+      (snap) => handleSnap(snap, tag),
+      (err) => console.warn('[community] subscribeToFeed listener error', tag, err)
+    );
+    unsubs.push(u);
+  }
+
+  if (role === 'owner') {
+    watch(buildQuery(collection(db, 'posts')), 'all');
+  } else if (companyId) {
+    watch(buildQuery(query(collection(db, 'posts'), where('companyId', '==', companyId))), 'company');
+    watch(buildQuery(query(collection(db, 'posts'), where('companyId', '==', null))), 'global');
+  } else {
+    watch(buildQuery(query(collection(db, 'posts'), where('companyId', '==', null))), 'global-only');
+  }
+
+  return function unsubscribe() {
+    live = false;
+    unsubs.forEach((u) => { try { u(); } catch (e) {} });
+  };
+}
+
+// ──────────────── Mentions ────────────────
+
+const MENTION_TOKEN_RE = /@\[([^\]:]+):([^\]]+)\]/g; // @[uid:Display Name]
+
+/**
+ * Convert text containing @[uid:Name] tokens into safe HTML with
+ * `<a class="c-mention">@Name</a>` substitutions, plus extract the
+ * mentioned uids in document order. Pass through linkify for URLs.
+ */
+export function renderTextWithMentions(text) {
+  if (!text) return { html: '', mentionedUids: [] };
+  const mentionedUids = [];
+  // Step 1: replace tokens with placeholders so escapeHtml doesn't mangle them.
+  const placeholders = [];
+  const tokenized = String(text).replace(MENTION_TOKEN_RE, (_m, uid, name) => {
+    mentionedUids.push(uid);
+    const idx = placeholders.length;
+    placeholders.push({ uid, name });
+    return ` MENTION_${idx} `;
+  });
+  // Step 2: linkify (which itself escapes), then swap placeholders for anchors.
+  let html = linkify(tokenized);
+  placeholders.forEach((p, i) => {
+    const safeName = escapeHtml(p.name);
+    const safeUid = encodeURIComponent(p.uid);
+    html = html.replace(
+      ` MENTION_${i} `,
+      `<a class="c-mention" href="/profile.html?uid=${safeUid}">@${safeName}</a>`
+    );
+  });
+  return { html, mentionedUids };
+}
+
+export async function searchMembers(qStr) {
+  if (!firebaseReady || !functions || !qStr || !qStr.trim()) return [];
+  try {
+    const call = httpsCallable(functions, 'searchMembers');
+    const res = await call({ query: qStr.trim() });
+    return (res.data && res.data.results) || [];
+  } catch (e) {
+    console.warn('[community] searchMembers failed', e);
+    return [];
+  }
+}
+
+// ──────────────── Notifications ────────────────
+
+/**
+ * subscribeToUnreadNotifs(uid, onChange) → unsubscribe()
+ *
+ * Bounded listener (where read==false, orderBy createdAt desc, limit 20).
+ * Backed by the firestore.indexes.json composite index `notifications(read, createdAt)`.
+ */
+export function subscribeToUnreadNotifs(uid, onChange) {
+  if (!firebaseReady || !uid) {
+    if (typeof onChange === 'function') onChange([]);
+    return () => {};
+  }
+  const q = query(
+    collection(db, 'users', uid, 'notifications'),
+    where('read', '==', false),
+    orderBy('createdAt', 'desc'),
+    limit(20)
+  );
+  const unsub = onSnapshot(q, (snap) => {
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (typeof onChange === 'function') onChange(rows);
+  }, (err) => {
+    console.warn('[community] subscribeToUnreadNotifs error', err);
+    if (typeof onChange === 'function') onChange([]);
+  });
+  return unsub;
+}
+
+export async function markNotifRead(notifId, { read = true } = {}) {
+  const user = auth.currentUser;
+  if (!user || !notifId) return;
+  // Bump the user-doc unreadNotifCount mirror so the bell badge updates
+  // even before the listener round-trips. Server-side counts via the
+  // notifications subcollection are the source of truth — this mirror is
+  // best-effort. Self-write is allowed because we're not touching the
+  // mirror count directly here; instead we let the listener re-derive.
+  try {
+    await updateDoc(
+      doc(db, 'users', user.uid, 'notifications', notifId),
+      { read: !!read }
+    );
+  } catch (e) {
+    console.warn('[community] markNotifRead failed', e);
+  }
+}
+
+export async function markAllNotifsRead(unreadIds) {
+  const user = auth.currentUser;
+  if (!user || !Array.isArray(unreadIds) || !unreadIds.length) return;
+  await Promise.all(unreadIds.map((id) =>
+    updateDoc(doc(db, 'users', user.uid, 'notifications', id), { read: true })
+      .catch(() => {})
+  ));
+}
+
+/**
+ * Fetch the latest N notifications (read + unread) for the current user.
+ * Used by the bell popover when the user clicks "see all".
+ */
+export async function listRecentNotifs({ limit: lim = 20 } = {}) {
+  const user = auth.currentUser;
+  if (!user || !firebaseReady) return [];
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'users', user.uid, 'notifications'),
+      orderBy('createdAt', 'desc'),
+      limit(lim)
+    ));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    console.warn('[community] listRecentNotifs failed', e);
+    return [];
+  }
 }

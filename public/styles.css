@@ -891,6 +891,7 @@ body {
   margin-right: 10px;
   padding-right: 10px;
   border-right: 1px solid var(--border);
+  position: relative;
 }
 
 .user-chip-email {
@@ -4292,4 +4293,216 @@ body.academy-course #course-workspace {
 .c-level-8  { color: #EE5450; border-color: rgba(238,84,80,0.45); background: rgba(238,84,80,0.10); }
 .c-level-9  { color: #E0383E; border-color: rgba(224,56,62,0.50); background: rgba(224,56,62,0.12); }
 .c-level-10 { color: #FFD56F; border-color: rgba(255,213,111,0.55); background: rgba(204,27,27,0.18); }
+
+/* ───────────────────────────────────────────────────────────────────────
+   Community Phase 3 — bell + notification popover, @mention dropdown,
+   inline mention links, new-posts toast, and a flash highlight when a
+   notification deeplinks into a specific post. */
+
+.c-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--gray-light);
+  cursor: pointer;
+  padding: 0;
+}
+.c-bell:hover { color: var(--white); border-color: rgba(204,27,27,0.4); }
+.c-bell-icon { font-size: 14px; line-height: 1; }
+.c-bell-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #1a1a1a;
+}
+
+.c-notif-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 10px;
+  width: min(360px, calc(100vw - 24px));
+  max-height: 480px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+  z-index: 50;
+  padding: 10px;
+}
+.c-notif-popover[hidden] { display: none; }
+.c-notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.c-notif-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+}
+.c-notif-mark-all {
+  background: transparent;
+  border: 0;
+  color: var(--red);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.c-notif-mark-all:disabled { color: var(--gray-mid); cursor: default; }
+.c-notif-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.c-notif-row {
+  display: grid;
+  grid-template-columns: 22px 28px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--gray-light);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.c-notif-row:hover { background: rgba(255,255,255,0.04); color: var(--white); }
+.c-notif-row.unread { background: rgba(204,27,27,0.06); }
+.c-notif-icon {
+  font-size: 14px;
+  text-align: center;
+  color: var(--gray-light);
+}
+.c-notif-body { min-width: 0; }
+.c-notif-line {
+  font-size: 13px;
+  color: var(--white);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.c-notif-preview {
+  font-size: 12px;
+  color: var(--gray-light);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.c-notif-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--gray-mid);
+  margin-top: 2px;
+}
+.c-notif-empty {
+  text-align: center;
+  font-size: 12px;
+  color: var(--gray-mid);
+  padding: 24px 12px;
+}
+
+/* Inline @mention link inside post / comment text. */
+.c-mention {
+  color: #FF7070;
+  font-weight: 500;
+  text-decoration: none;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+.c-mention:hover {
+  text-decoration: underline;
+  background: rgba(204,27,27,0.10);
+}
+
+/* Composer mention autocomplete — anchored under the active textarea. */
+.c-mention-dropdown {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.55);
+  z-index: 60;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.c-mention-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--gray-light);
+}
+.c-mention-option:hover,
+.c-mention-option.is-active {
+  background: rgba(204,27,27,0.12);
+  color: var(--white);
+}
+.c-mention-option-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* "X new posts ↑" toast that appears above the feed when new arrivals land
+   while the user is scrolled away from the top of the feed. */
+.c-new-posts-toast {
+  position: sticky;
+  top: 12px;
+  z-index: 5;
+  align-self: center;
+  margin: 8px auto 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  border: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(204,27,27,0.35);
+  display: block;
+  width: max-content;
+}
+.c-new-posts-toast:hover { transform: translateY(-1px); }
+
+/* Brief flash when arriving at a post via a notification deep-link. */
+.c-post-flash {
+  animation: c-post-flash-keys 1.4s ease-out;
+}
+@keyframes c-post-flash-keys {
+  0%   { box-shadow: 0 0 0 0 rgba(204,27,27,0.65); }
+  60%  { box-shadow: 0 0 0 12px rgba(204,27,27,0); }
+  100% { box-shadow: 0 0 0 0 rgba(204,27,27,0); }
+}
+
 
