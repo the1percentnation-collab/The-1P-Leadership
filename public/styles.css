@@ -1,24 +1,31 @@
 :root {
-  /* Brand palette — black, red, white only. Grays are neutral supporting tones. */
+  /* Brand palette aligned with the1pnation.com main site. */
   --red: #E60306;
   --red-dark: #B30205;
   --red-light: #FDECEC;
-  --black: #0A0A0A;
-  --charcoal: #171717;
-  --gray-dark: #262626;
-  --gray-mid: #737373;
-  --gray-light: #A3A3A3;
-  --border: #262626;
-  --surface: #141414;
-  --surface2: #1C1C1C;
+  --red-glow: rgba(230, 3, 6, 0.15);
+  --black: #080808;
+  --black-2: #0F0F0F;
+  --charcoal: #151515;
+  --gray-dark: #222222;
+  --gray-mid: #606060;
+  --gray-light: #A0A0A0;
+  --gray-400: #A0A0A0;
+  --gray-600: #606060;
+  --border: rgba(255,255,255,0.08);
+  --border-red: rgba(230,3,6,0.3);
+  --surface: #1A1A1A;
+  --surface2: #222222;
   --white: #FFFFFF;
   --white-dim: rgba(255,255,255,0.7);
-  --white-soft: #F5F5F5;
+  --white-soft: #F0EEE8;
+  --off-white: #F0EEE8;
   /* Legacy accent retained as neutral white so existing UI using it stays on palette. */
   --accent: #FFFFFF;
-  --font-display: 'Space Grotesk', system-ui, -apple-system, sans-serif;
-  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+  /* Fonts matched to the1pnation.com (Bebas Neue / Outfit / Space Mono). */
+  --font-display: 'Bebas Neue', Impact, system-ui, -apple-system, sans-serif;
+  --font-body: 'Outfit', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, 'SFMono-Regular', monospace;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -338,25 +345,31 @@ body {
 .topbar-actions { display: flex; gap: 10px; align-items: center; }
 
 .btn {
-  padding: 8px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
   border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.15s, box-shadow 0.2s;
   font-family: var(--font-body);
-  border: none;
+  border: 1px solid transparent;
+  text-decoration: none;
 }
 
 .btn-ghost {
   background: transparent;
   border: 1px solid var(--border);
-  color: var(--gray-light);
+  color: var(--white);
 }
 
 .btn-ghost:hover {
-  border-color: var(--gray-mid);
+  border-color: var(--white);
   color: var(--white);
+  transform: translateY(-1px);
 }
 
 .btn-primary {
@@ -365,7 +378,20 @@ body {
   border: 1px solid var(--red);
 }
 
-.btn-primary:hover { background: var(--red-dark); }
+.btn-primary:hover {
+  background: var(--red-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(230,3,6,0.25);
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--white);
+}
+.btn-outline:hover { border-color: var(--white); transform: translateY(-2px); }
+
+.btn-lg { padding: 14px 28px; font-size: 15px; }
 
 .btn-success {
   background: #1C3B1C;
@@ -648,10 +674,10 @@ body {
 }
 
 .quote-block {
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--red);
   padding: 16px 20px;
   margin: 28px 0;
-  background: rgba(232,197,71,0.04);
+  background: rgba(230,3,6,0.04);
   border-radius: 0 8px 8px 0;
 }
 
@@ -906,17 +932,18 @@ body {
 
 .user-chip-link {
   font-size: 11px;
-  color: var(--accent);
+  color: var(--white);
   text-decoration: none;
   font-family: var(--font-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 4px 8px;
-  border: 1px solid rgba(232,197,71,0.3);
+  border: 1px solid var(--border);
   border-radius: 4px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
-.user-chip-link:hover { background: rgba(232,197,71,0.08); }
+.user-chip-link:hover { background: var(--surface); border-color: var(--border-red); color: var(--red); }
 
 .auth-shell {
   min-height: 100vh;
@@ -926,8 +953,8 @@ body {
   justify-content: center;
   padding: 40px 20px;
   background:
-    radial-gradient(1200px 500px at 20% -10%, rgba(204,27,27,0.12), transparent 60%),
-    radial-gradient(900px 400px at 100% 110%, rgba(232,197,71,0.06), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 70% 50%, rgba(230,3,6,0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 60% at 10% 80%, rgba(230,3,6,0.04) 0%, transparent 60%),
     var(--black);
 }
 
@@ -940,10 +967,43 @@ body {
   padding: 36px 32px;
 }
 
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: var(--white);
+  margin-bottom: 20px;
+}
+.auth-brand-mark { width: 42px; height: 42px; flex-shrink: 0; }
+.auth-brand-text { display: flex; flex-direction: column; line-height: 1; }
+.auth-brand-line1 {
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+}
+.auth-brand-line2 {
+  font-family: var(--font-display);
+  font-size: 17px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--white);
+  margin-top: 3px;
+}
+
+.auth-back {
+  margin-top: 22px;
+  text-align: center;
+}
+
 .auth-card h1 {
   font-family: var(--font-display);
-  font-size: 32px;
+  font-weight: 400;
+  font-size: 44px;
   letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--white);
   margin-bottom: 6px;
 }
@@ -1058,24 +1118,71 @@ body {
 }
 
 .console-topbar {
-  background: var(--charcoal);
+  background: rgba(8,8,8,0.92);
+  backdrop-filter: saturate(140%) blur(10px);
   border-bottom: 1px solid var(--border);
   padding: 14px 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 .console-title {
   font-family: var(--font-display);
   font-size: 22px;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--white);
   white-space: nowrap;
   flex-shrink: 0;
+  text-decoration: none;
 }
 .console-title span { color: var(--red); }
+
+/* Console-style brand chip mirrors the academy-header brand on console pages. */
+.console-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--white);
+}
+.console-brand-mark {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+.console-brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+.console-brand-line1 {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--gray-light);
+  text-transform: uppercase;
+}
+.console-brand-line2 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.06em;
+  color: var(--white);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.console-brand-line2 span { color: var(--red); }
+.console-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
 
 /* Mobile: stack the chip below the brand, scroll links horizontally so
    the topbar never wraps the title and never clips the navigation. */
@@ -1194,7 +1301,7 @@ body {
   text-transform: uppercase;
 }
 .pill-ok { background: rgba(92,173,92,0.15); color: #8AD08A; }
-.pill-warn { background: rgba(232,197,71,0.15); color: var(--accent); }
+.pill-warn { background: rgba(230,3,6,0.15); color: #FF9B9B; }
 .pill-muted { background: rgba(160,160,160,0.15); color: var(--gray-light); }
 .pill-red { background: rgba(204,27,27,0.2); color: #FF7070; }
 
@@ -2676,19 +2783,43 @@ body.academy-hub {
 
 .academy-brand-line1 {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: 0.02em;
-  color: var(--white);
+  font-weight: 400;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--gray-light);
+  text-transform: uppercase;
 }
 
 .academy-brand-line2 {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  color: var(--white);
+  margin-top: 2px;
+}
+
+/* "Back to main site" link styled like main site's nav portal button. */
+.back-to-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border-radius: 3px;
+  border: 1px solid var(--border-red);
   color: var(--red);
-  margin-top: 4px;
+  text-decoration: none;
+  transition: background 0.2s, color 0.2s;
+  white-space: nowrap;
+}
+.back-to-main:hover { background: var(--red); color: var(--white); }
+@media (max-width: 760px) {
+  .back-to-main { padding: 6px 10px; font-size: 10px; letter-spacing: 0.1em; }
 }
 
 .academy-tabs {
@@ -2772,12 +2903,13 @@ body.academy-hub {
 
 .academy-hero h1 {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 56px;
-  line-height: 1.02;
-  letter-spacing: -0.02em;
+  font-weight: 400;
+  font-size: clamp(48px, 6vw, 76px);
+  line-height: 0.95;
+  letter-spacing: 0.02em;
   color: var(--white);
   margin-bottom: 18px;
+  text-transform: uppercase;
 }
 
 .academy-hero h1 span { color: var(--red); }
