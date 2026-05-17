@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Goal Planning | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+
+  <div class="academy-shell" style="min-height:100vh; height:auto; overflow:auto;">
+
+    <header class="academy-header">
+      <div class="academy-header-inner">
+        <a class="academy-brand" href="/dashboard.html" aria-label="The One Percent Academy">
+          <img src="/assets/academy-logo.svg" alt="" class="academy-brand-mark">
+          <span class="academy-brand-text">
+            <span class="academy-brand-line1">The One Percent</span>
+            <span class="academy-brand-line2">Academy</span>
+          </span>
+        </a>
+        <nav class="academy-tabs" id="academy-tabs">
+          <a class="academy-tab" href="/dashboard.html" data-tab="dashboard">Dashboard</a>
+          <a class="academy-tab" href="/courses.html" data-tab="courses">Courses</a>
+          <a class="academy-tab" href="/community.html" data-tab="community">Community</a>
+          <a class="academy-tab" href="/resources.html" data-tab="resources">Resources</a>
+          <a class="academy-tab active" href="/goal-planning.html" data-tab="goals">Goal Planning</a>
+        </nav>
+        <div class="academy-header-right">
+          <div class="user-chip" id="user-chip"></div>
+        </div>
+      </div>
+    </header>
+
+    <main class="academy-container" style="padding-bottom: 64px;">
+
+      <section class="academy-hero">
+        <div class="academy-eyebrow">Your Roadmap</div>
+        <h1>Goal <span>Planning</span></h1>
+        <p>Clarity creates momentum. Define what you're working toward, break it into weekly milestones, and track your 1% daily gains.</p>
+      </section>
+
+      <section id="goal-active">
+        <div class="academy-section-head">
+          <h2>Your active goals</h2>
+          <button class="btn btn-primary" id="btn-add-goal" style="font-size:13px; padding:7px 16px;">+ Add goal</button>
+        </div>
+        <div id="goal-list" class="academy-list">
+          <div class="academy-empty">No goals set yet. Add your first goal to get started.</div>
+        </div>
+      </section>
+
+      <section style="margin-top: 48px;">
+        <div class="academy-section-head">
+          <h2>Weekly focus</h2>
+          <span class="academy-section-meta">What matters this week?</span>
+        </div>
+        <div id="weekly-focus" class="academy-list">
+          <div class="academy-empty">Set a weekly priority to stay on track.</div>
+        </div>
+      </section>
+
+      <section style="margin-top: 48px;">
+        <div class="academy-section-head">
+          <h2>Completed goals</h2>
+          <span class="academy-section-meta">Your track record</span>
+        </div>
+        <div id="goal-completed" class="academy-list">
+          <div class="academy-empty">Completed goals will appear here. Keep going.</div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script type="module">
+    import { requireAuth } from './js/auth.js';
+    requireAuth();
+  </script>
+</body>
+</html>
