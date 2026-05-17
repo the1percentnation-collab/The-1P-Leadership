@@ -5610,13 +5610,20 @@ body.academy-course #course-workspace {
 /* ============================================================
    PROFILE PAGE — modernized 2-column layout
 ============================================================ */
+/* Let the profile page use the full desktop width — override the
+   1200px cap that console-body inherits from the admin chrome. */
+.console-body:has(.profile-shell) {
+  max-width: none;
+  padding: 24px 40px 80px;
+}
+
 .profile-shell {
   display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 28px;
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 32px 8px;
+  grid-template-columns: 320px 1fr;
+  gap: 36px;
+  max-width: none;
+  margin: 0;
+  padding: 16px 0;
   align-items: start;
 }
 
