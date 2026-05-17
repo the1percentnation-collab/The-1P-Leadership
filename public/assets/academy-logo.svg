@@ -1,26 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none" aria-label="The One Percent Academy">
-  <!-- Double vertical rule, left (brand mark from main site logo) -->
-  <rect x="8"  y="10" width="3" height="100" fill="#FFFFFF"/>
-  <rect x="16" y="10" width="3" height="100" fill="#FFFFFF"/>
-
-  <!-- "1P" wordmark — stylised numeric 1 with a P -->
-  <g transform="translate(42,18)" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter">
-    <!-- numeral 1 -->
-    <path d="M12 4 L4 14" />
-    <path d="M10 4 L10 70" />
-    <path d="M2 70 L22 70" />
-    <!-- letter P -->
-    <path d="M34 4 L34 70" />
-    <path d="M34 4 L54 4" />
-    <path d="M54 4 L58 8 L58 28 L54 32 L34 32" />
-  </g>
-
-  <!-- ACADEMY label, red, Bebas Neue (matches main site display font). -->
-  <text x="60" y="108"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none" aria-label="Academy">
+  <text x="100" y="44"
         text-anchor="middle"
-        font-family="'Bebas Neue', Impact, sans-serif"
-        font-weight="400"
-        font-size="16"
-        letter-spacing="0.22em"
+        font-family="'Bebas Neue', Impact, Arial Black, sans-serif"
+        font-weight="700"
+        font-size="44"
+        letter-spacing="0.08em"
         fill="#E60306">ACADEMY</text>
 </svg>

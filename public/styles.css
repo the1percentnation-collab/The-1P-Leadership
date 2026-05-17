@@ -975,7 +975,7 @@ body {
   color: var(--white);
   margin-bottom: 20px;
 }
-.auth-brand-mark { width: 42px; height: 42px; flex-shrink: 0; }
+.auth-brand-mark { height: 34px; width: auto; flex-shrink: 0; }
 .auth-brand-text { display: flex; flex-direction: column; line-height: 1; }
 .auth-brand-line1 {
   font-family: var(--font-display);
@@ -1152,8 +1152,8 @@ body {
   color: var(--white);
 }
 .console-brand-mark {
-  width: 36px;
-  height: 36px;
+  height: 30px;
+  width: auto;
   flex-shrink: 0;
 }
 .console-brand-text {
@@ -2769,8 +2769,8 @@ body.academy-hub {
 }
 
 .academy-brand-mark {
-  width: 44px;
-  height: 44px;
+  height: 36px;
+  width: auto;
   display: block;
   flex-shrink: 0;
 }
@@ -3144,7 +3144,7 @@ body.academy-hub {
   }
   /* Row 1: brand + user chip side-by-side (compact) */
   .academy-brand { flex: 0 0 auto; gap: 10px; }
-  .academy-brand-mark { width: 36px; height: 36px; }
+  .academy-brand-mark { height: 28px; width: auto; }
   .academy-brand-line1 { font-size: 12px; }
   .academy-brand-line2 { font-size: 9px; letter-spacing: 0.16em; }
   .academy-header-right { flex: 0 0 auto; margin-left: auto; }
