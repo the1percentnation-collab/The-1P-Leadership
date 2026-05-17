@@ -975,7 +975,7 @@ body {
   color: var(--white);
   margin-bottom: 20px;
 }
-.auth-brand-mark { height: 34px; width: auto; flex-shrink: 0; }
+.auth-brand-mark { height: 44px; width: auto; flex-shrink: 0; }
 .auth-brand-text { display: flex; flex-direction: column; line-height: 1; }
 .auth-brand-line1 {
   font-family: var(--font-display);
@@ -1152,7 +1152,7 @@ body {
   color: var(--white);
 }
 .console-brand-mark {
-  height: 30px;
+  height: 38px;
   width: auto;
   flex-shrink: 0;
 }
@@ -2769,7 +2769,7 @@ body.academy-hub {
 }
 
 .academy-brand-mark {
-  height: 36px;
+  height: 44px;
   width: auto;
   display: block;
   flex-shrink: 0;
