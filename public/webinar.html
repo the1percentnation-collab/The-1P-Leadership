@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Webinars | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+
+  <div class="academy-shell" style="min-height:100vh; height:auto; overflow:auto;">
+
+    <header class="academy-header">
+      <div class="academy-header-inner">
+        <a class="academy-brand" href="/dashboard.html" aria-label="The One Percent Academy">
+          <img src="/assets/academy-logo.svg" alt="" class="academy-brand-mark">
+          <span class="academy-brand-text">
+            <span class="academy-brand-line1">The One Percent</span>
+            <span class="academy-brand-line2">Academy</span>
+          </span>
+        </a>
+        <nav class="academy-tabs" id="academy-tabs">
+          <a class="academy-tab" href="/dashboard.html" data-tab="dashboard">Dashboard</a>
+          <a class="academy-tab" href="/courses.html" data-tab="courses">Courses</a>
+          <a class="academy-tab" href="/community.html" data-tab="community">Community</a>
+          <a class="academy-tab" href="/resources.html" data-tab="resources">Resources</a>
+          <a class="academy-tab active" href="/webinar.html" data-tab="webinars">Webinars</a>
+        </nav>
+        <div class="academy-header-right">
+          <div class="user-chip" id="user-chip"></div>
+        </div>
+      </div>
+    </header>
+
+    <main class="academy-container" style="padding-bottom: 64px;">
+
+      <section class="academy-hero">
+        <div class="academy-eyebrow">Live Sessions</div>
+        <h1>Webinars &amp; <span>Live Events</span></h1>
+        <p>Join live sessions, ask questions in real time, and apply what you learn the same day. Recordings are available for all members after each session.</p>
+      </section>
+
+      <section id="webinar-upcoming">
+        <div class="academy-section-head">
+          <h2>Upcoming webinars</h2>
+          <span class="academy-section-meta">Register for a seat</span>
+        </div>
+        <div id="webinar-list" class="academy-list">
+          <div class="academy-empty">No webinars currently scheduled. Check back soon — new sessions are added regularly.</div>
+        </div>
+      </section>
+
+      <section style="margin-top: 48px;">
+        <div class="academy-section-head">
+          <h2>Past recordings</h2>
+          <span class="academy-section-meta">Watch anytime</span>
+        </div>
+        <div id="webinar-recordings" class="academy-list">
+          <div class="academy-empty">Past recordings will appear here.</div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script type="module">
+    import { requireAuth } from './js/auth.js';
+    requireAuth();
+  </script>
+</body>
+</html>

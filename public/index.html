@@ -3,120 +3,550 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The One Percent Academy</title>
+  <title>The One Percent Academy | Redefining Success</title>
+  <meta name="description" content="A leadership academy for people who refuse to stay average. Courses, community, and coaching to help you redefine success on your own terms.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <style>
+    :root {
+      --red: #E60306;
+      --red-dark: #B30205;
+      --black: #0A0A0A;
+      --charcoal: #171717;
+      --gray-dark: #262626;
+      --gray-mid: #737373;
+      --gray-light: #A3A3A3;
+      --border: #262626;
+      --surface: #141414;
+      --surface2: #1C1C1C;
+      --white: #FFFFFF;
+      --white-dim: rgba(255,255,255,0.7);
+      --font-display: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+      --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--black);
+      color: var(--white);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
+
+    /* ── NAV ── */
+    .mkt-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10,10,10,0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .mkt-nav-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .mkt-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .mkt-brand img {
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+    }
+
+    .mkt-brand-text {
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      line-height: 1.15;
+    }
+
+    .mkt-brand-text span { color: var(--red); }
+
+    .mkt-nav-links {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mkt-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-family: var(--font-body);
+      font-size: 14px;
+      font-weight: 500;
+      padding: 9px 20px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+
+    .mkt-btn-ghost {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--white-dim);
+    }
+
+    .mkt-btn-ghost:hover {
+      border-color: rgba(255,255,255,0.3);
+      color: var(--white);
+    }
+
+    .mkt-btn-primary {
+      background: var(--red);
+      border-color: var(--red);
+      color: #fff;
+    }
+
+    .mkt-btn-primary:hover { background: var(--red-dark); border-color: var(--red-dark); }
+
+    /* ── HERO ── */
+    .mkt-hero {
+      padding: 96px 24px 88px;
+      max-width: 1160px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .mkt-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--red);
+      background: rgba(230,3,6,0.1);
+      border: 1px solid rgba(230,3,6,0.25);
+      padding: 5px 14px;
+      border-radius: 20px;
+      margin-bottom: 32px;
+    }
+
+    .mkt-eyebrow::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: var(--red);
+      border-radius: 50%;
+    }
+
+    .mkt-hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(42px, 7vw, 80px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.05;
+      margin-bottom: 24px;
+      max-width: 860px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .mkt-hero h1 .accent { color: var(--red); }
+
+    .mkt-hero p {
+      font-size: clamp(16px, 2vw, 19px);
+      color: var(--white-dim);
+      max-width: 600px;
+      margin: 0 auto 44px;
+      line-height: 1.65;
+    }
+
+    .mkt-hero-ctas {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .mkt-hero-ctas .mkt-btn {
+      font-size: 15px;
+      padding: 13px 28px;
+    }
+
+    .mkt-hero-note {
+      margin-top: 20px;
+      font-size: 13px;
+      color: var(--gray-mid);
+    }
+
+    /* ── DIVIDER ── */
+    .mkt-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0;
+    }
+
+    /* ── PILLARS ── */
+    .mkt-section {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 80px 24px;
+    }
+
+    .mkt-section-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--red);
+      margin-bottom: 16px;
+    }
+
+    .mkt-section-heading {
+      font-family: var(--font-display);
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      margin-bottom: 16px;
+    }
+
+    .mkt-section-sub {
+      font-size: 17px;
+      color: var(--white-dim);
+      max-width: 560px;
+      line-height: 1.6;
+      margin-bottom: 56px;
+    }
+
+    .mkt-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+
+    .mkt-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 28px;
+      transition: border-color 0.2s;
+    }
+
+    .mkt-card:hover { border-color: rgba(230,3,6,0.4); }
+
+    .mkt-card-num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--red);
+      letter-spacing: 0.1em;
+      margin-bottom: 16px;
+    }
+
+    .mkt-card h3 {
+      font-family: var(--font-display);
+      font-size: 19px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      letter-spacing: -0.01em;
+    }
+
+    .mkt-card p {
+      font-size: 14px;
+      color: var(--white-dim);
+      line-height: 1.6;
+    }
+
+    /* ── QUOTE BAND ── */
+    .mkt-quote-band {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 72px 24px;
+      text-align: center;
+    }
+
+    .mkt-quote-band blockquote {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .mkt-quote-band p {
+      font-family: var(--font-display);
+      font-size: clamp(22px, 3.5vw, 36px);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+      margin-bottom: 24px;
+    }
+
+    .mkt-quote-band p .accent { color: var(--red); }
+
+    .mkt-quote-attr {
+      font-size: 13px;
+      color: var(--gray-mid);
+      font-family: var(--font-mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* ── HOW IT WORKS ── */
+    .mkt-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .mkt-step {
+      padding: 36px 28px;
+      border-right: 1px solid var(--border);
+    }
+
+    .mkt-step:last-child { border-right: none; }
+
+    .mkt-step-num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--red);
+      letter-spacing: 0.12em;
+      margin-bottom: 14px;
+    }
+
+    .mkt-step h3 {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .mkt-step p {
+      font-size: 13px;
+      color: var(--white-dim);
+      line-height: 1.6;
+    }
+
+    /* ── CTA BAND ── */
+    .mkt-cta-band {
+      background: var(--red);
+      padding: 80px 24px;
+      text-align: center;
+    }
+
+    .mkt-cta-band h2 {
+      font-family: var(--font-display);
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+    }
+
+    .mkt-cta-band p {
+      font-size: 17px;
+      opacity: 0.85;
+      margin-bottom: 36px;
+      max-width: 480px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .mkt-cta-band .mkt-btn-white {
+      background: #fff;
+      color: var(--red);
+      border-color: #fff;
+      font-size: 15px;
+      padding: 13px 32px;
+      font-weight: 600;
+    }
+
+    .mkt-cta-band .mkt-btn-white:hover { background: #f0f0f0; }
+
+    /* ── FOOTER ── */
+    .mkt-footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 24px;
+    }
+
+    .mkt-footer-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .mkt-footer-copy {
+      font-size: 13px;
+      color: var(--gray-mid);
+    }
+
+    .mkt-footer-links {
+      display: flex;
+      gap: 20px;
+    }
+
+    .mkt-footer-links a {
+      font-size: 13px;
+      color: var(--gray-mid);
+      transition: color 0.15s;
+    }
+
+    .mkt-footer-links a:hover { color: var(--white); }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 640px) {
+      .mkt-nav-links .mkt-btn-ghost { display: none; }
+      .mkt-steps { grid-template-columns: 1fr; }
+      .mkt-step { border-right: none; border-bottom: 1px solid var(--border); }
+      .mkt-step:last-child { border-bottom: none; }
+    }
+  </style>
 </head>
-<body class="academy-hub">
+<body>
 
-<div class="academy-shell">
-
-  <header class="academy-header">
-    <div class="academy-header-inner">
-      <a class="academy-brand" href="/index.html" aria-label="The One Percent Academy">
-        <img src="/assets/academy-logo.svg" alt="" class="academy-brand-mark">
-        <span class="academy-brand-text">
-          <span class="academy-brand-line1">The One Percent</span>
-          <span class="academy-brand-line2">Academy</span>
-        </span>
-      </a>
-
-      <nav class="academy-tabs" id="academy-tabs">
-        <a class="academy-tab active" href="/index.html" data-tab="dashboard">Dashboard</a>
-        <a class="academy-tab" href="/courses.html" data-tab="courses">Courses</a>
-        <a class="academy-tab" href="/community.html" data-tab="community">Community</a>
-        <a class="academy-tab" href="/resources.html" data-tab="resources">Resources</a>
-        <a class="academy-tab" href="/profile.html" data-tab="profile">Profile</a>
-      </nav>
-
-      <div class="academy-header-right">
-        <div class="user-chip" id="user-chip"></div>
+<!-- NAV -->
+<nav class="mkt-nav">
+  <div class="mkt-nav-inner">
+    <a class="mkt-brand" href="/">
+      <img src="/assets/academy-logo.svg" alt="The One Percent Academy">
+      <div class="mkt-brand-text">
+        The One <span>Percent</span><br>Academy
       </div>
+    </a>
+    <div class="mkt-nav-links">
+      <a class="mkt-btn mkt-btn-ghost" href="/login.html">Sign in</a>
+      <a class="mkt-btn mkt-btn-primary" href="/signup.html">Get Access</a>
     </div>
-  </header>
+  </div>
+</nav>
 
-  <main class="academy-container">
+<!-- HERO -->
+<section class="mkt-hero">
+  <div class="mkt-eyebrow">The 1% Leadership Nation</div>
+  <h1>Stop being average.<br>Start leading at <span class="accent">1%</span> better<br>every day.</h1>
+  <p>A premium leadership academy for driven professionals who are done with generic advice and ready to build a life and career that actually means something.</p>
+  <div class="mkt-hero-ctas">
+    <a class="mkt-btn mkt-btn-primary" href="/signup.html">Join the Academy</a>
+    <a class="mkt-btn mkt-btn-ghost" href="/login.html">Already a member? Sign in</a>
+  </div>
+  <p class="mkt-hero-note">Exclusive membership · Courses · Live webinars · Community</p>
+</section>
 
-    <section class="academy-hero">
-      <div class="academy-eyebrow">Academy Dashboard</div>
-      <h1 id="hub-greeting">Welcome back.</h1>
-      <p id="hub-subtitle">Continue your work. Stay grounded in purpose. Move forward with intention — one percent better every day.</p>
-      <div class="academy-tagline">
-        <strong>Redefining Success.</strong> Realigning Purpose. Releasing Potential.
-      </div>
-    </section>
+<hr class="mkt-divider">
 
-    <section id="hub-continue-slot"></section>
+<!-- PILLARS -->
+<section class="mkt-section">
+  <div class="mkt-section-label">What you get</div>
+  <h2 class="mkt-section-heading">Everything you need.<br>Nothing you don't.</h2>
+  <p class="mkt-section-sub">The academy gives you the frameworks, community, and accountability to become the leader you know you can be.</p>
+  <div class="mkt-grid">
+    <div class="mkt-card">
+      <div class="mkt-card-num">01 · Courses</div>
+      <h3>Expert-Led Courses</h3>
+      <p>Deep-dive curriculum on leadership, mindset, business strategy, and purpose — built for people who take their growth seriously.</p>
+    </div>
+    <div class="mkt-card">
+      <div class="mkt-card-num">02 · Community</div>
+      <h3>Elite Member Community</h3>
+      <p>Surround yourself with other driven people. Share wins, ask hard questions, stay accountable, and grow together.</p>
+    </div>
+    <div class="mkt-card">
+      <div class="mkt-card-num">03 · Webinars</div>
+      <h3>Live Webinars & Events</h3>
+      <p>Regular live sessions with real-world application. Interact directly, get your questions answered, and stay on the cutting edge.</p>
+    </div>
+    <div class="mkt-card">
+      <div class="mkt-card-num">04 · Resources</div>
+      <h3>Frameworks & Playbooks</h3>
+      <p>Practical tools: worksheets, goal-planning templates, and reference guides you can use the same day you download them.</p>
+    </div>
+  </div>
+</section>
 
-    <section id="hub-progress" class="hub-progress" hidden>
-      <div class="academy-section-head">
-        <h2>Your course arc</h2>
-        <a class="academy-section-meta" href="/courses.html?course=1p-clc" style="text-decoration:none;">Open course →</a>
-      </div>
-      <div id="hub-module-map" class="hub-module-map"></div>
-    </section>
-
-    <section>
-      <div class="academy-section-head">
-        <h2>Quick access</h2>
-        <span class="academy-section-meta">Explore the Academy</span>
-      </div>
-      <div class="academy-grid">
-        <a class="academy-tile" href="/courses.html">
-          <span class="academy-tile-label">01 · Courses</span>
-          <span class="academy-tile-title">Your Courses</span>
-          <span class="academy-tile-desc">Pick up where you left off, or browse the Academy library and sign up for what's next.</span>
-          <span class="academy-tile-cta">Open courses</span>
-        </a>
-        <a class="academy-tile" href="/community.html">
-          <span class="academy-tile-label">02 · Community</span>
-          <span class="academy-tile-title">Members Community</span>
-          <span class="academy-tile-desc">Share wins, ask questions, and stay accountable alongside other members.</span>
-          <span class="academy-tile-cta">Enter community</span>
-          <span class="academy-tile-badge" id="hub-community-badge" style="display:none;">New</span>
-        </a>
-        <a class="academy-tile" href="/resources.html">
-          <span class="academy-tile-label">03 · Resources</span>
-          <span class="academy-tile-title">Resource Library</span>
-          <span class="academy-tile-desc">Frameworks, worksheets, and reference material to put the work into practice.</span>
-          <span class="academy-tile-cta">Browse resources</span>
-        </a>
-        <a class="academy-tile" href="/profile.html">
-          <span class="academy-tile-label">04 · Profile</span>
-          <span class="academy-tile-title">Your Profile</span>
-          <span class="academy-tile-desc">Update your display name, bio, and avatar. Manage how you show up in the community.</span>
-          <span class="academy-tile-cta">Edit profile</span>
-        </a>
-      </div>
-    </section>
-
-    <section class="academy-split">
-      <div>
-        <div class="academy-section-head">
-          <h2>Latest in Community</h2>
-          <a class="academy-section-meta" href="/community.html" style="text-decoration:none;">View all →</a>
-        </div>
-        <div id="hub-community-list" class="academy-list">
-          <div class="academy-empty">Loading community activity…</div>
-        </div>
-      </div>
-
-      <div>
-        <div class="academy-section-head">
-          <h2>Your courses</h2>
-          <a class="academy-section-meta" href="/courses.html" style="text-decoration:none;">All courses →</a>
-        </div>
-        <div id="hub-courses-list" class="academy-list">
-          <div class="academy-empty">Loading your courses…</div>
-        </div>
-      </div>
-    </section>
-
-  </main>
+<!-- QUOTE BAND -->
+<div class="mkt-quote-band">
+  <blockquote>
+    <p>"<span class="accent">Redefining Success.</span> Realigning Purpose. Releasing Potential."</p>
+    <div class="mkt-quote-attr">— The One Percent Academy</div>
+  </blockquote>
 </div>
 
-<script type="module" src="js/hub.js"></script>
+<!-- HOW IT WORKS -->
+<section class="mkt-section">
+  <div class="mkt-section-label">How it works</div>
+  <h2 class="mkt-section-heading">Simple. Focused. Effective.</h2>
+  <p class="mkt-section-sub">No fluff, no noise. Just a clear path forward.</p>
+  <div class="mkt-steps">
+    <div class="mkt-step">
+      <div class="mkt-step-num">STEP 01</div>
+      <h3>Join the Academy</h3>
+      <p>Create your account and get instant access to your personalized dashboard and all member resources.</p>
+    </div>
+    <div class="mkt-step">
+      <div class="mkt-step-num">STEP 02</div>
+      <h3>Start Your Course</h3>
+      <p>Pick a course aligned with where you are and where you want to go. Work at your own pace, with clear milestones.</p>
+    </div>
+    <div class="mkt-step">
+      <div class="mkt-step-num">STEP 03</div>
+      <h3>Engage the Community</h3>
+      <p>Post in the community, join live webinars, and connect with members who share your drive and values.</p>
+    </div>
+    <div class="mkt-step">
+      <div class="mkt-step-num">STEP 04</div>
+      <h3>Become the 1%</h3>
+      <p>Apply the frameworks daily. Track your progress. Ship the version of yourself that's 1% better every single day.</p>
+    </div>
+  </div>
+</section>
+
+<!-- CTA BAND -->
+<div class="mkt-cta-band">
+  <h2>Ready to stop being average?</h2>
+  <p>Join the academy and start building the life and leadership you actually want.</p>
+  <a class="mkt-btn mkt-btn-white" href="/signup.html">Get Access Now</a>
+</div>
+
+<!-- FOOTER -->
+<footer class="mkt-footer">
+  <div class="mkt-footer-inner">
+    <span class="mkt-footer-copy">&copy; 2024 The One Percent Academy. All rights reserved.</span>
+    <div class="mkt-footer-links">
+      <a href="/login.html">Member Login</a>
+      <a href="/signup.html">Create Account</a>
+      <a href="/contact.html">Contact</a>
+    </div>
+  </div>
+</footer>
+
+<script type="module">
+  import { onAuthReady } from './js/auth.js';
+  onAuthReady((u) => { if (u) location.replace('/dashboard.html'); });
+</script>
 </body>
 </html>
