@@ -1,32 +1,35 @@
 {
-    "hosting": {
-          "public": "public",
-          "ignore": [
-                  "firebase.json",
-                  "**/.*",
-                  "**/node_modules/**"
-          ],
-          "rewrites": [
-                  { "source": "/login",  "destination": "/login.html"  },
-                  { "source": "/signup", "destination": "/signup.html" },
-                  {
-                            "source": "**",
-                            "destination": "/index.html"
-                  }
-          ]
-    },
-    "firestore": {
-          "rules": "firestore.rules",
-          "indexes": "firestore.indexes.json"
-    },
-    "storage": {
-          "rules": "storage.rules"
-    },
-    "functions": [
-          {
-                  "source": "functions",
-                  "codebase": "default",
-                  "runtime": "nodejs20"
-          }
-    ]
+      "hosting": {
+              "public": "public",
+              "cleanUrls": true,
+              "ignore": [
+                        "firebase.json",
+                        "**/.*",
+                        "**/node_modules/**"
+              ],
+              "redirects": [
+                        { "source": "/login",  "destination": "/login.html",  "type": 301 },
+                        { "source": "/signup", "destination": "/signup.html", "type": 301 }
+              ],
+              "rewrites": [
+                        {
+                                    "source": "**",
+                                    "destination": "/index.html"
+                        }
+              ]
+      },
+      "firestore": {
+              "rules": "firestore.rules",
+              "indexes": "firestore.indexes.json"
+      },
+      "storage": {
+              "rules": "storage.rules"
+      },
+      "functions": [
+              {
+                        "source": "functions",
+                        "codebase": "default",
+                        "runtime": "nodejs20"
+              }
+      ]
 }
