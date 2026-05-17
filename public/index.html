@@ -2258,26 +2258,42 @@ document.querySelectorAll('.impact-card, .course-card').forEach(card => {
     const title = document.getElementById('hero-title-el');
     if (!title) return;
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1%!';
-    let scrambleInterval = null;
+    const spans = title.querySelectorAll('.red');
+    // Cache the true original text once so we always resolve back to it,
+    // even if hover re-fires mid-scramble.
+    const originals = new Map();
+    const intervals = new Map();
+    spans.forEach(span => originals.set(span, span.textContent));
 
     title.addEventListener('mouseenter', () => {
-      const spans = title.querySelectorAll('.red');
       spans.forEach(span => {
+        const original = originals.get(span);
         let iterations = 0;
-        const original = span.textContent;
-        clearInterval(scrambleInterval);
-        scrambleInterval = setInterval(() => {
+        clearInterval(intervals.get(span));
+        const id = setInterval(() => {
           span.textContent = original.split('').map((char, i) => {
             if (i < iterations) return original[i];
             if (char === ' ') return ' ';
             return chars[Math.floor(Math.random() * chars.length)];
           }).join('');
           if (iterations >= original.length) {
-            clearInterval(scrambleInterval);
+            clearInterval(intervals.get(span));
+            intervals.delete(span);
             span.textContent = original;
           }
           iterations += 0.5;
         }, 40);
+        intervals.set(span, id);
+      });
+    });
+
+    title.addEventListener('mouseleave', () => {
+      spans.forEach(span => {
+        if (intervals.has(span)) {
+          clearInterval(intervals.get(span));
+          intervals.delete(span);
+        }
+        span.textContent = originals.get(span);
       });
     });
   }
