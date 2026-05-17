@@ -5736,12 +5736,14 @@ body.academy-course #course-workspace {
 }
 
 .profile-main {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 18px;
+  align-items: start;
 }
 
 .profile-header {
+  grid-column: 1 / -1;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -5885,6 +5887,7 @@ body.academy-course #course-workspace {
 }
 
 .profile-footer-actions {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -5952,6 +5955,12 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
   letter-spacing: 0.04em;
   color: var(--white);
   line-height: 1;
+}
+
+@media (max-width: 1100px) {
+  .profile-main {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {
