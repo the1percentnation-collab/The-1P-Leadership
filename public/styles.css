@@ -5736,14 +5736,12 @@ body.academy-course #course-workspace {
 }
 
 .profile-main {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
 }
 
 .profile-header {
-  grid-column: 1 / -1;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -5800,15 +5798,18 @@ body.academy-course #course-workspace {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 24px 26px;
+  padding: 28px 32px;
   transition: border-color 0.2s;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 28px 36px;
+  align-items: start;
 }
 .profile-card:hover { border-color: rgba(255,255,255,0.14); }
 
 .profile-card-head {
-  margin-bottom: 18px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
+  padding-right: 12px;
+  border-right: 1px solid var(--border);
 }
 .profile-card-head h2 {
   font-family: var(--font-display);
@@ -5830,13 +5831,14 @@ body.academy-course #course-workspace {
 
 .profile-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px 18px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px 24px;
 }
 .profile-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 .profile-field-full {
   grid-column: 1 / -1;
@@ -5887,7 +5889,6 @@ body.academy-course #course-workspace {
 }
 
 .profile-footer-actions {
-  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -5958,8 +5959,15 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 }
 
 @media (max-width: 1100px) {
-  .profile-main {
+  .profile-card {
     grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .profile-card-head {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding-right: 0;
+    padding-bottom: 14px;
   }
 }
 
