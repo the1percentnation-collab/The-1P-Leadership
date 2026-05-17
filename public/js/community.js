@@ -37,13 +37,26 @@ export async function getUserProfile(uid) {
   }
 }
 
-export async function updateOwnProfile({ displayName, bio, avatarUrl }) {
+export async function updateOwnProfile({
+  displayName, bio, avatarUrl,
+  profession, company, industry, location,
+  linkedinUrl, website, phone, communityGoals, pronouns
+} = {}) {
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
   const patch = { lastActiveAt: serverTimestamp() };
   if (typeof displayName === 'string') patch.displayName = displayName.trim();
   if (typeof bio === 'string') patch.bio = bio.trim();
   if (typeof avatarUrl === 'string') patch.avatarUrl = avatarUrl;
+  if (typeof profession === 'string') patch.profession = profession.trim();
+  if (typeof company === 'string') patch.company = company.trim();
+  if (typeof industry === 'string') patch.industry = industry.trim();
+  if (typeof location === 'string') patch.location = location.trim();
+  if (typeof linkedinUrl === 'string') patch.linkedinUrl = linkedinUrl.trim();
+  if (typeof website === 'string') patch.website = website.trim();
+  if (typeof phone === 'string') patch.phone = phone.trim();
+  if (typeof communityGoals === 'string') patch.communityGoals = communityGoals.trim();
+  if (typeof pronouns === 'string') patch.pronouns = pronouns.trim();
   await setDoc(doc(db, 'users', user.uid), patch, { merge: true });
   return patch;
 }
