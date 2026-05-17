@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign in | The One Percent Academy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.static.com" crossorgin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -51,7 +51,7 @@
     function nextUrl() {
       const p = new URLSearchParams(location.search);
       const n = p.get('next');
-      return n && n.startsWith('/') ? n : '/index.html';
+      return n && n.startsWith('/') ? n : '/courses';
     }
 
     if (!firebaseReady) {
