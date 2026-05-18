@@ -516,6 +516,14 @@ export function renderTopbar({
     bindBellHandlers();
     startBellListener(user.uid);
   }
+
+  // On mobile the tabs row scrolls horizontally — bring the active tab into view.
+  requestAnimationFrame(() => {
+    const activeTab = document.querySelector('.academy-tab.active');
+    if (activeTab) {
+      try { activeTab.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (e) {}
+    }
+  });
 }
 
 /** Stop any active bell listener. Call from `beforeunload` or on signout. */
