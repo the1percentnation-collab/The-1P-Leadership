@@ -3161,9 +3161,39 @@ body.academy-hub {
     justify-content: flex-start;
     gap: 4px;
     padding-bottom: 4px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
   }
+  .academy-tabs::-webkit-scrollbar { display: none; }
   .academy-tab { padding: 8px 12px; font-size: 12px; flex-shrink: 0; }
   .academy-continue { grid-template-columns: 1fr; }
+}
+
+/* ── Phone-specific header compaction (≤ 600 px) ──────────────────────── */
+@media (max-width: 600px) {
+  .academy-header-inner { padding: 8px 12px; gap: 6px; }
+
+  /* Collapse "← Main Site" label to just the arrow — saves ~45 px in row 1 */
+  .back-to-main {
+    font-size: 0;
+    padding: 7px 10px;
+    min-width: 34px;
+    justify-content: center;
+    letter-spacing: 0;
+  }
+  .back-to-main::before {
+    content: '←';
+    font-size: 14px;
+    font-family: var(--font-mono);
+    color: var(--red);
+  }
+
+  /* Tighter user-chip controls */
+  .academy-header-right .user-chip { gap: 5px; }
+  .academy-header-right #btn-signout { padding: 5px 8px; font-size: 11px; }
+
+  /* Slightly smaller tabs so more fit before scrolling */
+  .academy-tab { padding: 7px 10px; font-size: 11px; }
 }
 
 .academy-list {
