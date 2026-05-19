@@ -23,6 +23,18 @@ export const COURSES = [
     }
   },
   {
+    slug: 'bundle-icant',
+    title: 'The Complete I Can\'t Experience',
+    short: 'Bundle Deal',
+    subtitle: 'Book + Course together. The book gives you the map. The course gives you the journey.',
+    status: 'bundle',
+    eyebrow: 'Best Value · Book + 8 Modules',
+    price: 197,
+    priceLabel: '$197',
+    priceNote: 'Book included FREE · was $216.99',
+    bundleHref: '/bundle.html'
+  },
+  {
     slug: 'icant',
     title: 'I Can\'t: The Course',
     short: 'I Can\'t',

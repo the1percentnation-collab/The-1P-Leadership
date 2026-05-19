@@ -101,17 +101,22 @@ function renderAvailableCourses() {
   }
 
   const cards = available.map((c) => {
-    const isLive = c.status === 'live';
-    const statusBadge = isLive
-      ? `<span class="available-badge is-live">Available</span>`
-      : `<span class="available-badge is-soon">Coming Soon</span>`;
+    const isBundle = c.status === 'bundle';
+    const isLive   = c.status === 'live';
+    const statusBadge = isBundle
+      ? `<span class="available-badge is-bundle">★ Best Value</span>`
+      : isLive
+        ? `<span class="available-badge is-live">Available</span>`
+        : `<span class="available-badge is-soon">Coming Soon</span>`;
     const price = c.priceLabel ? `<div class="available-card-price">${escapeHtml(c.priceLabel)}</div>` : '';
     const priceNote = c.priceNote ? `<div class="available-card-pricenote">${escapeHtml(c.priceNote)}</div>` : '';
-    const action = isLive
-      ? `<button class="btn btn-primary available-enroll" data-slug="${escapeHtml(c.slug)}">Enroll${c.priceLabel ? ' · ' + escapeHtml(c.priceLabel) : ''} →</button>`
-      : `<button class="btn btn-ghost" disabled>Notify me when live</button>`;
+    const action = isBundle
+      ? `<a class="btn btn-primary available-bundle-link" href="${escapeHtml(c.bundleHref || '/bundle.html')}">See Bundle Deal →</a>`
+      : isLive
+        ? `<button class="btn btn-primary available-enroll" data-slug="${escapeHtml(c.slug)}">Enroll${c.priceLabel ? ' · ' + escapeHtml(c.priceLabel) : ''} →</button>`
+        : `<button class="btn btn-ghost" disabled>Notify me when live</button>`;
     return `
-      <div class="available-card ${isLive ? '' : 'is-soon'}" data-slug="${escapeHtml(c.slug)}">
+      <div class="available-card ${isBundle ? 'is-bundle' : isLive ? '' : 'is-soon'}" data-slug="${escapeHtml(c.slug)}">
         <div class="available-card-top">
           ${statusBadge}
           <span class="available-card-meta">${escapeHtml(c.eyebrow || '')}</span>

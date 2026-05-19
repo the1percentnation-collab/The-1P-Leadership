@@ -487,6 +487,22 @@ function lessonTabHtml(mod) {
         </div>
         <p style="color:#C0C0C0;line-height:1.7;font-size:13px;margin:0;">${esc(mod.alignIntegration.teaching)}</p>
       </div>
+      ${mod.id === 1 ? `
+      <div style="background:#0A0000;border:1px solid #330000;border-radius:12px;padding:20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:6px;">THE COMPANION BOOK</div>
+          <div style="font-size:15px;font-weight:600;color:#fff;margin-bottom:4px;font-style:italic;">I Can't: Is Not A Strategy</div>
+          <div style="font-size:12px;color:#AAAAAA;line-height:1.5;">This course is the companion to Anthony Brown's book. Reading them together accelerates everything — the book gives you the map, the course gives you the journey.</div>
+        </div>
+        <a href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener"
+          style="display:inline-flex;align-items:center;gap:8px;padding:12px 20px;
+            background:#E60306;color:#fff;border-radius:8px;font-size:13px;font-weight:600;
+            letter-spacing:0.5px;white-space:nowrap;text-decoration:none;flex-shrink:0;
+            transition:opacity 0.2s;"
+          onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+          Get the Book →
+        </a>
+      </div>` : ''}
     </div>`;
 }
 
@@ -550,6 +566,24 @@ function summaryTabHtml(mod) {
         <p style="color:#E0E0E0;line-height:1.7;font-size:13px;margin:0;">${esc(mod.bridge)}</p>
       </div>
       ${completeBtn}
+      ${mod.id === 8 && isCompleted ? `
+      <div style="background:#0A0A00;border:1px solid #555500;border-radius:12px;padding:20px;text-align:center;">
+        <div style="font-size:10px;letter-spacing:2px;color:#CCCC00;font-weight:600;margin-bottom:10px;">ONE LAST THING</div>
+        <p style="color:#E0E0D0;line-height:1.7;font-size:14px;margin-bottom:16px;">You finished the course. That puts you in a very small group. If this work moved you, help someone else find the book — an honest Amazon review takes 2 minutes and can change someone's trajectory.</p>
+        <a href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener"
+          style="display:inline-flex;align-items:center;gap:8px;padding:13px 24px;
+            background:#E60306;color:#fff;border-radius:8px;font-size:14px;font-weight:600;
+            letter-spacing:0.5px;text-decoration:none;transition:opacity 0.2s;"
+          onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+          ★ Leave an Amazon Review →
+        </a>
+        <div style="margin-top:12px;">
+          <a href="/bundle.html"
+            style="font-size:12px;color:#AAAAAA;text-decoration:underline;text-underline-offset:3px;">
+            Know someone who needs this? Share the bundle deal →
+          </a>
+        </div>
+      </div>` : ''}
     </div>`;
 }
 

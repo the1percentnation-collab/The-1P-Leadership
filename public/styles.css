@@ -3906,6 +3906,33 @@ body.academy-course #course-workspace {
 
 .available-badge.is-live { background: var(--red); color: #fff; }
 .available-badge.is-soon { background: var(--gray-dark); color: var(--gray-light); }
+.available-badge.is-bundle {
+  background: linear-gradient(90deg, #7a5c00, #c9a84c);
+  color: #fff;
+  letter-spacing: 0.16em;
+}
+
+.available-card.is-bundle {
+  border-color: rgba(201,168,76,0.35);
+  background: linear-gradient(160deg, #120c00 0%, var(--surface) 60%);
+  position: relative;
+  overflow: hidden;
+}
+.available-card.is-bundle::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #c9a84c, transparent);
+}
+.available-card.is-bundle:hover {
+  border-color: rgba(201,168,76,0.6);
+  transform: translateY(-2px);
+}
+.available-card.is-bundle .available-card-title { color: #fff; }
+.available-card.is-bundle .available-card-price { color: #c9a84c; }
+.available-card.is-bundle .available-card-pricenote { color: rgba(201,168,76,0.6); }
+.available-bundle-link { display: flex; align-items: center; justify-content: center; width: 100%; }
 
 .available-card-meta {
   font-family: var(--font-mono);
