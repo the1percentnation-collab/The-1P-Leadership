@@ -23,6 +23,21 @@ export const COURSES = [
     }
   },
   {
+    slug: 'icant',
+    title: 'I Can\'t: The Course',
+    short: 'I Can\'t',
+    subtitle: 'Break the beliefs that have been running your life — and build the ones that set you free.',
+    status: 'live',
+    eyebrow: 'Self-paced · 8 Modules',
+    price: 197,
+    priceLabel: '$197',
+    priceNote: 'Full course · lifetime access',
+    mount: async (opts) => {
+      const mod = await import('./icant-course.js');
+      if (mod && typeof mod.mount === 'function') await mod.mount(opts);
+    }
+  },
+  {
     slug: 'mindset-foundations',
     title: 'Mindset Foundations',
     short: 'Mindset',
