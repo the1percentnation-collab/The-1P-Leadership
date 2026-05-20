@@ -26,6 +26,13 @@ service cloud.firestore {
     // Restrict admin reads of user docs to metadata fields only (NOT progress/notes/capstone —
     // those live in subcollections and are separately denied below). This function is advisory:
     // subcollections are the real protection.
+
+    function hasCourseAccess(uid) {
+      return isOwner()
+        || (isSelf(uid)
+            && exists(/databases/$(database)/documents/users/$(uid))
+            && get(/databases/$(database)/documents/users/$(uid)).data.tier == 'paid');
+    }
     // ────────────────────────────────────────────────────────────────
 
     // users/{uid}
@@ -62,14 +69,14 @@ service cloud.firestore {
                      && request.resource.data.get('unreadNotifCount', 0) == resource.data.get('unreadNotifCount', 0));
       allow delete: if isOwner();
 
-      // users/{uid}/progress/{moduleId} — STRICTLY private to the user (and owner).
+      // users/{uid}/progress/{moduleId} — requires paid tier (or owner).
       match /progress/{moduleId} {
-        allow read, write: if isOwner() || isSelf(uid);
+        allow read, write: if isOwner() || (isSelf(uid) && hasCourseAccess(uid));
       }
 
-      // users/{uid}/capstone — same.
+      // users/{uid}/capstone — requires paid tier (or owner).
       match /capstone/{docId=**} {
-        allow read, write: if isOwner() || isSelf(uid);
+        allow read, write: if isOwner() || (isSelf(uid) && hasCourseAccess(uid));
       }
 
       // users/{uid}/stats/{statId} (Phase 2 leaderboard) — server-only writes.

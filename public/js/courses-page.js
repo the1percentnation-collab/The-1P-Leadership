@@ -16,10 +16,11 @@ import { MODULES, PILLARS } from './modules.js';
 import { onAuthReady, currentUser } from './auth.js';
 import { renderTopbar } from './topbar.js';
 import { getRoleInfo } from './roles.js';
-import { firebaseReady } from './firebase.js';
+import { firebaseReady, db } from './firebase.js';
 import { getUserProfile, avatarHtml, escapeHtml } from './community.js';
 import { store } from './store.js';
 import { loadEnrollments, enrollInCourse, isEnrolled, enrolledCourses, availableCourses } from './enrollments.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -318,6 +319,20 @@ async function main() {
     if (!user) {
       location.replace('/login.html');
       return;
+    }
+
+    // Payment gate: require tier === 'paid' unless user is owner.
+    try {
+      const info = await getRoleInfo();
+      if (info.role !== 'owner') {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (!snap.exists() || snap.data().tier !== 'paid') {
+          location.replace('/paywall.html');
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('[courses-page] tier check failed', e);
     }
   }
 

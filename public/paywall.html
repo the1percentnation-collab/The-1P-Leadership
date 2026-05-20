@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enroll | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0A0A0A;
+      color: #FFFFFF;
+      font-family: 'Outfit', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .paywall-card {
+      max-width: 560px;
+      width: 100%;
+      text-align: center;
+    }
+    .paywall-eyebrow {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #E60306;
+      margin-bottom: 1.25rem;
+    }
+    .paywall-headline {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(2.5rem, 6vw, 4rem);
+      line-height: 1;
+      letter-spacing: 0.02em;
+      margin-bottom: 1.25rem;
+    }
+    .paywall-sub {
+      font-size: 1.05rem;
+      font-weight: 400;
+      line-height: 1.65;
+      color: rgba(255,255,255,0.7);
+      margin-bottom: 2.5rem;
+      max-width: 440px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .paywall-btn {
+      display: inline-block;
+      background: #E60306;
+      color: #FFFFFF;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 1rem 2.5rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .paywall-btn:hover { opacity: 0.85; }
+    .paywall-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .paywall-divider {
+      width: 48px;
+      height: 3px;
+      background: #E60306;
+      margin: 0 auto 1.5rem;
+    }
+    .paywall-error {
+      margin-top: 1.25rem;
+      color: #E60306;
+      font-size: 0.9rem;
+      min-height: 1.4em;
+    }
+  </style>
+</head>
+<body>
+
+<div class="paywall-card">
+  <div class="paywall-eyebrow">The One Percent Academy</div>
+  <div class="paywall-divider"></div>
+  <h1 class="paywall-headline">This Content Requires Access</h1>
+  <p class="paywall-sub">Enroll in True Leader: The One Percent Way to unlock the full certification course.</p>
+  <button class="paywall-btn" id="enroll-btn">Enroll Now — $497</button>
+  <div class="paywall-error" id="error-msg"></div>
+</div>
+
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+  import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCSZvsExv7O_yjE2UzJ4QQ7lsA4R9zG4_A",
+    authDomain: "the-1p-leadership.firebaseapp.com",
+    projectId: "the-1p-leadership",
+    storageBucket: "the-1p-leadership.firebasestorage.app",
+    messagingSenderId: "14602661529",
+    appId: "1:14602661529:web:8031e6f7755f757cb45208"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const functions = getFunctions(app);
+
+  onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      location.replace('/login.html');
+    }
+  });
+
+  const btn = document.getElementById('enroll-btn');
+  const errMsg = document.getElementById('error-msg');
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Redirecting…';
+    errMsg.textContent = '';
+    try {
+      const createCheckout = httpsCallable(functions, 'createCourseCheckout');
+      const result = await createCheckout({});
+      location.href = result.data.url;
+    } catch (err) {
+      console.error('[paywall] checkout error:', err);
+      errMsg.textContent = err.message || 'Something went wrong. Please try again.';
+      btn.disabled = false;
+      btn.textContent = 'Enroll Now — $497';
+    }
+  });
+</script>
+
+</body>
+</html>

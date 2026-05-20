@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Confirmed | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0A0A0A;
+      color: #FFFFFF;
+      font-family: 'Outfit', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .success-card {
+      max-width: 560px;
+      width: 100%;
+      text-align: center;
+    }
+    .success-eyebrow {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #E60306;
+      margin-bottom: 1.25rem;
+    }
+    .success-divider {
+      width: 48px;
+      height: 3px;
+      background: #E60306;
+      margin: 0 auto 1.5rem;
+    }
+    .success-headline {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(3rem, 8vw, 5rem);
+      line-height: 1;
+      letter-spacing: 0.02em;
+      margin-bottom: 1.25rem;
+    }
+    .success-sub {
+      font-size: 1.05rem;
+      font-weight: 400;
+      line-height: 1.65;
+      color: rgba(255,255,255,0.7);
+      margin-bottom: 2.5rem;
+      max-width: 440px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .success-btn {
+      display: inline-block;
+      background: #E60306;
+      color: #FFFFFF;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 1rem 2.5rem;
+      border-radius: 4px;
+      text-decoration: none;
+      transition: opacity 0.15s;
+    }
+    .success-btn:hover { opacity: 0.85; }
+  </style>
+</head>
+<body>
+
+<div class="success-card">
+  <div class="success-eyebrow">The One Percent Academy</div>
+  <div class="success-divider"></div>
+  <h1 class="success-headline">You're In.</h1>
+  <p class="success-sub">Your payment was confirmed. Your course access is now active.</p>
+  <a class="success-btn" href="/course.html" id="enter-btn">Enter the Course</a>
+</div>
+
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCSZvsExv7O_yjE2UzJ4QQ7lsA4R9zG4_A",
+    authDomain: "the-1p-leadership.firebaseapp.com",
+    projectId: "the-1p-leadership",
+    storageBucket: "the-1p-leadership.firebasestorage.app",
+    messagingSenderId: "14602661529",
+    appId: "1:14602661529:web:8031e6f7755f757cb45208"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      location.replace('/login.html');
+      return;
+    }
+    // Force token refresh so any new custom claims or Firestore changes are visible.
+    try { await user.getIdToken(true); } catch (e) {}
+  });
+</script>
+
+</body>
+</html>

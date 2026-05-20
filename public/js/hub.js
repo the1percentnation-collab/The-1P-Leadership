@@ -5,8 +5,9 @@ import { store } from './store.js';
 import { MODULES } from './modules.js';
 import { onAuthReady, currentUser } from './auth.js';
 import { getRoleInfo } from './roles.js';
-import { firebaseReady } from './firebase.js';
+import { firebaseReady, db } from './firebase.js';
 import { renderTopbar } from './topbar.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import {
   getUserProfile,
   hasNewPostsSinceVisit,
@@ -273,6 +274,20 @@ async function main() {
     if (!user) {
       location.replace('/login.html');
       return;
+    }
+
+    // Payment gate: require tier === 'paid' unless user is owner.
+    try {
+      const info = await getRoleInfo();
+      if (info.role !== 'owner') {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (!snap.exists() || snap.data().tier !== 'paid') {
+          location.replace('/paywall.html');
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('[hub] tier check failed', e);
     }
   }
 

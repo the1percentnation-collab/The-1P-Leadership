@@ -27,6 +27,10 @@ const APP_BASE_URL = 'https://the-1p-leadership.web.app';
 // lazily at runtime via the Secret Manager client — this avoids requiring
 // SENDGRID_WEBHOOK_KEY to exist at deploy time.
 const sendgridKey = defineSecret('SENDGRID_API_KEY');
+const stripeSecretKey = defineSecret('STRIPE_SECRET_KEY');
+const stripeWebhookSecret = defineSecret('STRIPE_WEBHOOK_SECRET');
+
+const Stripe = require('stripe');
 
 // ────────────────────────────────────────────────────────────────
 // Helpers
@@ -1811,6 +1815,88 @@ exports.searchPosts = onCall(async (request) => {
   return { ok: true, results };
 });
 
+// ────────────────────────────────────────────────────────────────
+// Stripe payment gate
+// ────────────────────────────────────────────────────────────────
 
+/**
+ * createCourseCheckout — creates a Stripe Checkout session for the course.
+ */
+exports.createCourseCheckout = onCall(
+  { secrets: [stripeSecretKey] },
+  async (request) => {
+    const uid = request.auth && request.auth.uid;
+    if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
 
+    const stripe = Stripe(stripeSecretKey.value());
 
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            unit_amount: 49700,
+            product_data: {
+              name: 'True Leader: The One Percent Way'
+            }
+          },
+          quantity: 1
+        }
+      ],
+      metadata: { uid },
+      success_url: `${APP_BASE_URL}/payment-success.html`,
+      cancel_url: `${APP_BASE_URL}/paywall.html`
+    });
+
+    return { url: session.url };
+  }
+);
+
+/**
+ * stripeWebhook — verifies Stripe signature and upgrades user tier on purchase.
+ */
+exports.stripeWebhook = onRequest(
+  { cors: false, invoker: 'public', secrets: [stripeSecretKey, stripeWebhookSecret] },
+  async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(200).send('ok');
+      return;
+    }
+
+    const sig = req.get('stripe-signature');
+    const rawBody = req.rawBody;
+
+    let event;
+    try {
+      const stripe = Stripe(stripeSecretKey.value());
+      event = stripe.webhooks.constructEvent(
+        rawBody,
+        sig,
+        stripeWebhookSecret.value()
+      );
+    } catch (err) {
+      console.warn('[stripeWebhook] signature verification failed:', err.message);
+      res.status(400).send(`Webhook Error: ${err.message}`);
+      return;
+    }
+
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const uid = session.metadata && session.metadata.uid;
+      if (uid) {
+        const db = admin.firestore();
+        await db.collection('users').doc(uid).set(
+          {
+            tier: 'paid',
+            courseUnlockedAt: admin.firestore.FieldValue.serverTimestamp()
+          },
+          { merge: true }
+        );
+      }
+    }
+
+    res.status(200).send('ok');
+  }
+);
