@@ -1092,7 +1092,7 @@
     /* Cursor spotlight */
     #hero-spotlight {
       position: absolute; inset: 0; z-index: 0; pointer-events: none;
-      background: radial-gradient(600px circle at 50% 50%, rgba(230,3,6,0.06) 0%, transparent 70%);
+      background: radial-gradient(600px circle at 50% 50%, rgba(255,30,40,0.18) 0%, transparent 70%);
       transition: background 0.1s;
       opacity: 0;
       transition: opacity 0.8s ease;
@@ -2160,10 +2160,10 @@ document.querySelectorAll('.impact-card, .course-card').forEach(card => {
       const rect = hero.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      spotlight.style.background = `radial-gradient(600px circle at ${x}px ${y}px, rgba(230,3,6,0.07) 0%, transparent 65%)`;
+      spotlight.style.background = `radial-gradient(600px circle at ${x}px ${y}px, rgba(255,30,40,0.22) 0%, rgba(230,3,6,0.08) 35%, transparent 65%)`;
     });
     hero.addEventListener('mouseleave', () => {
-      spotlight.style.background = 'radial-gradient(600px circle at 50% 50%, rgba(230,3,6,0.04) 0%, transparent 70%)';
+      spotlight.style.background = 'radial-gradient(600px circle at 50% 50%, rgba(255,30,40,0.10) 0%, transparent 70%)';
     });
   }
 
