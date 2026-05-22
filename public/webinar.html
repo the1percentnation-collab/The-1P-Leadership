@@ -287,6 +287,8 @@
     }
     .step-nav .btn-next:hover { background: var(--red-dark); transform: translateY(-1px); }
     .step-nav .btn-back[disabled] { opacity: 0; pointer-events: none; }
+    .final-step-locked { display: none; }
+    .final-step-locked.is-unlocked { display: block; animation: stepFade 0.3s ease-out; margin-top: 24px; }
 
     /* SUBMIT */
     .btn-submit {
@@ -666,6 +668,8 @@
         <button type="button" class="btn-step btn-next" id="btn-next">Continue →</button>
       </div>
 
+      <!-- FINAL: revealed after all questions answered -->
+      <div id="final-step" class="final-step-locked">
       <!-- CONSENT -->
       <div class="consent-block">
         <div class="consent-item" onclick="toggleConsent('c1')">
@@ -685,6 +689,7 @@
       <p class="form-legal">
         Your information is protected. By registering, you agree to our <a href="#">Privacy Policy</a> and <a href="#">Terms of Service</a>.
       </p>
+      </div>
     </form>
   </div>
 
@@ -768,6 +773,8 @@
     const nextBtn = document.getElementById('btn-next');
     const stepLabel = document.getElementById('step-label');
     const progressFill = document.getElementById('step-progress-fill');
+    const finalStep = document.getElementById('final-step');
+    const stepNav = form.querySelector('.step-nav');
     let current = 0;
 
     function showStep(i) {
@@ -775,9 +782,11 @@
       stepLabel.textContent = `Question ${i + 1} of ${total}`;
       progressFill.style.width = `${((i + 1) / total) * 100}%`;
       backBtn.disabled = i === 0;
-      nextBtn.disabled = i === total - 1;
       backBtn.style.display = i === 0 ? 'none' : '';
-      nextBtn.style.display = i === total - 1 ? 'none' : '';
+      nextBtn.style.display = '';
+      nextBtn.textContent = i === total - 1 ? 'Review & Confirm →' : 'Continue →';
+      // Re-lock final section if user steps back from review
+      if (i !== total - 1) finalStep.classList.remove('is-unlocked');
     }
 
     function validateStep(i) {
@@ -816,7 +825,14 @@
 
     nextBtn.addEventListener('click', () => {
       if (!validateStep(current)) return;
-      if (current < total - 1) { current++; showStep(current); }
+      if (current < total - 1) {
+        current++; showStep(current);
+      } else {
+        // Last question answered — reveal consent + submit
+        finalStep.classList.add('is-unlocked');
+        nextBtn.style.display = 'none';
+        finalStep.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     });
     backBtn.addEventListener('click', () => {
       if (current > 0) { current--; showStep(current); }
