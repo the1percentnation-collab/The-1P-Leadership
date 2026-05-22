@@ -969,15 +969,14 @@ body {
 }
 
 .auth-brand {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
   text-decoration: none;
   color: var(--white);
-  margin: 0 auto 14px;
+  margin: 0 auto 16px;
 }
-.auth-brand-mark { height: 44px; width: auto; flex-shrink: 0; }
+.auth-brand-mark { height: 96px; width: auto; flex-shrink: 0; }
 .auth-brand-text { display: flex; flex-direction: column; line-height: 1; }
 .auth-brand-line1 {
   font-family: var(--font-display);
