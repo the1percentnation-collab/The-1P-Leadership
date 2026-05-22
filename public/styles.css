@@ -1047,7 +1047,7 @@ body {
 
 .auth-form input:focus { border-color: rgba(204,27,27,0.5); }
 
-.auth-form .btn { width: 100%; padding: 11px 18px; font-size: 14px; }
+.auth-form .btn { width: 100%; padding: 11px 18px; font-size: 14px; text-align: center; justify-content: center; }
 .auth-form .btn + .btn { margin-top: 10px; }
 
 .auth-divider {
