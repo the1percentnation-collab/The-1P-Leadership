@@ -259,6 +259,35 @@
     .consent-text { font-size: 11px; font-weight: 300; color: var(--gray-600); line-height: 1.5; }
     .consent-text strong { color: var(--white); font-weight: 500; }
 
+    /* STEPPED FORM */
+    .form-step { display: none; }
+    .form-step.is-active { display: block; animation: stepFade 0.25s ease-out; }
+    @keyframes stepFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .step-progress {
+      display: flex; align-items: center; gap: 10px;
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--gray-400); margin-bottom: 18px;
+    }
+    .step-progress-bar { flex: 1; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .step-progress-fill { height: 100%; background: var(--red); width: 0%; transition: width 0.3s ease; }
+    .step-nav { display: flex; gap: 10px; margin-top: 20px; }
+    .step-nav .btn-step {
+      flex: 1; padding: 14px; border-radius: 6px;
+      font-family: var(--font-body); font-size: 14px; font-weight: 600; letter-spacing: 0.04em;
+      cursor: pointer; transition: background 0.2s, border-color 0.2s, transform 0.15s;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .step-nav .btn-back {
+      background: transparent; color: var(--gray-400);
+      border: 1px solid var(--border);
+    }
+    .step-nav .btn-back:hover { color: var(--white); border-color: rgba(255,255,255,0.25); }
+    .step-nav .btn-next {
+      background: var(--red); color: var(--white); border: 1px solid var(--red);
+    }
+    .step-nav .btn-next:hover { background: var(--red-dark); transform: translateY(-1px); }
+    .step-nav .btn-back[disabled] { opacity: 0; pointer-events: none; }
+
     /* SUBMIT */
     .btn-submit {
       width: 100%; padding: 16px; border-radius: 6px;
@@ -510,6 +539,12 @@
     <!-- THE FORM -->
     <form class="custom-form" id="webinar-form" novalidate>
 
+      <div class="step-progress">
+        <span id="step-label">Step 1 of 9</span>
+        <span class="step-progress-bar"><span class="step-progress-fill" id="step-progress-fill"></span></span>
+      </div>
+
+      <div class="form-step" data-step="1">
       <div class="form-row">
         <div class="field" id="f-name">
           <label class="field-label">Full Name</label>
@@ -522,13 +557,17 @@
           <div class="field-error">Phone is required.</div>
         </div>
       </div>
+      </div>
 
+      <div class="form-step" data-step="2">
       <div class="field" id="f-email">
         <label class="field-label">Email <span class="field-required">*</span></label>
         <input class="field-input" type="email" name="email" placeholder="you@example.com" autocomplete="email">
         <div class="field-error">A valid email is required.</div>
       </div>
+      </div>
 
+      <div class="form-step" data-step="3">
       <div class="form-row">
         <div class="field" id="f-state">
           <label class="field-label">State <span class="field-required">*</span></label>
@@ -544,7 +583,9 @@
           <div class="field-error">City is required.</div>
         </div>
       </div>
+      </div>
 
+      <div class="form-step" data-step="4">
       <!-- Q1 -->
       <div id="f-inspire">
         <div class="radio-group-label">What inspired you to register today? <span class="field-required">*</span></div>
@@ -558,7 +599,9 @@
         </div>
         <div class="field-error" id="err-inspire" style="display:none; margin-top:8px;">Please select one.</div>
       </div>
+      </div>
 
+      <div class="form-step" data-step="5">
       <!-- Q2 -->
       <div id="f-holdback">
         <div class="radio-group-label">What has been holding you back the most? <span class="field-required">*</span></div>
@@ -572,7 +615,9 @@
         </div>
         <div class="field-error" id="err-holdback" style="display:none; margin-top:8px;">Please select one.</div>
       </div>
+      </div>
 
+      <div class="form-step" data-step="6">
       <!-- Q3 -->
       <div id="f-reset">
         <div class="radio-group-label">Which area are you most ready to reset? <span class="field-required">*</span></div>
@@ -591,14 +636,18 @@
         </div>
         <div class="field-error" id="err-reset" style="display:none; margin-top:8px;">Please select one.</div>
       </div>
+      </div>
 
+      <div class="form-step" data-step="7">
       <!-- Q4 -->
       <div class="field">
         <label class="field-label">If you could ask one question during the webinar, what would it be? <span class="field-required">*</span></label>
         <textarea class="field-textarea" name="question" id="f-question" placeholder="Type your question here..."></textarea>
         <div class="field-error" id="err-question" style="display:none;">This field is required.</div>
       </div>
+      </div>
 
+      <div class="form-step" data-step="8">
       <!-- Q5 -->
       <div class="field" id="f-source">
         <label class="field-label">How did you hear about us? <span class="field-required">*</span></label>
@@ -616,7 +665,9 @@
         </select>
         <div class="field-error">This field is required.</div>
       </div>
+      </div>
 
+      <div class="form-step" data-step="9">
       <!-- CONSENT -->
       <div class="consent-block">
         <div class="consent-item" onclick="toggleConsent('c1')">
@@ -636,6 +687,12 @@
       <p class="form-legal">
         Your information is protected. By registering, you agree to our <a href="#">Privacy Policy</a> and <a href="#">Terms of Service</a>.
       </p>
+      </div>
+
+      <div class="step-nav">
+        <button type="button" class="btn-step btn-back" id="btn-back">← Back</button>
+        <button type="button" class="btn-step btn-next" id="btn-next">Continue →</button>
+      </div>
     </form>
   </div>
 
@@ -694,13 +751,13 @@
   }
   updateCd(); setInterval(updateCd, 1000);
 
-  // Spots simulation
+  // Spots simulation (bar only; counter removed)
   let spots = 53;
   setInterval(() => {
     if (spots < 80 && Math.random() < 0.2) {
       spots++;
-      document.getElementById('spots-num').textContent = spots;
-      document.getElementById('spots-bar').style.width = spots + '%';
+      const bar = document.getElementById('spots-bar');
+      if (bar) bar.style.width = spots + '%';
     }
   }, 12000);
 
@@ -709,6 +766,94 @@
     const box = document.getElementById(id);
     box.classList.toggle('checked');
   }
+
+  // Step navigation
+  (function(){
+    const form = document.getElementById('webinar-form');
+    const steps = Array.from(form.querySelectorAll('.form-step'));
+    const total = steps.length;
+    const backBtn = document.getElementById('btn-back');
+    const nextBtn = document.getElementById('btn-next');
+    const submitBtn = document.getElementById('btn-submit');
+    const stepLabel = document.getElementById('step-label');
+    const progressFill = document.getElementById('step-progress-fill');
+    let current = 0;
+
+    function showStep(i) {
+      steps.forEach((s, idx) => s.classList.toggle('is-active', idx === i));
+      stepLabel.textContent = `Step ${i + 1} of ${total}`;
+      progressFill.style.width = `${((i + 1) / total) * 100}%`;
+      backBtn.disabled = i === 0;
+      const isLast = i === total - 1;
+      nextBtn.style.display = isLast ? 'none' : '';
+      submitBtn.style.display = isLast ? '' : 'none';
+      const firstInput = steps[i].querySelector('input, select, textarea');
+      if (firstInput) setTimeout(() => firstInput.focus({ preventScroll: true }), 50);
+    }
+
+    function validateStep(i) {
+      const f = form;
+      const setInvalid = (id, bad) => { const el = document.getElementById(id); if (el) el.classList.toggle('invalid', bad); };
+      const showErr = (id, bad) => { const el = document.getElementById(id); if (el) el.style.display = bad ? 'block' : 'none'; };
+      switch (i) {
+        case 0: {
+          const okName = !!f.name.value.trim();
+          const okPhone = !!f.phone.value.trim();
+          setInvalid('f-name', !okName);
+          setInvalid('f-phone', !okPhone);
+          return okName && okPhone;
+        }
+        case 1: {
+          const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.value.trim());
+          setInvalid('f-email', !ok);
+          return ok;
+        }
+        case 2: {
+          const okState = !!f.state.value;
+          const okCity = !!f.city.value.trim();
+          setInvalid('f-state', !okState);
+          setInvalid('f-city', !okCity);
+          return okState && okCity;
+        }
+        case 3: {
+          const ok = !!(f.inspire && f.inspire.value);
+          showErr('err-inspire', !ok);
+          return ok;
+        }
+        case 4: {
+          const ok = !!(f.holdback && f.holdback.value);
+          showErr('err-holdback', !ok);
+          return ok;
+        }
+        case 5: {
+          const ok = !!(f.reset && f.reset.value);
+          showErr('err-reset', !ok);
+          return ok;
+        }
+        case 6: {
+          const ok = !!document.getElementById('f-question').value.trim();
+          showErr('err-question', !ok);
+          return ok;
+        }
+        case 7: {
+          const ok = !!f.source.value;
+          setInvalid('f-source', !ok);
+          return ok;
+        }
+        default: return true;
+      }
+    }
+
+    nextBtn.addEventListener('click', () => {
+      if (!validateStep(current)) return;
+      if (current < total - 1) { current++; showStep(current); }
+    });
+    backBtn.addEventListener('click', () => {
+      if (current > 0) { current--; showStep(current); }
+    });
+
+    showStep(0);
+  })();
 
   // Form validation & submission
   document.getElementById('webinar-form').addEventListener('submit', async function(e) {
