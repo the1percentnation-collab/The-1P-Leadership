@@ -270,9 +270,9 @@
     }
     .step-progress-bar { flex: 1; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
     .step-progress-fill { height: 100%; background: var(--red); width: 0%; transition: width 0.3s ease; }
-    .step-nav { display: flex; gap: 10px; margin-top: 20px; }
+    .step-nav { display: flex; justify-content: center; gap: 10px; margin-top: 20px; }
     .step-nav .btn-step {
-      flex: 1; padding: 14px; border-radius: 6px;
+      flex: 0 1 240px; min-width: 200px; padding: 14px; border-radius: 6px;
       font-family: var(--font-body); font-size: 14px; font-weight: 600; letter-spacing: 0.04em;
       cursor: pointer; transition: background 0.2s, border-color 0.2s, transform 0.15s;
       display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -776,7 +776,8 @@
       progressFill.style.width = `${((i + 1) / total) * 100}%`;
       backBtn.disabled = i === 0;
       nextBtn.disabled = i === total - 1;
-      nextBtn.style.visibility = i === total - 1 ? 'hidden' : '';
+      backBtn.style.display = i === 0 ? 'none' : '';
+      nextBtn.style.display = i === total - 1 ? 'none' : '';
     }
 
     function validateStep(i) {
