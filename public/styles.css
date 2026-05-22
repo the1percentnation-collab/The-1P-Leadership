@@ -960,20 +960,22 @@ body {
 
 .auth-card {
   width: 100%;
-  max-width: 440px;
+  max-width: 420px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 36px 32px;
+  padding: 40px 36px;
+  text-align: center;
 }
 
 .auth-brand {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
   text-decoration: none;
   color: var(--white);
-  margin-bottom: 20px;
+  margin: 0 auto 14px;
 }
 .auth-brand-mark { height: 44px; width: auto; flex-shrink: 0; }
 .auth-brand-text { display: flex; flex-direction: column; line-height: 1; }
@@ -1001,11 +1003,12 @@ body {
 .auth-card h1 {
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 44px;
+  font-size: 40px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--white);
-  margin-bottom: 6px;
+  margin: 14px 0 6px;
+  text-align: center;
 }
 
 .auth-card h1 span { color: var(--red); }
@@ -1013,8 +1016,11 @@ body {
 .auth-sub {
   font-size: 13px;
   color: var(--gray-light);
-  margin-bottom: 26px;
+  margin-bottom: 28px;
+  text-align: center;
 }
+
+.auth-form { text-align: left; }
 
 .auth-form label {
   display: block;
