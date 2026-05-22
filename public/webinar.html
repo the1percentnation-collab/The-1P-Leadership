@@ -231,14 +231,15 @@
       font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
       text-transform: uppercase; color: var(--gray-400); margin-bottom: 10px;
     }
-    .radio-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .radio-chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
     .radio-chip { position: relative; }
     .radio-chip input { position: absolute; opacity: 0; width: 0; height: 0; }
     .radio-chip label {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 8px 14px; border-radius: 20px;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      width: 100%; min-height: 44px; padding: 10px 14px; border-radius: 10px;
       border: 1px solid var(--border); background: var(--surface);
       font-size: 12px; font-weight: 500; color: var(--gray-400);
+      text-align: center; line-height: 1.3;
       cursor: pointer; transition: all 0.15s; user-select: none;
     }
     .radio-chip input:checked + label { border-color: var(--red); background: var(--red-glow); color: var(--white); }
