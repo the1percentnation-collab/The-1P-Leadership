@@ -293,7 +293,8 @@ function renderComingSoon(course) {
     <div class="course-soon-card">
       <div class="academy-eyebrow">${escapeHtml(course.eyebrow || 'Coming Soon')}</div>
       <h2>${escapeHtml(course.title)}</h2>
-      <p>${escapeHtml(course.subtitle || 'This course is being built. Check back soon.')}</p>
+      <p>${escapeHtml(course.subtitle || '')}</p>
+      <p class="course-soon-payment-note">Enrollment opens soon — secure checkout is being set up. Check back shortly to register.</p>
       <div class="course-soon-actions">
         <a class="btn btn-primary" href="/courses.html">← Back to Course Library</a>
       </div>

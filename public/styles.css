@@ -3768,6 +3768,13 @@ body.academy-course #course-workspace {
   margin: 0 auto;
 }
 
+.course-soon-payment-note {
+  margin-top: 16px !important;
+  font-size: 13px !important;
+  color: var(--gray-mid, #888) !important;
+  font-style: italic;
+}
+
 .course-soon-actions {
   margin-top: 32px;
   display: flex;
