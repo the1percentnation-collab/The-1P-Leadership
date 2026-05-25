@@ -5661,6 +5661,156 @@ body.academy-course #course-workspace {
 }
 .c-event-del:hover { color: #FF7070; border-color: rgba(204,27,27,0.40); }
 
+.c-event-edit {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--gray-mid);
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.c-event-edit:hover { color: var(--white); border-color: rgba(255,255,255,0.30); }
+
+/* Signups area on the event card */
+.c-event-signups {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.c-event-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-mid);
+}
+.c-event-going {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #56D4A8;
+  font-weight: 600;
+}
+.c-event-mini {
+  padding: 5px 12px !important;
+  font-size: 12px !important;
+}
+
+/* Create/edit modal extras */
+.c-ev-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--gray-light);
+  margin: 12px 0 4px;
+  cursor: pointer;
+}
+.c-ev-check input { width: auto; }
+
+/* Signups viewer */
+.c-su-link {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.c-su-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.c-su-row {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+}
+.c-su-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.c-su-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--gray-mid);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.c-su-meta {
+  font-size: 12px;
+  color: var(--gray-light);
+  margin-top: 2px;
+}
+.c-su-empty {
+  color: var(--gray-mid);
+  font-size: 13px;
+  text-align: center;
+  padding: 20px 0;
+}
+
+/* Public registration page (event.html) */
+.c-reg-wrap {
+  max-width: 540px;
+  margin: 24px auto;
+  width: 100%;
+}
+.c-reg-loading { color: var(--gray-mid); text-align: center; padding: 60px 0; }
+.c-reg-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px;
+}
+.c-reg-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #FF9090;
+  margin-bottom: 8px;
+}
+.c-reg-title {
+  font-family: var(--font-display, var(--font-sans));
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--white);
+  line-height: 1.2;
+  margin: 0 0 8px;
+}
+.c-reg-when {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: #FF9090;
+  margin-bottom: 4px;
+}
+.c-reg-host, .c-reg-loc { font-size: 13px; color: var(--gray-light); margin-bottom: 2px; }
+.c-reg-desc { font-size: 14px; color: var(--gray-light); margin: 14px 0; line-height: 1.5; }
+.c-reg-sub { font-size: 14px; color: var(--gray-light); margin: 8px 0 18px; line-height: 1.5; }
+.c-reg-note {
+  background: rgba(204,27,27,0.10);
+  border: 1px solid rgba(204,27,27,0.30);
+  color: #FF9090;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  margin: 14px 0;
+}
+.c-reg-form { display: flex; flex-direction: column; gap: 4px; margin-top: 16px; }
+.c-reg-submit { margin-top: 14px; }
+.c-reg-check {
+  font-size: 44px;
+  line-height: 1;
+  color: #56D4A8;
+  margin-bottom: 8px;
+}
+
 @media (max-width: 720px) {
   .c-event-card { grid-template-columns: 1fr; gap: 8px; padding: 14px; }
   .c-event-date { color: #FF9090; }
