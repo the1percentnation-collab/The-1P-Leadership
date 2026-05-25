@@ -493,7 +493,7 @@ async function main() {
   state.role = info.role;
   state.isAdmin = info.isAdmin;
 
-  renderTopbar({ user: state.me, profile, role: info.role, currentPage: null });
+  renderTopbar({ user: state.me, profile, role: info.role, currentPage: 'events' });
 
   if (state.isAdmin) {
     const btn = $('btn-new-event');
