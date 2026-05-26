@@ -5372,6 +5372,140 @@ body.academy-course #course-workspace {
   font-family: var(--font-sans);
 }
 .c-ch-input:focus { outline: none; border-color: rgba(204,27,27,0.5); }
+
+/* ── Custom event date + time picker ────────────────────────────── */
+.c-dt-row { display: flex; gap: 8px; }
+.c-dt-wrap { position: relative; flex: 1 1 0; min-width: 0; }
+.c-dt-field {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--charcoal);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--white);
+  font-size: 14px;
+  font-family: var(--font-sans);
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s;
+}
+.c-dt-field:hover { border-color: rgba(204,27,27,0.4); }
+.c-dt-field:focus-visible { outline: none; border-color: rgba(204,27,27,0.5); }
+.c-dt-ic { flex: 0 0 auto; color: var(--gray-mid); }
+.c-dt-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.c-dt-placeholder { color: var(--gray-mid); }
+
+.c-dt-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  background: var(--charcoal, #161616);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+}
+.c-dt-pop-time { left: auto; right: 0; }
+
+/* Calendar */
+.c-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.c-cal-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--white);
+}
+.c-cal-nav {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--gray-mid);
+  width: 26px;
+  height: 26px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.c-cal-nav:hover { color: var(--white); border-color: rgba(204,27,27,0.4); }
+.c-cal-week,
+.c-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 32px);
+  gap: 2px;
+}
+.c-cal-week span {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--gray-mid);
+  padding: 4px 0;
+}
+.c-cal-cell {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.c-cal-blank { background: transparent; }
+.c-cal-day {
+  background: transparent;
+  border: none;
+  color: var(--white);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.c-cal-day:hover { background: rgba(255,255,255,0.08); }
+.c-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--border); }
+.c-cal-day.is-sel {
+  background: var(--red, #cc1b1b);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Time columns */
+.c-time-cols { display: flex; gap: 6px; }
+.c-time-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.c-time-col::-webkit-scrollbar { width: 4px; }
+.c-time-col::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.c-time-col-ap { justify-content: flex-start; }
+.c-time-opt {
+  background: transparent;
+  border: none;
+  color: var(--white);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.c-time-opt:hover { background: rgba(255,255,255,0.08); }
+.c-time-opt.is-sel {
+  background: var(--red, #cc1b1b);
+  color: #fff;
+  font-weight: 600;
+}
 .c-ch-keyhint {
   font-family: var(--font-mono);
   font-size: 11px;
