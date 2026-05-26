@@ -5874,6 +5874,38 @@ body.academy-course #course-workspace {
 .c-event-ctl:hover { color: var(--white); border-color: rgba(204,27,27,0.40); }
 .c-event-del:hover { color: #FF7070; border-color: rgba(204,27,27,0.40); }
 
+/* Share-to-CRM modal */
+.c-share-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--white);
+  cursor: pointer;
+}
+.c-share-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 6px 0 4px 22px;
+}
+.c-share-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--gray-light);
+  cursor: pointer;
+}
+.c-share-ok {
+  font-size: 13px;
+  color: #7CFF9B;
+  background: rgba(40,180,80,0.10);
+  border: 1px solid rgba(40,180,80,0.25);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
 /* Flyer / cover upload field in the event modal */
 .c-ev-image-field { width: 100%; }
 .c-ev-image-drop {
