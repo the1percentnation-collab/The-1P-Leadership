@@ -94,6 +94,9 @@ export async function signupEmail({ email, password, displayName, inviteCode, co
 
 export async function loginGoogle() {
   const provider = new GoogleAuthProvider();
+  // Always show the account chooser so users with multiple Google accounts
+  // can pick one instead of being silently signed in with the last-used one.
+  provider.setCustomParameters({ prompt: 'select_account' });
   const cred = await signInWithPopup(auth, provider);
   await ensureUserDoc(cred.user);
   return cred.user;
