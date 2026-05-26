@@ -5261,6 +5261,7 @@ body.academy-course #course-workspace {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
+  max-height: calc(100vh - 32px);
   width: 100%;
   max-width: 460px;
   padding: 24px 22px 22px;
@@ -5300,6 +5301,9 @@ body.academy-course #course-workspace {
   flex-direction: column;
   gap: 10px;
   margin-top: 4px;
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 4px;
 }
 
 .c-invite-label {
