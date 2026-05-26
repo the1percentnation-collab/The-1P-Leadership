@@ -52,27 +52,40 @@ async function loadEvents() {
   }
 }
 
+function eventDateBadge(ts) {
+  if (!ts) return { month: '—', day: 'TBA' };
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  if (isNaN(d.getTime())) return { month: '—', day: 'TBA' };
+  return {
+    month: d.toLocaleDateString(undefined, { month: 'short' }).toUpperCase(),
+    day: String(d.getDate())
+  };
+}
+
 function eventCardHtml(e) {
   const canEdit = state.role === 'owner' || (state.role === 'admin');
+  const badge = eventDateBadge(e.startsAt);
   const linkBtn = e.link
-    ? `<a class="btn btn-primary c-event-cta" href="${escapeHtml(e.link)}" target="_blank" rel="noopener">Join →</a>`
+    ? `<a class="btn btn-primary c-event-cta" href="${escapeHtml(e.link)}" target="_blank" rel="noopener">Join event →</a>`
     : '';
   const editBtn = canEdit
-    ? `<button class="c-event-del" data-del="${escapeHtml(e.id)}" title="Delete">✕</button>`
+    ? `<button class="c-event-del" data-del="${escapeHtml(e.id)}" title="Delete event" aria-label="Delete event">✕</button>`
     : '';
   return `
     <article class="c-event-card" data-event="${escapeHtml(e.id)}">
-      <div class="c-event-date">${escapeHtml(fmtEventDate(e.startsAt, e.endsAt))}</div>
+      <div class="c-event-datebadge">
+        <span class="c-ev-month">${escapeHtml(badge.month)}</span>
+        <span class="c-ev-day">${escapeHtml(badge.day)}</span>
+      </div>
       <div class="c-event-body">
         <div class="c-event-title">${escapeHtml(e.title || 'Untitled event')}</div>
+        <div class="c-event-when">${escapeHtml(fmtEventDate(e.startsAt, e.endsAt))}</div>
+        ${e.location ? `<div class="c-event-loc"><span class="c-event-meta-ic">📍</span>${escapeHtml(e.location)}</div>` : ''}
         ${e.hostName ? `<div class="c-event-host">Hosted by ${escapeHtml(e.hostName)}</div>` : ''}
         ${e.description ? `<div class="c-event-desc">${escapeHtml(e.description)}</div>` : ''}
-        ${e.location ? `<div class="c-event-loc">📍 ${escapeHtml(e.location)}</div>` : ''}
+        ${linkBtn ? `<div class="c-event-actions">${linkBtn}</div>` : ''}
       </div>
-      <div class="c-event-actions">
-        ${linkBtn}
-        ${editBtn}
-      </div>
+      ${editBtn}
     </article>
   `;
 }
