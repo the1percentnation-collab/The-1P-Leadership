@@ -1811,6 +1811,172 @@ exports.searchPosts = onCall(async (request) => {
   return { ok: true, results };
 });
 
+// ────────────────────────────────────────────────────────────────
+// Events — public registration + CRM signup pipeline.
+//
+// `getEventPublic` exposes a minimal, read-only view of an event so the
+// public registration page (event.html) can render without granting open
+// read access to the whole events collection.
+//
+// `registerForEvent` is the single write path for ALL signups — members
+// (authenticated) and public guests (unauthenticated). It writes a signup
+// doc under events/{eventId}/signups, maintains a signupCount, and mirrors
+// the registrant into the event's company CRM as a contact (source=Event)
+// with an activity-log entry. All writes use the Admin SDK so neither the
+// signups subcollection nor the CRM needs to be writable from the client.
+// ────────────────────────────────────────────────────────────────
 
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+async function mirrorSignupToCrm(db, companyId, { name, email, phone, eventId, eventTitle, ownerUid }) {
+  const contactsCol = db.collection('companies').doc(companyId).collection('contacts');
+  const emailLc = email.toLowerCase();
+  const tag = (eventTitle || 'Event').toString().slice(0, 40);
+
+  let contactRef;
+  const existing = await contactsCol.where('email', '==', emailLc).limit(1).get();
+  if (!existing.empty) {
+    contactRef = existing.docs[0].ref;
+    const prev = existing.docs[0].data() || {};
+    await contactRef.set({
+      tags: admin.firestore.FieldValue.arrayUnion(tag),
+      phone: phone || prev.phone || null,
+      lastActivityAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } else {
+    contactRef = await contactsCol.add({
+      name: name || 'Event signup',
+      email: emailLc,
+      phone: phone || null,
+      companyName: null,
+      source: 'Event',
+      stage: 'new',
+      tags: [tag],
+      ownerUid: ownerUid || null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdBy: 'system',
+      lastActivityAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  await contactRef.collection('activities').add({
+    type: 'event_signup',
+    description: `Registered for ${eventTitle}`,
+    actorUid: 'system',
+    actorName: 'Event signup',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    meta: { eventId, eventTitle }
+  });
+
+  return contactRef.id;
+}
+
+exports.getEventPublic = onCall(async (request) => {
+  const db = admin.firestore();
+  const eventId = (request.data && request.data.eventId || '').toString().trim();
+  if (!eventId) throw new HttpsError('invalid-argument', 'eventId is required.');
+
+  const snap = await db.collection('events').doc(eventId).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Event not found.');
+  const e = snap.data() || {};
+  const capacity = Number(e.capacity || 0) || null;
+  const signupCount = Number(e.signupCount || 0);
+
+  return {
+    ok: true,
+    event: {
+      id: snap.id,
+      title: e.title || 'Event',
+      startsAt: e.startsAt && e.startsAt.toMillis ? e.startsAt.toMillis() : null,
+      hostName: e.hostName || null,
+      location: e.location || null,
+      description: e.description || null,
+      link: e.link || null,
+      signupsEnabled: e.signupsEnabled !== false,
+      capacity,
+      signupCount,
+      full: !!(capacity && signupCount >= capacity)
+    }
+  };
+});
+
+exports.registerForEvent = onCall(async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  const eventId = (data.eventId || '').toString().trim();
+  if (!eventId) throw new HttpsError('invalid-argument', 'eventId is required.');
+
+  const eventRef = db.collection('events').doc(eventId);
+  const eventSnap = await eventRef.get();
+  if (!eventSnap.exists) throw new HttpsError('not-found', 'Event not found.');
+  const ev = eventSnap.data() || {};
+  if (ev.signupsEnabled === false) {
+    throw new HttpsError('failed-precondition', 'Signups are closed for this event.');
+  }
+
+  const authUid = (request.auth && request.auth.uid) || null;
+  const authEmail = (request.auth && request.auth.token && request.auth.token.email) || '';
+  const authName = (request.auth && request.auth.token && request.auth.token.name) || '';
+
+  let name = (data.name || authName || '').toString().trim();
+  let email = (data.email || authEmail || '').toString().trim().toLowerCase();
+  const phone = (data.phone || '').toString().trim();
+
+  if (!email) throw new HttpsError('invalid-argument', 'Email is required.');
+  if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
+  if (!name) name = email.split('@')[0];
+
+  const signupId = authUid
+    ? authUid
+    : 'pub_' + crypto.createHash('sha1').update(email).digest('hex').slice(0, 24);
+  const signupRef = eventRef.collection('signups').doc(signupId);
+
+  let alreadyRegistered = false;
+  await db.runTransaction(async (tx) => {
+    const [sSnap, eSnap] = await Promise.all([tx.get(signupRef), tx.get(eventRef)]);
+    if (sSnap.exists) { alreadyRegistered = true; return; }
+    const e = eSnap.data() || {};
+    const cap = Number(e.capacity || 0);
+    const count = Number(e.signupCount || 0);
+    if (cap > 0 && count >= cap) {
+      throw new HttpsError('resource-exhausted', 'This event is full.');
+    }
+    tx.set(signupRef, {
+      eventId,
+      eventTitle: e.title || null,
+      name,
+      email,
+      phone: phone || null,
+      uid: authUid,
+      source: authUid ? 'member' : 'public',
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    tx.update(eventRef, { signupCount: count + 1 });
+  });
+
+  if (alreadyRegistered) return { ok: true, alreadyRegistered: true };
+
+  let crmContactId = null;
+  const companyId = ev.companyId || null;
+  if (companyId) {
+    try {
+      crmContactId = await mirrorSignupToCrm(db, companyId, {
+        name, email, phone,
+        eventId,
+        eventTitle: ev.title || 'Event',
+        ownerUid: ev.createdByUid || null
+      });
+      try {
+        await signupRef.set({ crmCompanyId: companyId, crmContactId }, { merge: true });
+      } catch (e) { /* best-effort */ }
+    } catch (e) {
+      console.warn('[registerForEvent] CRM mirror failed:', e && e.message);
+    }
+  }
+
+  return { ok: true, alreadyRegistered: false, crmContactId };
+});
 
 

@@ -405,11 +405,27 @@ service cloud.firestore {
     // No field-level validation in v1; the events-page UI gates input.
     // ────────────────────────────────────────────────────────────────
     match /events/{eventId} {
+      function isEventAdmin() {
+        return isOwner()
+          || (isSignedIn()
+              && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+              && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      }
+
       allow read: if isSignedIn();
-      allow create, update, delete: if isOwner()
-        || (isSignedIn()
-            && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      allow create, update, delete: if isEventAdmin();
+
+      // events/{eventId}/signups/{signupId} — registration/RSVP records.
+      // ALL writes go through the registerForEvent Cloud Function (Admin SDK
+      // bypasses rules), so clients have no write access here. Reads: owner /
+      // admins see the full roster; a member may read their own RSVP doc
+      // (doc id == their uid) to know whether they're registered.
+      match /signups/{signupId} {
+        allow read: if isEventAdmin()
+                     || (isSignedIn() && signupId == request.auth.uid);
+        allow list: if isEventAdmin();
+        allow create, update, delete: if false;
+      }
     }
   }
 }
