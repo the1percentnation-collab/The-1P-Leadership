@@ -5874,6 +5874,57 @@ body.academy-course #course-workspace {
 .c-event-ctl:hover { color: var(--white); border-color: rgba(204,27,27,0.40); }
 .c-event-del:hover { color: #FF7070; border-color: rgba(204,27,27,0.40); }
 
+/* Event registration */
+.c-event-registered {
+  background: rgba(40,180,80,0.14);
+  border: 1px solid rgba(40,180,80,0.35);
+  color: #7CFF9B;
+  cursor: default;
+}
+.c-event-regcount {
+  margin-top: 10px;
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--gray-mid);
+  cursor: pointer;
+}
+.c-event-regcount:hover { color: var(--white); text-decoration: underline; }
+.c-reg-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--gray-light);
+  cursor: pointer;
+}
+.c-reg-consent input { margin-top: 3px; flex: 0 0 auto; }
+.c-registrants-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.c-registrant-row {
+  padding: 10px 12px;
+  background: var(--charcoal);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.c-registrant-name { font-size: 14px; color: var(--white); }
+.c-registrant-email { font-size: 12px; color: var(--gray-light); }
+.c-registrant-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--gray-mid);
+  margin-top: 2px;
+}
+
 /* Share-to-CRM modal */
 .c-share-opt {
   display: flex;

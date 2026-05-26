@@ -101,6 +101,14 @@ service cloud.firestore {
           && request.resource.data.get('fromAvatar', null) == resource.data.get('fromAvatar', null);
         allow delete: if isOwner() || isSelf(uid);
       }
+
+      // users/{uid}/registrations/{eventId} — a per-member mirror of the
+      // events they've registered for, written by the registerForEvent Cloud
+      // Function (Admin SDK). Self/owner read; server-only writes.
+      match /registrations/{eventId} {
+        allow read: if isOwner() || isSelf(uid);
+        allow write: if false;
+      }
     }
 
     // companies/{companyId}
@@ -405,11 +413,24 @@ service cloud.firestore {
     // No field-level validation in v1; the events-page UI gates input.
     // ────────────────────────────────────────────────────────────────
     match /events/{eventId} {
-      allow read: if isSignedIn();
+      // Public read: events are front-facing so anyone (signed in or not) can
+      // view them and register from the public Events page.
+      allow read: if true;
       allow create, update, delete: if isOwner()
         || (isSignedIn()
             && exists(/databases/$(database)/documents/users/$(request.auth.uid))
             && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+
+      // Registrations — written only by the registerForEvent Cloud Function
+      // (Admin SDK). Readable by organizers (owner/admin) to see attendance;
+      // attendee PII is not exposed to the general public.
+      match /registrations/{regId} {
+        allow read: if isOwner()
+          || (isSignedIn()
+              && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+              && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+        allow write: if false;
+      }
     }
   }
 }
