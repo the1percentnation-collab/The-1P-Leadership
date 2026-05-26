@@ -5849,19 +5849,25 @@ body.academy-course #course-workspace {
   margin-top: 12px;
 }
 .c-event-cta { white-space: nowrap; }
-.c-event-del {
+.c-event-controls {
   position: absolute;
   top: 12px;
   right: 12px;
-  background: transparent;
+  display: flex;
+  gap: 6px;
+}
+.c-event-ctl {
+  background: rgba(0,0,0,0.45);
   border: 1px solid var(--border);
-  color: var(--gray-mid);
+  color: var(--gray-light);
   border-radius: 6px;
   padding: 4px 8px;
   cursor: pointer;
   font-size: 12px;
   line-height: 1;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
 }
+.c-event-ctl:hover { color: var(--white); border-color: rgba(204,27,27,0.40); }
 .c-event-del:hover { color: #FF7070; border-color: rgba(204,27,27,0.40); }
 
 /* Flyer / cover upload field in the event modal */
