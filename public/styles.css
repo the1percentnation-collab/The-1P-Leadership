@@ -5506,6 +5506,21 @@ body.academy-course #course-workspace {
   color: #fff;
   font-weight: 600;
 }
+.c-time-done {
+  margin-top: 8px;
+  width: 100%;
+  background: var(--red, #cc1b1b);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 8px 0;
+  cursor: pointer;
+}
+.c-time-done:hover { filter: brightness(1.1); }
 .c-ch-keyhint {
   font-family: var(--font-mono);
   font-size: 11px;
