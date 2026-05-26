@@ -5372,6 +5372,29 @@ body.academy-course #course-workspace {
   font-family: var(--font-sans);
 }
 .c-ch-input:focus { outline: none; border-color: rgba(204,27,27,0.5); }
+
+/* Event date + time: two clean fields side by side instead of one
+   cramped datetime-local. Native picker icons are inverted so they
+   read on the dark charcoal background. */
+.c-ev-datetime {
+  display: flex;
+  gap: 8px;
+}
+.c-ev-date-input { flex: 2 1 0; min-width: 0; }
+.c-ev-time-input { flex: 1 1 0; min-width: 0; }
+.c-ev-datetime input[type="date"],
+.c-ev-datetime input[type="time"] {
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  color-scheme: dark;
+}
+.c-ev-datetime input::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.12s;
+}
+.c-ev-datetime input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 .c-ch-keyhint {
   font-family: var(--font-mono);
   font-size: 11px;

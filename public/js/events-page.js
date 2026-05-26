@@ -148,8 +148,11 @@ function openEventModal(prefill = null) {
         <label class="c-invite-label" for="c-ev-title">Title</label>
         <input id="c-ev-title" class="c-ch-input" type="text" maxlength="80" value="${escapeHtml(prefill ? prefill.title : '')}">
 
-        <label class="c-invite-label" for="c-ev-when">Date &amp; time</label>
-        <input id="c-ev-when" class="c-ch-input" type="datetime-local">
+        <label class="c-invite-label" for="c-ev-date">Date &amp; time</label>
+        <div class="c-ev-datetime">
+          <input id="c-ev-date" class="c-ch-input c-ev-date-input" type="date">
+          <input id="c-ev-time" class="c-ch-input c-ev-time-input" type="time">
+        </div>
 
         <label class="c-invite-label" for="c-ev-host">Host name</label>
         <input id="c-ev-host" class="c-ch-input" type="text" maxlength="60" value="${escapeHtml(prefill ? (prefill.hostName || '') : (state.me ? state.me.displayName || '' : ''))}">
@@ -176,8 +179,8 @@ function openEventModal(prefill = null) {
   if (prefill && prefill.startsAt && prefill.startsAt.toDate) {
     const d = prefill.startsAt.toDate();
     const pad = (n) => String(n).padStart(2, '0');
-    const local = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    $('c-ev-when').value = local;
+    $('c-ev-date').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    $('c-ev-time').value = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
   if (prefill) {
     $('c-ev-link').value = prefill.link || '';
@@ -195,7 +198,9 @@ function openEventModal(prefill = null) {
     const errEl = $('c-ev-err');
     errEl.style.display = 'none';
     const title = $('c-ev-title').value.trim();
-    const whenStr = $('c-ev-when').value;
+    const dateStr = $('c-ev-date').value;
+    const timeStr = $('c-ev-time').value;
+    const whenStr = dateStr && timeStr ? `${dateStr}T${timeStr}` : '';
     const host = $('c-ev-host').value.trim();
     const link = $('c-ev-link').value.trim();
     const loc = $('c-ev-loc').value.trim();
