@@ -24,7 +24,8 @@ const state = {
   role: null,
   companyId: null,
   events: [],
-  filter: 'upcoming'
+  filter: 'upcoming',
+  myRegistrations: new Set()
 };
 
 function fmtEventDate(ts, endTs) {
@@ -84,6 +85,17 @@ function eventCardHtml(e) {
   const cover = e.imageUrl
     ? `<div class="c-event-cover"><img src="${escapeHtml(e.imageUrl)}" alt="" loading="lazy"></div>`
     : '';
+
+  const isRegistered = state.myRegistrations && state.myRegistrations.has(e.id);
+  const registerBtn = isRegistered
+    ? `<button class="btn c-event-cta c-event-registered" disabled>Registered ✓</button>`
+    : `<button class="btn btn-primary c-event-cta" data-register="${escapeHtml(e.id)}">Register</button>`;
+
+  const count = Number(e.registrationCount || 0);
+  const countLine = canEdit
+    ? `<button class="c-event-regcount" data-registrants="${escapeHtml(e.id)}">${count} registered · View list</button>`
+    : '';
+
   return `
     <article class="c-event-card${e.imageUrl ? ' has-cover' : ''}" data-event="${escapeHtml(e.id)}">
       ${cover}
@@ -98,7 +110,11 @@ function eventCardHtml(e) {
           ${e.location ? `<div class="c-event-loc"><span class="c-event-meta-ic">📍</span>${escapeHtml(e.location)}</div>` : ''}
           ${e.hostName ? `<div class="c-event-host">Hosted by ${escapeHtml(e.hostName)}</div>` : ''}
           ${e.description ? `<div class="c-event-desc">${escapeHtml(e.description)}</div>` : ''}
-          ${linkBtn ? `<div class="c-event-actions">${linkBtn}</div>` : ''}
+          <div class="c-event-actions">
+            ${registerBtn}
+            ${linkBtn}
+          </div>
+          ${countLine}
         </div>
       </div>
       ${controls}
@@ -154,6 +170,20 @@ function renderList() {
       e.preventDefault();
       const ev = state.events.find((x) => x.id === btn.dataset.share);
       if (ev) openShareModal(ev);
+    });
+  });
+  root.querySelectorAll('[data-register]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const ev = state.events.find((x) => x.id === btn.dataset.register);
+      if (ev) openRegisterModal(ev);
+    });
+  });
+  root.querySelectorAll('[data-registrants]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const ev = state.events.find((x) => x.id === btn.dataset.registrants);
+      if (ev) openRegistrantsModal(ev);
     });
   });
   root.querySelectorAll('[data-del]').forEach((btn) => {
@@ -511,6 +541,7 @@ function openEventModal(prefill = null) {
         link: link || null,
         location: loc || null,
         description: desc || null,
+        ...(state.companyId ? { companyId: state.companyId } : {}),
         updatedAt: serverTimestamp(),
         ...(prefill ? {} : { createdAt: serverTimestamp(), createdByUid: state.me ? state.me.uid : null })
       }, { merge: true });
@@ -611,6 +642,124 @@ function openShareModal(event) {
   });
 }
 
+// ── Public/member registration for an event ────────────────────────
+function openRegisterModal(event) {
+  if (document.getElementById('c-reg-modal')) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'c-modal-overlay';
+  overlay.id = 'c-reg-modal';
+  const meName = state.me ? (state.me.displayName || '') : '';
+  const meEmail = state.me ? (state.me.email || '') : '';
+  overlay.innerHTML = `
+    <div class="c-modal" role="dialog" aria-modal="true">
+      <button class="c-modal-close" id="c-reg-close" aria-label="Close">✕</button>
+      <h2 class="c-modal-title">Register</h2>
+      <p class="c-modal-sub">${escapeHtml(event.title || 'this event')} · ${escapeHtml(fmtEventDate(event.startsAt, event.endsAt))}</p>
+      <div class="c-modal-body">
+        <label class="c-invite-label" for="c-reg-name">Your name</label>
+        <input id="c-reg-name" class="c-ch-input" type="text" maxlength="120" value="${escapeHtml(meName)}">
+
+        <label class="c-invite-label" for="c-reg-email">Email</label>
+        <input id="c-reg-email" class="c-ch-input" type="email" maxlength="200" value="${escapeHtml(meEmail)}">
+
+        <label class="c-reg-consent">
+          <input id="c-reg-consent" type="checkbox">
+          <span>I want to register for this event and agree to receive updates from The One Percent Nation.</span>
+        </label>
+
+        <div class="c-invite-actions">
+          <button class="btn btn-primary" id="c-reg-submit" disabled>Register</button>
+          <button class="btn btn-ghost" id="c-reg-cancel">Cancel</button>
+        </div>
+        <div class="auth-error" id="c-reg-err" style="display:none;"></div>
+        <div class="c-share-ok" id="c-reg-ok" style="display:none;"></div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  $('c-reg-close').addEventListener('click', close);
+  $('c-reg-cancel').addEventListener('click', close);
+  $('c-reg-consent').addEventListener('change', () => {
+    $('c-reg-submit').disabled = !$('c-reg-consent').checked;
+  });
+
+  $('c-reg-submit').addEventListener('click', async () => {
+    const errEl = $('c-reg-err');
+    const okEl = $('c-reg-ok');
+    errEl.style.display = 'none';
+    okEl.style.display = 'none';
+    const name = $('c-reg-name').value.trim();
+    const email = $('c-reg-email').value.trim();
+    if (!name) { errEl.textContent = 'Please enter your name.'; errEl.style.display = 'block'; return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { errEl.textContent = 'Please enter a valid email.'; errEl.style.display = 'block'; return; }
+    if (!$('c-reg-consent').checked) { errEl.textContent = 'Please check the box to register.'; errEl.style.display = 'block'; return; }
+
+    const btn = $('c-reg-submit');
+    btn.disabled = true;
+    btn.textContent = 'Registering…';
+    try {
+      const call = httpsCallable(functions, 'registerForEvent');
+      await call({ eventId: event.id, name, email });
+      // Reflect locally.
+      if (state.me) state.myRegistrations.add(event.id);
+      const ev = state.events.find((x) => x.id === event.id);
+      if (ev) ev.registrationCount = Number(ev.registrationCount || 0) + 1;
+      okEl.textContent = "You're registered! See you there.";
+      okEl.style.display = 'block';
+      btn.textContent = 'Registered ✓';
+      setTimeout(() => { close(); renderList(); }, 1400);
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Register';
+      errEl.textContent = (err && err.message) || 'Could not register.';
+      errEl.style.display = 'block';
+    }
+  });
+}
+
+async function openRegistrantsModal(event) {
+  if (document.getElementById('c-registrants-modal')) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'c-modal-overlay';
+  overlay.id = 'c-registrants-modal';
+  overlay.innerHTML = `
+    <div class="c-modal" role="dialog" aria-modal="true">
+      <button class="c-modal-close" id="c-registrants-close" aria-label="Close">✕</button>
+      <h2 class="c-modal-title">Registrants</h2>
+      <p class="c-modal-sub">${escapeHtml(event.title || 'this event')}</p>
+      <div class="c-modal-body">
+        <div id="c-registrants-list" class="c-registrants-list">Loading…</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  $('c-registrants-close').addEventListener('click', close);
+
+  try {
+    const snap = await getDocs(query(collection(db, 'events', event.id, 'registrations'), orderBy('registeredAt', 'desc')));
+    const rows = snap.docs.map((d) => d.data());
+    const listEl = $('c-registrants-list');
+    if (!rows.length) {
+      listEl.innerHTML = `<div class="c-empty-body">No one has registered yet.</div>`;
+      return;
+    }
+    listEl.innerHTML = rows.map((r) => `
+      <div class="c-registrant-row">
+        <div class="c-registrant-name">${escapeHtml(r.name || 'Unnamed')}</div>
+        <div class="c-registrant-email">${escapeHtml(r.email || '')}</div>
+        <div class="c-registrant-meta">${escapeHtml(r.source === 'member' ? 'Member' : 'Guest')} · ${escapeHtml(fmtRelative(r.registeredAt))}</div>
+      </div>
+    `).join('');
+  } catch (err) {
+    $('c-registrants-list').innerHTML = `<div class="auth-error">Could not load registrants: ${escapeHtml(err.message || String(err))}</div>`;
+  }
+}
+
 async function resolveCompanyId(uid, info) {
   let companyId = info.companyId || null;
   if (!companyId && (info.role === 'admin' || info.role === 'owner')) {
@@ -629,8 +778,14 @@ async function main() {
     return;
   }
   const u = await onAuthReady();
+
   if (!u) {
-    location.replace('/login.html?next=' + encodeURIComponent('/events.html'));
+    // Public mode — events are front-facing, so anonymous visitors can browse
+    // and register. No member topbar; render a minimal public header.
+    renderPublicHeader();
+    bindToolbar();
+    await loadEvents();
+    renderList();
     return;
   }
 
@@ -658,8 +813,29 @@ async function main() {
     state.companyId = await resolveCompanyId(u.uid, info);
   }
 
+  // Load the member's registrations so cards can show a "Registered" state.
+  await loadMyRegistrations();
+
   await loadEvents();
   renderList();
+}
+
+function renderPublicHeader() {
+  const chip = $('user-chip');
+  if (chip) {
+    chip.innerHTML = `<a class="back-to-main" href="/login.html?next=${encodeURIComponent('/events.html')}">Member Portal →</a>`;
+  }
+}
+
+async function loadMyRegistrations() {
+  state.myRegistrations = new Set();
+  if (!state.me) return;
+  try {
+    const snap = await getDocs(collection(db, 'users', state.me.uid, 'registrations'));
+    snap.docs.forEach((d) => state.myRegistrations.add(d.id));
+  } catch (e) {
+    console.warn('[events] my registrations load failed', e);
+  }
 }
 
 main();

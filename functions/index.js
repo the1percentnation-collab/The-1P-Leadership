@@ -886,6 +886,139 @@ exports.shareEventToContacts = onCall(
 );
 
 // ────────────────────────────────────────────────────────────────
+// registerForEvent — callable (public, unauthenticated allowed). Records an
+// event registration, upserts a CRM contact (source: Event), mirrors to the
+// member's account when signed in, and bumps the event's registrationCount.
+// ────────────────────────────────────────────────────────────────
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+async function resolveEventCompanyId(db, event) {
+  if (event.companyId) return event.companyId;
+  const ownerUid = event.createdByUid || event.hostUid || null;
+  if (ownerUid) {
+    try {
+      const uSnap = await db.collection('users').doc(ownerUid).get();
+      if (uSnap.exists && uSnap.data().companyId) return uSnap.data().companyId;
+    } catch (e) {}
+    try {
+      const snap = await db.collection('companies').where('adminUids', 'array-contains', ownerUid).limit(1).get();
+      if (!snap.empty) return snap.docs[0].id;
+    } catch (e) {}
+  }
+  return null;
+}
+
+async function upsertEventContact(db, companyId, event, name, email, ownerUid) {
+  const colRef = db.collection('companies').doc(companyId).collection('contacts');
+  const tag = (event.title || '').toString().slice(0, 40);
+  let contactRef = null;
+  try {
+    const snap = await colRef.where('email', '==', email).limit(1).get();
+    if (!snap.empty) contactRef = snap.docs[0].ref;
+  } catch (e) {}
+
+  if (contactRef) {
+    const patch = {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastActivityAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    if (tag) patch.tags = admin.firestore.FieldValue.arrayUnion(tag);
+    await contactRef.set(patch, { merge: true });
+  } else {
+    contactRef = await colRef.add({
+      name: name || 'Unnamed contact',
+      email,
+      phone: null,
+      companyName: null,
+      source: 'Event',
+      stage: 'new',
+      tags: tag ? [tag] : [],
+      ownerUid: ownerUid || null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdBy: 'system',
+      lastActivityAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  try {
+    await contactRef.collection('activities').add({
+      type: 'event_registration',
+      description: `Registered for "${(event.title || 'event').toString().slice(0, 80)}"`,
+      actorUid: 'system',
+      actorName: 'Event registration',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      meta: { eventId: event.id || null, eventTitle: event.title || null }
+    });
+  } catch (e) {}
+}
+
+exports.registerForEvent = onCall(async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  const eventId = (data.eventId || '').toString().trim();
+  const name = (data.name || '').toString().trim().slice(0, 120);
+  const email = (data.email || '').toString().trim().toLowerCase().slice(0, 200);
+
+  if (!eventId) throw new HttpsError('invalid-argument', 'eventId is required.');
+  if (!name) throw new HttpsError('invalid-argument', 'Please enter your name.');
+  if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
+
+  const uid = (request.auth && request.auth.uid) || null;
+
+  const eventRef = db.collection('events').doc(eventId);
+  const eventSnap = await eventRef.get();
+  if (!eventSnap.exists) throw new HttpsError('not-found', 'Event not found.');
+  const event = { id: eventId, ...eventSnap.data() };
+
+  // Dedup key: uid for members, hashed email for the public.
+  const regId = uid || ('e_' + crypto.createHash('sha256').update(email).digest('hex').slice(0, 24));
+  const regRef = eventRef.collection('registrations').doc(regId);
+  const existing = await regRef.get();
+  const alreadyRegistered = existing.exists;
+
+  await regRef.set({
+    name,
+    email,
+    uid: uid || null,
+    source: uid ? 'member' : 'public',
+    registeredAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  if (!alreadyRegistered) {
+    try { await eventRef.set({ registrationCount: admin.firestore.FieldValue.increment(1) }, { merge: true }); } catch (e) {}
+  }
+
+  // Upsert into the CRM (best-effort — registration still succeeds if no company).
+  try {
+    const companyId = await resolveEventCompanyId(db, event);
+    if (companyId) {
+      await upsertEventContact(db, companyId, event, name, email, event.createdByUid || event.hostUid || null);
+    }
+  } catch (e) {
+    console.warn('[registerForEvent] CRM upsert failed:', e && e.message);
+  }
+
+  // Mirror to the member's account so they see it as "Registered".
+  if (uid) {
+    try {
+      await db.collection('users').doc(uid).collection('registrations').doc(eventId).set({
+        eventId,
+        title: event.title || null,
+        startsAt: event.startsAt || null,
+        registeredAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch (e) {}
+  }
+
+  let registrationCount = null;
+  try { registrationCount = (await eventRef.get()).data().registrationCount || null; } catch (e) {}
+
+  return { ok: true, alreadyRegistered, registrationCount };
+});
+
+// ────────────────────────────────────────────────────────────────
 // sendgridEventWebhook — HTTP function (public)
 // ────────────────────────────────────────────────────────────────
 
