@@ -148,10 +148,22 @@ function openEventModal(prefill = null) {
         <label class="c-invite-label" for="c-ev-title">Title</label>
         <input id="c-ev-title" class="c-ch-input" type="text" maxlength="80" value="${escapeHtml(prefill ? prefill.title : '')}">
 
-        <label class="c-invite-label" for="c-ev-date">Date &amp; time</label>
-        <div class="c-ev-datetime">
-          <input id="c-ev-date" class="c-ch-input c-ev-date-input" type="date">
-          <input id="c-ev-time" class="c-ch-input c-ev-time-input" type="time">
+        <label class="c-invite-label">Date &amp; time</label>
+        <div class="c-dt-row">
+          <div class="c-dt-wrap">
+            <button type="button" class="c-dt-field" id="c-ev-date-btn">
+              <svg class="c-dt-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+              <span class="c-dt-text c-dt-placeholder" id="c-ev-date-label">Select date</span>
+            </button>
+            <div class="c-dt-pop" id="c-ev-date-pop" hidden></div>
+          </div>
+          <div class="c-dt-wrap c-dt-wrap-time">
+            <button type="button" class="c-dt-field" id="c-ev-time-btn">
+              <svg class="c-dt-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+              <span class="c-dt-text c-dt-placeholder" id="c-ev-time-label">Select time</span>
+            </button>
+            <div class="c-dt-pop c-dt-pop-time" id="c-ev-time-pop" hidden></div>
+          </div>
         </div>
 
         <label class="c-invite-label" for="c-ev-host">Host name</label>
@@ -176,20 +188,149 @@ function openEventModal(prefill = null) {
   `;
   document.body.appendChild(overlay);
 
-  if (prefill && prefill.startsAt && prefill.startsAt.toDate) {
-    const d = prefill.startsAt.toDate();
-    const pad = (n) => String(n).padStart(2, '0');
-    $('c-ev-date').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-    $('c-ev-time').value = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  // ── Custom calendar + time picker state ──────────────────────────
+  const prefD = (prefill && prefill.startsAt && prefill.startsAt.toDate) ? prefill.startsAt.toDate() : null;
+  const sel = {
+    day: prefD ? { y: prefD.getFullYear(), m: prefD.getMonth(), d: prefD.getDate() } : null,
+    time: prefD ? { h: prefD.getHours(), min: prefD.getMinutes() } : null
+  };
+  const today = new Date();
+  let viewY = sel.day ? sel.day.y : today.getFullYear();
+  let viewM = sel.day ? sel.day.m : today.getMonth();
+
+  const getWhen = () => (sel.day && sel.time)
+    ? new Date(sel.day.y, sel.day.m, sel.day.d, sel.time.h, sel.time.min)
+    : null;
+
+  function refreshLabels() {
+    const dl = $('c-ev-date-label');
+    const tl = $('c-ev-time-label');
+    if (sel.day) {
+      const d = new Date(sel.day.y, sel.day.m, sel.day.d);
+      dl.textContent = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+      dl.classList.remove('c-dt-placeholder');
+    } else { dl.textContent = 'Select date'; dl.classList.add('c-dt-placeholder'); }
+    if (sel.time) {
+      const h12 = ((sel.time.h + 11) % 12) + 1;
+      const ap = sel.time.h < 12 ? 'AM' : 'PM';
+      tl.textContent = `${h12}:${String(sel.time.min).padStart(2, '0')} ${ap}`;
+      tl.classList.remove('c-dt-placeholder');
+    } else { tl.textContent = 'Select time'; tl.classList.add('c-dt-placeholder'); }
   }
+
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const WEEK = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+  function renderCalendar() {
+    const pop = $('c-ev-date-pop');
+    const first = new Date(viewY, viewM, 1).getDay();
+    const days = new Date(viewY, viewM + 1, 0).getDate();
+    let cells = '';
+    for (let i = 0; i < first; i++) cells += `<span class="c-cal-cell c-cal-blank"></span>`;
+    for (let d = 1; d <= days; d++) {
+      const isSel = sel.day && sel.day.y === viewY && sel.day.m === viewM && sel.day.d === d;
+      const isToday = today.getFullYear() === viewY && today.getMonth() === viewM && today.getDate() === d;
+      cells += `<button type="button" class="c-cal-cell c-cal-day${isSel ? ' is-sel' : ''}${isToday ? ' is-today' : ''}" data-day="${d}">${d}</button>`;
+    }
+    pop.innerHTML = `
+      <div class="c-cal-head">
+        <button type="button" class="c-cal-nav" data-nav="-1" aria-label="Previous month">‹</button>
+        <span class="c-cal-title">${MONTHS[viewM]} ${viewY}</span>
+        <button type="button" class="c-cal-nav" data-nav="1" aria-label="Next month">›</button>
+      </div>
+      <div class="c-cal-week">${WEEK.map((w) => `<span>${w}</span>`).join('')}</div>
+      <div class="c-cal-grid">${cells}</div>
+    `;
+    pop.querySelectorAll('[data-nav]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      viewM += Number(b.dataset.nav);
+      if (viewM < 0) { viewM = 11; viewY--; }
+      if (viewM > 11) { viewM = 0; viewY++; }
+      renderCalendar();
+    }));
+    pop.querySelectorAll('[data-day]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sel.day = { y: viewY, m: viewM, d: Number(b.dataset.day) };
+      refreshLabels();
+      renderCalendar();
+      closePops();
+    }));
+  }
+
+  function renderTime() {
+    const pop = $('c-ev-time-pop');
+    const curH = sel.time ? sel.time.h : -1;
+    const curMin = sel.time ? sel.time.min : -1;
+    const hours = Array.from({ length: 12 }, (_, i) => i + 1);
+    const mins = Array.from({ length: 12 }, (_, i) => i * 5);
+    const curAp = curH < 0 ? '' : (curH < 12 ? 'AM' : 'PM');
+    const curH12 = curH < 0 ? -1 : (((curH + 11) % 12) + 1);
+    pop.innerHTML = `
+      <div class="c-time-cols">
+        <div class="c-time-col" data-col="h">${hours.map((h) => `<button type="button" class="c-time-opt${h === curH12 ? ' is-sel' : ''}" data-h="${h}">${h}</button>`).join('')}</div>
+        <div class="c-time-col" data-col="m">${mins.map((m) => `<button type="button" class="c-time-opt${m === curMin ? ' is-sel' : ''}" data-m="${String(m).padStart(2,'0')}">${String(m).padStart(2,'0')}</button>`).join('')}</div>
+        <div class="c-time-col c-time-col-ap">${['AM','PM'].map((a) => `<button type="button" class="c-time-opt${a === curAp ? ' is-sel' : ''}" data-ap="${a}">${a}</button>`).join('')}</div>
+      </div>
+    `;
+    const draft = {
+      h12: curH12 > 0 ? curH12 : null,
+      min: curMin >= 0 ? curMin : null,
+      ap: curAp || null
+    };
+    const commit = () => {
+      if (draft.h12 == null || draft.min == null || draft.ap == null) return;
+      let h24 = draft.h12 % 12;
+      if (draft.ap === 'PM') h24 += 12;
+      sel.time = { h: h24, min: draft.min };
+      refreshLabels();
+      renderTime();
+    };
+    pop.querySelectorAll('[data-h]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation(); draft.h12 = Number(b.dataset.h);
+      pop.querySelectorAll('[data-h]').forEach((x) => x.classList.toggle('is-sel', x === b));
+      commit();
+    }));
+    pop.querySelectorAll('[data-m]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation(); draft.min = Number(b.dataset.m);
+      pop.querySelectorAll('[data-m]').forEach((x) => x.classList.toggle('is-sel', x === b));
+      commit();
+    }));
+    pop.querySelectorAll('[data-ap]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation(); draft.ap = b.dataset.ap;
+      pop.querySelectorAll('[data-ap]').forEach((x) => x.classList.toggle('is-sel', x === b));
+      commit();
+    }));
+  }
+
+  function closePops() {
+    $('c-ev-date-pop').hidden = true;
+    $('c-ev-time-pop').hidden = true;
+  }
+  function togglePop(which) {
+    const datePop = $('c-ev-date-pop');
+    const timePop = $('c-ev-time-pop');
+    const opening = (which === 'date' ? datePop : timePop).hidden;
+    closePops();
+    if (opening) {
+      if (which === 'date') { renderCalendar(); datePop.hidden = false; }
+      else { renderTime(); timePop.hidden = false; }
+    }
+  }
+  $('c-ev-date-btn').addEventListener('click', (e) => { e.stopPropagation(); togglePop('date'); });
+  $('c-ev-time-btn').addEventListener('click', (e) => { e.stopPropagation(); togglePop('time'); });
+  $('c-ev-date-pop').addEventListener('click', (e) => e.stopPropagation());
+  $('c-ev-time-pop').addEventListener('click', (e) => e.stopPropagation());
+  refreshLabels();
+
   if (prefill) {
     $('c-ev-link').value = prefill.link || '';
     $('c-ev-loc').value = prefill.location || '';
     $('c-ev-desc').value = prefill.description || '';
   }
 
-  const close = () => overlay.remove();
+  const close = () => { document.removeEventListener('click', closePops); overlay.remove(); };
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.addEventListener('click', closePops);
   $('c-event-close').addEventListener('click', close);
   $('c-ev-cancel').addEventListener('click', close);
   setTimeout(() => $('c-ev-title').focus(), 0);
@@ -198,9 +339,7 @@ function openEventModal(prefill = null) {
     const errEl = $('c-ev-err');
     errEl.style.display = 'none';
     const title = $('c-ev-title').value.trim();
-    const dateStr = $('c-ev-date').value;
-    const timeStr = $('c-ev-time').value;
-    const whenStr = dateStr && timeStr ? `${dateStr}T${timeStr}` : '';
+    const when = getWhen();
     const host = $('c-ev-host').value.trim();
     const link = $('c-ev-link').value.trim();
     const loc = $('c-ev-loc').value.trim();
@@ -211,14 +350,8 @@ function openEventModal(prefill = null) {
       errEl.style.display = 'block';
       return;
     }
-    if (!whenStr) {
+    if (!when || isNaN(when.getTime())) {
       errEl.textContent = 'Date and time are required.';
-      errEl.style.display = 'block';
-      return;
-    }
-    const when = new Date(whenStr);
-    if (isNaN(when.getTime())) {
-      errEl.textContent = 'Could not parse the date.';
       errEl.style.display = 'block';
       return;
     }
