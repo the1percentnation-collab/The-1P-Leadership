@@ -767,6 +767,125 @@ exports.sendCampaign = onCall(
 );
 
 // ────────────────────────────────────────────────────────────────
+// shareEventToContacts — callable. Emails a community event to CRM
+// contacts (or company members) using the same recipient-filter modes
+// as sendCampaign. Reads the event from the top-level events/ collection.
+// ────────────────────────────────────────────────────────────────
+
+function eventEmail(event, baseUrl, customMessage) {
+  const title = (event.title || 'Event').toString();
+  const toDate = (t) => (t && typeof t.toDate === 'function') ? t.toDate() : (t ? new Date(t) : null);
+  const start = toDate(event.startsAt);
+  const end = toDate(event.endsAt);
+  let when = 'Date to be announced';
+  if (start && !isNaN(start.getTime())) {
+    const opts = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' };
+    when = start.toLocaleString('en-US', opts);
+    if (end && !isNaN(end.getTime())) {
+      const sameDay = end.toDateString() === start.toDateString();
+      when += ' – ' + (sameDay
+        ? end.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+        : end.toLocaleString('en-US', opts));
+    }
+  }
+  const esc = (s) => textToHtml(s);
+  const link = event.link || `${baseUrl}/events`;
+  const ctaLabel = event.link ? 'Join the event' : 'View event details';
+
+  const textParts = [];
+  if (customMessage) textParts.push(customMessage, '');
+  textParts.push(`You're invited: ${title}`, '', when);
+  if (event.location) textParts.push(`Location: ${event.location}`);
+  if (event.hostName) textParts.push(`Hosted by ${event.hostName}`);
+  if (event.description) textParts.push('', event.description);
+  textParts.push('', `${ctaLabel}: ${link}`);
+  const text = textParts.join('\n');
+
+  const img = event.imageUrl
+    ? `<img src="${event.imageUrl}" alt="" style="width:100%;max-width:560px;border-radius:10px;display:block;margin:0 0 20px;" />`
+    : '';
+  const customHtml = customMessage ? `<p style="margin:0 0 18px;font-size:15px;line-height:1.6;">${esc(customMessage)}</p>` : '';
+  const descHtml = event.description ? `<p style="margin:18px 0 0;font-size:14px;line-height:1.6;color:#444;">${esc(event.description)}</p>` : '';
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;padding:8px;">
+      <p style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#cc1b1b;margin:0 0 6px;">You're invited</p>
+      ${customHtml}
+      ${img}
+      <h1 style="font-size:22px;margin:0 0 12px;color:#111;">${esc(title)}</h1>
+      <p style="margin:0 0 6px;font-size:15px;color:#222;">🗓️ ${esc(when)}</p>
+      ${event.location ? `<p style="margin:0 0 6px;font-size:15px;color:#222;">📍 ${esc(event.location)}</p>` : ''}
+      ${event.hostName ? `<p style="margin:0 0 6px;font-size:14px;color:#666;">Hosted by ${esc(event.hostName)}</p>` : ''}
+      ${descHtml}
+      <p style="margin:24px 0 0;">
+        <a href="${link}" style="background:#cc1b1b;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold;display:inline-block;">${ctaLabel} →</a>
+      </p>
+    </div>
+  `;
+  return { subject: `You're invited: ${title}`, text, html };
+}
+
+exports.shareEventToContacts = onCall(
+  { secrets: [sendgridKey], timeoutSeconds: 540 },
+  async (request) => {
+    const db = admin.firestore();
+    const data = request.data || {};
+    const companyId = (data.companyId || '').toString().trim();
+    const eventId = (data.eventId || '').toString().trim();
+    const customMessage = (data.message || '').toString().slice(0, 1000);
+    const recipientFilter = data.recipientFilter || { mode: 'all_contacts' };
+    if (!companyId || !eventId) throw new HttpsError('invalid-argument', 'companyId and eventId are required.');
+
+    await assertCompanyAdmin(db, companyId, request);
+
+    const eventSnap = await db.collection('events').doc(eventId).get();
+    if (!eventSnap.exists) throw new HttpsError('not-found', 'Event not found.');
+    const event = eventSnap.data();
+
+    let recipients = [];
+    try {
+      recipients = await buildRecipients(db, companyId, recipientFilter);
+    } catch (err) {
+      throw new HttpsError('internal', 'Could not build recipient list: ' + ((err && err.message) || 'unknown'));
+    }
+    if (!recipients.length) return { ok: true, recipientCount: 0, acceptedCount: 0, failedCount: 0 };
+
+    const { subject, text, html } = eventEmail(event, APP_BASE_URL, customMessage);
+
+    sgMail.setApiKey(sendgridKey.value());
+    let accepted = 0;
+    let failed = 0;
+    const errorSample = [];
+    const BATCH_SIZE = 1000;
+    for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+      const chunk = recipients.slice(i, i + BATCH_SIZE);
+      const personalizations = chunk.map((r) => ({
+        to: [{ email: r.email, name: r.name || undefined }],
+        customArgs: { type: 'event', companyId, eventId, recipientEmail: r.email }
+      }));
+      try {
+        await sgMail.send({
+          from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+          replyTo: REPLY_TO,
+          subject,
+          text,
+          html,
+          personalizations,
+          customArgs: { type: 'event', companyId, eventId }
+        });
+        accepted += chunk.length;
+      } catch (err) {
+        failed += chunk.length;
+        const msgStr = String((err && err.message) || err).slice(0, 300);
+        if (errorSample.length < 5) errorSample.push(msgStr);
+        console.error('[shareEventToContacts] batch send failed:', msgStr);
+      }
+    }
+
+    return { ok: true, recipientCount: recipients.length, acceptedCount: accepted, failedCount: failed, errorSample };
+  }
+);
+
+// ────────────────────────────────────────────────────────────────
 // sendgridEventWebhook — HTTP function (public)
 // ────────────────────────────────────────────────────────────────
 

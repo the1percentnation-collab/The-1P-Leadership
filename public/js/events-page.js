@@ -5,21 +5,24 @@
 // No callable functions needed for v1 — the owner writes the doc
 // directly via setDoc (rules gate it).
 
-import { auth, db, firebaseReady } from './firebase.js';
+import { auth, db, functions, firebaseReady } from './firebase.js';
 import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { getUserProfile, escapeHtml, fmtRelative, uploadEventImage } from './community.js';
+import { STAGES } from './crm.js';
 import { renderTopbar } from './topbar.js';
 import {
   collection, doc, getDoc, getDocs, query, orderBy, where, limit,
   setDoc, deleteDoc, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 const $ = (id) => document.getElementById(id);
 
 const state = {
   me: null,
   role: null,
+  companyId: null,
   events: [],
   filter: 'upcoming'
 };
@@ -68,8 +71,12 @@ function eventCardHtml(e) {
   const linkBtn = e.link
     ? `<a class="btn btn-primary c-event-cta" href="${escapeHtml(e.link)}" target="_blank" rel="noopener">Join event →</a>`
     : '';
+  const shareBtn = canEdit && state.companyId
+    ? `<button class="c-event-ctl" data-share="${escapeHtml(e.id)}" title="Share to CRM" aria-label="Share to CRM">↗</button>`
+    : '';
   const controls = canEdit
     ? `<div class="c-event-controls">
+        ${shareBtn}
         <button class="c-event-ctl" data-edit="${escapeHtml(e.id)}" title="Edit event" aria-label="Edit event">✎</button>
         <button class="c-event-ctl c-event-del" data-del="${escapeHtml(e.id)}" title="Delete event" aria-label="Delete event">✕</button>
       </div>`
@@ -140,6 +147,13 @@ function renderList() {
       e.preventDefault();
       const ev = state.events.find((x) => x.id === btn.dataset.edit);
       if (ev) openEventModal(ev);
+    });
+  });
+  root.querySelectorAll('[data-share]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const ev = state.events.find((x) => x.id === btn.dataset.share);
+      if (ev) openShareModal(ev);
     });
   });
   root.querySelectorAll('[data-del]').forEach((btn) => {
@@ -512,6 +526,103 @@ function openEventModal(prefill = null) {
   });
 }
 
+// ── Share an event to CRM contacts ─────────────────────────────────
+function openShareModal(event) {
+  if (document.getElementById('c-share-modal')) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'c-modal-overlay';
+  overlay.id = 'c-share-modal';
+  overlay.innerHTML = `
+    <div class="c-modal" role="dialog" aria-modal="true">
+      <button class="c-modal-close" id="c-share-close" aria-label="Close">✕</button>
+      <h2 class="c-modal-title">Share to CRM</h2>
+      <p class="c-modal-sub">Email "${escapeHtml(event.title || 'this event')}" to your contacts.</p>
+      <div class="c-modal-body">
+        <label class="c-invite-label">Send to</label>
+        <label class="c-share-opt"><input type="radio" name="smode" value="all_contacts" checked> All contacts</label>
+        <label class="c-share-opt"><input type="radio" name="smode" value="stages"> By stage</label>
+        <div id="c-share-stages" class="c-share-stages" style="display:none;">
+          ${STAGES.map((s) => `<label class="c-share-check"><input type="checkbox" data-stage="${escapeHtml(s.id)}"> ${escapeHtml(s.label)}</label>`).join('')}
+        </div>
+        <label class="c-invite-label" for="c-share-msg">Personal note (optional)</label>
+        <textarea id="c-share-msg" class="c-ch-input" rows="3" maxlength="1000" placeholder="Add a short message to include at the top of the email…"></textarea>
+        <div class="c-invite-actions">
+          <button class="btn btn-primary" id="c-share-send">Send invites</button>
+          <button class="btn btn-ghost" id="c-share-cancel">Cancel</button>
+        </div>
+        <div class="auth-error" id="c-share-err" style="display:none;"></div>
+        <div class="c-share-ok" id="c-share-ok" style="display:none;"></div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  $('c-share-close').addEventListener('click', close);
+  $('c-share-cancel').addEventListener('click', close);
+  overlay.querySelectorAll('[name="smode"]').forEach((r) => r.addEventListener('change', () => {
+    $('c-share-stages').style.display = r.value === 'stages' && r.checked ? '' : 'none';
+  }));
+
+  $('c-share-send').addEventListener('click', async () => {
+    const errEl = $('c-share-err');
+    const okEl = $('c-share-ok');
+    errEl.style.display = 'none';
+    okEl.style.display = 'none';
+    const mode = overlay.querySelector('[name="smode"]:checked').value;
+    const filter = { mode };
+    if (mode === 'stages') {
+      filter.stages = Array.from(overlay.querySelectorAll('[data-stage]'))
+        .filter((c) => c.checked).map((c) => c.dataset.stage);
+      if (!filter.stages.length) {
+        errEl.textContent = 'Pick at least one stage.';
+        errEl.style.display = 'block';
+        return;
+      }
+    }
+    const btn = $('c-share-send');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    try {
+      const call = httpsCallable(functions, 'shareEventToContacts');
+      const res = await call({
+        companyId: state.companyId,
+        eventId: event.id,
+        recipientFilter: filter,
+        message: $('c-share-msg').value.trim()
+      });
+      const r = (res && res.data) || {};
+      if (!r.recipientCount) {
+        okEl.textContent = 'No contacts matched — nobody to email.';
+      } else {
+        okEl.textContent = `Sent to ${r.acceptedCount} of ${r.recipientCount} contact${r.recipientCount === 1 ? '' : 's'}.` +
+          (r.failedCount ? ` ${r.failedCount} failed.` : '');
+      }
+      okEl.style.display = 'block';
+      btn.textContent = 'Done';
+      setTimeout(close, 1800);
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Send invites';
+      errEl.textContent = (err && err.message) || 'Could not send.';
+      errEl.style.display = 'block';
+    }
+  });
+}
+
+async function resolveCompanyId(uid, info) {
+  let companyId = info.companyId || null;
+  if (!companyId && (info.role === 'admin' || info.role === 'owner')) {
+    try {
+      const q = query(collection(db, 'companies'), where('adminUids', 'array-contains', uid), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) companyId = snap.docs[0].id;
+    } catch (e) {}
+  }
+  return companyId;
+}
+
 async function main() {
   if (!firebaseReady) {
     $('gate-msg').innerHTML = `<div class="card"><div class="auth-error">Firebase is unavailable.</div></div>`;
@@ -541,6 +652,11 @@ async function main() {
     if (btn) btn.style.display = 'inline-flex';
   }
   bindToolbar();
+
+  // Resolve the CRM company so admins/owner can share events to contacts.
+  if (state.role === 'owner' || state.role === 'admin') {
+    state.companyId = await resolveCompanyId(u.uid, info);
+  }
 
   await loadEvents();
   renderList();
