@@ -68,8 +68,11 @@ function eventCardHtml(e) {
   const linkBtn = e.link
     ? `<a class="btn btn-primary c-event-cta" href="${escapeHtml(e.link)}" target="_blank" rel="noopener">Join event →</a>`
     : '';
-  const editBtn = canEdit
-    ? `<button class="c-event-del" data-del="${escapeHtml(e.id)}" title="Delete event" aria-label="Delete event">✕</button>`
+  const controls = canEdit
+    ? `<div class="c-event-controls">
+        <button class="c-event-ctl" data-edit="${escapeHtml(e.id)}" title="Edit event" aria-label="Edit event">✎</button>
+        <button class="c-event-ctl c-event-del" data-del="${escapeHtml(e.id)}" title="Delete event" aria-label="Delete event">✕</button>
+      </div>`
     : '';
   const cover = e.imageUrl
     ? `<div class="c-event-cover"><img src="${escapeHtml(e.imageUrl)}" alt="" loading="lazy"></div>`
@@ -91,7 +94,7 @@ function eventCardHtml(e) {
           ${linkBtn ? `<div class="c-event-actions">${linkBtn}</div>` : ''}
         </div>
       </div>
-      ${editBtn}
+      ${controls}
     </article>
   `;
 }
@@ -132,6 +135,13 @@ function renderList() {
 
   emptyEl.hidden = true;
   root.innerHTML = filtered.map(eventCardHtml).join('');
+  root.querySelectorAll('[data-edit]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const ev = state.events.find((x) => x.id === btn.dataset.edit);
+      if (ev) openEventModal(ev);
+    });
+  });
   root.querySelectorAll('[data-del]').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
