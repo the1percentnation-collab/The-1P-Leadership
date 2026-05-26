@@ -85,6 +85,18 @@ export async function uploadPostImage(postId, file) {
   return await getDownloadURL(r);
 }
 
+export async function uploadEventImage(eventId, file) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  const s = storage();
+  if (!s) throw new Error('Storage unavailable');
+  const ext = (file.name.match(/\.(\w+)$/) || [, 'jpg'])[1].toLowerCase();
+  const safe = `${Date.now()}.${ext}`;
+  const r = storageRef(s, `events/${eventId}/${safe}`);
+  await uploadBytes(r, file, { contentType: file.type || 'image/jpeg' });
+  return await getDownloadURL(r);
+}
+
 // ────────────────────────────────────────────────────────────────
 // Posts
 // ────────────────────────────────────────────────────────────────

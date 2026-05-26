@@ -8,7 +8,7 @@
 import { auth, db, firebaseReady } from './firebase.js';
 import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
-import { getUserProfile, escapeHtml, fmtRelative } from './community.js';
+import { getUserProfile, escapeHtml, fmtRelative, uploadEventImage } from './community.js';
 import { renderTopbar } from './topbar.js';
 import {
   collection, doc, getDoc, getDocs, query, orderBy, where, limit,
@@ -71,19 +71,25 @@ function eventCardHtml(e) {
   const editBtn = canEdit
     ? `<button class="c-event-del" data-del="${escapeHtml(e.id)}" title="Delete event" aria-label="Delete event">✕</button>`
     : '';
+  const cover = e.imageUrl
+    ? `<div class="c-event-cover"><img src="${escapeHtml(e.imageUrl)}" alt="" loading="lazy"></div>`
+    : '';
   return `
-    <article class="c-event-card" data-event="${escapeHtml(e.id)}">
-      <div class="c-event-datebadge">
-        <span class="c-ev-month">${escapeHtml(badge.month)}</span>
-        <span class="c-ev-day">${escapeHtml(badge.day)}</span>
-      </div>
-      <div class="c-event-body">
-        <div class="c-event-title">${escapeHtml(e.title || 'Untitled event')}</div>
-        <div class="c-event-when">${escapeHtml(fmtEventDate(e.startsAt, e.endsAt))}</div>
-        ${e.location ? `<div class="c-event-loc"><span class="c-event-meta-ic">📍</span>${escapeHtml(e.location)}</div>` : ''}
-        ${e.hostName ? `<div class="c-event-host">Hosted by ${escapeHtml(e.hostName)}</div>` : ''}
-        ${e.description ? `<div class="c-event-desc">${escapeHtml(e.description)}</div>` : ''}
-        ${linkBtn ? `<div class="c-event-actions">${linkBtn}</div>` : ''}
+    <article class="c-event-card${e.imageUrl ? ' has-cover' : ''}" data-event="${escapeHtml(e.id)}">
+      ${cover}
+      <div class="c-event-main">
+        <div class="c-event-datebadge">
+          <span class="c-ev-month">${escapeHtml(badge.month)}</span>
+          <span class="c-ev-day">${escapeHtml(badge.day)}</span>
+        </div>
+        <div class="c-event-body">
+          <div class="c-event-title">${escapeHtml(e.title || 'Untitled event')}</div>
+          <div class="c-event-when">${escapeHtml(fmtEventDate(e.startsAt, e.endsAt))}</div>
+          ${e.location ? `<div class="c-event-loc"><span class="c-event-meta-ic">📍</span>${escapeHtml(e.location)}</div>` : ''}
+          ${e.hostName ? `<div class="c-event-host">Hosted by ${escapeHtml(e.hostName)}</div>` : ''}
+          ${e.description ? `<div class="c-event-desc">${escapeHtml(e.description)}</div>` : ''}
+          ${linkBtn ? `<div class="c-event-actions">${linkBtn}</div>` : ''}
+        </div>
       </div>
       ${editBtn}
     </article>
@@ -168,6 +174,20 @@ function openEventModal(prefill = null) {
       <div class="c-modal-body">
         <label class="c-invite-label" for="c-ev-title">Title</label>
         <input id="c-ev-title" class="c-ch-input" type="text" maxlength="80" value="${escapeHtml(prefill ? prefill.title : '')}">
+
+        <label class="c-invite-label">Flyer / cover image (optional)</label>
+        <div class="c-ev-image-field">
+          <div class="c-ev-image-drop" id="c-ev-image-drop">
+            <img id="c-ev-image-preview" class="c-ev-image-preview" alt="" hidden>
+            <div class="c-ev-image-empty" id="c-ev-image-empty">
+              <span class="c-ev-image-ic">🖼️</span>
+              <span>Click to upload an image</span>
+              <span class="c-ev-image-hint">PNG or JPG, up to 10MB</span>
+            </div>
+            <button type="button" class="c-ev-image-remove" id="c-ev-image-remove" title="Remove image" hidden>✕</button>
+          </div>
+          <input id="c-ev-image-input" type="file" accept="image/*" hidden>
+        </div>
 
         <label class="c-invite-label">Starts</label>
         <div class="c-dt-row">
@@ -378,6 +398,40 @@ function openEventModal(prefill = null) {
     $('c-ev-desc').value = prefill.description || '';
   }
 
+  // ── Flyer / cover image ──────────────────────────────────────────
+  const imgState = { file: null, url: (prefill && prefill.imageUrl) || null, removed: false };
+  const imgPreview = $('c-ev-image-preview');
+  const imgEmpty = $('c-ev-image-empty');
+  const imgRemove = $('c-ev-image-remove');
+  function refreshImage() {
+    const src = imgState.file ? URL.createObjectURL(imgState.file) : (imgState.removed ? null : imgState.url);
+    if (src) {
+      imgPreview.src = src; imgPreview.hidden = false;
+      imgEmpty.hidden = true; imgRemove.hidden = false;
+    } else {
+      imgPreview.hidden = true; imgEmpty.hidden = false; imgRemove.hidden = true;
+    }
+  }
+  $('c-ev-image-drop').addEventListener('click', (e) => {
+    if (e.target === imgRemove) return;
+    $('c-ev-image-input').click();
+  });
+  $('c-ev-image-input').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (!f.type.startsWith('image/')) { alert('Please choose an image file.'); return; }
+    if (f.size > 10 * 1024 * 1024) { alert('Image must be under 10MB.'); return; }
+    imgState.file = f; imgState.removed = false;
+    refreshImage();
+  });
+  imgRemove.addEventListener('click', (e) => {
+    e.stopPropagation();
+    imgState.file = null; imgState.removed = true;
+    $('c-ev-image-input').value = '';
+    refreshImage();
+  });
+  refreshImage();
+
   const close = () => { document.removeEventListener('click', closePops); overlay.remove(); };
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
   document.addEventListener('click', closePops);
@@ -417,11 +471,17 @@ function openEventModal(prefill = null) {
     btn.textContent = 'Saving…';
     const id = (prefill && prefill.id) || `evt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     try {
+      let imageUrl = imgState.removed ? null : imgState.url;
+      if (imgState.file) {
+        btn.textContent = 'Uploading image…';
+        imageUrl = await uploadEventImage(id, imgState.file);
+      }
       await setDoc(doc(db, 'events', id), {
         id,
         title,
         startsAt: when,
         endsAt: endWhen || null,
+        imageUrl: imageUrl || null,
         hostName: host || null,
         hostUid: state.me ? state.me.uid : null,
         link: link || null,
