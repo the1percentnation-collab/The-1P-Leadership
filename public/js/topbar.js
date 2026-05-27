@@ -33,7 +33,7 @@ import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 // ────────────────────────────────────────────────────────────────
 
 const ALL_LINKS = [
-  { key: 'dashboard',  href: '/index.html',     label: 'Dashboard' },
+  { key: 'dashboard',  href: '/dashboard.html', label: 'Dashboard' },
   { key: 'community',  href: '/community.html', label: 'Community' },
   { key: 'members',    href: '/members.html',   label: 'Members' },
   { key: 'profile',    href: '/profile.html',   label: 'Profile' },
