@@ -662,6 +662,15 @@ function openRegisterModal(event) {
         <label class="c-invite-label" for="c-reg-email">Email</label>
         <input id="c-reg-email" class="c-ch-input" type="email" maxlength="200" value="${escapeHtml(meEmail)}">
 
+        <label class="c-invite-label" for="c-reg-phone">Phone</label>
+        <input id="c-reg-phone" class="c-ch-input" type="tel" maxlength="40" placeholder="+1 (555) 000-0000">
+
+        <label class="c-invite-label" for="c-reg-address">Address</label>
+        <input id="c-reg-address" class="c-ch-input" type="text" maxlength="240" placeholder="Street, City, State">
+
+        <label class="c-invite-label" for="c-reg-notes">Anything we should know?</label>
+        <textarea id="c-reg-notes" class="c-ch-input" maxlength="800" rows="3" placeholder="Questions, accessibility needs, or other info for this event"></textarea>
+
         <label class="c-reg-consent">
           <input id="c-reg-consent" type="checkbox">
           <span>I want to register for this event and agree to receive updates from The One Percent Nation.</span>
@@ -693,6 +702,9 @@ function openRegisterModal(event) {
     okEl.style.display = 'none';
     const name = $('c-reg-name').value.trim();
     const email = $('c-reg-email').value.trim();
+    const phone = $('c-reg-phone').value.trim();
+    const address = $('c-reg-address').value.trim();
+    const notes = $('c-reg-notes').value.trim();
     if (!name) { errEl.textContent = 'Please enter your name.'; errEl.style.display = 'block'; return; }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { errEl.textContent = 'Please enter a valid email.'; errEl.style.display = 'block'; return; }
     if (!$('c-reg-consent').checked) { errEl.textContent = 'Please check the box to register.'; errEl.style.display = 'block'; return; }
@@ -702,7 +714,7 @@ function openRegisterModal(event) {
     btn.textContent = 'Registering…';
     try {
       const call = httpsCallable(functions, 'registerForEvent');
-      await call({ eventId: event.id, name, email });
+      await call({ eventId: event.id, name, email, phone, address, notes });
       // GA4 conversion event — completed event registration.
       if (window.gtag) {
         window.gtag('event', 'event_registration', {
@@ -760,6 +772,9 @@ async function openRegistrantsModal(event) {
       <div class="c-registrant-row">
         <div class="c-registrant-name">${escapeHtml(r.name || 'Unnamed')}</div>
         <div class="c-registrant-email">${escapeHtml(r.email || '')}</div>
+        ${r.phone ? `<div class="c-registrant-email">📞 ${escapeHtml(r.phone)}</div>` : ''}
+        ${r.address ? `<div class="c-registrant-email">📍 ${escapeHtml(r.address)}</div>` : ''}
+        ${r.notes ? `<div class="c-registrant-meta">📝 ${escapeHtml(r.notes)}</div>` : ''}
         <div class="c-registrant-meta">${escapeHtml(r.source === 'member' ? 'Member' : 'Guest')} · ${escapeHtml(fmtRelative(r.registeredAt))}</div>
       </div>
     `).join('');

@@ -909,9 +909,11 @@ async function resolveEventCompanyId(db, event) {
   return null;
 }
 
-async function upsertEventContact(db, companyId, event, name, email, ownerUid) {
+async function upsertEventContact(db, companyId, event, name, email, ownerUid, extra) {
   const colRef = db.collection('companies').doc(companyId).collection('contacts');
   const tag = (event.title || '').toString().slice(0, 40);
+  const phone = (extra && extra.phone) || null;
+  const address = (extra && extra.address) || null;
   let contactRef = null;
   try {
     const snap = await colRef.where('email', '==', email).limit(1).get();
@@ -923,13 +925,16 @@ async function upsertEventContact(db, companyId, event, name, email, ownerUid) {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       lastActivityAt: admin.firestore.FieldValue.serverTimestamp()
     };
+    if (phone) patch.phone = phone;
+    if (address) patch.address = address;
     if (tag) patch.tags = admin.firestore.FieldValue.arrayUnion(tag);
     await contactRef.set(patch, { merge: true });
   } else {
     contactRef = await colRef.add({
       name: name || 'Unnamed contact',
       email,
-      phone: null,
+      phone: phone,
+      address: address,
       companyName: null,
       source: 'Event',
       stage: 'new',
@@ -943,13 +948,14 @@ async function upsertEventContact(db, companyId, event, name, email, ownerUid) {
   }
 
   try {
+    const notes = (extra && extra.notes) || null;
     await contactRef.collection('activities').add({
       type: 'event_registration',
-      description: `Registered for "${(event.title || 'event').toString().slice(0, 80)}"`,
+      description: `Registered for "${(event.title || 'event').toString().slice(0, 80)}"` + (notes ? ` — Note: ${notes.slice(0, 200)}` : ''),
       actorUid: 'system',
       actorName: 'Event registration',
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      meta: { eventId: event.id || null, eventTitle: event.title || null }
+      meta: { eventId: event.id || null, eventTitle: event.title || null, phone: phone || null, address: address || null, notes: notes || null }
     });
   } catch (e) {}
 }
@@ -960,6 +966,9 @@ exports.registerForEvent = onCall(async (request) => {
   const eventId = (data.eventId || '').toString().trim();
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 200);
+  const phone = (data.phone || '').toString().trim().slice(0, 40);
+  const address = (data.address || '').toString().trim().slice(0, 240);
+  const notes = (data.notes || '').toString().trim().slice(0, 800);
 
   if (!eventId) throw new HttpsError('invalid-argument', 'eventId is required.');
   if (!name) throw new HttpsError('invalid-argument', 'Please enter your name.');
@@ -981,6 +990,9 @@ exports.registerForEvent = onCall(async (request) => {
   await regRef.set({
     name,
     email,
+    phone: phone || null,
+    address: address || null,
+    notes: notes || null,
     uid: uid || null,
     source: uid ? 'member' : 'public',
     registeredAt: admin.firestore.FieldValue.serverTimestamp()
@@ -994,7 +1006,7 @@ exports.registerForEvent = onCall(async (request) => {
   try {
     const companyId = await resolveEventCompanyId(db, event);
     if (companyId) {
-      await upsertEventContact(db, companyId, event, name, email, event.createdByUid || event.hostUid || null);
+      await upsertEventContact(db, companyId, event, name, email, event.createdByUid || event.hostUid || null, { phone, address, notes });
     }
   } catch (e) {
     console.warn('[registerForEvent] CRM upsert failed:', e && e.message);
