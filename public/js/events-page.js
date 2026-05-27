@@ -807,7 +807,7 @@ async function main() {
   };
   state.role = info.role;
 
-  renderTopbar({ user: state.me, profile, role: info.role, currentPage: null });
+  renderTopbar({ user: state.me, profile, role: info.role, currentPage: 'events' });
 
   // Owner sees the toolbar create button.
   if (state.role === 'owner') {
