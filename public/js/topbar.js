@@ -50,6 +50,15 @@ function roleAllows(roleRequired, role) {
   return true;
 }
 
+// Privileged destinations rendered as standalone, high-visibility buttons
+// (not blended into the regular link chips) so admins/owners always have
+// one-click access from any portal page — including pages that pass an
+// empty `links` set, like the dashboard.
+const ADMIN_BUTTONS = [
+  { key: 'admin', href: '/admin.html', label: 'Admin', requires: 'admin' },
+  { key: 'owner', href: '/owner.html', label: 'Owner', requires: 'owner' }
+];
+
 /**
  * Returns the role-aware default link set with the active page filtered out.
  * `currentPage` is one of the keys in ALL_LINKS (e.g. 'community', 'crm').
@@ -59,6 +68,13 @@ export function defaultTopbarLinks({ role = null, currentPage = null } = {}) {
     .filter((l) => roleAllows(l.requires, role))
     .filter((l) => l.key !== currentPage)
     .map(({ href, label }) => ({ href, label }));
+}
+
+/** Privileged buttons (Admin/Owner) the current role may see, minus the active page. */
+function adminButtons({ role = null, currentPage = null } = {}) {
+  return ADMIN_BUTTONS
+    .filter((b) => roleAllows(b.requires, role))
+    .filter((b) => b.key !== currentPage);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -447,9 +463,16 @@ export function renderTopbar({
   const chip = document.getElementById(mountId);
   if (!chip || !user) return;
 
-  const linkSet = links || defaultTopbarLinks({ role, currentPage });
+  // Admin/Owner render as dedicated buttons, so drop them from the regular
+  // chip list to avoid a duplicate when the default link set is in use.
+  const linkSet = (links || defaultTopbarLinks({ role, currentPage }))
+    .filter((l) => l.href !== '/admin.html' && l.href !== '/owner.html');
   const linksHtml = linkSet.map((l) =>
     `<a class="user-chip-link" href="${escapeHtml(l.href)}">${escapeHtml(l.label)}</a>`
+  ).join('');
+
+  const adminHtml = adminButtons({ role, currentPage }).map((b) =>
+    `<a class="user-chip-admin" href="${escapeHtml(b.href)}">${escapeHtml(b.label)}</a>`
   ).join('');
 
   const displayName = (profile && profile.displayName) || user.displayName || user.email || '';
@@ -478,6 +501,7 @@ export function renderTopbar({
     : '';
 
   chip.innerHTML = `
+    ${adminHtml}
     ${linksHtml}
     ${searchHtml}
     ${bellHtml}
