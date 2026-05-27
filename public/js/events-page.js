@@ -703,6 +703,14 @@ function openRegisterModal(event) {
     try {
       const call = httpsCallable(functions, 'registerForEvent');
       await call({ eventId: event.id, name, email });
+      // GA4 conversion event — completed event registration.
+      if (window.gtag) {
+        window.gtag('event', 'event_registration', {
+          event_id: event.id,
+          event_title: event.title || '',
+          method: state.me ? 'member' : 'public'
+        });
+      }
       // Reflect locally.
       if (state.me) state.myRegistrations.add(event.id);
       const ev = state.events.find((x) => x.id === event.id);
