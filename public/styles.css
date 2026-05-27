@@ -945,6 +945,26 @@ body {
 
 .user-chip-link:hover { background: var(--surface); border-color: var(--border-red); color: var(--red); }
 
+/* Admin / Owner: high-visibility filled button so privileged users get
+   one-click access from any portal page without digging through the menu. */
+.user-chip-admin {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 4px;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: var(--red);
+  color: #fff;
+  border: 1px solid var(--red);
+  transition: background 0.15s, filter 0.15s;
+}
+.user-chip-admin:hover { background: var(--red-dark); filter: brightness(1.05); }
+
 .auth-shell {
   min-height: 100vh;
   width: 100%;
@@ -1218,6 +1238,7 @@ body {
     padding: 4px 8px;
     flex-shrink: 0;
   }
+  .user-chip-admin { font-size: 11px; padding: 5px 10px; }
   .user-chip-email { display: none; }
   .user-chip > .c-bell { flex-shrink: 0; }
 }
@@ -3158,6 +3179,7 @@ body.academy-hub {
   .academy-header-right .user-chip-email { display: none; }
   .academy-header-right #btn-signout { padding: 6px 10px; font-size: 12px; }
   .academy-header-right .user-chip-link { font-size: 10px; padding: 4px 8px; }
+  .academy-header-right .user-chip-admin { font-size: 10px; padding: 4px 10px; }
   /* Row 2: tabs fill full width */
   .academy-tabs {
     order: 3;
