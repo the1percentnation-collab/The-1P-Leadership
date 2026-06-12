@@ -9,6 +9,14 @@ service cloud.firestore {
     function isOwner() { return isSignedIn() && request.auth.token.role == 'owner'; }
     function isSelf(uid) { return isSignedIn() && request.auth.uid == uid; }
 
+    // Owner, or any user whose users/{uid}.role == 'admin' (company admins).
+    function isAnyAdmin() {
+      return isOwner()
+        || (isSignedIn()
+            && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+
     // Is the caller an admin of company `cid`? We read the company doc and check adminUids.
     function isCompanyAdmin(cid) {
       return isSignedIn()
@@ -55,11 +63,16 @@ service cloud.firestore {
                      && (!('statsWeekPoints' in request.resource.data)
                          || request.resource.data.statsWeekPoints == 0)
                      && (!('unreadNotifCount' in request.resource.data)
-                         || request.resource.data.unreadNotifCount == 0));
+                         || request.resource.data.unreadNotifCount == 0)
+                     && (!('enrolledCourseSlugs' in request.resource.data)
+                         || request.resource.data.enrolledCourseSlugs == []));
       allow update: if isOwner() || (isSelf(uid)
                      && request.resource.data.get('statsPoints', 0) == resource.data.get('statsPoints', 0)
                      && request.resource.data.get('statsWeekPoints', 0) == resource.data.get('statsWeekPoints', 0)
-                     && request.resource.data.get('unreadNotifCount', 0) == resource.data.get('unreadNotifCount', 0));
+                     && request.resource.data.get('unreadNotifCount', 0) == resource.data.get('unreadNotifCount', 0)
+                     // Enrollment writes are server-only (enrollFree callable +
+                     // Stripe webhook) so users can't grant themselves paid courses.
+                     && request.resource.data.get('enrolledCourseSlugs', []) == resource.data.get('enrolledCourseSlugs', []));
       allow delete: if isOwner();
 
       // users/{uid}/progress/{moduleId} — STRICTLY private to the user (and owner).
@@ -106,6 +119,13 @@ service cloud.firestore {
       // events they've registered for, written by the registerForEvent Cloud
       // Function (Admin SDK). Self/owner read; server-only writes.
       match /registrations/{eventId} {
+        allow read: if isOwner() || isSelf(uid);
+        allow write: if false;
+      }
+
+      // users/{uid}/purchases/{sessionId} — written by the Stripe webhook
+      // (Admin SDK). Self/owner read; server-only writes.
+      match /purchases/{purchaseId} {
         allow read: if isOwner() || isSelf(uid);
         allow write: if false;
       }
@@ -412,6 +432,35 @@ service cloud.firestore {
     // user; owner / company-admin can create / update / delete.
     // No field-level validation in v1; the events-page UI gates input.
     // ────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
+    // Courses — Firestore-backed course catalog managed from
+    // /manage-courses.html. Public read (marketing surface, like /events);
+    // owner + admins write. The `stripe` map is server-only (written by
+    // Cloud Functions when syncing products/prices).
+    // ────────────────────────────────────────────────────────────────
+    match /courses/{slug} {
+      allow read: if true;
+      allow create: if isAnyAdmin() && !('stripe' in request.resource.data);
+      allow update: if isAnyAdmin()
+        && request.resource.data.get('stripe', {}) == resource.data.get('stripe', {});
+      allow delete: if isOwner();
+
+      match /modules/{moduleId} {
+        allow read: if true;
+        allow create, update, delete: if isAnyAdmin();
+      }
+    }
+
+    // Coupon codes — created in /manage-courses.html, synced to Stripe by the
+    // syncCoupon callable (which writes stripePromotionCodeId server-side).
+    match /coupons/{code} {
+      allow read: if true;
+      allow create: if isAnyAdmin() && !('stripePromotionCodeId' in request.resource.data);
+      allow update: if isAnyAdmin()
+        && request.resource.data.get('stripePromotionCodeId', null) == resource.data.get('stripePromotionCodeId', null);
+      allow delete: if isAnyAdmin();
+    }
+
     match /events/{eventId} {
       // Public read: events are front-facing so anyone (signed in or not) can
       // view them and register from the public Events page.

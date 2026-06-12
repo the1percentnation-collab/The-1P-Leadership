@@ -2078,3 +2078,284 @@ exports.searchPosts = onCall(async (request) => {
 
 
 
+
+// ────────────────────────────────────────────────────────────────
+// Course commerce — enrollment + Stripe checkout.
+//
+// Stripe keys are read from the environment at runtime (set them in
+// functions/.env or via Secret Manager once a Stripe account exists):
+//   STRIPE_SECRET_KEY      — sk_live_... / sk_test_...
+//   STRIPE_WEBHOOK_SECRET  — whsec_... (from the webhook endpoint config)
+// Until they're set, paid checkout returns a clear "not configured" error
+// while free enrollment keeps working.
+// ────────────────────────────────────────────────────────────────
+
+let _stripeClient = null;
+function getStripe() {
+  const key = (process.env.STRIPE_SECRET_KEY || '').trim();
+  if (!key) return null;
+  if (!_stripeClient) {
+    // Lazy require so deploys work before the dependency/key are exercised.
+    _stripeClient = require('stripe')(key);
+  }
+  return _stripeClient;
+}
+
+async function isAdminCaller(db, request) {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) return false;
+  if (request.auth.token && request.auth.token.role === 'owner') return true;
+  const snap = await db.collection('users').doc(uid).get();
+  return snap.exists && snap.data().role === 'admin';
+}
+
+function effectivePriceDollars(course) {
+  const base = typeof course.price === 'number' ? course.price : null;
+  const sale = typeof course.salePrice === 'number' && course.salePrice >= 0 ? course.salePrice : null;
+  if (sale != null && base != null && sale < base) return sale;
+  return base;
+}
+
+// enrollFree — server-side enrollment for free (or legacy) courses. All
+// client enrollment goes through here; firestore rules freeze
+// enrolledCourseSlugs on self-writes.
+exports.enrollFree = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const slug = String((request.data && request.data.slug) || '').trim();
+  if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
+
+  const db = admin.firestore();
+  const courseSnap = await db.collection('courses').doc(slug).get();
+  const course = courseSnap.exists ? courseSnap.data() : null;
+
+  // Legacy migration: users with pre-enrollment 1P-CLC progress keep access
+  // even though the course is paid. Server-verifies the progress exists.
+  const legacy = !!(request.data && request.data.legacy) && slug === '1p-clc';
+  if (legacy) {
+    const prog = await db.collection('users').doc(uid).collection('progress').limit(1).get();
+    if (prog.empty) throw new HttpsError('failed-precondition', 'No prior progress found.');
+  } else {
+    if (!course) throw new HttpsError('not-found', 'Unknown course.');
+    if (course.status !== 'live') {
+      throw new HttpsError('failed-precondition', 'This course isn\'t available to join yet.');
+    }
+    const price = effectivePriceDollars(course);
+    if (price != null && price > 0) {
+      throw new HttpsError('failed-precondition', 'This course requires checkout to enroll.');
+    }
+  }
+
+  await db.collection('users').doc(uid).set({
+    enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(slug),
+    lastActiveAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  return { ok: true, slug };
+});
+
+// createCheckoutSession — starts a Stripe Checkout for a live paid course.
+// Price is always read server-side from courses/{slug}; the client only
+// sends the slug.
+exports.createCheckoutSession = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const slug = String((request.data && request.data.slug) || '').trim();
+  if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
+
+  const stripe = getStripe();
+  if (!stripe) {
+    throw new HttpsError('failed-precondition',
+      'Online checkout isn\'t available yet — payments are still being set up.');
+  }
+
+  const db = admin.firestore();
+  const courseSnap = await db.collection('courses').doc(slug).get();
+  if (!courseSnap.exists) throw new HttpsError('not-found', 'Unknown course.');
+  const course = courseSnap.data();
+  if (course.status !== 'live') {
+    throw new HttpsError('failed-precondition', 'This course isn\'t available to join yet.');
+  }
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const enrolled = (userSnap.exists && userSnap.data().enrolledCourseSlugs) || [];
+  if (enrolled.includes(slug)) {
+    throw new HttpsError('already-exists', 'You\'re already enrolled in this course.');
+  }
+
+  const dollars = effectivePriceDollars(course);
+  if (dollars == null || dollars <= 0) {
+    throw new HttpsError('failed-precondition', 'This course is free — use enrollFree.');
+  }
+
+  const isSubscription = !!(course.pricing && course.pricing.mode === 'subscription');
+  const interval = isSubscription
+    ? (course.pricing.interval === 'year' ? 'year' : 'month')
+    : null;
+
+  const priceData = {
+    currency: 'usd',
+    unit_amount: Math.round(dollars * 100),
+    product_data: { name: course.title || slug }
+  };
+  if (isSubscription) priceData.recurring = { interval };
+
+  const session = await stripe.checkout.sessions.create({
+    mode: isSubscription ? 'subscription' : 'payment',
+    line_items: [{ price_data: priceData, quantity: 1 }],
+    allow_promotion_codes: true,
+    customer_email: (request.auth.token && request.auth.token.email) || undefined,
+    client_reference_id: uid,
+    metadata: { courseSlug: slug, uid },
+    ...(isSubscription ? { subscription_data: { metadata: { courseSlug: slug, uid } } } : {}),
+    success_url: `${APP_BASE_URL}/courses.html?course=${encodeURIComponent(slug)}&purchase=success`,
+    cancel_url: `${APP_BASE_URL}/courses.html`
+  });
+
+  return { ok: true, url: session.url };
+});
+
+// stripeWebhook — enrolls buyers after checkout and revokes subscription
+// access on cancellation. Configure the endpoint in the Stripe dashboard to
+// send: checkout.session.completed, customer.subscription.deleted,
+// invoice.payment_failed.
+exports.stripeWebhook = onRequest(
+  { cors: false, invoker: 'public' },
+  async (req, res) => {
+    const stripe = getStripe();
+    const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+    if (!stripe || !webhookSecret) {
+      console.warn('[stripeWebhook] Stripe not configured');
+      res.status(503).send('stripe not configured');
+      return;
+    }
+
+    let event;
+    try {
+      const rawBody = req.rawBody ? Buffer.from(req.rawBody) : Buffer.from('');
+      event = stripe.webhooks.constructEvent(rawBody, req.get('stripe-signature'), webhookSecret);
+    } catch (e) {
+      console.warn('[stripeWebhook] signature verification failed:', e && e.message);
+      res.status(400).send('invalid signature');
+      return;
+    }
+
+    const db = admin.firestore();
+
+    // Idempotency: each Stripe event is processed once.
+    const evRef = db.collection('stripeEvents').doc(event.id);
+    const seen = await evRef.get();
+    if (seen.exists) {
+      res.status(200).send('ok (duplicate)');
+      return;
+    }
+
+    try {
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        const uid = (session.metadata && session.metadata.uid) || session.client_reference_id;
+        const courseSlug = session.metadata && session.metadata.courseSlug;
+        if (uid && courseSlug) {
+          await db.collection('users').doc(uid).set({
+            enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(courseSlug)
+          }, { merge: true });
+          await db.collection('users').doc(uid).collection('purchases').doc(session.id).set({
+            courseSlug,
+            amount: (session.amount_total || 0) / 100,
+            mode: session.mode,
+            stripeCustomerId: session.customer || null,
+            subscriptionId: session.subscription || null,
+            status: session.mode === 'subscription' ? 'active' : 'paid',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          if (session.mode === 'subscription' && session.subscription) {
+            // Index for cancellation handling.
+            await db.collection('stripeSubscriptions').doc(String(session.subscription)).set({
+              uid, courseSlug, sessionId: session.id,
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+          }
+        } else {
+          console.warn('[stripeWebhook] session missing uid/courseSlug metadata', session.id);
+        }
+      } else if (event.type === 'customer.subscription.deleted') {
+        const sub = event.data.object;
+        const idx = await db.collection('stripeSubscriptions').doc(String(sub.id)).get();
+        const meta = idx.exists ? idx.data() : (sub.metadata && sub.metadata.uid ? sub.metadata : null);
+        if (meta && meta.uid && meta.courseSlug) {
+          await db.collection('users').doc(meta.uid).set({
+            enrolledCourseSlugs: admin.firestore.FieldValue.arrayRemove(meta.courseSlug)
+          }, { merge: true });
+          if (meta.sessionId) {
+            await db.collection('users').doc(meta.uid).collection('purchases').doc(meta.sessionId)
+              .set({ status: 'canceled' }, { merge: true });
+          }
+        }
+      } else if (event.type === 'invoice.payment_failed') {
+        const invoice = event.data.object;
+        const subId = invoice.subscription;
+        if (subId) {
+          const idx = await db.collection('stripeSubscriptions').doc(String(subId)).get();
+          if (idx.exists && idx.data().sessionId) {
+            const meta = idx.data();
+            await db.collection('users').doc(meta.uid).collection('purchases').doc(meta.sessionId)
+              .set({ status: 'past_due' }, { merge: true });
+          }
+        }
+      }
+
+      await evRef.set({
+        type: event.type,
+        processedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      res.status(200).send('ok');
+    } catch (e) {
+      console.error('[stripeWebhook] handler error:', e);
+      // Non-2xx so Stripe retries.
+      res.status(500).send('handler error');
+    }
+  }
+);
+
+// syncCoupon — mirrors a coupons/{code} doc into a Stripe Coupon +
+// Promotion Code so it's redeemable on the checkout page. Admin/owner only.
+exports.syncCoupon = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const stripe = getStripe();
+  if (!stripe) {
+    throw new HttpsError('failed-precondition',
+      'Stripe isn\'t configured yet — set STRIPE_SECRET_KEY first.');
+  }
+
+  const code = String((request.data && request.data.code) || '').trim().toUpperCase();
+  if (!code) throw new HttpsError('invalid-argument', 'code is required.');
+  const ref = db.collection('coupons').doc(code);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Coupon not found.');
+  const c = snap.data();
+  if (c.stripePromotionCodeId) return { ok: true, alreadySynced: true };
+
+  const couponParams = c.percentOff
+    ? { percent_off: Number(c.percentOff) }
+    : { amount_off: Math.round(Number(c.amountOff) * 100), currency: 'usd' };
+  if (c.expiresAt && c.expiresAt.toDate) {
+    couponParams.redeem_by = Math.floor(c.expiresAt.toDate().getTime() / 1000);
+  }
+  const stripeCoupon = await stripe.coupons.create(couponParams);
+  const promo = await stripe.promotionCodes.create({
+    coupon: stripeCoupon.id,
+    code,
+    active: c.active !== false
+  });
+
+  await ref.set({
+    stripeCouponId: stripeCoupon.id,
+    stripePromotionCodeId: promo.id,
+    syncedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  return { ok: true, promotionCodeId: promo.id };
+});

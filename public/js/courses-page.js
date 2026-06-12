@@ -11,12 +11,12 @@
 // Access gating: if X isn't in the user's enrollments, the welcome view
 // is shown with a message. Nothing auto-opens; the user always chooses.
 
-import { COURSES, getActiveCourse } from './courses-registry.js';
-import { MODULES, PILLARS } from './modules.js';
+import { loadCourses, getCourseBySlug, priceInfo, loadModulesMeta } from './courses-data.js';
 import { onAuthReady, currentUser } from './auth.js';
 import { renderTopbar } from './topbar.js';
 import { getRoleInfo } from './roles.js';
-import { firebaseReady } from './firebase.js';
+import { firebaseReady, functions } from './firebase.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { getUserProfile, avatarHtml, escapeHtml } from './community.js';
 import { store } from './store.js';
 import { loadEnrollments, enrollInCourse, isEnrolled, enrolledCourses, availableCourses } from './enrollments.js';
@@ -40,7 +40,8 @@ function sidebarEntryHtml(course, { isActive, completedCount = 0 } = {}) {
   const href = `/courses.html?course=${encodeURIComponent(course.slug)}`;
   let chip = '';
   if (course.slug === '1p-clc') {
-    const pct = Math.round((completedCount / MODULES.length) * 100);
+    const total = course.moduleCount || 7;
+    const pct = Math.round((completedCount / total) * 100);
     chip = `<span class="course-entry-pct">${pct}%</span>`;
   }
   return `
@@ -108,17 +109,25 @@ function renderAvailableCourses() {
       : isLive
         ? `<span class="available-badge is-live">Available</span>`
         : `<span class="available-badge is-soon">Coming Soon</span>`;
-    const price = c.priceLabel ? `<div class="available-card-price">${escapeHtml(c.priceLabel)}</div>` : '';
+    const p = priceInfo(c);
+    const saleBadge = p.onSale ? `<span class="available-badge is-sale">Sale</span>` : '';
+    const price = p.label ? `
+      <div class="available-card-price">
+        ${p.onSale ? `<s class="available-card-price-was">${escapeHtml(p.originalLabel)}</s> ` : ''}${escapeHtml(p.label)}
+      </div>` : '';
     const priceNote = c.priceNote ? `<div class="available-card-pricenote">${escapeHtml(c.priceNote)}</div>` : '';
+    const enrollLabel = p.isFree
+      ? 'Enroll Free →'
+      : `Enroll${p.label ? ' · ' + escapeHtml(p.label) : ''} →`;
     const action = isBundle
       ? `<a class="btn btn-primary available-bundle-link" href="${escapeHtml(c.bundleHref || '/bundle.html')}">See Bundle Deal →</a>`
       : isLive
-        ? `<button class="btn btn-primary available-enroll" data-slug="${escapeHtml(c.slug)}">Enroll${c.priceLabel ? ' · ' + escapeHtml(c.priceLabel) : ''} →</button>`
+        ? `<button class="btn btn-primary available-enroll" data-slug="${escapeHtml(c.slug)}">${enrollLabel}</button>`
         : `<button class="btn btn-ghost" disabled>Notify me when live</button>`;
     return `
       <div class="available-card ${isBundle ? 'is-bundle' : isLive ? '' : 'is-soon'}" data-slug="${escapeHtml(c.slug)}">
         <div class="available-card-top">
-          ${statusBadge}
+          ${statusBadge}${saleBadge}
           <span class="available-card-meta">${escapeHtml(c.eyebrow || '')}</span>
         </div>
         <div class="available-card-title">${escapeHtml(c.title)}</div>
@@ -141,12 +150,21 @@ function renderAvailableCourses() {
   slot.querySelectorAll('.available-enroll').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       const slug = btn.dataset.slug;
+      const course = getCourseBySlug(slug);
+      const p = course ? priceInfo(course) : { isFree: true };
       btn.disabled = true;
-      btn.textContent = 'Enrolling…';
+      btn.textContent = p.isFree ? 'Enrolling…' : 'Opening secure checkout…';
       try {
-        await enrollInCourse(slug);
-        // Reload to show the course in the sidebar + open its roadmap.
-        location.assign(`/courses.html?course=${encodeURIComponent(slug)}`);
+        if (p.isFree || !firebaseReady) {
+          await enrollInCourse(slug);
+          // Reload to show the course in the sidebar + open its roadmap.
+          location.assign(`/courses.html?course=${encodeURIComponent(slug)}`);
+        } else {
+          const res = await httpsCallable(functions, 'createCheckoutSession')({ slug });
+          const url = res && res.data && res.data.url;
+          if (!url) throw new Error('Checkout could not be started.');
+          location.assign(url);
+        }
       } catch (err) {
         console.warn('[courses-page] enroll failed', err);
         btn.disabled = false;
@@ -168,19 +186,9 @@ function updateWelcomeCopy() {
 
 // ─── Roadmap ─────────────────────────────────────────────────────────────
 
-function roadmapHtml(course, { completedSet, currentId }) {
-  // Currently 1P-CLC is the only live course. Pull its modules.
-  const modules = MODULES.map((m) => ({
-    id: m.id,
-    title: m.title,
-    subtitle: m.subtitle || '',
-    pillar: m.pillar || '',
-    duration: m.duration || '',
-    tagLabel: m.tagLabel || ''
-  }));
-
+function roadmapHtml(course, { modules, completedSet, currentId }) {
   const completedCount = completedSet.size;
-  const pct = Math.round((completedCount / modules.length) * 100);
+  const pct = modules.length ? Math.round((completedCount / modules.length) * 100) : 0;
 
   const stepsHtml = modules.map((m) => {
     const done = completedSet.has(m.id);
@@ -251,12 +259,43 @@ function roadmapHtml(course, { completedSet, currentId }) {
   `;
 }
 
-function renderRoadmap(course) {
+async function renderRoadmap(course) {
   const slot = $('workspace-roadmap');
   if (!slot) return;
-  const completedSet = store.completed || new Set();
-  const currentId = typeof store.currentModule === 'number' ? store.currentModule : 0;
-  slot.innerHTML = roadmapHtml(course, { completedSet, currentId });
+  slot.innerHTML = '<div class="roadmap-container"><p style="color:var(--gray-mid);">Loading roadmap…</p></div>';
+
+  const modules = await loadModulesMeta(course);
+
+  // Progress: the shared store backs 1P-CLC; Firestore-rendered courses keep
+  // their own namespaced progress docs (see course-renderer.js).
+  let completedSet = new Set();
+  let currentId = 0;
+  if (course.contentSource === 'firestore') {
+    try {
+      const { loadCourseProgress } = await import('./course-renderer.js');
+      completedSet = await loadCourseProgress(course.slug);
+    } catch (e) {}
+    currentId = modules.length ? modules[0].id : 0;
+  } else if (course.slug === '1p-clc') {
+    completedSet = store.completed || new Set();
+    currentId = typeof store.currentModule === 'number' ? store.currentModule : 0;
+  }
+
+  if (modules.length === 0) {
+    slot.innerHTML = `
+      <div class="roadmap-container">
+        <header class="roadmap-hero">
+          <div class="academy-eyebrow">${escapeHtml(course.eyebrow || 'Course')}</div>
+          <h1>${escapeHtml(course.title)}</h1>
+          <p>${escapeHtml(course.subtitle || '')}</p>
+          <p style="color:var(--gray-mid);">Course content is being prepared. Check back soon.</p>
+        </header>
+      </div>
+    `;
+    return;
+  }
+
+  slot.innerHTML = roadmapHtml(course, { modules, completedSet, currentId });
 }
 
 // ─── Workspace swap ───────────────────────────────────────────────────────
@@ -322,13 +361,23 @@ async function main() {
     }
   }
 
-  // Load progress + enrollments before deciding what to render.
+  // Load courses + progress + enrollments before deciding what to render.
+  try { await loadCourses(); } catch (e) {}
   try { await store.load(); } catch (e) {}
   try { await loadEnrollments(); } catch (e) {}
 
   const slug = courseSlug();
   const moduleId = moduleParam();
-  const course = slug ? COURSES.find((c) => c.slug === slug) : null;
+  const course = slug ? getCourseBySlug(slug) : null;
+
+  // Returning from Stripe checkout: the webhook writes the enrollment, which
+  // can lag a moment behind the redirect. Poll briefly until it lands.
+  if (urlParam('purchase') === 'success' && course && !isEnrolled(course.slug)) {
+    for (let i = 0; i < 6 && !isEnrolled(course.slug); i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      try { await loadEnrollments({ force: true }); } catch (e) {}
+    }
+  }
 
   // Always render welcome content + available courses in case we fall back to welcome.
   renderAvailableCourses();
@@ -351,14 +400,20 @@ async function main() {
     renderSidebar(course.slug);
     renderCourseHero(course);
     showModule();
-    if (typeof course.mount === 'function') {
-      try { await course.mount({ startAt: moduleId }); }
-      catch (e) { console.warn('[courses-page] mount failed', e); }
-    }
+    try {
+      if (typeof course.mount === 'function') {
+        await course.mount({ startAt: moduleId });
+      } else {
+        // Courses authored in /manage-courses.html render via the generic
+        // Firestore-backed renderer.
+        const { mountFirestoreCourse } = await import('./course-renderer.js');
+        await mountFirestoreCourse(course, { startAt: moduleId });
+      }
+    } catch (e) { console.warn('[courses-page] mount failed', e); }
   } else {
     // Roadmap view — default landing for an enrolled course.
     renderSidebar(course.slug);
-    renderRoadmap(course);
+    await renderRoadmap(course);
     showRoadmap();
   }
 

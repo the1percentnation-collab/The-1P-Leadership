@@ -6434,3 +6434,47 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
     align-items: flex-start;
   }
 }
+
+/* ────────────────────────────────────────────────────────────────
+   Course management — sale pricing + generic lesson renderer
+   ──────────────────────────────────────────────────────────────── */
+
+.available-badge.is-sale {
+  background: linear-gradient(90deg, #7a1f1f, var(--red));
+  color: #fff;
+  margin-left: 6px;
+}
+
+.available-card-price-was {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--gray-mid);
+  margin-right: 6px;
+}
+
+.lesson-header { margin-bottom: 22px; }
+
+.lesson-subtitle {
+  color: var(--gray-light);
+  font-size: 15px;
+  margin-top: 6px;
+}
+
+.lesson-body {
+  color: var(--white-dim);
+  line-height: 1.7;
+  font-size: 15px;
+}
+.lesson-body h2, .lesson-body h3 { color: var(--white); margin: 22px 0 10px; }
+.lesson-body p { margin: 0 0 14px; }
+.lesson-body ul, .lesson-body ol { margin: 0 0 14px 22px; }
+.lesson-body li { margin-bottom: 6px; }
+.lesson-body blockquote {
+  border-left: 3px solid var(--red);
+  padding: 8px 16px;
+  margin: 16px 0;
+  color: var(--gray-light);
+  background: rgba(255,255,255,0.03);
+}
+.lesson-body img { max-width: 100%; border-radius: 8px; margin: 12px 0; }
+.lesson-body a { color: var(--red); }
