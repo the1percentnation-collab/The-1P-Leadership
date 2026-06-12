@@ -49,6 +49,41 @@ let _modules = [];
 let _editingModuleId = null;
 let _quill = null;
 
+// ─── Modal ────────────────────────────────────────────────────────────────
+
+function openModal(slug, tab = 'details') {
+  const overlay = $('course-modal-overlay');
+  overlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  switchTab(tab);
+
+  if (tab === 'details' || !slug) {
+    openCourseEditor(slug);
+  }
+  if (tab === 'content' && slug) {
+    openContent(slug);
+  }
+}
+
+function closeModal() {
+  $('course-modal-overlay').style.display = 'none';
+  document.body.style.overflow = '';
+  $('module-editor').style.display = 'none';
+  $('course-editor-result').innerHTML = '';
+  _editingSlug = null;
+  _contentSlug = null;
+  _editingModuleId = null;
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.course-modal-tab').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  document.querySelectorAll('.course-tab-pane').forEach((pane) => {
+    pane.classList.toggle('active', pane.id === `tab-${tab}`);
+  });
+}
+
 // ─── Course list ──────────────────────────────────────────────────────────
 
 async function refreshCourses() {
@@ -69,7 +104,7 @@ async function refreshCourses() {
     }[c.status] || escapeHtml(c.status || '—');
     const contentKind = (c.contentSource === 'firestore' || !CODE_CONTENT_SLUGS.has(c.slug))
       ? 'Editable' : 'Built-in';
-    return `<tr>
+    return `<tr data-row-slug="${escapeHtml(c.slug)}">
       <td><b>${escapeHtml(c.title)}</b><br><span style="font-size:11px; color:var(--gray-mid);">${escapeHtml(c.slug)}</span></td>
       <td>${statusChip}</td>
       <td class="num">${escapeHtml(p.onSale ? p.originalLabel : (p.label || '—'))}</td>
@@ -83,10 +118,18 @@ async function refreshCourses() {
     </tr>`;
   }).join('');
 
+  // Clicking anywhere on a row (except the action buttons) opens Details
+  body.querySelectorAll('tr[data-row-slug]').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      openModal(row.dataset.rowSlug, 'details');
+    });
+  });
+
   body.querySelectorAll('[data-edit]').forEach((b) =>
-    b.addEventListener('click', () => openCourseEditor(b.dataset.edit)));
+    b.addEventListener('click', (e) => { e.stopPropagation(); openModal(b.dataset.edit, 'details'); }));
   body.querySelectorAll('[data-content]').forEach((b) =>
-    b.addEventListener('click', () => openContent(b.dataset.content)));
+    b.addEventListener('click', (e) => { e.stopPropagation(); openModal(b.dataset.content, 'content'); }));
 }
 
 async function seedDefaults() {
@@ -127,8 +170,7 @@ async function seedDefaults() {
 function openCourseEditor(slug) {
   _editingSlug = slug || null;
   const c = slug ? getCourses({ includeInactive: true }).find((x) => x.slug === slug) : null;
-  $('course-editor-card').style.display = 'block';
-  $('course-editor-title').textContent = c ? `Edit: ${c.title}` : 'Add a new course';
+  $('course-modal-title').textContent = c ? `Edit: ${c.title}` : 'Add a new course';
   $('course-editor-result').innerHTML = '';
 
   $('f-title').value = c ? (c.title || '') : '';
@@ -146,8 +188,6 @@ function openCourseEditor(slug) {
   $('f-interval').disabled = mode !== 'subscription';
   $('f-interval').value = (c && c.pricing && c.pricing.interval) || 'month';
   $('f-sort').value = c && typeof c.sortOrder === 'number' ? c.sortOrder : getCourses({ includeInactive: true }).length;
-
-  $('course-editor-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function saveCourse(e) {
@@ -191,6 +231,7 @@ async function saveCourse(e) {
     ok(out, `Saved <b>${escapeHtml(title)}</b>.`);
     _editingSlug = slug;
     $('f-slug').disabled = true;
+    $('course-modal-title').textContent = `Edit: ${title}`;
     await refreshCourses();
   } catch (e2) { err(out, e2); }
 }
@@ -201,9 +242,8 @@ async function openContent(slug) {
   _contentSlug = slug;
   _editingModuleId = null;
   const c = getCourses({ includeInactive: true }).find((x) => x.slug === slug);
-  $('content-card').style.display = 'block';
   $('module-editor').style.display = 'none';
-  $('content-title').textContent = `Content: ${c ? c.title : slug}`;
+  $('course-modal-title').textContent = c ? `Edit: ${c.title}` : `Edit: ${slug}`;
 
   const isCode = c && c.contentSource !== 'firestore' && CODE_CONTENT_SLUGS.has(slug);
   $('content-note').innerHTML = isCode
@@ -212,7 +252,6 @@ async function openContent(slug) {
   $('btn-add-module').style.display = isCode ? 'none' : '';
 
   await refreshModules();
-  $('content-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function refreshModules() {
@@ -330,7 +369,7 @@ function openModuleEditor(moduleId) {
   src.style.display = 'none';
   src.value = html;
   $('btn-html-toggle').textContent = 'Edit HTML source';
-  $('module-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('module-editor').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function toggleHtmlSource() {
@@ -472,8 +511,29 @@ async function main() {
   $('panel').style.display = 'block';
 
   $('btn-seed').addEventListener('click', seedDefaults);
-  $('btn-add-course').addEventListener('click', () => openCourseEditor(null));
-  $('btn-editor-cancel').addEventListener('click', () => { $('course-editor-card').style.display = 'none'; });
+  $('btn-add-course').addEventListener('click', () => openModal(null, 'details'));
+
+  // Modal controls
+  $('course-modal-close').addEventListener('click', closeModal);
+  $('course-modal-overlay').addEventListener('click', (e) => {
+    if (e.target === $('course-modal-overlay')) closeModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && $('course-modal-overlay').style.display !== 'none') closeModal();
+  });
+
+  // Tab switching
+  document.querySelectorAll('.course-modal-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      switchTab(tab);
+      if (tab === 'content' && _editingSlug && !_contentSlug) {
+        openContent(_editingSlug);
+      }
+    });
+  });
+
+  $('btn-editor-cancel').addEventListener('click', closeModal);
   $('course-editor-form').addEventListener('submit', saveCourse);
   $('f-mode').addEventListener('change', () => {
     $('f-interval').disabled = $('f-mode').value !== 'subscription';

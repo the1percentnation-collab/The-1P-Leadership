@@ -17,6 +17,94 @@
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Course edit modal */
+    .course-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.72);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      z-index: 1000;
+      padding: 24px 16px;
+      overflow-y: auto;
+    }
+    .course-modal {
+      background: var(--surface, #1a1a1a);
+      border: 1px solid var(--border, rgba(255,255,255,.1));
+      border-radius: 14px;
+      width: 100%;
+      max-width: 860px;
+      position: relative;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+      display: flex;
+      flex-direction: column;
+    }
+    .course-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px 0;
+      gap: 12px;
+    }
+    .course-modal-title {
+      font-family: var(--font-display, 'Bebas Neue', sans-serif);
+      font-size: 22px;
+      letter-spacing: 0.04em;
+      margin: 0;
+    }
+    .course-modal-close {
+      background: none;
+      border: none;
+      color: var(--gray-light, #999);
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+    .course-modal-close:hover { color: var(--white, #fff); background: rgba(255,255,255,0.06); }
+    .course-modal-tabs {
+      display: flex;
+      gap: 4px;
+      padding: 14px 24px 0;
+      border-bottom: 1px solid var(--border, rgba(255,255,255,.1));
+    }
+    .course-modal-tab {
+      background: none;
+      border: none;
+      color: var(--gray-light, #999);
+      font-family: var(--font-sans, 'Outfit', sans-serif);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 8px 16px;
+      cursor: pointer;
+      border-radius: 6px 6px 0 0;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .course-modal-tab:hover { color: var(--white, #fff); }
+    .course-modal-tab.active {
+      color: var(--white, #fff);
+      border-bottom-color: var(--accent, #cc1b1b);
+    }
+    .course-modal-body {
+      padding: 20px 24px 24px;
+    }
+    .course-tab-pane { display: none; }
+    .course-tab-pane.active { display: block; }
+
+    /* Make course rows clickable */
+    #courses-body tr { cursor: pointer; transition: background 0.15s; }
+    #courses-body tr:hover { background: rgba(255,255,255,0.04); }
+    #courses-body tr td:last-child { cursor: default; }
+    #courses-body tr button { cursor: pointer; }
+  </style>
 </head>
 <body style="display:block; height:auto; overflow:auto;">
   <div class="console-shell">
@@ -61,8 +149,48 @@
           </table>
         </div>
 
-        <div class="card" id="course-editor-card" style="display:none;">
-          <h2 id="course-editor-title">Edit course</h2>
+        <div class="card">
+          <h2>Coupon codes</h2>
+          <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+            Coupon codes are redeemed on the secure checkout page. After creating one, click
+            <b>Sync to Stripe</b> so it becomes redeemable (requires Stripe to be configured).
+            For a simple sale shown directly on the site, use the course's <b>Sale price</b> instead.
+          </p>
+          <form class="inline-form" id="coupon-form" style="flex-wrap:wrap;">
+            <div class="field" style="max-width:160px;"><label for="cp-code">Code</label><input id="cp-code" type="text" required placeholder="WELCOME20"></div>
+            <div class="field" style="max-width:130px;"><label for="cp-percent">% off</label><input id="cp-percent" type="number" min="1" max="100" placeholder="20"></div>
+            <div class="field" style="max-width:130px;"><label for="cp-amount">or $ off</label><input id="cp-amount" type="number" min="1" step="0.01"></div>
+            <div class="field" style="max-width:170px;"><label for="cp-expires">Expires (optional)</label><input id="cp-expires" type="date"></div>
+            <button class="btn btn-primary" type="submit">Create coupon</button>
+          </form>
+          <div id="coupon-result" style="margin-top:10px;"></div>
+          <table class="data-table" style="margin-top:14px;">
+            <thead>
+              <tr><th>Code</th><th>Discount</th><th>Expires</th><th>Status</th><th>Stripe</th><th></th></tr>
+            </thead>
+            <tbody id="coupons-body"></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Course edit modal -->
+  <div class="course-modal-overlay" id="course-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="course-modal-title">
+    <div class="course-modal">
+      <div class="course-modal-header">
+        <h2 class="course-modal-title" id="course-modal-title">Edit course</h2>
+        <button class="course-modal-close" id="course-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="course-modal-tabs">
+        <button class="course-modal-tab active" data-tab="details">Details</button>
+        <button class="course-modal-tab" data-tab="content">Content</button>
+      </div>
+      <div class="course-modal-body">
+
+        <!-- Details tab -->
+        <div class="course-tab-pane active" id="tab-details">
           <form id="course-editor-form">
             <div class="inline-form" style="flex-wrap:wrap;">
               <div class="field"><label for="f-title">Title</label><input id="f-title" type="text" required></div>
@@ -110,8 +238,8 @@
           <div id="course-editor-result" style="margin-top:10px;"></div>
         </div>
 
-        <div class="card" id="content-card" style="display:none;">
-          <h2 id="content-title">Course content</h2>
+        <!-- Content tab -->
+        <div class="course-tab-pane" id="tab-content">
           <div id="content-note" style="font-size:13px; color:var(--gray-light); margin-bottom:12px;"></div>
           <div id="modules-list"></div>
           <button class="btn btn-primary" id="btn-add-module" style="margin-top:10px;">+ Add module</button>
@@ -141,29 +269,6 @@
             </div>
             <div id="module-editor-result" style="margin-top:10px;"></div>
           </div>
-        </div>
-
-        <div class="card">
-          <h2>Coupon codes</h2>
-          <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
-            Coupon codes are redeemed on the secure checkout page. After creating one, click
-            <b>Sync to Stripe</b> so it becomes redeemable (requires Stripe to be configured).
-            For a simple sale shown directly on the site, use the course's <b>Sale price</b> instead.
-          </p>
-          <form class="inline-form" id="coupon-form" style="flex-wrap:wrap;">
-            <div class="field" style="max-width:160px;"><label for="cp-code">Code</label><input id="cp-code" type="text" required placeholder="WELCOME20"></div>
-            <div class="field" style="max-width:130px;"><label for="cp-percent">% off</label><input id="cp-percent" type="number" min="1" max="100" placeholder="20"></div>
-            <div class="field" style="max-width:130px;"><label for="cp-amount">or $ off</label><input id="cp-amount" type="number" min="1" step="0.01"></div>
-            <div class="field" style="max-width:170px;"><label for="cp-expires">Expires (optional)</label><input id="cp-expires" type="date"></div>
-            <button class="btn btn-primary" type="submit">Create coupon</button>
-          </form>
-          <div id="coupon-result" style="margin-top:10px;"></div>
-          <table class="data-table" style="margin-top:14px;">
-            <thead>
-              <tr><th>Code</th><th>Discount</th><th>Expires</th><th>Status</th><th>Stripe</th><th></th></tr>
-            </thead>
-            <tbody id="coupons-body"></tbody>
-          </table>
         </div>
 
       </div>
