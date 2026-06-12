@@ -20,6 +20,7 @@ import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getUserProfile, avatarHtml, escapeHtml } from './community.js';
 import { store } from './store.js';
 import { loadEnrollments, enrollInCourse, isEnrolled, enrolledCourses, availableCourses } from './enrollments.js';
+import { getRefCode } from './referral.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -160,7 +161,10 @@ function renderAvailableCourses() {
           // Reload to show the course in the sidebar + open its roadmap.
           location.assign(`/courses.html?course=${encodeURIComponent(slug)}`);
         } else {
-          const res = await httpsCallable(functions, 'createCheckoutSession')({ slug });
+          const res = await httpsCallable(functions, 'createCheckoutSession')({
+            slug,
+            refCode: getRefCode() || undefined
+          });
           const url = res && res.data && res.data.url;
           if (!url) throw new Error('Checkout could not be started.');
           location.assign(url);

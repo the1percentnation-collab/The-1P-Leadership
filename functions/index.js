@@ -2193,6 +2193,31 @@ exports.createCheckoutSession = onCall(async (request) => {
     ? (course.pricing.interval === 'year' ? 'year' : 'month')
     : null;
 
+  // Affiliate attribution — validate the referral code server-side and lock
+  // the commission rate into the session metadata at purchase time.
+  let refCode = String((request.data && request.data.refCode) || '').trim().toUpperCase();
+  let refPercent = null;
+  if (refCode) {
+    const affSnap = await db.collection('affiliates').doc(refCode).get();
+    const aff = affSnap.exists ? affSnap.data() : null;
+    const buyerEmail = ((request.auth.token && request.auth.token.email) || '').toLowerCase();
+    const selfReferral = aff && (
+      (aff.uid && aff.uid === uid)
+      || (aff.email && String(aff.email).toLowerCase() === buyerEmail)
+    );
+    if (aff && aff.active !== false && !selfReferral) {
+      refPercent = typeof aff.commissionPercent === 'number' ? aff.commissionPercent : 20;
+    } else {
+      refCode = '';
+    }
+  }
+
+  const metadata = { courseSlug: slug, uid };
+  if (refCode) {
+    metadata.refCode = refCode;
+    metadata.refPercent = String(refPercent);
+  }
+
   const priceData = {
     currency: 'usd',
     unit_amount: Math.round(dollars * 100),
@@ -2206,8 +2231,8 @@ exports.createCheckoutSession = onCall(async (request) => {
     allow_promotion_codes: true,
     customer_email: (request.auth.token && request.auth.token.email) || undefined,
     client_reference_id: uid,
-    metadata: { courseSlug: slug, uid },
-    ...(isSubscription ? { subscription_data: { metadata: { courseSlug: slug, uid } } } : {}),
+    metadata,
+    ...(isSubscription ? { subscription_data: { metadata } } : {}),
     success_url: `${APP_BASE_URL}/courses.html?course=${encodeURIComponent(slug)}&purchase=success`,
     cancel_url: `${APP_BASE_URL}/courses.html`
   });
@@ -2274,6 +2299,38 @@ exports.stripeWebhook = onRequest(
               uid, courseSlug, sessionId: session.id,
               createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
+          }
+
+          // Affiliate commission — the code + rate were validated and locked
+          // into metadata by createCheckoutSession.
+          const refCode = session.metadata && session.metadata.refCode;
+          if (refCode) {
+            const affRef = db.collection('affiliates').doc(refCode);
+            const affSnap = await affRef.get();
+            if (affSnap.exists) {
+              const pct = Number(session.metadata.refPercent) ||
+                (typeof affSnap.data().commissionPercent === 'number' ? affSnap.data().commissionPercent : 20);
+              const saleAmount = (session.amount_total || 0) / 100;
+              const commission = Math.round(saleAmount * pct) / 100;
+              await affRef.collection('referrals').doc(session.id).set({
+                courseSlug,
+                buyerUid: uid,
+                saleAmount,
+                commissionPercent: pct,
+                commission,
+                mode: session.mode,
+                status: 'pending',
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+              }, { merge: true });
+              await affRef.set({
+                totalSales: admin.firestore.FieldValue.increment(saleAmount),
+                totalCommission: admin.firestore.FieldValue.increment(commission),
+                saleCount: admin.firestore.FieldValue.increment(1),
+                lastSaleAt: admin.firestore.FieldValue.serverTimestamp()
+              }, { merge: true });
+              await db.collection('users').doc(uid).collection('purchases').doc(session.id)
+                .set({ refCode }, { merge: true });
+            }
           }
         } else {
           console.warn('[stripeWebhook] session missing uid/courseSlug metadata', session.id);
@@ -2358,4 +2415,65 @@ exports.syncCoupon = onCall(async (request) => {
   }, { merge: true });
 
   return { ok: true, promotionCodeId: promo.id };
+});
+
+// ────────────────────────────────────────────────────────────────
+// Affiliate program — referral codes, click tracking, commissions.
+//
+// Affiliates live at affiliates/{CODE} (created by owner/admin from
+// /manage-affiliates.html). Attribution: links carry ?ref=CODE → stored
+// client-side (referral.js) → passed to createCheckoutSession → commission
+// recorded by the Stripe webhook. Payouts are manual (mark-as-paid ledger).
+// ────────────────────────────────────────────────────────────────
+
+// recordAffiliateClick — public, best-effort click counter for ?ref= visits.
+exports.recordAffiliateClick = onCall(async (request) => {
+  const code = String((request.data && request.data.code) || '').trim().toUpperCase();
+  if (!code || code.length > 32) return { ok: false };
+  const db = admin.firestore();
+  const ref = db.collection('affiliates').doc(code);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data().active === false) return { ok: false };
+  await ref.set({
+    clicks: admin.firestore.FieldValue.increment(1),
+    lastClickAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true };
+});
+
+// markAffiliatePaid — flips all pending referrals for an affiliate to 'paid'
+// and rolls the amount into totalPaid. Owner/admin only (the actual payout
+// happens outside the platform — bank transfer, PayPal, etc.).
+exports.markAffiliatePaid = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const code = String((request.data && request.data.code) || '').trim().toUpperCase();
+  if (!code) throw new HttpsError('invalid-argument', 'code is required.');
+
+  const affRef = db.collection('affiliates').doc(code);
+  const affSnap = await affRef.get();
+  if (!affSnap.exists) throw new HttpsError('not-found', 'Affiliate not found.');
+
+  const pending = await affRef.collection('referrals').where('status', '==', 'pending').get();
+  if (pending.empty) return { ok: true, paidCount: 0, paidAmount: 0 };
+
+  let paidAmount = 0;
+  const batch = db.batch();
+  pending.docs.forEach((d) => {
+    paidAmount += d.data().commission || 0;
+    batch.set(d.ref, {
+      status: 'paid',
+      paidAt: admin.firestore.FieldValue.serverTimestamp(),
+      paidBy: (request.auth.token && request.auth.token.email) || request.auth.uid
+    }, { merge: true });
+  });
+  paidAmount = Math.round(paidAmount * 100) / 100;
+  batch.set(affRef, {
+    totalPaid: admin.firestore.FieldValue.increment(paidAmount)
+  }, { merge: true });
+  await batch.commit();
+
+  return { ok: true, paidCount: pending.size, paidAmount };
 });

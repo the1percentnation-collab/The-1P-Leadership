@@ -461,6 +461,49 @@ service cloud.firestore {
       allow delete: if isAnyAdmin();
     }
 
+    // ────────────────────────────────────────────────────────────────
+    // Affiliate program — affiliates/{CODE} managed from
+    // /manage-affiliates.html. The linked salesperson (matched by uid or
+    // account email) can read their own record + referrals. Aggregate /
+    // money fields are server-written only (webhook + markAffiliatePaid),
+    // enforced by freezing them on client writes.
+    // ────────────────────────────────────────────────────────────────
+    match /affiliates/{code} {
+      // Direct field comparisons (not .get()) so Firestore can prove list
+      // queries like where('email','==',<caller email>) against this rule.
+      function affLinkedToCaller(data) {
+        return isSignedIn()
+          && (data.uid == request.auth.uid
+              || data.email == request.auth.token.email);
+      }
+      allow get: if isAnyAdmin() || affLinkedToCaller(resource.data);
+      allow list: if isAnyAdmin() || affLinkedToCaller(resource.data);
+      allow create: if isAnyAdmin()
+        && request.resource.data.get('clicks', 0) == 0
+        && request.resource.data.get('saleCount', 0) == 0
+        && request.resource.data.get('totalSales', 0) == 0
+        && request.resource.data.get('totalCommission', 0) == 0
+        && request.resource.data.get('totalPaid', 0) == 0;
+      allow update: if isAnyAdmin()
+        && request.resource.data.get('clicks', 0) == resource.data.get('clicks', 0)
+        && request.resource.data.get('saleCount', 0) == resource.data.get('saleCount', 0)
+        && request.resource.data.get('totalSales', 0) == resource.data.get('totalSales', 0)
+        && request.resource.data.get('totalCommission', 0) == resource.data.get('totalCommission', 0)
+        && request.resource.data.get('totalPaid', 0) == resource.data.get('totalPaid', 0);
+      allow delete: if isOwner();
+
+      // Per-sale commission ledger — written by the Stripe webhook and
+      // markAffiliatePaid (Admin SDK). Read-only for admins + the affiliate.
+      match /referrals/{refId} {
+        function parentAff() {
+          return get(/databases/$(database)/documents/affiliates/$(code)).data;
+        }
+        allow read: if isAnyAdmin()
+          || (isSignedIn() && affLinkedToCaller(parentAff()));
+        allow write: if false;
+      }
+    }
+
     match /events/{eventId} {
       // Public read: events are front-facing so anyone (signed in or not) can
       // view them and register from the public Events page.
