@@ -38,6 +38,8 @@ const ALL_LINKS = [
   { key: 'members',    href: '/members.html',   label: 'Members' },
   { key: 'profile',    href: '/profile.html',   label: 'Profile' },
   { key: 'crm',        href: '/crm.html',       label: 'CRM',       requires: 'admin' },
+  { key: 'courses-admin', href: '/manage-courses.html', label: 'Manage Courses', requires: 'admin' },
+  { key: 'affiliates-admin', href: '/manage-affiliates.html', label: 'Affiliates', requires: 'admin' },
   { key: 'campaigns',  href: '/campaigns.html', label: 'Campaigns', requires: 'admin' },
   { key: 'admin',      href: '/admin.html',     label: 'Admin',     requires: 'admin' },
   { key: 'owner',      href: '/owner.html',     label: 'Owner',     requires: 'owner' }

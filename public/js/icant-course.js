@@ -9,7 +9,7 @@ const ALIGN = {
   N: { label: 'Navigation', desc: 'Executing the path forward' },
 };
 
-const MODULES = [
+export const MODULES = [
   {
     id: 1,
     title: 'Understanding Limiting Beliefs',
