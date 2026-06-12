@@ -38,8 +38,6 @@ const ALL_LINKS = [
   { key: 'members',    href: '/members.html',   label: 'Members' },
   { key: 'profile',    href: '/profile.html',   label: 'Profile' },
   { key: 'crm',        href: '/crm.html',       label: 'CRM',       requires: 'admin' },
-  { key: 'courses-admin', href: '/manage-courses.html', label: 'Manage Courses', requires: 'admin' },
-  { key: 'affiliates-admin', href: '/manage-affiliates.html', label: 'Affiliates', requires: 'admin' },
   { key: 'campaigns',  href: '/campaigns.html', label: 'Campaigns', requires: 'admin' },
   { key: 'admin',      href: '/admin.html',     label: 'Admin',     requires: 'admin' },
   { key: 'owner',      href: '/owner.html',     label: 'Owner',     requires: 'owner' }
@@ -57,6 +55,8 @@ function roleAllows(roleRequired, role) {
 // one-click access from any portal page — including pages that pass an
 // empty `links` set, like the dashboard.
 const ADMIN_BUTTONS = [
+  { key: 'courses-admin', href: '/manage-courses.html', label: 'Manage Courses', requires: 'admin' },
+  { key: 'affiliates-admin', href: '/manage-affiliates.html', label: 'Affiliates', requires: 'admin' },
   { key: 'admin', href: '/admin.html', label: 'Admin', requires: 'admin' },
   { key: 'owner', href: '/owner.html', label: 'Owner', requires: 'owner' }
 ];
@@ -465,10 +465,11 @@ export function renderTopbar({
   const chip = document.getElementById(mountId);
   if (!chip || !user) return;
 
-  // Admin/Owner render as dedicated buttons, so drop them from the regular
-  // chip list to avoid a duplicate when the default link set is in use.
+  // Privileged destinations render as dedicated buttons, so drop them from the
+  // regular chip list to avoid a duplicate when the default link set is in use.
+  const adminButtonHrefs = ADMIN_BUTTONS.map((b) => b.href);
   const linkSet = (links || defaultTopbarLinks({ role, currentPage }))
-    .filter((l) => l.href !== '/admin.html' && l.href !== '/owner.html');
+    .filter((l) => !adminButtonHrefs.includes(l.href));
   const linksHtml = linkSet.map((l) =>
     `<a class="user-chip-link" href="${escapeHtml(l.href)}">${escapeHtml(l.label)}</a>`
   ).join('');
