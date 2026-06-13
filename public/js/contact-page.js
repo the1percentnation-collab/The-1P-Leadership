@@ -115,6 +115,7 @@ function iconFor(type) {
     case 'event_registration': return '🎟';
     case 'course_interest': return '🎓';
     case 'member_onboarding': return '🚀';
+    case 'consent_updated': return '✅';
     default: return '•';
   }
 }

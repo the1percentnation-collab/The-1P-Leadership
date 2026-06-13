@@ -64,6 +64,11 @@
         <label for="goals">What do you want to achieve?</label>
         <textarea id="goals" rows="3" placeholder="Your goals for joining the Academy"></textarea>
 
+        <label class="auth-consent" for="consent">
+          <input id="consent" type="checkbox" />
+          <span id="consent-text">I agree to receive calls, text messages (SMS), and emails from The One Percent Nation at the phone number and email address I provided — including account updates, course information, and marketing. Message &amp; data rates may apply and message frequency varies. Consent is not a condition of any purchase. I can opt out at any time by replying STOP to texts or using the unsubscribe link in emails.</span>
+        </label>
+
         <button class="btn btn-primary" type="submit" id="btn-submit">Enter the Academy →</button>
       </form>
     </div>
@@ -116,7 +121,9 @@
         company: $('company').value.trim(),
         industry: $('industry').value.trim(),
         location: $('location').value.trim(),
-        goals: $('goals').value.trim()
+        goals: $('goals').value.trim(),
+        marketingConsent: $('consent').checked,
+        consentText: $('consent-text').textContent.replace(/\s+/g, ' ').trim()
       };
       if (!payload.displayName) return showErr('Please enter your name.');
       if (!payload.phone) return showErr('Please enter a phone number.');
