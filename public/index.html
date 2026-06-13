@@ -644,6 +644,119 @@
     }
 
     /* ============================================================
+       COMING SOON POSTER — Work Less & Gain More (gold/black)
+    ============================================================ */
+    .book-poster {
+      --gold: #E2A828; --gold-bright: #F5C542;
+      margin-top: 32px;
+      padding: 72px 64px 56px;
+      border-radius: 16px;
+      border: 1px solid rgba(226,168,40,0.22);
+      background:
+        radial-gradient(ellipse at 50% -10%, rgba(226,168,40,0.10), transparent 55%),
+        radial-gradient(ellipse at 50% 0%, #1b1712 0%, #100d09 55%, #080808 100%);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .book-poster::after {
+      content: ''; position: absolute; left: 0; right: 0; bottom: -40%; height: 80%;
+      background: radial-gradient(ellipse at 50% 100%, rgba(226,168,40,0.14), transparent 65%);
+      pointer-events: none;
+    }
+    .poster-coming {
+      font-family: var(--font-display);
+      font-size: 112px; line-height: 0.84; letter-spacing: 0.015em;
+      text-transform: uppercase; margin: 0;
+    }
+    .poster-coming .l1 { display: block; color: #f3efe7; }
+    .poster-coming .l2 { display: block; color: var(--gold);
+      text-shadow: 0 0 38px rgba(226,168,40,0.35); }
+    .poster-underline { display: block; width: 300px; max-width: 70%; height: 20px; margin: 12px auto 0; }
+    .poster-tagline {
+      font-family: var(--font-mono); font-size: 14px; letter-spacing: 0.36em;
+      text-transform: uppercase; color: #d2cab9; margin: 24px 0 0;
+    }
+    .poster-body {
+      display: grid; grid-template-columns: 260px 340px; gap: 56px;
+      align-items: center; justify-content: center; margin: 52px 0 0;
+      position: relative; z-index: 1;
+    }
+    .poster-cover {
+      width: 260px; aspect-ratio: 5/7; border-radius: 5px;
+      background: linear-gradient(160deg, #18150f 0%, #0b0a07 100%);
+      border: 1px solid rgba(226,168,40,0.28);
+      box-shadow: 0 36px 80px rgba(0,0,0,0.75), 0 0 60px rgba(226,168,40,0.12),
+        inset 14px 0 28px -16px rgba(0,0,0,0.9);
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 30px 28px; text-align: left; position: relative;
+      transform: perspective(1100px) rotateY(-13deg); transform-origin: left center;
+    }
+    .poster-cover::before {
+      content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 9px;
+      background: linear-gradient(90deg, rgba(0,0,0,0.55), transparent);
+      border-radius: 5px 0 0 5px;
+    }
+    .poster-cover-howto {
+      font-family: var(--font-display); font-size: 24px; letter-spacing: 0.06em;
+      color: #f1ede4; line-height: 1; margin-bottom: 6px;
+    }
+    .poster-cover-stack { font-family: var(--font-display); line-height: 0.92; }
+    .poster-cover-stack span { display: block; font-size: 46px; letter-spacing: 0.02em; color: var(--gold); }
+    .poster-cover-stack .strike { text-decoration: line-through; text-decoration-thickness: 3px; }
+    .poster-cover-author {
+      margin-top: 18px; font-family: var(--font-mono); font-size: 10px;
+      letter-spacing: 0.22em; text-transform: uppercase; color: rgba(245,237,224,0.7);
+    }
+    .poster-benefits { display: flex; flex-direction: column; }
+    .poster-benefit { display: flex; align-items: center; gap: 18px; padding: 20px 0; text-align: left; }
+    .poster-benefit + .poster-benefit { border-top: 1px solid rgba(226,168,40,0.20); }
+    .poster-benefit-icon {
+      width: 54px; height: 54px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      border: 1.5px solid rgba(226,168,40,0.5); border-radius: 50%;
+    }
+    .poster-benefit-icon svg { width: 28px; height: 28px; }
+    .poster-benefit-title {
+      font-family: var(--font-display); font-size: 22px; letter-spacing: 0.05em;
+      color: var(--gold); line-height: 1.05;
+    }
+    .poster-benefit-sub {
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em;
+      text-transform: uppercase; color: #c2b7a5; margin-top: 4px;
+    }
+    .poster-footer { margin-top: 52px; position: relative; z-index: 1; }
+    .poster-byline {
+      display: flex; align-items: center; justify-content: center; gap: 18px;
+      font-family: var(--font-display); font-size: 22px; letter-spacing: 0.08em;
+      color: var(--gold); text-transform: uppercase;
+    }
+    .poster-byline::before, .poster-byline::after {
+      content: ''; height: 2px; width: 56px; background: var(--gold); opacity: 0.8;
+    }
+    .poster-sub2 {
+      font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.24em;
+      text-transform: uppercase; color: #d2cab9; line-height: 2; margin-top: 16px;
+    }
+    .poster-banner {
+      margin: 26px auto 0; max-width: 580px;
+      background: linear-gradient(90deg, #b9912c 0%, var(--gold-bright) 50%, #b9912c 100%);
+      color: #0b0a08; font-family: var(--font-mono); font-weight: 700;
+      font-size: 13px; letter-spacing: 0.2em; text-transform: uppercase;
+      padding: 15px 26px; border-radius: 3px;
+      box-shadow: 0 10px 30px rgba(226,168,40,0.25);
+    }
+    @media (max-width: 860px) {
+      .book-poster { padding: 48px 28px 40px; }
+      .poster-coming { font-size: 64px; }
+      .poster-body { grid-template-columns: 1fr; gap: 36px; justify-items: center; }
+      .poster-cover { transform: none; }
+      .poster-benefits { width: 100%; max-width: 360px; }
+      .poster-byline { font-size: 16px; }
+      .poster-byline::before, .poster-byline::after { width: 28px; }
+    }
+
+    /* ============================================================
        TESTIMONIALS
     ============================================================ */
     #testimonials { background: var(--black); }
@@ -1582,26 +1695,74 @@
       </div>
     </div>
 
-    <div class="book-section fade-up">
-      <div>
-        <div class="book-eyebrow"><span class="tag book-coming-tag">● Coming Soon</span></div>
-        <div class="book-title">HOW TO<br><span class="red">WORK LESS</span><br>&amp; GAIN MORE</div>
-        <p class="book-desc">The next book from Anthony Brown. Strategies, mindset, and freedom — a practical playbook to stop trading hours for outcomes and design a life with more impact and less burnout. It's time to level up.</p>
-        <ul class="book-benefits">
-          <li><strong>Work smarter</strong>, not harder</li>
-          <li><strong>Build freedom</strong> through focus</li>
-          <li><strong>Create a life</strong> of impact &amp; income</li>
-        </ul>
-        <span class="btn-coming-soon" aria-disabled="true">Coming Soon</span>
-        <div class="book-guarantee">Stay tuned. Big things are coming.</div>
-      </div>
-      <div class="book-visual">
-        <div class="book-cover">
-          <div class="book-cover-title">WORK<br>LESS<br><span style="color:var(--red);">&amp;</span><br>GAIN<br>MORE</div>
-          <div class="book-cover-bar"></div>
-          <div class="book-cover-sub">Strategies · Mindset · Freedom</div>
-          <div class="book-cover-author">Anthony Brown</div>
+    <div class="book-poster fade-up">
+      <h2 class="poster-coming">
+        <span class="l1">Coming</span>
+        <span class="l2">Soon</span>
+      </h2>
+      <svg class="poster-underline" viewBox="0 0 300 22" aria-hidden="true">
+        <path d="M6,13 C70,5 150,17 212,9 C252,4 280,11 295,8 C285,17 250,13 210,17 C150,21 70,11 9,18 C4,16 4,15 6,13 Z" fill="#E2A828"/>
+      </svg>
+      <p class="poster-tagline">It's time to level up.</p>
+
+      <div class="poster-body">
+        <div class="poster-cover">
+          <div class="poster-cover-howto">How To</div>
+          <div class="poster-cover-stack">
+            <span class="strike">Work</span>
+            <span>Less &amp;</span>
+            <span>Gain</span>
+            <span>More</span>
+          </div>
+          <div class="poster-cover-author">Anthony Brown</div>
         </div>
+
+        <div class="poster-benefits">
+          <div class="poster-benefit">
+            <span class="poster-benefit-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#E2A828" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="13" r="7"/><circle cx="11" cy="13" r="3.2"/>
+                <path d="M11 13 L20 4"/><path d="M16 4 h4 v4"/>
+              </svg>
+            </span>
+            <div>
+              <div class="poster-benefit-title">Work Smarter</div>
+              <div class="poster-benefit-sub">Not Harder</div>
+            </div>
+          </div>
+          <div class="poster-benefit">
+            <span class="poster-benefit-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#E2A828" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 20 h16"/>
+                <rect x="5.5" y="13" width="3" height="5"/><rect x="10.5" y="9.5" width="3" height="8.5"/><rect x="15.5" y="6" width="3" height="12"/>
+                <path d="M5 11 L11 7.5 L15 9.5 L20 4"/><path d="M17 4 h3 v3"/>
+              </svg>
+            </span>
+            <div>
+              <div class="poster-benefit-title">Build Freedom</div>
+              <div class="poster-benefit-sub">Through Focus</div>
+            </div>
+          </div>
+          <div class="poster-benefit">
+            <span class="poster-benefit-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#E2A828" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="10" cy="8" r="3.4"/>
+                <path d="M4 20 c0-3.6 3-5.6 6-5.6 c1.2 0 2.3 .3 3.2 .8"/>
+                <path d="M18 12.5 l1 2 2.1 .3 -1.5 1.5 .4 2.1 -2 -1 -2 1 .4 -2.1 -1.5 -1.5 2.1 -.3 z"/>
+              </svg>
+            </span>
+            <div>
+              <div class="poster-benefit-title">Create A Life</div>
+              <div class="poster-benefit-sub">Of Impact &amp; Income</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="poster-footer">
+        <div class="poster-byline">A New Book by Anthony Brown</div>
+        <div class="poster-sub2">Strategies. Mindset. Freedom.<br>It's time to level up.</div>
+        <div class="poster-banner">Stay Tuned. Big Things Are Coming.</div>
       </div>
     </div>
   </div>
