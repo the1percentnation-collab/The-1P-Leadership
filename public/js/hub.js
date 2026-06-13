@@ -7,6 +7,7 @@ import { onAuthReady, currentUser } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { firebaseReady } from './firebase.js';
 import { renderTopbar } from './topbar.js';
+import { ensureOnboarded } from './onboarding-guard.js';
 import {
   getUserProfile,
   hasNewPostsSinceVisit,
@@ -331,6 +332,7 @@ async function main() {
       location.replace('/login.html');
       return;
     }
+    if (!(await ensureOnboarded(user))) return;
   }
 
   await store.load();

@@ -1031,6 +1031,197 @@ exports.registerForEvent = onCall(async (request) => {
 });
 
 // ────────────────────────────────────────────────────────────────
+// Course interest + member onboarding → CRM
+//
+// Both callables upsert the caller into the academy's CRM (the owner's
+// company) so admins/owners can see who signed up and what they want.
+// They run with the Admin SDK, so they bypass Firestore rules — members
+// never get direct write access to the contacts collection.
+// ────────────────────────────────────────────────────────────────
+
+// Resolve the academy's company (the owner's). Cached per cold start.
+let _academyCompanyIdCache = null;
+async function resolveAcademyCompanyId(db) {
+  if (_academyCompanyIdCache) return _academyCompanyIdCache;
+  // 1) Find the owner user, prefer their companyId.
+  try {
+    const snap = await db.collection('users').where('email', '==', OWNER_EMAIL).limit(1).get();
+    if (!snap.empty) {
+      const owner = snap.docs[0];
+      const cid = owner.data().companyId;
+      if (cid) { _academyCompanyIdCache = cid; return cid; }
+      // 2) Else a company the owner administers.
+      const cSnap = await db.collection('companies').where('adminUids', 'array-contains', owner.id).limit(1).get();
+      if (!cSnap.empty) { _academyCompanyIdCache = cSnap.docs[0].id; return cSnap.docs[0].id; }
+    }
+  } catch (e) { console.warn('[resolveAcademyCompanyId]', e && e.message); }
+  // 3) Fallback: the first company that exists.
+  try {
+    const any = await db.collection('companies').limit(1).get();
+    if (!any.empty) { _academyCompanyIdCache = any.docs[0].id; return any.docs[0].id; }
+  } catch (e) {}
+  return null;
+}
+
+// Find-or-create a contact by email, merge fields, and return its ref.
+async function upsertCrmContact(db, companyId, { name, email, phone, address, companyName, source, tags }) {
+  const colRef = db.collection('companies').doc(companyId).collection('contacts');
+  const FV = admin.firestore.FieldValue;
+  let ref = null;
+  try {
+    const snap = await colRef.where('email', '==', email).limit(1).get();
+    if (!snap.empty) ref = snap.docs[0].ref;
+  } catch (e) {}
+
+  if (ref) {
+    const patch = { updatedAt: FV.serverTimestamp(), lastActivityAt: FV.serverTimestamp() };
+    if (name) patch.name = name;
+    if (phone) patch.phone = phone;
+    if (address) patch.address = address;
+    if (companyName) patch.companyName = companyName;
+    if (tags && tags.length) patch.tags = FV.arrayUnion(...tags);
+    await ref.set(patch, { merge: true });
+  } else {
+    ref = await colRef.add({
+      name: name || 'Member',
+      email,
+      phone: phone || null,
+      address: address || null,
+      companyName: companyName || null,
+      source: source || 'Member',
+      stage: 'new',
+      tags: tags || [],
+      ownerUid: null,
+      createdAt: FV.serverTimestamp(),
+      updatedAt: FV.serverTimestamp(),
+      createdBy: 'system',
+      lastActivityAt: FV.serverTimestamp()
+    });
+  }
+  return ref;
+}
+
+// registerCourseInterest({ slug, title }) — member taps "Notify me when live".
+exports.registerCourseInterest = onCall(async (request) => {
+  const db = admin.firestore();
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const data = request.data || {};
+  const slug = (data.slug || '').toString().trim().slice(0, 80);
+  const title = (data.title || '').toString().trim().slice(0, 120) || slug;
+  if (!slug) throw new HttpsError('invalid-argument', 'A course slug is required.');
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const u = userSnap.exists ? userSnap.data() : {};
+  const email = (u.email || (request.auth.token && request.auth.token.email) || '').toString().toLowerCase();
+  if (!EMAIL_RE.test(email)) throw new HttpsError('failed-precondition', 'Your account has no valid email.');
+
+  const FV = admin.firestore.FieldValue;
+
+  // Mirror to the member's own account (dedupes the button + lets them see it).
+  await db.collection('users').doc(uid).collection('courseInterests').doc(slug).set({
+    slug, title, createdAt: FV.serverTimestamp()
+  }, { merge: true });
+
+  // Upsert into the CRM (best-effort).
+  try {
+    const companyId = await resolveAcademyCompanyId(db);
+    if (companyId) {
+      const ref = await upsertCrmContact(db, companyId, {
+        name: u.displayName || null,
+        email,
+        phone: u.phone || null,
+        address: u.address || null,
+        companyName: u.company || null,
+        source: 'Course Interest',
+        tags: [`Waitlist: ${title}`.slice(0, 40)]
+      });
+      await ref.collection('activities').add({
+        type: 'course_interest',
+        description: `Joined the waitlist for "${title}"`,
+        actorUid: 'system',
+        actorName: 'Course waitlist',
+        createdAt: FV.serverTimestamp(),
+        meta: { courseSlug: slug, courseTitle: title }
+      });
+    }
+  } catch (e) {
+    console.warn('[registerCourseInterest] CRM upsert failed:', e && e.message);
+  }
+
+  return { ok: true, slug };
+});
+
+// submitOnboarding({ displayName, phone, address, company, industry, location, goals })
+// Required after member-portal signup. Updates the user profile and upserts
+// the member into the CRM with everything they entered.
+exports.submitOnboarding = onCall(async (request) => {
+  const db = admin.firestore();
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const data = request.data || {};
+  const s = (v, n) => (v || '').toString().trim().slice(0, n);
+  const displayName = s(data.displayName, 120);
+  const phone = s(data.phone, 40);
+  const address = s(data.address, 240);
+  const company = s(data.company, 120);
+  const industry = s(data.industry, 80);
+  const location = s(data.location, 120);
+  const goals = s(data.goals, 1000);
+
+  if (!displayName) throw new HttpsError('invalid-argument', 'Please enter your name.');
+  if (!phone) throw new HttpsError('invalid-argument', 'Please enter a phone number.');
+
+  const FV = admin.firestore.FieldValue;
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  const u = userSnap.exists ? userSnap.data() : {};
+  const email = (u.email || (request.auth.token && request.auth.token.email) || '').toString().toLowerCase();
+
+  // 1) Update the member's profile doc + flip the onboarding gate.
+  await userRef.set({
+    displayName: displayName || u.displayName || null,
+    phone, address, company, industry, location,
+    communityGoals: goals,
+    onboardingComplete: true,
+    onboardingAt: FV.serverTimestamp(),
+    lastActiveAt: FV.serverTimestamp()
+  }, { merge: true });
+
+  // 2) Upsert into the CRM (best-effort).
+  try {
+    const companyId = await resolveAcademyCompanyId(db);
+    if (companyId && EMAIL_RE.test(email)) {
+      const ref = await upsertCrmContact(db, companyId, {
+        name: displayName,
+        email,
+        phone,
+        address,
+        companyName: company,
+        source: 'Member Signup',
+        tags: ['Member', industry ? `Industry: ${industry}`.slice(0, 40) : null].filter(Boolean)
+      });
+      await ref.collection('activities').add({
+        type: 'member_onboarding',
+        description: 'Completed member-portal onboarding'
+          + (goals ? ` — Goals: ${goals.slice(0, 200)}` : ''),
+        actorUid: 'system',
+        actorName: 'Member onboarding',
+        createdAt: FV.serverTimestamp(),
+        meta: { phone, address, company, industry, location, goals }
+      });
+    }
+  } catch (e) {
+    console.warn('[submitOnboarding] CRM upsert failed:', e && e.message);
+  }
+
+  return { ok: true };
+});
+
+
+// ────────────────────────────────────────────────────────────────
 // sendgridEventWebhook — HTTP function (public)
 // ────────────────────────────────────────────────────────────────
 

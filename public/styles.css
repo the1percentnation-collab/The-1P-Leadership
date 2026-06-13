@@ -4127,8 +4127,33 @@ body.academy-course #course-workspace {
   font-weight: 700;
   font-size: 18px;
   letter-spacing: -0.01em;
-  color: var(--white);
+  color: var(--red);
   line-height: 1.15;
+}
+
+/* Coming-soon cards are dimmed; keep their red title legible. */
+.available-card.is-soon { opacity: 1; }
+.available-card.is-soon .available-card-title { color: var(--red); }
+
+/* "Notify me when live" — red CTA, plus a confirmed state once joined. */
+.available-notify {
+  background: var(--red);
+  color: #fff;
+  border: 1px solid var(--red);
+}
+.available-notify:hover {
+  background: var(--red-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(230,3,6,0.28);
+}
+.available-notify.is-joined,
+.available-notify:disabled {
+  background: transparent;
+  color: var(--red);
+  border: 1px solid var(--border-red, rgba(230,3,6,0.4));
+  cursor: default;
+  transform: none;
+  box-shadow: none;
 }
 
 .available-card-desc {

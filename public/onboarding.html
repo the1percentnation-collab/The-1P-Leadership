@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Complete your profile | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+  <div class="auth-shell">
+    <div class="auth-card">
+      <a class="auth-brand" href="https://the1pnation.com" aria-label="The One Percent Nation">
+        <img src="/assets/academy-logo.png" alt="" class="auth-brand-mark">
+      </a>
+      <div class="brand-badge">Member Portal</div>
+      <h1>YOUR <span>DETAILS</span></h1>
+      <div class="auth-sub">One quick step before you start — this helps us tailor your experience and keep you in the loop.</div>
+
+      <div id="auth-msg"></div>
+
+      <form class="auth-form" id="onboarding-form" novalidate>
+        <label for="displayName">Full name *</label>
+        <input id="displayName" type="text" autocomplete="name" required />
+
+        <label for="phone">Phone *</label>
+        <input id="phone" type="tel" autocomplete="tel" required />
+
+        <label for="address">Address</label>
+        <input id="address" type="text" autocomplete="street-address" placeholder="Street, City, State" />
+
+        <label for="company">Organization / Company</label>
+        <input id="company" type="text" autocomplete="organization" />
+
+        <label for="industry">Industry</label>
+        <input id="industry" type="text" list="industry-list" autocomplete="off" />
+        <datalist id="industry-list">
+          <option value="Coaching"></option>
+          <option value="Consulting"></option>
+          <option value="Technology"></option>
+          <option value="Finance"></option>
+          <option value="Healthcare"></option>
+          <option value="Education"></option>
+          <option value="Real Estate"></option>
+          <option value="Retail"></option>
+          <option value="Nonprofit"></option>
+          <option value="Ministry / Faith"></option>
+          <option value="Other"></option>
+        </datalist>
+
+        <label for="location">Location</label>
+        <input id="location" type="text" autocomplete="address-level2" placeholder="City, Country" />
+
+        <label for="goals">What do you want to achieve?</label>
+        <textarea id="goals" rows="3" placeholder="Your goals for joining the Academy"></textarea>
+
+        <button class="btn btn-primary" type="submit" id="btn-submit">Enter the Academy →</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { onAuthReady } from './js/auth.js';
+    import { db, functions, firebaseReady } from './js/firebase.js';
+    import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+    import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
+
+    const $ = (id) => document.getElementById(id);
+    const msg = $('auth-msg');
+    function showErr(txt) { msg.innerHTML = `<div class="auth-error">${txt}</div>`; }
+    function clearMsg() { msg.innerHTML = ''; }
+
+    function nextUrl() {
+      const n = new URLSearchParams(location.search).get('next');
+      return n && n.startsWith('/') ? n : '/dashboard';
+    }
+
+    if (!firebaseReady) showErr('Authentication service is unreachable. Check your connection and retry.');
+
+    const user = await onAuthReady();
+    if (!user) {
+      location.replace('/login.html?next=' + encodeURIComponent('/onboarding.html'));
+    } else {
+      // Pre-fill name; skip onboarding entirely for staff or anyone already done.
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        const d = snap.exists() ? snap.data() : {};
+        if (d.role === 'owner' || d.role === 'admin' || d.onboardingComplete === true) {
+          location.replace(nextUrl());
+        }
+        $('displayName').value = d.displayName || user.displayName || '';
+        if (d.phone) $('phone').value = d.phone;
+        if (d.company) $('company').value = d.company;
+      } catch (e) {
+        $('displayName').value = user.displayName || '';
+      }
+    }
+
+    $('onboarding-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearMsg();
+      const payload = {
+        displayName: $('displayName').value.trim(),
+        phone: $('phone').value.trim(),
+        address: $('address').value.trim(),
+        company: $('company').value.trim(),
+        industry: $('industry').value.trim(),
+        location: $('location').value.trim(),
+        goals: $('goals').value.trim()
+      };
+      if (!payload.displayName) return showErr('Please enter your name.');
+      if (!payload.phone) return showErr('Please enter a phone number.');
+      $('btn-submit').disabled = true;
+      try {
+        await httpsCallable(functions, 'submitOnboarding')(payload);
+        location.replace(nextUrl());
+      } catch (err) {
+        showErr(err.message || 'Could not save your details. Please try again.');
+        $('btn-submit').disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
