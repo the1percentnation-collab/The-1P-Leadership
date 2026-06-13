@@ -3957,8 +3957,24 @@ body.academy-course #course-workspace {
 }
 
 @media (max-width: 900px) {
+  body.academy-course {
+    height: auto;
+    overflow: visible;
+    overflow-y: auto;
+  }
   body.academy-course #course-workspace {
     flex-direction: column;
+    overflow: visible;
+    min-height: auto;
+  }
+  .courses-main {
+    overflow: visible;
+  }
+  .workspace-welcome,
+  .workspace-live-content,
+  .workspace-coming-soon-main,
+  .workspace-roadmap {
+    overflow-y: visible;
   }
   .courses-sidebar {
     width: 100%;
