@@ -1170,6 +1170,8 @@ exports.submitOnboarding = onCall(async (request) => {
   const industry = s(data.industry, 80);
   const location = s(data.location, 120);
   const goals = s(data.goals, 1000);
+  const marketingConsent = data.marketingConsent === true;
+  const consentText = s(data.consentText, 1000);
 
   if (!displayName) throw new HttpsError('invalid-argument', 'Please enter your name.');
   if (!phone) throw new HttpsError('invalid-argument', 'Please enter a phone number.');
@@ -1181,14 +1183,22 @@ exports.submitOnboarding = onCall(async (request) => {
   const email = (u.email || (request.auth.token && request.auth.token.email) || '').toString().toLowerCase();
 
   // 1) Update the member's profile doc + flip the onboarding gate.
-  await userRef.set({
+  // Record the marketing/communications consent as a durable proof-of-opt-in:
+  // the boolean, the timestamp, and the exact wording the member agreed to.
+  const profilePatch = {
     displayName: displayName || u.displayName || null,
     phone, address, company, industry, location,
     communityGoals: goals,
+    marketingConsent,
     onboardingComplete: true,
     onboardingAt: FV.serverTimestamp(),
     lastActiveAt: FV.serverTimestamp()
-  }, { merge: true });
+  };
+  if (marketingConsent) {
+    profilePatch.marketingConsentAt = FV.serverTimestamp();
+    if (consentText) profilePatch.marketingConsentText = consentText;
+  }
+  await userRef.set(profilePatch, { merge: true });
 
   // 2) Upsert into the CRM (best-effort).
   try {
@@ -1201,8 +1211,18 @@ exports.submitOnboarding = onCall(async (request) => {
         address,
         companyName: company,
         source: 'Member Signup',
-        tags: ['Member', industry ? `Industry: ${industry}`.slice(0, 40) : null].filter(Boolean)
+        tags: [
+          'Member',
+          industry ? `Industry: ${industry}`.slice(0, 40) : null,
+          marketingConsent ? 'Opt-In: Calls/SMS/Email' : null
+        ].filter(Boolean)
       });
+      // Persist consent flags on the contact for filtering/segmenting.
+      await ref.set({
+        marketingConsent,
+        marketingConsentAt: marketingConsent ? FV.serverTimestamp() : null,
+        marketingConsentText: marketingConsent ? (consentText || null) : null
+      }, { merge: true });
       await ref.collection('activities').add({
         type: 'member_onboarding',
         description: 'Completed member-portal onboarding'
@@ -1211,6 +1231,17 @@ exports.submitOnboarding = onCall(async (request) => {
         actorName: 'Member onboarding',
         createdAt: FV.serverTimestamp(),
         meta: { phone, address, company, industry, location, goals }
+      });
+      // Separate, explicit consent record (proof of opt-in / opt-out).
+      await ref.collection('activities').add({
+        type: 'consent_updated',
+        description: marketingConsent
+          ? 'Opted IN to calls, SMS, and email communications'
+          : 'Did NOT opt in to calls, SMS, or email communications',
+        actorUid: 'system',
+        actorName: 'Consent capture',
+        createdAt: FV.serverTimestamp(),
+        meta: { marketingConsent, consentText: consentText || null, channel: 'onboarding' }
       });
     }
   } catch (e) {

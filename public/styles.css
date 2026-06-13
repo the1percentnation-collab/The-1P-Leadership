@@ -1130,6 +1130,30 @@ body {
 .auth-form input:focus,
 .auth-form textarea:focus { border-color: rgba(204,27,27,0.5); }
 
+/* Opt-in consent row — checkbox + fine print, left-aligned. */
+.auth-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 18px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--gray-light);
+  cursor: pointer;
+}
+.auth-consent input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--red);
+  cursor: pointer;
+}
+.auth-consent a { color: var(--red); }
+
 .auth-form .btn { width: 100%; padding: 11px 18px; font-size: 14px; text-align: center; justify-content: center; }
 .auth-form .btn + .btn { margin-top: 10px; }
 
