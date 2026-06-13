@@ -21,8 +21,24 @@ import { getUserProfile, avatarHtml, escapeHtml } from './community.js';
 import { store } from './store.js';
 import { loadEnrollments, enrollInCourse, isEnrolled, enrolledCourses, availableCourses } from './enrollments.js';
 import { getRefCode } from './referral.js';
+import { ensureOnboarded } from './onboarding-guard.js';
+import { db } from './firebase.js';
+import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const $ = (id) => document.getElementById(id);
+
+// Course slugs the current member has already joined the waitlist for.
+const courseInterests = new Set();
+
+async function loadCourseInterests() {
+  courseInterests.clear();
+  const user = currentUser();
+  if (!firebaseReady || !user) return;
+  try {
+    const snap = await getDocs(collection(db, 'users', user.uid, 'courseInterests'));
+    snap.forEach((d) => courseInterests.add(d.id));
+  } catch (e) { /* non-fatal */ }
+}
 
 function urlParam(name) {
   const v = new URLSearchParams(location.search).get(name);
@@ -120,11 +136,12 @@ function renderAvailableCourses() {
     const enrollLabel = p.isFree
       ? 'Enroll Free →'
       : `Enroll${p.label ? ' · ' + escapeHtml(p.label) : ''} →`;
+    const joined = courseInterests.has(c.slug);
     const action = isBundle
       ? `<a class="btn btn-primary available-bundle-link" href="${escapeHtml(c.bundleHref || '/bundle.html')}">See Bundle Deal →</a>`
       : isLive
         ? `<button class="btn btn-primary available-enroll" data-slug="${escapeHtml(c.slug)}">${enrollLabel}</button>`
-        : `<button class="btn btn-ghost" disabled>Notify me when live</button>`;
+        : `<button class="btn available-notify${joined ? ' is-joined' : ''}" data-slug="${escapeHtml(c.slug)}" data-title="${escapeHtml(c.title)}"${joined ? ' disabled' : ''}>${joined ? "✓ You're on the list" : 'Notify me when live'}</button>`;
     return `
       <div class="available-card ${isBundle ? 'is-bundle' : isLive ? '' : 'is-soon'}" data-slug="${escapeHtml(c.slug)}">
         <div class="available-card-top">
@@ -174,6 +191,28 @@ function renderAvailableCourses() {
         btn.disabled = false;
         btn.textContent = 'Sign up →';
         alert(err.message || 'Could not enroll. Please try again.');
+      }
+    });
+  });
+
+  slot.querySelectorAll('.available-notify').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (btn.classList.contains('is-joined')) return;
+      const slug = btn.dataset.slug;
+      const title = btn.dataset.title || slug;
+      const prev = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Adding you…';
+      try {
+        await httpsCallable(functions, 'registerCourseInterest')({ slug, title });
+        courseInterests.add(slug);
+        btn.classList.add('is-joined');
+        btn.textContent = "✓ You're on the list";
+      } catch (err) {
+        console.warn('[courses-page] notify failed', err);
+        btn.disabled = false;
+        btn.textContent = prev;
+        alert(err.message || 'Could not add you to the waitlist. Please try again.');
       }
     });
   });
@@ -363,12 +402,14 @@ async function main() {
       location.replace('/login.html');
       return;
     }
+    if (!(await ensureOnboarded(user))) return;
   }
 
   // Load courses + progress + enrollments before deciding what to render.
   try { await loadCourses(); } catch (e) {}
   try { await store.load(); } catch (e) {}
   try { await loadEnrollments(); } catch (e) {}
+  try { await loadCourseInterests(); } catch (e) {}
 
   const slug = courseSlug();
   const moduleId = moduleParam();

@@ -112,6 +112,9 @@ function iconFor(type) {
     case 'manual_sms': return '💬';
     case 'email_sent': return '✉';
     case 'email_event': return '📬';
+    case 'event_registration': return '🎟';
+    case 'course_interest': return '🎓';
+    case 'member_onboarding': return '🚀';
     default: return '•';
   }
 }

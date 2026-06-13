@@ -2,6 +2,7 @@
 
 import { auth, firebaseReady } from './firebase.js';
 import { onAuthReady, createCommunityInvite } from './auth.js';
+import { ensureOnboarded } from './onboarding-guard.js';
 import { getRoleInfo } from './roles.js';
 import { renderTopbar, teardownTopbar } from './topbar.js';
 import {
@@ -1394,6 +1395,7 @@ async function main() {
     location.replace('/login.html?next=' + encodeURIComponent('/community.html'));
     return;
   }
+  if (!(await ensureOnboarded(u))) return;
 
   const info = await getRoleInfo();
   state.role = info.role;

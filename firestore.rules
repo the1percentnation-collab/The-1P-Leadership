@@ -123,6 +123,14 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // users/{uid}/courseInterests/{slug} — a per-member mirror of the
+      // course waitlists they've joined, written by the registerCourseInterest
+      // Cloud Function (Admin SDK). Self/owner read; server-only writes.
+      match /courseInterests/{slug} {
+        allow read: if isOwner() || isSelf(uid);
+        allow write: if false;
+      }
+
       // users/{uid}/purchases/{sessionId} — written by the Stripe webhook
       // (Admin SDK). Self/owner read; server-only writes.
       match /purchases/{purchaseId} {
