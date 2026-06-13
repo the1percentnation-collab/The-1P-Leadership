@@ -145,7 +145,7 @@ function renderContinueCard() {
           <div class="academy-continue-title">No active courses yet</div>
           <div class="academy-continue-sub">Browse the Academy library and sign up for your first course — the work starts when you choose.</div>
         </div>
-        <a class="btn btn-primary" href="/courses.html">Browse courses →</a>
+        <a class="btn btn-primary btn-cta-pulse" href="/courses.html">Browse courses →</a>
       </div>
     `;
     return;
