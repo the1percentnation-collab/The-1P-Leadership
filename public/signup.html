@@ -97,7 +97,7 @@
       $('btn-submit').disabled = true;
       try {
         await signupEmail({ email, password, displayName, inviteCode, communityInviteToken });
-        location.replace('/index.html');
+        location.replace('/dashboard');
       } catch (err) {
         showErr(err.message || 'Sign-up failed.');
       } finally {
@@ -116,7 +116,7 @@
         if (communityInviteToken) {
           try { await acceptCommunityInvite(communityInviteToken); } catch (err) { /* tolerated */ }
         }
-        location.replace('/index.html');
+        location.replace('/dashboard');
       } catch (err) {
         showErr(err.message || 'Google sign-in failed.');
       }
