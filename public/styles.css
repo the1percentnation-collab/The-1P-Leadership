@@ -2950,17 +2950,17 @@ body.academy-hub {
 /* Daily quote entrance — fades up and brightens so it pulls the eye on
    sign-in. Honors reduced-motion: the quote simply appears at rest. */
 #hub-subtitle.hub-quote-enter {
-  animation: hub-quote-in 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: hub-quote-in 2400ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes hub-quote-in {
   0% {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(24px);
     color: var(--white);
-    filter: blur(4px);
+    filter: blur(6px);
   }
-  60% {
+  75% {
     color: var(--white);
   }
   100% {
