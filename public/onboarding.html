@@ -34,10 +34,10 @@
         <input id="displayName" type="text" autocomplete="name" required />
 
         <label for="phone">Phone *</label>
-        <input id="phone" type="tel" autocomplete="tel" required />
+        <input id="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="405-816-3556" required />
 
         <label for="address">Address</label>
-        <input id="address" type="text" autocomplete="street-address" placeholder="Street, City, State" />
+        <input id="address" type="text" autocomplete="street-address" placeholder="Start typing your address…" />
 
         <label for="company">Organization / Company</label>
         <input id="company" type="text" autocomplete="organization" />
@@ -58,9 +58,6 @@
           <option value="Other"></option>
         </datalist>
 
-        <label for="location">Location</label>
-        <input id="location" type="text" autocomplete="address-level2" placeholder="City, Country" />
-
         <label for="goals">What do you want to achieve?</label>
         <textarea id="goals" rows="3" placeholder="Your goals for joining the Academy"></textarea>
 
@@ -76,7 +73,7 @@
 
   <script type="module">
     import { onAuthReady } from './js/auth.js';
-    import { db, functions, firebaseReady } from './js/firebase.js';
+    import { db, functions, firebaseReady, firebaseConfig } from './js/firebase.js';
     import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
     import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
@@ -111,6 +108,56 @@
       }
     }
 
+    // ── Phone: auto-insert dashes as the member types ──────────────
+    function formatPhone(raw) {
+      const d = (raw || '').replace(/\D/g, '').slice(0, 15);
+      if (d.length <= 3) return d;
+      if (d.length <= 6) return `${d.slice(0, 3)}-${d.slice(3)}`;
+      if (d.length <= 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+      // 11+ digits → treat the leading digits as a country code.
+      const cc = d.slice(0, d.length - 10);
+      const rest = d.slice(d.length - 10);
+      return `+${cc} ${rest.slice(0, 3)}-${rest.slice(3, 6)}-${rest.slice(6)}`;
+    }
+    const phoneEl = $('phone');
+    phoneEl.addEventListener('input', () => { phoneEl.value = formatPhone(phoneEl.value); });
+    if (phoneEl.value) phoneEl.value = formatPhone(phoneEl.value);
+
+    // ── Address: Google Places autocomplete (graceful fallback) ────
+    // Reuses the project's API key. If the Maps/Places API isn't enabled
+    // for the key, the field stays a normal text input — nothing breaks.
+    function loadPlaces(key) {
+      return new Promise((resolve, reject) => {
+        if (window.google && window.google.maps && window.google.maps.places) return resolve();
+        const sc = document.createElement('script');
+        sc.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places&loading=async`;
+        sc.async = true;
+        sc.onload = resolve;
+        sc.onerror = reject;
+        document.head.appendChild(sc);
+      });
+    }
+    (async () => {
+      try {
+        await loadPlaces(firebaseConfig.apiKey);
+        const addressEl = $('address');
+        const ac = new google.maps.places.Autocomplete(addressEl, {
+          types: ['address'],
+          fields: ['formatted_address']
+        });
+        ac.addListener('place_changed', () => {
+          const p = ac.getPlace();
+          if (p && p.formatted_address) addressEl.value = p.formatted_address;
+        });
+        // Don't let Enter (to pick a suggestion) submit the form.
+        addressEl.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') e.preventDefault();
+        });
+      } catch (e) {
+        console.warn('[onboarding] address autocomplete unavailable', e);
+      }
+    })();
+
     $('onboarding-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       clearMsg();
@@ -120,7 +167,6 @@
         address: $('address').value.trim(),
         company: $('company').value.trim(),
         industry: $('industry').value.trim(),
-        location: $('location').value.trim(),
         goals: $('goals').value.trim(),
         marketingConsent: $('consent').checked,
         consentText: $('consent-text').textContent.replace(/\s+/g, ' ').trim()

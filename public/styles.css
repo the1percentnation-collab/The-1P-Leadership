@@ -1154,6 +1154,27 @@ body {
 }
 .auth-consent a { color: var(--red); }
 
+/* Google Places autocomplete dropdown — match the dark auth theme. */
+.pac-container {
+  background: var(--charcoal);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 4px;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.6);
+  font-family: var(--font-body);
+}
+.pac-item {
+  border-top: 1px solid var(--border);
+  color: var(--gray-light);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.pac-item:first-child { border-top: none; }
+.pac-item:hover, .pac-item-selected { background: rgba(255,255,255,0.05); }
+.pac-item-query { color: var(--white); }
+.pac-matched { color: var(--red); }
+.pac-icon { display: none; }
+
 .auth-form .btn { width: 100%; padding: 11px 18px; font-size: 14px; text-align: center; justify-content: center; }
 .auth-form .btn + .btn { margin-top: 10px; }
 
