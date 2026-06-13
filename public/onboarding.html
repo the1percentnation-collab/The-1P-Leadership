@@ -18,8 +18,8 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body style="display:block; height:auto; overflow:auto;">
-  <div class="auth-shell">
-    <div class="auth-card">
+  <div class="auth-shell onboarding-shell">
+    <div class="auth-card onboarding-card">
       <a class="auth-brand" href="https://the1pnation.com" aria-label="The One Percent Nation">
         <img src="/assets/academy-logo.png" alt="" class="auth-brand-mark">
       </a>
@@ -30,43 +30,55 @@
       <div id="auth-msg"></div>
 
       <form class="auth-form" id="onboarding-form" novalidate>
-        <label for="displayName">Full name *</label>
-        <input id="displayName" type="text" autocomplete="name" required />
+        <div class="ob-field">
+          <label for="displayName">Full name *</label>
+          <input id="displayName" type="text" autocomplete="name" required />
+        </div>
 
-        <label for="phone">Phone *</label>
-        <input id="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="405-816-3556" required />
+        <div class="ob-field">
+          <label for="phone">Phone *</label>
+          <input id="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="405-816-3556" required />
+        </div>
 
-        <label for="address">Address</label>
-        <input id="address" type="text" autocomplete="street-address" placeholder="Start typing your address…" />
+        <div class="ob-field ob-field-full">
+          <label for="address">Address</label>
+          <input id="address" type="text" autocomplete="street-address" placeholder="Start typing your address…" />
+        </div>
 
-        <label for="company">Organization / Company</label>
-        <input id="company" type="text" autocomplete="organization" />
+        <div class="ob-field">
+          <label for="company">Organization / Company</label>
+          <input id="company" type="text" autocomplete="organization" />
+        </div>
 
-        <label for="industry">Industry</label>
-        <input id="industry" type="text" list="industry-list" autocomplete="off" />
-        <datalist id="industry-list">
-          <option value="Coaching"></option>
-          <option value="Consulting"></option>
-          <option value="Technology"></option>
-          <option value="Finance"></option>
-          <option value="Healthcare"></option>
-          <option value="Education"></option>
-          <option value="Real Estate"></option>
-          <option value="Retail"></option>
-          <option value="Nonprofit"></option>
-          <option value="Ministry / Faith"></option>
-          <option value="Other"></option>
-        </datalist>
+        <div class="ob-field">
+          <label for="industry">Industry</label>
+          <input id="industry" type="text" list="industry-list" autocomplete="off" />
+          <datalist id="industry-list">
+            <option value="Coaching"></option>
+            <option value="Consulting"></option>
+            <option value="Technology"></option>
+            <option value="Finance"></option>
+            <option value="Healthcare"></option>
+            <option value="Education"></option>
+            <option value="Real Estate"></option>
+            <option value="Retail"></option>
+            <option value="Nonprofit"></option>
+            <option value="Ministry / Faith"></option>
+            <option value="Other"></option>
+          </datalist>
+        </div>
 
-        <label for="goals">What do you want to achieve?</label>
-        <textarea id="goals" rows="3" placeholder="Your goals for joining the Academy"></textarea>
+        <div class="ob-field ob-field-full">
+          <label for="goals">What do you want to achieve?</label>
+          <textarea id="goals" rows="3" placeholder="Your goals for joining the Academy"></textarea>
+        </div>
 
-        <label class="auth-consent" for="consent">
+        <label class="auth-consent ob-field-full" for="consent">
           <input id="consent" type="checkbox" />
           <span id="consent-text">I agree to receive calls, text messages (SMS), and emails from The One Percent Nation at the phone number and email address I provided — including account updates, course information, and marketing. Message &amp; data rates may apply and message frequency varies. Consent is not a condition of any purchase. I can opt out at any time by replying STOP to texts or using the unsubscribe link in emails.</span>
         </label>
 
-        <button class="btn btn-primary" type="submit" id="btn-submit">Enter the Academy →</button>
+        <button class="btn btn-primary ob-field-full" type="submit" id="btn-submit">Enter the Academy →</button>
       </form>
     </div>
   </div>

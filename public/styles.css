@@ -1175,6 +1175,29 @@ body {
 .pac-matched { color: var(--red); }
 .pac-icon { display: none; }
 
+/* ── Onboarding: wider, two-column desktop layout (mobile untouched) ──
+   All rules below are gated behind min-width, so the mobile experience
+   and the shared login/signup cards are completely unaffected. */
+@media (min-width: 760px) {
+  .onboarding-shell { padding: 64px 24px; }
+  .onboarding-card {
+    max-width: 780px;
+    padding: 56px 64px;
+  }
+  .onboarding-card .auth-brand-mark { height: 84px; }
+  .onboarding-card h1 { font-size: 44px; }
+  .onboarding-card .auth-sub { max-width: 540px; margin-left: auto; margin-right: auto; }
+  .onboarding-card .auth-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 24px;
+    margin-top: 30px;
+  }
+  /* Fields wrap label+input; vertical rhythm comes from the input's own
+     margin-bottom (16px), matching the mobile spacing. */
+  .onboarding-card .ob-field-full { grid-column: 1 / -1; }
+}
+
 .auth-form .btn { width: 100%; padding: 11px 18px; font-size: 14px; text-align: center; justify-content: center; }
 .auth-form .btn + .btn { margin-top: 10px; }
 
