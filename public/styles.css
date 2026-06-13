@@ -1107,7 +1107,8 @@ body {
   margin-bottom: 6px;
 }
 
-.auth-form input {
+.auth-form input,
+.auth-form textarea {
   width: 100%;
   background: var(--charcoal);
   border: 1px solid var(--border);
@@ -1121,7 +1122,13 @@ body {
   transition: border-color 0.15s;
 }
 
-.auth-form input:focus { border-color: rgba(204,27,27,0.5); }
+.auth-form textarea {
+  resize: vertical;
+  min-height: 84px;
+}
+
+.auth-form input:focus,
+.auth-form textarea:focus { border-color: rgba(204,27,27,0.5); }
 
 .auth-form .btn { width: 100%; padding: 11px 18px; font-size: 14px; text-align: center; justify-content: center; }
 .auth-form .btn + .btn { margin-top: 10px; }
