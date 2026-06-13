@@ -38,6 +38,63 @@ function renderUserChip(user, role, { profile = null, hasNewCommunity = false } 
 function renderGreeting(user, profile) {
   const name = firstName((profile && profile.displayName) || (user && user.displayName) || (user && user.email));
   $('hub-greeting').innerHTML = `Welcome back, <span>${escapeHtml(name)}</span>.`;
+  renderDailyQuote();
+}
+
+// One encouraging line, rotated daily. The index is derived from the local
+// calendar date so the quote is stable across reloads within a day and
+// advances at midnight — no storage or network needed.
+const DAILY_QUOTES = [
+  'Continue your work. Stay grounded in purpose. Move forward with intention — one percent better every day.',
+  'Small steps, taken daily, become the distance no one else is willing to travel.',
+  'Discipline is the bridge between the person you are and the person you intend to become.',
+  'Purpose turns effort into momentum. Show up today and let the work compound.',
+  'You don’t rise to your goals; you fall to your systems. Build one good habit today.',
+  'Potential means nothing until it meets action. Begin where you are.',
+  'Consistency outlasts intensity. One honest hour beats a perfect plan never started.',
+  'Redefine success on your own terms, then take one deliberate step toward it.',
+  'The work you avoid is usually the work that frees you. Lean in.',
+  'Progress is quiet. Trust it even on the days it doesn’t feel like winning.',
+  'Become one percent better today — it is the slowest way to fail and the surest way to grow.',
+  'Clarity comes from doing, not waiting. Move, and the path reveals itself.',
+  'Your future is built in the unremarkable hours. Make this one count.',
+  'Realign with why you started, and the how gets simpler.',
+  'Growth lives just past comfort. Take the step that stretches you.',
+  'Be relentless about progress, patient about results.',
+  'The standard you walk past is the standard you accept. Raise it today.',
+  'Energy follows commitment. Decide first, then act.',
+  'You are not behind. You are exactly one decision away from forward.',
+  'Master the basics until they master you. Excellence is repetition with intention.',
+  'Do the hard thing while it is still small. Tomorrow it only grows.',
+  'Momentum is a choice you make before you feel like it.',
+  'Release the potential you’ve been protecting. The world needs the work only you can do.',
+  'Focus is a superpower in a distracted world. Guard your attention like it matters — it does.',
+  'Win the morning, win the day. Start with one intentional act.',
+  'Effort compounds quietly, then all at once. Keep depositing.',
+  'Don’t count the days — make the days count.',
+  'The person you’re becoming is watching what you do right now.',
+  'Plant today what your future self will be grateful to harvest.',
+  'Stay grounded in purpose, and pressure becomes fuel instead of weight.',
+  'One percent better, every single day — that is how ordinary becomes remarkable.'
+];
+
+function dayIndex() {
+  const now = new Date();
+  // Days since the Unix epoch in local time → a stable integer per calendar day.
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.floor(startOfDay.getTime() / 86400000);
+}
+
+function renderDailyQuote() {
+  const el = $('hub-subtitle');
+  if (!el) return;
+  const quote = DAILY_QUOTES[((dayIndex() % DAILY_QUOTES.length) + DAILY_QUOTES.length) % DAILY_QUOTES.length];
+  el.textContent = quote;
+  // Re-trigger the entrance animation on each render: drop the class, force a
+  // reflow, then re-add so the keyframes restart and draw attention.
+  el.classList.remove('hub-quote-enter');
+  void el.offsetWidth;
+  el.classList.add('hub-quote-enter');
 }
 
 // Per-course progress helpers. Only 1P-CLC tracks real progress today; other
