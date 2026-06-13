@@ -90,6 +90,11 @@ function renderDailyQuote() {
   if (!el) return;
   const quote = DAILY_QUOTES[((dayIndex() % DAILY_QUOTES.length) + DAILY_QUOTES.length) % DAILY_QUOTES.length];
   el.textContent = quote;
+  // Re-trigger the entrance animation on each render: drop the class, force a
+  // reflow, then re-add so the keyframes restart and draw attention.
+  el.classList.remove('hub-quote-enter');
+  void el.offsetWidth;
+  el.classList.add('hub-quote-enter');
 }
 
 // Per-course progress helpers. Only 1P-CLC tracks real progress today; other
