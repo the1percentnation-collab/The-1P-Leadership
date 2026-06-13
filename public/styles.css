@@ -3780,6 +3780,36 @@ body.academy-course #course-workspace {
 
 .welcome-inner h1 span { color: var(--red); }
 
+/* Welcome hero slides in from the left on load — eyebrow, heading, and
+   subtext stagger in for a cohesive entrance. Honors reduced-motion. */
+.welcome-inner .academy-eyebrow,
+.welcome-inner h1,
+.welcome-inner p {
+  animation: welcome-slide-in 800ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.welcome-inner .academy-eyebrow { animation-delay: 0ms; }
+.welcome-inner h1 { animation-delay: 120ms; }
+.welcome-inner p { animation-delay: 260ms; }
+
+@keyframes welcome-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-48px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-inner .academy-eyebrow,
+  .welcome-inner h1,
+  .welcome-inner p {
+    animation: none;
+  }
+}
+
 .welcome-inner p {
   font-size: 16px;
   line-height: 1.7;
