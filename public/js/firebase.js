@@ -5,7 +5,8 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 import {
   getAuth,
   setPersistence,
-  browserLocalPersistence
+  browserLocalPersistence,
+  getRedirectResult
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getFunctions } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
@@ -43,3 +44,21 @@ export const initError = _initError;
 
 // Convenience flag: did Firebase initialize well enough to try remote calls?
 export const firebaseReady = !!(_app && _auth && _db);
+
+// Handle the result of signInWithRedirect (used in Capacitor native context).
+// Must run on every page load — the redirect result is only available once.
+if (_auth && sessionStorage.getItem('google_redirect_pending')) {
+  getRedirectResult(_auth).then(async (result) => {
+    if (result && result.user) {
+      sessionStorage.removeItem('google_redirect_pending');
+      // ensureUserDoc is imported lazily to avoid circular deps
+      const { ensureUserDoc } = await import('./auth.js');
+      await ensureUserDoc(result.user);
+    }
+  }).catch((err) => {
+    if (err.code !== 'auth/null-provider') {
+      console.warn('[firebase] getRedirectResult error:', err);
+    }
+    sessionStorage.removeItem('google_redirect_pending');
+  });
+}

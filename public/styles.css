@@ -6624,3 +6624,21 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 }
 .lesson-body img { max-width: 100%; border-radius: 8px; margin: 12px 0; }
 .lesson-body a { color: var(--red); }
+
+/* ── Native app safe area insets (Capacitor / iOS notch / Android gesture bar) ── */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+}
+
+.console-topbar,
+.academy-header {
+  padding-top: calc(14px + var(--sat));
+}
+
+body {
+  padding-bottom: var(--sab);
+}
+
+/* Hide web-only navigation elements when running as a native app */
+html.is-native .back-to-main { display: none !important; }

@@ -11,6 +11,14 @@
     gtag("config", "G-RBH536HRZE");
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#E60306">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="1P Academy">
+  <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16.png">
   <title>Custom Goal Planner | The One Percent Nation</title>
   <meta name="description" content="Build a personalized 2026 execution plan around your income target, schedule, and real life. Stop planning — start executing.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1006,5 +1014,7 @@ const staggerObs = new IntersectionObserver((entries) => {
 }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
 document.querySelectorAll('.stagger-list').forEach(el => staggerObs.observe(el));
 </script>
+  <script src="/js/capacitor-bridge.js" type="module"></script>
+  <script src="/js/register-sw.js"></script>
 </body>
 </html>

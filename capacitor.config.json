@@ -1,0 +1,38 @@
+{
+  "appId": "com.the1pnation.academy",
+  "appName": "1P Academy",
+  "webDir": "public",
+  "server": {
+    "url": "https://the-1p-leadership.web.app",
+    "cleartext": false
+  },
+  "ios": {
+    "scheme": "1PAcademy",
+    "contentInset": "always",
+    "scrollEnabled": true,
+    "allowsLinkPreview": false
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
+      "backgroundColor": "#080808",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false,
+      "spinnerColor": "#E60306"
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#080808"
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  }
+}

@@ -2225,6 +2225,16 @@ exports.createCheckoutSession = onCall(async (request) => {
   };
   if (isSubscription) priceData.recurring = { interval };
 
+  // Mobile native apps open Stripe in an external browser and return via deep link
+  const isMobile = !!(request.data && request.data.isMobile);
+  const checkoutBase = isMobile ? 'com.the1pnation.academy://courses' : APP_BASE_URL;
+  const successUrl = isMobile
+    ? `${checkoutBase}?purchase=success&course=${encodeURIComponent(slug)}`
+    : `${APP_BASE_URL}/courses.html?course=${encodeURIComponent(slug)}&purchase=success`;
+  const cancelUrl = isMobile
+    ? checkoutBase
+    : `${APP_BASE_URL}/courses.html`;
+
   const session = await stripe.checkout.sessions.create({
     mode: isSubscription ? 'subscription' : 'payment',
     line_items: [{ price_data: priceData, quantity: 1 }],
@@ -2233,8 +2243,8 @@ exports.createCheckoutSession = onCall(async (request) => {
     client_reference_id: uid,
     metadata,
     ...(isSubscription ? { subscription_data: { metadata } } : {}),
-    success_url: `${APP_BASE_URL}/courses.html?course=${encodeURIComponent(slug)}&purchase=success`,
-    cancel_url: `${APP_BASE_URL}/courses.html`
+    success_url: successUrl,
+    cancel_url: cancelUrl
   });
 
   return { ok: true, url: session.url };

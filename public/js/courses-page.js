@@ -21,6 +21,7 @@ import { getUserProfile, avatarHtml, escapeHtml } from './community.js';
 import { store } from './store.js';
 import { loadEnrollments, enrollInCourse, isEnrolled, enrolledCourses, availableCourses } from './enrollments.js';
 import { getRefCode } from './referral.js';
+import { isNative, openExternalUrl } from './capacitor-bridge.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -163,11 +164,17 @@ function renderAvailableCourses() {
         } else {
           const res = await httpsCallable(functions, 'createCheckoutSession')({
             slug,
-            refCode: getRefCode() || undefined
+            refCode: getRefCode() || undefined,
+            isMobile: isNative
           });
           const url = res && res.data && res.data.url;
           if (!url) throw new Error('Checkout could not be started.');
-          location.assign(url);
+          if (isNative) {
+            // Open Stripe in the system browser so the user can return to the app via deep link
+            await openExternalUrl(url);
+          } else {
+            location.assign(url);
+          }
         }
       } catch (err) {
         console.warn('[courses-page] enroll failed', err);

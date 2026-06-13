@@ -2,10 +2,12 @@
 // Exposes `onAuthReady(cb)` which resolves once the first auth state fires.
 
 import { auth, db, functions, firebaseReady } from './firebase.js';
+import { isNative } from './capacitor-bridge.js';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   GoogleAuthProvider,
   sendPasswordResetEmail,
   signOut as fbSignOut,
@@ -97,6 +99,15 @@ export async function loginGoogle() {
   // Always show the account chooser so users with multiple Google accounts
   // can pick one instead of being silently signed in with the last-used one.
   provider.setCustomParameters({ prompt: 'select_account' });
+
+  if (isNative) {
+    // Popups are blocked in native WebViews — use redirect flow.
+    // getRedirectResult() in firebase.js will complete the sign-in on page load.
+    sessionStorage.setItem('google_redirect_pending', '1');
+    await signInWithRedirect(auth, provider);
+    return null; // page reloads after the redirect completes
+  }
+
   const cred = await signInWithPopup(auth, provider);
   await ensureUserDoc(cred.user);
   return cred.user;

@@ -7,6 +7,28 @@
                         "**/.*",
                         "**/node_modules/**"
               ],
+              "headers": [
+                        {
+                                    "source": "/sw.js",
+                                    "headers": [
+                                                { "key": "Cache-Control", "value": "no-cache" },
+                                                { "key": "Service-Worker-Allowed", "value": "/" }
+                                    ]
+                        },
+                        {
+                                    "source": "/manifest.json",
+                                    "headers": [
+                                                { "key": "Cache-Control", "value": "no-cache" }
+                                    ]
+                        },
+                        {
+                                    "source": "/.well-known/**",
+                                    "headers": [
+                                                { "key": "Cache-Control", "value": "no-cache" },
+                                                { "key": "Content-Type", "value": "application/json" }
+                                    ]
+                        }
+              ],
               "rewrites": [
                         {
                                     "source": "**",

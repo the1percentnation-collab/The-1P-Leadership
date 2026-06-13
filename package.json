@@ -1,0 +1,27 @@
+{
+  "name": "the-1p-leadership-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The One Percent Academy — native mobile app wrapper",
+  "scripts": {
+    "cap:sync": "npx cap sync",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios",
+    "cap:build:android": "npx cap build android",
+    "cap:build:ios": "npx cap build ios",
+    "version:patch": "npm version patch && npx cap sync",
+    "version:minor": "npm version minor && npx cap sync"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/browser": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/ios": "^6.0.0",
+    "@capacitor/push-notifications": "^6.0.0",
+    "@capacitor/splash-screen": "^6.0.0",
+    "@capacitor/status-bar": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}
