@@ -7,7 +7,7 @@ import { renderTopbar } from './topbar.js';
 import {
   PRODUCT_TYPES, PRODUCT_STATUSES,
   listAllProducts, createProduct, updateProduct, deleteProduct,
-  listInterests, notifyLaunch, escapeHtml, fmtMoney
+  listInterests, notifyLaunch, uploadProductImage, escapeHtml, fmtMoney
 } from './products.js';
 
 const $ = (id) => document.getElementById(id);
@@ -102,7 +102,17 @@ function openModal(product) {
             <div class="crm-form-row"><label>Price ($)</label><input class="c-input" id="p-price" type="number" min="0" value="${p.price != null ? p.price : ''}" /></div>
             <div class="crm-form-row"><label>Sort order</label><input class="c-input" id="p-sort" type="number" value="${p.sortOrder || 0}" /></div>
           </div>
-          <div class="crm-form-row"><label>Image URL (optional)</label><input class="c-input" id="p-image" value="${escapeHtml(p.imageUrl || '')}" /></div>
+          <div class="crm-form-row">
+            <label>Cover image</label>
+            <div class="p-img-uploader">
+              <div class="p-img-preview" id="p-img-preview">${p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" alt="">` : '<span>No image</span>'}</div>
+              <div class="p-img-controls">
+                <label class="btn btn-ghost p-img-btn">Upload image<input type="file" id="p-image-file" accept="image/*" hidden></label>
+                <span id="p-img-status" class="crm-save-status"></span>
+                <input class="c-input" id="p-image" placeholder="…or paste an image URL" value="${escapeHtml(p.imageUrl || '')}" />
+              </div>
+            </div>
+          </div>
           <div class="pre-modal-sub">Set status to <b>interest</b> or <b>preorder</b> to show it publicly on /upcoming. Flip to <b>live</b> to auto-email the interest list.</div>
           <div id="p-err" class="auth-error" style="display:none;"></div>
           <div class="crm-modal-actions">
@@ -120,6 +130,29 @@ function openModal(product) {
     if (!confirm(`Delete "${p.name}"? This removes its interest list too.`)) return;
     await deleteProduct(p.id); close(); await reload();
   });
+
+  // Image upload + preview (the #p-image text field stays the source of truth).
+  const fileInput = $('p-image-file');
+  const urlInput = $('p-image');
+  const preview = $('p-img-preview');
+  const imgStatus = $('p-img-status');
+  const setPreview = (url) => { preview.innerHTML = url ? `<img src="${escapeHtml(url)}" alt="">` : '<span>No image</span>'; };
+  fileInput.addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (!/^image\//.test(f.type)) { imgStatus.textContent = 'Pick an image file'; imgStatus.className = 'crm-save-status err'; return; }
+    try { setPreview(URL.createObjectURL(f)); } catch (_) {}
+    imgStatus.textContent = 'Uploading…'; imgStatus.className = 'crm-save-status';
+    try {
+      const url = await uploadProductImage(f);
+      urlInput.value = url;
+      setPreview(url);
+      imgStatus.textContent = 'Uploaded ✓'; imgStatus.className = 'crm-save-status ok';
+    } catch (err) {
+      imgStatus.textContent = 'Upload failed: ' + (err.message || err); imgStatus.className = 'crm-save-status err';
+    }
+  });
+  urlInput.addEventListener('input', () => setPreview(urlInput.value.trim()));
   $('p-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = {

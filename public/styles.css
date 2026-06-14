@@ -7023,3 +7023,16 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 .pre-msg.err { color: var(--red); }
 .pre-foot { text-align: center; margin-top: 40px; }
 .pre-modal-sub { color: var(--gray-light); font-size: 13px; margin: -6px 0 12px; }
+
+/* Product image uploader (manage-products modal) */
+.p-img-uploader { display: flex; gap: 14px; align-items: flex-start; }
+.p-img-preview {
+  width: 96px; height: 96px; flex-shrink: 0; border-radius: 10px; overflow: hidden;
+  background: var(--charcoal); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+}
+.p-img-preview img { width: 100%; height: 100%; object-fit: cover; }
+.p-img-preview span { color: var(--gray-mid); font-size: 11px; }
+.p-img-controls { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.p-img-btn { align-self: flex-start; cursor: pointer; }
+.p-img-controls .c-input { margin: 0; }

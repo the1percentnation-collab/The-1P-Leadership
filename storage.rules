@@ -28,5 +28,15 @@ service firebase.storage {
                    && request.resource.size < 10 * 1024 * 1024
                    && request.resource.contentType.matches('image/.*');
     }
+
+    // product-images/{uid}/{filename} — product covers shown on the PUBLIC
+    // /upcoming page, so reads are public. Writable by any signed-in user
+    // (the product doc itself is admin/owner-gated by Firestore rules).
+    match /product-images/{uid}/{filename} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
   }
 }
