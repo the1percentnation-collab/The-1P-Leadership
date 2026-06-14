@@ -2554,6 +2554,55 @@ exports.stripeWebhook = onRequest(
                 .set({ refCode }, { merge: true });
             }
           }
+
+          // ── CRM deal revenue tie-in ──
+          // Best-effort: match the buyer to a CRM contact and mark their newest
+          // open opportunity as won, recording the paid amount. Non-breaking.
+          try {
+            let email = (session.customer_details && session.customer_details.email)
+              || session.customer_email || null;
+            if (!email) {
+              const us = await db.collection('users').doc(uid).get();
+              email = us.exists ? (us.data().email || null) : null;
+            }
+            const cid = email ? await resolveAcademyCompanyId(db) : null;
+            if (email && cid) {
+              const cs = await db.collection('companies').doc(cid).collection('contacts')
+                .where('email', '==', email).limit(1).get();
+              if (!cs.empty) {
+                const contactId = cs.docs[0].id;
+                const os = await db.collection('companies').doc(cid).collection('opportunities')
+                  .where('contactId', '==', contactId).limit(20).get();
+                const open = os.docs.filter((d) => (d.data().status || 'open') === 'open');
+                if (open.length) {
+                  open.sort((a, b) => {
+                    const am = a.data().createdAt && a.data().createdAt.toMillis ? a.data().createdAt.toMillis() : 0;
+                    const bm = b.data().createdAt && b.data().createdAt.toMillis ? b.data().createdAt.toMillis() : 0;
+                    return bm - am;
+                  });
+                  const pick = open[0];
+                  const amount = (session.amount_total || 0) / 100;
+                  await pick.ref.set({
+                    status: 'won',
+                    wonAt: admin.firestore.FieldValue.serverTimestamp(),
+                    stripeSessionId: session.id,
+                    amountPaid: amount,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    lastActivityAt: admin.firestore.FieldValue.serverTimestamp()
+                  }, { merge: true });
+                  await db.collection('companies').doc(cid).collection('contacts').doc(contactId)
+                    .collection('activities').add({
+                      type: 'deal_won',
+                      description: `Deal won via Stripe — ${courseSlug} ($${amount})`,
+                      actorUid: uid,
+                      actorName: 'Stripe',
+                      meta: { opportunityId: pick.id, stripeSessionId: session.id, amount },
+                      createdAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+              }
+            }
+          } catch (e) { console.warn('[stripeWebhook] deal tie-in skipped:', e && e.message); }
         } else {
           console.warn('[stripeWebhook] session missing uid/courseSlug metadata', session.id);
         }

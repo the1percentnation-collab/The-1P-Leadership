@@ -28,7 +28,7 @@ const NAV = [
   { key: 'conversations', href: '/conversations.html', label: 'Conversations', icon: '✉', soon: true },
   { key: 'calendar',      href: '/calendar.html',      label: 'Calendar',      icon: '◷', soon: true },
   { key: 'campaigns',     href: '/campaigns.html',     label: 'Campaigns',     icon: '❏' },
-  { key: 'settings',      href: '/crm-settings.html',  label: 'Settings',      icon: '⚙', soon: true }
+  { key: 'settings',      href: '/crm-settings.html',  label: 'Settings',      icon: '⚙' }
 ];
 
 function navItemHtml(item, active) {
