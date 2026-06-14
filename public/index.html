@@ -1103,6 +1103,8 @@
     .btn-login-flash {
       transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s;
       animation: login-flash 3s ease-in-out infinite;
+      /* Offset half a cycle so it flashes out of sync with MEMBER PORTAL. */
+      animation-delay: -1.5s;
     }
     .btn-login-flash:hover {
       background: var(--red);
