@@ -160,11 +160,13 @@
     .nav-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 
     .btn-portal {
+      display: inline-block;
       font-family: var(--font-mono); font-size: 11px; font-weight: 700;
       letter-spacing: 0.14em; text-transform: uppercase;
       padding: 10px 20px; border-radius: 3px;
       border: 1px solid var(--border-red);
       color: var(--red);
+      text-decoration: none;
       transition: background 0.2s, color 0.2s;
     }
     .btn-portal:hover { background: var(--red); color: var(--white); }
@@ -487,7 +489,8 @@
       width: 32px; height: 32px; border-radius: 50%;
       border: 1px solid var(--border); color: var(--gray-400);
       display: flex; align-items: center; justify-content: center;
-      font-size: 14px; transition: background 0.2s, border-color 0.2s, color 0.2s;
+      font-size: 14px; text-decoration: none;
+      transition: background 0.2s, border-color 0.2s, color 0.2s;
     }
     .course-card:hover .course-arrow {
       background: var(--red); border-color: var(--red); color: var(--white);
@@ -1375,7 +1378,7 @@
     </ul>
 
     <div class="nav-actions">
-      <button class="btn-portal" onclick="openLogin()">Member Portal</button>
+      <a href="/login.html" class="btn-portal">Member Portal</a>
       <a href="/webinar.html" class="btn-cta-nav">Join Webinar</a>
       <button class="nav-hamburger" id="hamburger" onclick="toggleMobileMenu()" aria-label="Menu">
         <span></span><span></span><span></span>
@@ -1394,7 +1397,7 @@
   <a href="#shop" onclick="closeMobileMenu()">Shop</a>
   <a href="#faq" onclick="closeMobileMenu()">FAQ</a>
   <div class="mobile-actions">
-    <button class="btn-primary btn-lg" onclick="openLogin(); closeMobileMenu()">Member Portal</button>
+    <a href="/login.html" class="btn-primary btn-lg" onclick="closeMobileMenu()">Member Portal</a>
     <a href="/webinar.html" class="btn-outline btn-lg" onclick="closeMobileMenu()">Join Next Webinar</a>
   </div>
 </div>
@@ -1427,7 +1430,7 @@
       </p>
       <div class="hero-actions">
         <a href="#courses" class="btn-primary btn-lg">Start Your Journey →</a>
-        <button class="btn-outline btn-lg" onclick="openLogin()">Member Login</button>
+        <a href="/login.html" class="btn-outline btn-lg">Member Login</a>
       </div>
     </div>
 
@@ -1554,7 +1557,7 @@
       </div>
       <div class="fade-up">
         <p class="section-desc" style="max-width:360px; margin-bottom: 24px;">Every course in the Academy is built to move you forward — grounded in mindset, structure, and consistent action.</p>
-        <button class="btn-outline" onclick="openLogin()">Access All Courses →</button>
+        <a href="/login.html" class="btn-outline">Access All Courses →</a>
       </div>
     </div>
 
@@ -1574,7 +1577,7 @@
               <div class="course-detail"><strong>12</strong> Modules</div>
               <div class="course-detail" style="margin-top:4px;"><strong>Self-paced</strong> + Live Sessions</div>
             </div>
-            <button class="course-arrow" onclick="openLogin()">→</button>
+            <a href="/login.html" class="course-arrow">→</a>
           </div>
         </div>
       </div>
@@ -1594,7 +1597,7 @@
               <div class="course-detail"><strong>8</strong> Modules</div>
               <div class="course-detail" style="margin-top:4px;"><strong>Self-paced</strong></div>
             </div>
-            <button class="course-arrow" onclick="openLogin()">→</button>
+            <a href="/login.html" class="course-arrow">→</a>
           </div>
         </div>
       </div>
@@ -1614,7 +1617,7 @@
               <div class="course-detail"><strong>10</strong> Modules</div>
               <div class="course-detail" style="margin-top:4px;"><strong>Cohort-based</strong></div>
             </div>
-            <button class="course-arrow" onclick="openLogin()">→</button>
+            <a href="/login.html" class="course-arrow">→</a>
           </div>
         </div>
       </div>
@@ -1836,7 +1839,7 @@
         </div>
         <div style="margin-top: 32px; display: flex; gap: 14px; flex-wrap: wrap;">
           <a href="/webinar.html" class="btn-primary">Reserve My Spot →</a>
-          <button class="btn-outline" onclick="openLogin()">View Past Replays</button>
+          <a href="/login.html" class="btn-outline">View Past Replays</a>
         </div>
       </div>
       <div class="webinar-side">
@@ -1881,7 +1884,7 @@
         </div>
         <div style="margin-top: 32px; display: flex; gap: 14px; flex-wrap: wrap;">
           <a href="https://community.theonepercentnation.com/communities/groups/one-percent-nation/home?invite=69c883b5aef1c33276cae240" class="btn-primary" target="_blank" rel="noopener">Join The Community →</a>
-          <button class="btn-outline" onclick="openLogin()">Member Login</button>
+          <a href="/login.html" class="btn-outline">Member Login</a>
         </div>
       </div>
 
@@ -2075,7 +2078,7 @@
           <a href="#about">About Us</a>
           <a href="#testimonials">Member Stories</a>
           <a href="/webinar.html">Book A Session</a>
-          <a href="#" onclick="openLogin()">Member Portal</a>
+          <a href="/login.html">Member Portal</a>
         </div>
       </div>
     </div>
