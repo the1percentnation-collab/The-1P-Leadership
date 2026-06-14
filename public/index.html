@@ -1098,6 +1098,43 @@
     .btn-outline:hover { border-color: var(--white); transform: translateY(-2px); }
     .btn-lg { padding: 18px 36px; font-size: 16px; }
 
+    /* Hero "Member Login" — auto-flash + red light-up on hover, matching
+       the MEMBER PORTAL button. */
+    .btn-login-flash {
+      transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+      animation: login-flash 3s ease-in-out infinite;
+    }
+    .btn-login-flash:hover {
+      background: var(--red);
+      border-color: #ffffff;
+      color: #ffffff;
+      box-shadow: 0 0 18px 3px rgba(230,3,6,0.9), 0 0 0 2px rgba(255,255,255,0.5);
+      animation-play-state: paused;
+    }
+    @keyframes login-flash {
+      0%, 70%, 100% {
+        background: transparent;
+        border-color: var(--border);
+        color: var(--white);
+        box-shadow: 0 0 0 rgba(230,3,6,0);
+      }
+      80% {
+        background: var(--red);
+        border-color: #ffffff;
+        color: #ffffff;
+        box-shadow: 0 0 18px 3px rgba(230,3,6,0.9), 0 0 0 2px rgba(255,255,255,0.5);
+      }
+      90% {
+        background: transparent;
+        border-color: var(--border);
+        color: var(--white);
+        box-shadow: 0 0 0 rgba(230,3,6,0);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .btn-login-flash { animation: none; }
+    }
+
     /* ============================================================
        LOGIN MODAL
     ============================================================ */
@@ -1468,7 +1505,7 @@
       </p>
       <div class="hero-actions">
         <a href="#courses" class="btn-primary btn-lg">Start Your Journey →</a>
-        <a href="/login.html" class="btn-outline btn-lg">Member Login</a>
+        <a href="/login.html" class="btn-outline btn-lg btn-login-flash">Member Login</a>
       </div>
     </div>
 
