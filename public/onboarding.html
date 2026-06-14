@@ -139,37 +139,74 @@
     if (phoneEl.value) phoneEl.value = formatPhone(phoneEl.value);
 
     // ── Address: Google Places autocomplete (graceful fallback) ────
-    // Reuses the project's API key. If the Maps/Places API isn't enabled
-    // for the key, the field stays a normal text input — nothing breaks.
-    function loadPlaces(key) {
-      return new Promise((resolve, reject) => {
-        if (window.google && window.google.maps && window.google.maps.places) return resolve();
-        const sc = document.createElement('script');
-        sc.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places&loading=async`;
-        sc.async = true;
-        sc.onload = resolve;
-        sc.onerror = reject;
-        document.head.appendChild(sc);
-      });
+    // Uses the modern PlaceAutocompleteElement (Places API "New"), loaded via
+    // the official bootstrap so importLibrary() resolves only when the places
+    // library is truly ready (no race). If Maps/Places isn't enabled for the
+    // key, the field stays a normal text input — nothing breaks.
+    function bootstrapMaps(key) {
+      if (window.google && window.google.maps && window.google.maps.importLibrary) return;
+      ((g) => {
+        let h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary",
+            q = "__ib__", m = document, b = window;
+        b = b[c] || (b[c] = {});
+        const d = b.maps || (b.maps = {}), r = new Set(), e = new URLSearchParams(),
+          u = () => h || (h = new Promise(async (f, n) => {
+            a = m.createElement("script");
+            e.set("libraries", [...r] + "");
+            for (k in g) e.set(k.replace(/[A-Z]/g, (t) => "_" + t[0].toLowerCase()), g[k]);
+            e.set("callback", c + ".maps." + q);
+            a.src = `https://maps.${c}apis.com/maps/api/js?` + e;
+            d[q] = f;
+            a.onerror = () => h = n(Error(p + " could not load."));
+            a.nonce = m.querySelector("script[nonce]")?.nonce || "";
+            m.head.append(a);
+          }));
+        d[l] ? console.warn(p + " only loads once. Ignoring:", g)
+             : (d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)));
+      })({ key, v: "weekly" });
     }
     (async () => {
+      const addressEl = $('address');
       try {
-        await loadPlaces(firebaseConfig.apiKey);
-        const addressEl = $('address');
-        const ac = new google.maps.places.Autocomplete(addressEl, {
-          types: ['address'],
-          fields: ['formatted_address']
+        bootstrapMaps(firebaseConfig.apiKey);
+        // Resolves ONLY when the places library is actually ready — no race.
+        const { PlaceAutocompleteElement } = await google.maps.importLibrary('places');
+
+        // Modern web component, restricted to address-type predictions.
+        const pac = new PlaceAutocompleteElement({
+          includedPrimaryTypes: ['street_address', 'premise', 'subpremise', 'route']
         });
-        ac.addListener('place_changed', () => {
-          const p = ac.getPlace();
-          if (p && p.formatted_address) addressEl.value = p.formatted_address;
+        pac.id = 'address-ac';
+        pac.className = 'ob-address-ac';
+        if (addressEl.placeholder) pac.placeholder = addressEl.placeholder;
+
+        // Show the component; keep #address as a hidden mirror that the form
+        // submit + pre-fill logic already read/write ($('address').value).
+        addressEl.parentNode.insertBefore(pac, addressEl);
+        addressEl.type = 'hidden';
+
+        // Pre-fill on return: if #address already has a value (set above), show it.
+        if (addressEl.value) pac.value = addressEl.value;
+
+        // Selection: fetch the formatted address and mirror it into #address.
+        pac.addEventListener('gmp-select', async ({ placePrediction }) => {
+          try {
+            const place = placePrediction.toPlace();
+            await place.fetchFields({ fields: ['formattedAddress'] });
+            const fa = place.formattedAddress || '';
+            addressEl.value = fa;
+            pac.value = fa;
+          } catch (err) {
+            console.warn('[onboarding] could not resolve selected place', err);
+          }
         });
+
         // Don't let Enter (to pick a suggestion) submit the form.
-        addressEl.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') e.preventDefault();
-        });
+        pac.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
       } catch (e) {
-        console.warn('[onboarding] address autocomplete unavailable', e);
+        // Graceful fallback: leave a normal typeable text input.
+        if (addressEl.type === 'hidden') addressEl.type = 'text';
+        console.warn('[onboarding] address autocomplete unavailable; using plain input', e);
       }
     })();
 

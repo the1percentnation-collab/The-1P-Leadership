@@ -1207,6 +1207,25 @@ body {
 .pac-item-query { color: var(--white); }
 .pac-matched { color: var(--red); }
 .pac-icon { display: none; }
+.pac-container { z-index: 1100; } /* float above sibling form fields */
+
+/* Modern PlaceAutocompleteElement — match the dark auth theme. */
+.ob-address-ac {
+  display: block;
+  width: 100%;
+  margin-bottom: 16px;
+  font-family: var(--font-body);
+  --gmp-mat-color-surface: var(--charcoal);
+  --gmp-mat-color-on-surface: var(--white);
+  --gmp-mat-color-on-surface-variant: var(--gray-light);
+  --gmp-mat-color-outline: var(--border);
+  --gmp-mat-color-primary: var(--red);
+  --gmp-mat-color-info: var(--red);
+}
+/* Keep the prediction popup above following fields (no ancestor transforms,
+   so z-index alone is enough — body is overflow:auto, not hidden). */
+gmp-place-autocomplete,
+.ob-address-ac::part(prediction-list) { z-index: 1100; }
 
 /* Onboarding ("Your Details") — larger brand lockup than the auth default. */
 .onboarding-card .auth-brand-mark { height: 180px; }
