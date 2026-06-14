@@ -3035,3 +3035,158 @@ exports.twilioStatusWebhook = onRequest(
     res.status(200).send('ok');
   }
 );
+
+// ════════════════════════════════════════════════════════════════
+// Product interest / pre-order signals + early-access list.
+// Public callables (allow unauthenticated) that upsert a CRM contact and
+// tag them, so demand can be gauged and emailed via existing campaigns.
+// ════════════════════════════════════════════════════════════════
+
+// registerProductInterest({ productId, name, email, phone, consent })
+exports.registerProductInterest = onCall(async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  const productId = (data.productId || '').toString().trim();
+  const name = (data.name || '').toString().trim().slice(0, 120);
+  const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
+  const phone = (data.phone || '').toString().trim().slice(0, 40) || null;
+  const consent = !!data.consent;
+  if (!productId) throw new HttpsError('invalid-argument', 'Missing product.');
+  if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
+
+  const prodRef = db.collection('products').doc(productId);
+  const prodSnap = await prodRef.get();
+  if (!prodSnap.exists) throw new HttpsError('not-found', 'Product not found.');
+  const product = prodSnap.data();
+  const FV = admin.firestore.FieldValue;
+  const uid = (request.auth && request.auth.uid) || null;
+
+  // Dedupe interest by email (doc id = sanitized email).
+  const interestId = email.replace(/[^a-z0-9]/g, '_').slice(0, 120);
+  const intRef = prodRef.collection('interests').doc(interestId);
+  const existing = await intRef.get();
+  const isNew = !existing.exists;
+  await intRef.set({
+    name: name || null, email, phone, uid, consent,
+    createdAt: existing.exists ? existing.data().createdAt : FV.serverTimestamp(),
+    updatedAt: FV.serverTimestamp()
+  }, { merge: true });
+  if (isNew) await prodRef.set({ interestCount: FV.increment(1) }, { merge: true });
+
+  // Upsert into the CRM (best-effort).
+  try {
+    const companyId = await resolveAcademyCompanyId(db);
+    if (companyId) {
+      const tags = [`Interest: ${product.name}`.slice(0, 40)];
+      if (consent) tags.push('Opt-In: Calls/SMS/Email');
+      const ref = await upsertCrmContact(db, companyId, {
+        name: name || null, email, phone, source: 'Product Interest', tags
+      });
+      if (consent) {
+        await ref.set({
+          marketingConsent: true, marketingConsentAt: FV.serverTimestamp(),
+          marketingConsentText: 'Opted in via product interest form'
+        }, { merge: true });
+      }
+      await ref.collection('activities').add({
+        type: 'product_interest', description: `Interested in "${product.name}"`,
+        actorUid: 'system', actorName: 'Product interest',
+        createdAt: FV.serverTimestamp(), meta: { productId, productName: product.name }
+      });
+    }
+  } catch (e) { console.warn('[registerProductInterest] CRM upsert failed:', e && e.message); }
+
+  return { ok: true, alreadyJoined: !isNew, count: (product.interestCount || 0) + (isNew ? 1 : 0) };
+});
+
+// joinEarlyAccess({ name, email, consent }) — general "future products" list.
+exports.joinEarlyAccess = onCall(async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  const name = (data.name || '').toString().trim().slice(0, 120);
+  const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
+  const consent = !!data.consent;
+  if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
+  try {
+    const companyId = await resolveAcademyCompanyId(db);
+    if (companyId) {
+      const FV = admin.firestore.FieldValue;
+      const tags = ['Early Access'];
+      if (consent) tags.push('Opt-In: Calls/SMS/Email');
+      const ref = await upsertCrmContact(db, companyId, { name: name || null, email, source: 'Early Access', tags });
+      if (consent) {
+        await ref.set({
+          marketingConsent: true, marketingConsentAt: FV.serverTimestamp(),
+          marketingConsentText: 'Opted in via early-access form'
+        }, { merge: true });
+      }
+      await ref.collection('activities').add({
+        type: 'early_access', description: 'Joined the early-access list',
+        actorUid: 'system', actorName: 'Early access', createdAt: FV.serverTimestamp()
+      });
+    }
+  } catch (e) { console.warn('[joinEarlyAccess]', e && e.message); }
+  return { ok: true };
+});
+
+// Email everyone on a product's interest list that it's live.
+async function sendProductLaunchEmails(db, productId, product) {
+  const intsnap = await db.collection('products').doc(productId).collection('interests').get();
+  const recipients = [];
+  intsnap.forEach((d) => { const e = d.data().email; if (e && EMAIL_RE.test(e)) recipients.push(e); });
+  if (!recipients.length) return 0;
+  sgMail.setApiKey(sendgridKey.value());
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:540px;margin:0 auto;">
+    <h2 style="color:#E60306;margin:0 0 10px;">It's here: ${product.name}</h2>
+    <p style="font-size:15px;color:#222;">You asked to be the first to know — ${product.name} is now available.</p>
+    ${product.summary ? `<p style="font-size:14px;color:#444;">${product.summary}</p>` : ''}
+    <p style="margin:18px 0;"><a href="${APP_BASE_URL}" style="background:#E60306;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Check it out →</a></p>
+    <p style="font-size:12px;color:#888;">— The One Percent Nation</p>
+  </div>`;
+  let sent = 0;
+  for (let i = 0; i < recipients.length; i += 900) {
+    const chunk = recipients.slice(i, i + 900);
+    try {
+      await sgMail.send({
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
+        subject: `It's here: ${product.name}`, html,
+        text: `${product.name} is now available. Visit ${APP_BASE_URL}`,
+        isMultiple: true,
+        personalizations: chunk.map((to) => ({ to }))
+      });
+      sent += chunk.length;
+    } catch (e) { console.warn('[productLaunch] send failed', e && e.message); }
+  }
+  return sent;
+}
+
+// When a product flips to "live", auto-email its interest list once.
+exports.onProductWritten = onDocumentWritten(
+  { document: 'products/{productId}', secrets: [sendgridKey] },
+  async (event) => {
+    const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+    const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+    if (!after) return;
+    const becameLive = after.status === 'live' && (!before || before.status !== 'live');
+    if (!becameLive || after.launchNotifiedAt) return;
+    const db = admin.firestore();
+    const productId = event.params.productId;
+    try {
+      const n = await sendProductLaunchEmails(db, productId, after);
+      await db.collection('products').doc(productId).set({
+        launchNotifiedAt: admin.firestore.FieldValue.serverTimestamp(), launchNotifiedCount: n
+      }, { merge: true });
+    } catch (e) { console.warn('[onProductWritten]', e && e.message); }
+  }
+);
+
+// Manual "Notify list" button (admin) — backup for the auto trigger.
+exports.notifyProductInterest = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  const productId = (request.data && request.data.productId || '').toString();
+  const snap = await db.collection('products').doc(productId).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Product not found.');
+  const n = await sendProductLaunchEmails(db, productId, snap.data());
+  return { ok: true, sent: n };
+});
