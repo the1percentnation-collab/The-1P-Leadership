@@ -79,6 +79,11 @@ body {
   border-radius: 3px;
   margin-bottom: 12px;
   text-transform: uppercase;
+}
+
+/* Flash only the "MEMBER PORTAL" badge on the auth/portal cards — the
+   Courses "COURSE LIBRARY" badge (not inside .auth-card) stays steady. */
+.auth-card .brand-badge {
   border: 1px solid rgba(255,255,255,0.85);
   animation: badge-flash 3s ease-in-out infinite;
 }
@@ -106,7 +111,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .brand-badge { animation: none; }
+  .auth-card .brand-badge { animation: none; }
 }
 
 .brand-badge::before {
