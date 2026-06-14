@@ -350,3 +350,271 @@ export function fmtDateTime(ts) {
     return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   } catch (e) { return '—'; }
 }
+
+// Money formatter for deal values ($). Whole dollars, grouped.
+export function fmtMoney(n) {
+  const v = Number(n);
+  if (!isFinite(v)) return '$0';
+  try {
+    return v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  } catch (e) { return '$' + Math.round(v); }
+}
+
+// Returns a JS Date from a Firestore Timestamp | Date | millis | ISO string.
+export function toDate(ts) {
+  if (!ts) return null;
+  try { return ts.toDate ? ts.toDate() : new Date(ts); } catch (e) { return null; }
+}
+
+// ════════════════════════════════════════════════════════════════
+// PIPELINES — configurable deal stages. The default pipeline is seeded
+// from STAGES so existing contact.stage strings keep resolving 1:1.
+// ════════════════════════════════════════════════════════════════
+export const DEFAULT_PIPELINE_STAGES = [
+  { id: 'new',         label: 'New',         color: '#A0A0A0', order: 0, probability: 0.10 },
+  { id: 'contacted',   label: 'Contacted',   color: '#5AA8E6', order: 1, probability: 0.25 },
+  { id: 'qualified',   label: 'Qualified',   color: '#9B8CE8', order: 2, probability: 0.50 },
+  { id: 'negotiating', label: 'Negotiating', color: '#E8C547', order: 3, probability: 0.75 },
+  { id: 'customer',    label: 'Won',         color: '#56D4A8', order: 4, probability: 1.00, won: true },
+  { id: 'lost',        label: 'Lost',        color: '#8B4A4A', order: 5, probability: 0.00, lost: true }
+];
+
+function pipelinesCol(companyId) { return collection(db, 'companies', companyId, 'pipelines'); }
+function pipelineRef(companyId, id) { return doc(db, 'companies', companyId, 'pipelines', id); }
+function opportunitiesCol(companyId) { return collection(db, 'companies', companyId, 'opportunities'); }
+function opportunityRef(companyId, id) { return doc(db, 'companies', companyId, 'opportunities', id); }
+function tasksCol(companyId) { return collection(db, 'companies', companyId, 'tasks'); }
+function taskRef(companyId, id) { return doc(db, 'companies', companyId, 'tasks', id); }
+
+export async function listPipelines(companyId) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const snap = await getDocs(pipelinesCol(companyId));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) { console.warn('[crm] listPipelines failed', e); return []; }
+}
+
+// Returns the default pipeline, creating + seeding it on first run.
+export async function ensureDefaultPipeline(companyId) {
+  if (!firebaseReady || !companyId) return null;
+  const existing = await listPipelines(companyId);
+  const def = existing.find((p) => p.isDefault) || existing[0];
+  if (def) return def;
+  const user = auth.currentUser;
+  const payload = {
+    name: 'Sales Pipeline',
+    isDefault: true,
+    stages: DEFAULT_PIPELINE_STAGES,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    createdBy: user ? user.uid : null
+  };
+  const ref = await addDoc(pipelinesCol(companyId), payload);
+  return { id: ref.id, ...payload };
+}
+
+export async function updatePipeline(companyId, pipelineId, patch = {}) {
+  const clean = {};
+  if (patch.name !== undefined) clean.name = patch.name;
+  if (patch.stages !== undefined) clean.stages = patch.stages;
+  clean.updatedAt = serverTimestamp();
+  await updateDoc(pipelineRef(companyId, pipelineId), clean);
+}
+
+// ════════════════════════════════════════════════════════════════
+// OPPORTUNITIES (deals) — carry revenue. Many per contact.
+// ════════════════════════════════════════════════════════════════
+export async function listOpportunities(companyId, { pipelineId = null, status = null, contactId = null } = {}) {
+  if (!firebaseReady || !companyId) return [];
+  const parts = [opportunitiesCol(companyId)];
+  if (pipelineId) parts.push(where('pipelineId', '==', pipelineId));
+  if (status) parts.push(where('status', '==', status));
+  if (contactId) parts.push(where('contactId', '==', contactId));
+  try {
+    const snap = await getDocs(query(...parts));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    // Index may be building — fall back to unfiltered read + client filter.
+    try {
+      const snap = await getDocs(opportunitiesCol(companyId));
+      let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (pipelineId) rows = rows.filter((r) => r.pipelineId === pipelineId);
+      if (status) rows = rows.filter((r) => r.status === status);
+      if (contactId) rows = rows.filter((r) => r.contactId === contactId);
+      return rows;
+    } catch (e2) { console.warn('[crm] listOpportunities failed', e2); return []; }
+  }
+}
+
+export async function getOpportunity(companyId, oppId) {
+  if (!firebaseReady || !companyId || !oppId) return null;
+  const snap = await getDoc(opportunityRef(companyId, oppId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+export async function createOpportunity(companyId, data = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  if (!companyId) throw new Error('companyId required');
+  const payload = {
+    title: (data.title || '').trim() || 'Untitled deal',
+    contactId: data.contactId || null,
+    contactName: data.contactName || null,
+    pipelineId: data.pipelineId || null,
+    stageId: data.stageId || 'new',
+    value: Number(data.value) || 0,
+    status: data.status || 'open',
+    expectedCloseAt: data.expectedCloseAt || null,
+    wonAt: null,
+    lostAt: null,
+    lostReason: null,
+    ownerUid: data.ownerUid || user.uid,
+    source: data.source || null,
+    stripeSessionId: null,
+    amountPaid: null,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    createdBy: user.uid,
+    lastActivityAt: serverTimestamp()
+  };
+  const ref = await addDoc(opportunitiesCol(companyId), payload);
+  if (payload.contactId) {
+    try {
+      await logActivity(companyId, payload.contactId, {
+        type: 'deal_created',
+        description: `Deal created: ${payload.title} (${fmtMoney(payload.value)})`,
+        meta: { opportunityId: ref.id, value: payload.value }
+      });
+    } catch (e) {}
+  }
+  return { id: ref.id, ...payload };
+}
+
+export async function updateOpportunity(companyId, oppId, patch = {}) {
+  const allowed = ['title', 'value', 'expectedCloseAt', 'ownerUid', 'source', 'contactId', 'contactName', 'pipelineId'];
+  const clean = {};
+  allowed.forEach((k) => { if (patch[k] !== undefined) clean[k] = patch[k]; });
+  clean.updatedAt = serverTimestamp();
+  clean.lastActivityAt = serverTimestamp();
+  await updateDoc(opportunityRef(companyId, oppId), clean);
+}
+
+// Move a deal to a new stage. Stage flags (won/lost) drive the deal status.
+export async function setOppStage(companyId, oppId, { toStageId, fromStageId, toStageLabel, won, lost, contactId } = {}) {
+  const patch = {
+    stageId: toStageId,
+    updatedAt: serverTimestamp(),
+    lastActivityAt: serverTimestamp()
+  };
+  if (won) { patch.status = 'won'; patch.wonAt = serverTimestamp(); }
+  else if (lost) { patch.status = 'lost'; patch.lostAt = serverTimestamp(); }
+  else { patch.status = 'open'; patch.wonAt = null; patch.lostAt = null; }
+  await updateDoc(opportunityRef(companyId, oppId), patch);
+  if (contactId) {
+    try {
+      await logActivity(companyId, contactId, {
+        type: won ? 'deal_won' : (lost ? 'deal_lost' : 'deal_stage_changed'),
+        description: `Deal stage: ${fromStageId || '—'} → ${toStageLabel || toStageId}`,
+        meta: { opportunityId: oppId, from: fromStageId || null, to: toStageId }
+      });
+    } catch (e) {}
+  }
+}
+
+export async function deleteOpportunity(companyId, oppId) {
+  await deleteDoc(opportunityRef(companyId, oppId));
+}
+
+// ════════════════════════════════════════════════════════════════
+// TASKS — follow-ups, optionally linked to a contact/opportunity.
+// ════════════════════════════════════════════════════════════════
+export async function listTasks(companyId, { assigneeUid = null, status = null, contactId = null } = {}) {
+  if (!firebaseReady || !companyId) return [];
+  const parts = [tasksCol(companyId)];
+  if (assigneeUid) parts.push(where('assigneeUid', '==', assigneeUid));
+  if (status) parts.push(where('status', '==', status));
+  if (contactId) parts.push(where('contactId', '==', contactId));
+  try {
+    const snap = await getDocs(query(...parts));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    try {
+      const snap = await getDocs(tasksCol(companyId));
+      let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (assigneeUid) rows = rows.filter((r) => r.assigneeUid === assigneeUid);
+      if (status) rows = rows.filter((r) => r.status === status);
+      if (contactId) rows = rows.filter((r) => r.contactId === contactId);
+      return rows;
+    } catch (e2) { console.warn('[crm] listTasks failed', e2); return []; }
+  }
+}
+
+export async function createTask(companyId, data = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  if (!companyId) throw new Error('companyId required');
+  const payload = {
+    title: (data.title || '').trim() || 'Untitled task',
+    contactId: data.contactId || null,
+    contactName: data.contactName || null,
+    opportunityId: data.opportunityId || null,
+    assigneeUid: data.assigneeUid || user.uid,
+    dueAt: data.dueAt || null,
+    status: 'open',
+    priority: ['low', 'normal', 'high'].includes(data.priority) ? data.priority : 'normal',
+    completedAt: null,
+    completedByUid: null,
+    remindedAt: null,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    createdBy: user.uid
+  };
+  const ref = await addDoc(tasksCol(companyId), payload);
+  if (payload.contactId) {
+    try {
+      await logActivity(companyId, payload.contactId, {
+        type: 'task_created',
+        description: `Task: ${payload.title}`,
+        meta: { taskId: ref.id }
+      });
+    } catch (e) {}
+  }
+  return { id: ref.id, ...payload };
+}
+
+export async function updateTask(companyId, taskId, patch = {}) {
+  const allowed = ['title', 'dueAt', 'assigneeUid', 'priority', 'contactId', 'contactName', 'opportunityId'];
+  const clean = {};
+  allowed.forEach((k) => { if (patch[k] !== undefined) clean[k] = patch[k]; });
+  clean.updatedAt = serverTimestamp();
+  await updateDoc(taskRef(companyId, taskId), clean);
+}
+
+export async function completeTask(companyId, taskId, { contactId, title } = {}) {
+  const user = auth.currentUser;
+  await updateDoc(taskRef(companyId, taskId), {
+    status: 'done',
+    completedAt: serverTimestamp(),
+    completedByUid: user ? user.uid : null,
+    updatedAt: serverTimestamp()
+  });
+  if (contactId) {
+    try {
+      await logActivity(companyId, contactId, {
+        type: 'task_completed',
+        description: `Task completed: ${title || ''}`.trim(),
+        meta: { taskId }
+      });
+    } catch (e) {}
+  }
+}
+
+export async function reopenTask(companyId, taskId) {
+  await updateDoc(taskRef(companyId, taskId), {
+    status: 'open', completedAt: null, completedByUid: null, updatedAt: serverTimestamp()
+  });
+}
+
+export async function deleteTask(companyId, taskId) {
+  await deleteDoc(taskRef(companyId, taskId));
+}

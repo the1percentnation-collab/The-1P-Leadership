@@ -4,7 +4,7 @@
 import { db, firebaseReady } from './firebase.js';
 import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
-import { renderTopbar } from './topbar.js';
+import { renderCrmShell } from './crm-shell.js';
 import { collection, getDocs, query, where, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import {
   STAGES, STAGE_IDS, SOURCES, stageMeta,
@@ -13,6 +13,31 @@ import {
 } from './crm.js';
 
 const $ = (id) => document.getElementById(id);
+
+// Markup injected into the shell's #crm-content (was static in crm.html).
+const PANEL_HTML = `
+  <div class="crm-toolbar">
+    <div class="crm-tabs">
+      <button class="crm-tab active" data-tab="kanban">Kanban</button>
+      <button class="crm-tab" data-tab="list">List</button>
+    </div>
+    <div class="crm-toolbar-spacer"></div>
+    <input id="crm-search" class="c-input crm-search" placeholder="Search name or email…" />
+    <button class="btn btn-primary" id="btn-new-contact">+ New Contact</button>
+  </div>
+  <div class="crm-filters">
+    <div class="crm-chip-row" id="crm-owner-chips">
+      <button class="crm-chip active" data-owner-filter="all">All</button>
+      <button class="crm-chip" data-owner-filter="mine">Mine</button>
+    </div>
+    <div class="crm-chip-row" id="crm-stage-chips"></div>
+    <div class="crm-chip-row" id="crm-tag-chips"></div>
+  </div>
+  <div id="view-kanban" class="crm-view"></div>
+  <div id="view-list" class="crm-view" style="display:none;"></div>
+`;
+
+let contentEl = null;
 
 const state = {
   role: null,
@@ -31,7 +56,7 @@ const state = {
 };
 
 function gate(msg) {
-  $('gate-msg').innerHTML = `<div class="card"><div class="auth-error">${escapeHtml(msg)}</div></div>`;
+  if (contentEl) contentEl.innerHTML = `<div class="card"><div class="auth-error">${escapeHtml(msg)}</div></div>`;
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -432,7 +457,11 @@ async function resolveCompanyId(uid, info) {
 }
 
 async function main() {
-  if (!firebaseReady) { gate('Firebase is unavailable.'); return; }
+  if (!firebaseReady) {
+    const root = document.getElementById('crm-root');
+    if (root) root.innerHTML = '<div class="card"><div class="auth-error">Firebase is unavailable.</div></div>';
+    return;
+  }
   const u = await onAuthReady();
   if (!u) {
     location.replace('/login.html?next=' + encodeURIComponent('/crm.html'));
@@ -441,13 +470,14 @@ async function main() {
   const info = await getRoleInfo(true);
   state.uid = u.uid;
   state.role = info.role;
-  renderTopbar({ user: u, role: info.role, currentPage: 'crm' });
 
   if (!info.isAdmin) {
     // Bootstrap guard — CRM is admin/owner only.
     location.replace('/index.html');
     return;
   }
+
+  contentEl = renderCrmShell({ active: 'contacts', title: 'Contacts', user: u, role: info.role });
 
   const companyId = await resolveCompanyId(u.uid, info);
   if (!companyId) {
@@ -456,7 +486,7 @@ async function main() {
   }
   state.companyId = companyId;
 
-  $('panel').style.display = 'block';
+  contentEl.innerHTML = PANEL_HTML;
 
   // Wire tabs
   document.querySelectorAll('.crm-tab[data-tab]').forEach((b) => {

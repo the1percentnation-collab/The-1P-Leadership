@@ -92,7 +92,23 @@
         <div class="card">
           <div class="crm-feed-tabs">
             <button class="crm-tab active" data-feed-tab="notes">Notes</button>
+            <button class="crm-tab" data-feed-tab="deals">Deals</button>
+            <button class="crm-tab" data-feed-tab="tasks">Tasks</button>
             <button class="crm-tab" data-feed-tab="activity">Activity</button>
+          </div>
+
+          <div id="feed-deals" class="crm-feed-pane" style="display:none;">
+            <div class="crm-note-compose-actions" style="margin-bottom:12px;">
+              <button class="btn btn-primary" id="btn-add-deal">+ New Deal</button>
+            </div>
+            <div id="deals-list"></div>
+          </div>
+
+          <div id="feed-tasks" class="crm-feed-pane" style="display:none;">
+            <div class="crm-note-compose-actions" style="margin-bottom:12px;">
+              <button class="btn btn-primary" id="btn-add-task">+ New Task</button>
+            </div>
+            <div id="tasks-list"></div>
           </div>
 
           <div id="feed-notes" class="crm-feed-pane">
