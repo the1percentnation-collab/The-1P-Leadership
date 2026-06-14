@@ -700,3 +700,52 @@ export async function setAppointmentStatus(companyId, apptId, status, { contactI
 export async function deleteAppointment(companyId, apptId) {
   await deleteDoc(appointmentRef(companyId, apptId));
 }
+
+// ════════════════════════════════════════════════════════════════
+// SMS conversations (Twilio). Sending goes through the sendSms callable;
+// messages are written server-side. Reads are client-side.
+// ════════════════════════════════════════════════════════════════
+function conversationsCol(companyId) { return collection(db, 'companies', companyId, 'conversations'); }
+
+export async function listConversations(companyId) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const snap = await getDocs(query(conversationsCol(companyId), orderBy('lastMessageAt', 'desc')));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    try {
+      const snap = await getDocs(conversationsCol(companyId));
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      rows.sort((a, b) => {
+        const ta = a.lastMessageAt && a.lastMessageAt.toMillis ? a.lastMessageAt.toMillis() : 0;
+        const tb = b.lastMessageAt && b.lastMessageAt.toMillis ? b.lastMessageAt.toMillis() : 0;
+        return tb - ta;
+      });
+      return rows;
+    } catch (e2) { console.warn('[crm] listConversations failed', e2); return []; }
+  }
+}
+
+export async function listMessages(companyId, contactId) {
+  if (!firebaseReady || !companyId || !contactId) return [];
+  try {
+    const col = collection(db, 'companies', companyId, 'conversations', contactId, 'messages');
+    const snap = await getDocs(query(col, orderBy('createdAt', 'asc')));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) { console.warn('[crm] listMessages failed', e); return []; }
+}
+
+export async function sendSms(companyId, contactId, body) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'sendSms');
+  const res = await call({ companyId, contactId, body });
+  return res.data || { ok: true };
+}
+
+export async function markConversationRead(companyId, contactId) {
+  try {
+    await updateDoc(doc(db, 'companies', companyId, 'conversations', contactId), {
+      unreadCount: 0, updatedAt: serverTimestamp()
+    });
+  } catch (e) { /* best-effort */ }
+}

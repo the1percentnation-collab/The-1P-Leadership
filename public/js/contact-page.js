@@ -16,6 +16,7 @@ import {
   ensureDefaultPipeline, listOpportunities, createOpportunity,
   listTasks, createTask, completeTask, reopenTask,
   listAppointments, createAppointment, setAppointmentStatus,
+  listMessages, sendSms,
   escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate
 } from './crm.js';
 
@@ -35,9 +36,11 @@ const state = {
   deals: [],
   tasks: [],
   appts: [],
+  messages: [],
   dealsLoaded: false,
   tasksLoaded: false,
-  apptsLoaded: false
+  apptsLoaded: false,
+  smsLoaded: false
 };
 
 function gate(msg) {
@@ -120,6 +123,7 @@ function iconFor(type) {
     case 'manual_meeting': return '🤝';
     case 'manual_email': return '✉';
     case 'manual_sms': return '💬';
+    case 'sms_received': return '📩';
     case 'deal_created': return '◆';
     case 'deal_won': return '🏆';
     case 'deal_lost': return '✖';
@@ -280,6 +284,57 @@ async function refreshAppts() {
   renderAppts();
 }
 
+function renderSms() {
+  const host = $('sms-pane');
+  if (!host) return;
+  const c = state.contact || {};
+  if (!c.phone) {
+    host.innerHTML = `<div class="crm-subpanel-empty">Add a phone number to this contact to text them.</div>`;
+    return;
+  }
+  host.innerHTML = `
+    <div class="sms-thread-mini">
+      <div class="sms-messages" id="ct-sms-messages">
+        ${state.messages.length ? state.messages.map((m) => `
+          <div class="sms-bubble sms-${m.direction === 'out' ? 'out' : 'in'}">
+            <div class="sms-bubble-body">${escapeHtml(m.body || '')}</div>
+            <div class="sms-bubble-meta">${fmtDateTime(m.createdAt)}${m.status ? ' · ' + escapeHtml(m.status) : ''}</div>
+          </div>`).join('') : '<div class="crm-subpanel-empty" style="margin:auto;">No texts yet. Send the first one below.</div>'}
+      </div>
+      <form class="sms-composer" id="ct-sms-form">
+        <input class="c-input" id="ct-sms-input" placeholder="Type a text…" autocomplete="off" />
+        <button class="btn btn-primary" type="submit" id="ct-sms-send">Send</button>
+      </form>
+    </div>
+    <div id="ct-sms-err" class="auth-error" style="display:none;margin-top:8px;"></div>`;
+  const msgs = $('ct-sms-messages');
+  if (msgs) msgs.scrollTop = msgs.scrollHeight;
+  $('ct-sms-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = $('ct-sms-input');
+    const text = input.value.trim();
+    if (!text) return;
+    const btn = $('ct-sms-send');
+    btn.disabled = true; btn.textContent = 'Sending…';
+    $('ct-sms-err').style.display = 'none';
+    try {
+      await sendSms(state.companyId, state.contactId, text);
+      input.value = '';
+      await Promise.all([refreshSms(), refreshActivities()]);
+    } catch (err) {
+      $('ct-sms-err').textContent = err.message || String(err);
+      $('ct-sms-err').style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Send';
+    }
+  });
+}
+
+async function refreshSms() {
+  state.messages = await listMessages(state.companyId, state.contactId);
+  renderSms();
+}
+
 async function refreshDeals() {
   if (!state.pipeline) state.pipeline = await ensureDefaultPipeline(state.companyId);
   state.deals = await listOpportunities(state.companyId, { contactId: state.contactId });
@@ -370,7 +425,7 @@ async function main() {
   await Promise.all([refreshNotes(), refreshActivities()]);
 
   // Feed tabs (Notes / Deals / Tasks / Activity) with lazy loading.
-  const PANES = { notes: 'feed-notes', deals: 'feed-deals', tasks: 'feed-tasks', appts: 'feed-appts', activity: 'feed-activity' };
+  const PANES = { notes: 'feed-notes', deals: 'feed-deals', tasks: 'feed-tasks', appts: 'feed-appts', sms: 'feed-sms', activity: 'feed-activity' };
   document.querySelectorAll('.crm-tab[data-feed-tab]').forEach((b) => {
     b.addEventListener('click', async () => {
       document.querySelectorAll('.crm-tab[data-feed-tab]').forEach((x) => x.classList.toggle('active', x === b));
@@ -382,6 +437,7 @@ async function main() {
       if (state.feedTab === 'deals' && !state.dealsLoaded) { state.dealsLoaded = true; await refreshDeals(); }
       if (state.feedTab === 'tasks' && !state.tasksLoaded) { state.tasksLoaded = true; await refreshContactTasks(); }
       if (state.feedTab === 'appts' && !state.apptsLoaded) { state.apptsLoaded = true; await refreshAppts(); }
+      if (state.feedTab === 'sms' && !state.smsLoaded) { state.smsLoaded = true; await refreshSms(); }
     });
   });
 

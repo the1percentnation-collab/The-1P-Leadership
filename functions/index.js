@@ -29,6 +29,34 @@ const APP_BASE_URL = 'https://the-1p-leadership.web.app';
 // SENDGRID_WEBHOOK_KEY to exist at deploy time.
 const sendgridKey = defineSecret('SENDGRID_API_KEY');
 
+// Twilio SMS secrets — set in Secret Manager once a Twilio account exists.
+// Until then, sendSms returns a clear "not configured" error and the inbound
+// webhook rejects unsigned traffic, so deploys are safe before setup.
+const twilioSid = defineSecret('TWILIO_ACCOUNT_SID');
+const twilioToken = defineSecret('TWILIO_AUTH_TOKEN');
+const twilioFrom = defineSecret('TWILIO_FROM_NUMBER');
+
+let _twilioClient = null;
+function getTwilio() {
+  const sid = (process.env.TWILIO_ACCOUNT_SID || '').trim();
+  const token = (process.env.TWILIO_AUTH_TOKEN || '').trim();
+  if (!sid || !token) return null;
+  if (!_twilioClient) _twilioClient = require('twilio')(sid, token);
+  return _twilioClient;
+}
+
+// Best-effort E.164 normalization (defaults to US +1 for 10-digit numbers).
+function normalizePhone(p) {
+  if (!p) return null;
+  let s = String(p).trim().replace(/[^\d+]/g, '');
+  if (!s) return null;
+  if (s[0] !== '+') {
+    const digits = s.replace(/\D/g, '');
+    s = digits.length === 10 ? '+1' + digits : '+' + digits;
+  }
+  return s;
+}
+
 // ────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────
@@ -2770,7 +2798,13 @@ function reminderHtml(title, lines) {
   </div>`;
 }
 
-exports.taskReminders = onSchedule(
+// NOTE: Scheduled (cron) reminders are temporarily NOT exported because the CI
+// deploy service account lacks the "Cloud Scheduler Admin" IAM role
+// (cloudscheduler.jobs.update). To re-enable: grant that role to the deploy
+// service account in GCP IAM, then rename `_disabled_taskReminders` /
+// `_disabled_appointmentReminders` back to `exports.taskReminders` /
+// `exports.appointmentReminders` and redeploy.
+const _disabled_taskReminders = onSchedule(
   { schedule: 'every 60 minutes', secrets: [sendgridKey] },
   async () => {
     const db = admin.firestore();
@@ -2813,7 +2847,7 @@ exports.taskReminders = onSchedule(
   }
 );
 
-exports.appointmentReminders = onSchedule(
+const _disabled_appointmentReminders = onSchedule(
   { schedule: 'every 60 minutes', secrets: [sendgridKey] },
   async () => {
     const db = admin.firestore();
@@ -2855,5 +2889,149 @@ exports.appointmentReminders = onSchedule(
       await d.ref.set({ remindedAt: now }, { merge: true });
     }
     console.log(`[appointmentReminders] processed ${snap.size}, emailed ${sent}`);
+  }
+);
+
+// ════════════════════════════════════════════════════════════════
+// Twilio 2-way SMS — send (callable) + inbound/status webhooks.
+// Conversations live at companies/{cid}/conversations/{contactId} with a
+// messages subcollection (written only here, via Admin SDK).
+// ════════════════════════════════════════════════════════════════
+exports.sendSms = onCall(
+  { secrets: [twilioSid, twilioToken, twilioFrom] },
+  async (request) => {
+    const db = admin.firestore();
+    const { companyId, contactId, body } = request.data || {};
+    if (!companyId || !contactId || !body) {
+      throw new HttpsError('invalid-argument', 'companyId, contactId and body are required.');
+    }
+    await assertCompanyAdmin(db, companyId, request);
+
+    const client = getTwilio();
+    const from = (process.env.TWILIO_FROM_NUMBER || '').trim();
+    if (!client || !from) {
+      throw new HttpsError('failed-precondition', 'SMS is not configured yet. Add the Twilio secrets first.');
+    }
+
+    const cRef = db.collection('companies').doc(companyId).collection('contacts').doc(contactId);
+    const cSnap = await cRef.get();
+    if (!cSnap.exists) throw new HttpsError('not-found', 'Contact not found.');
+    const to = normalizePhone(cSnap.data().phone);
+    if (!to) throw new HttpsError('failed-precondition', 'Contact has no phone number.');
+
+    let msg;
+    try {
+      msg = await client.messages.create({ to, from, body: String(body).slice(0, 1600) });
+    } catch (e) {
+      throw new HttpsError('internal', 'Twilio send failed: ' + (e && e.message));
+    }
+
+    const FV = admin.firestore.FieldValue;
+    const convRef = db.collection('companies').doc(companyId).collection('conversations').doc(contactId);
+    await convRef.set({
+      contactId, contactPhone: to, channel: 'sms',
+      lastMessageAt: FV.serverTimestamp(), lastMessageText: String(body).slice(0, 200), lastDirection: 'out',
+      updatedAt: FV.serverTimestamp(), createdAt: FV.serverTimestamp()
+    }, { merge: true });
+    await convRef.collection('messages').doc(msg.sid).set({
+      direction: 'out', body: String(body), fromNumber: from, toNumber: to,
+      status: msg.status || 'sent', twilioSid: msg.sid, sentByUid: request.auth.uid,
+      createdAt: FV.serverTimestamp()
+    });
+    await cRef.collection('activities').add({
+      type: 'manual_sms', description: 'SMS sent: ' + String(body).slice(0, 120),
+      actorUid: request.auth.uid, actorName: 'You', createdAt: FV.serverTimestamp(), meta: { direction: 'out' }
+    });
+    await cRef.set({ lastActivityAt: FV.serverTimestamp() }, { merge: true });
+    return { ok: true, sid: msg.sid, status: msg.status || 'sent' };
+  }
+);
+
+exports.twilioInboundWebhook = onRequest(
+  { cors: false, invoker: 'public', secrets: [twilioToken] },
+  async (req, res) => {
+    const db = admin.firestore();
+    const token = (process.env.TWILIO_AUTH_TOKEN || '').trim();
+    // Signature validation — reject anything not signed by Twilio.
+    try {
+      const twilioLib = require('twilio');
+      const signature = req.get('X-Twilio-Signature') || '';
+      const url = `https://${req.get('host')}${req.originalUrl}`;
+      if (!token || !twilioLib.validateRequest(token, signature, url, req.body || {})) {
+        res.status(403).send('invalid signature');
+        return;
+      }
+    } catch (e) { res.status(403).send('signature error'); return; }
+
+    const from = normalizePhone(req.body.From);
+    const to = normalizePhone(req.body.To);
+    const text = req.body.Body || '';
+    const sid = req.body.MessageSid || ('in_' + Date.now());
+
+    try {
+      const cid = await resolveAcademyCompanyId(db);
+      if (cid && from) {
+        const FV = admin.firestore.FieldValue;
+        const contactsRef = db.collection('companies').doc(cid).collection('contacts');
+        let contactDoc = null;
+        const q1 = await contactsRef.where('phone', '==', from).limit(1).get();
+        if (!q1.empty) contactDoc = q1.docs[0];
+        if (!contactDoc) {
+          const newRef = await contactsRef.add({
+            name: from, email: null, phone: from, companyName: null,
+            source: 'SMS', stage: 'new', tags: [], ownerUid: null,
+            createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp(),
+            createdBy: 'twilio', lastActivityAt: FV.serverTimestamp()
+          });
+          contactDoc = await newRef.get();
+        }
+        const contactId = contactDoc.id;
+        const convRef = db.collection('companies').doc(cid).collection('conversations').doc(contactId);
+        await convRef.set({
+          contactId, contactPhone: from, channel: 'sms',
+          lastMessageAt: FV.serverTimestamp(), lastMessageText: String(text).slice(0, 200), lastDirection: 'in',
+          unreadCount: FV.increment(1), updatedAt: FV.serverTimestamp(), createdAt: FV.serverTimestamp()
+        }, { merge: true });
+        await convRef.collection('messages').doc(sid).set({
+          direction: 'in', body: String(text), fromNumber: from, toNumber: to,
+          status: 'received', twilioSid: sid, createdAt: FV.serverTimestamp()
+        });
+        await contactDoc.ref.collection('activities').add({
+          type: 'sms_received', description: 'SMS received: ' + String(text).slice(0, 120),
+          actorUid: 'twilio', actorName: from, createdAt: FV.serverTimestamp(), meta: { direction: 'in' }
+        });
+        await contactDoc.ref.set({ lastActivityAt: FV.serverTimestamp() }, { merge: true });
+      }
+    } catch (e) { console.warn('[twilioInbound]', e && e.message); }
+
+    res.set('Content-Type', 'text/xml');
+    res.status(200).send('<Response></Response>');
+  }
+);
+
+exports.twilioStatusWebhook = onRequest(
+  { cors: false, invoker: 'public', secrets: [twilioToken] },
+  async (req, res) => {
+    const db = admin.firestore();
+    const token = (process.env.TWILIO_AUTH_TOKEN || '').trim();
+    try {
+      const twilioLib = require('twilio');
+      const signature = req.get('X-Twilio-Signature') || '';
+      const url = `https://${req.get('host')}${req.originalUrl}`;
+      if (!token || !twilioLib.validateRequest(token, signature, url, req.body || {})) {
+        res.status(403).send('invalid signature');
+        return;
+      }
+    } catch (e) { res.status(403).send('signature error'); return; }
+
+    const sid = req.body.MessageSid;
+    const status = req.body.MessageStatus;
+    if (sid && status) {
+      try {
+        const ms = await db.collectionGroup('messages').where('twilioSid', '==', sid).limit(1).get();
+        if (!ms.empty) await ms.docs[0].ref.set({ status }, { merge: true });
+      } catch (e) { console.warn('[twilioStatus] (index?)', e && e.message); }
+    }
+    res.status(200).send('ok');
   }
 );

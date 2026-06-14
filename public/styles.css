@@ -6967,3 +6967,26 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
   .cal-cell { min-height: 64px; }
   .cal-appt { font-size: 9px; }
 }
+
+/* ── SMS conversations ── */
+.sms-wrap { display: flex; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; height: calc(100vh - 190px); min-height: 420px; }
+.sms-list { width: 300px; flex-shrink: 0; border-right: 1px solid var(--border); overflow-y: auto; background: var(--surface); }
+.sms-list-item { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--border); padding: 12px 14px; cursor: pointer; color: var(--white); }
+.sms-list-item:hover { background: var(--surface2); }
+.sms-list-item.active { background: color-mix(in srgb, var(--red) 14%, transparent); }
+.sms-list-top { display: flex; justify-content: space-between; align-items: center; }
+.sms-list-name { font-weight: 600; font-size: 13px; }
+.sms-unread { background: var(--red); color: #fff; border-radius: 999px; font-size: 10px; padding: 1px 7px; font-family: var(--font-mono); }
+.sms-list-preview { color: var(--gray-light); font-size: 12px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sms-thread { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.sms-thread-head { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: baseline; }
+.sms-thread-name { color: var(--white); font-weight: 600; text-decoration: none; }
+.sms-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.sms-bubble { max-width: 75%; padding: 8px 12px; border-radius: 12px; font-size: 14px; word-break: break-word; }
+.sms-in { align-self: flex-start; background: var(--surface2); color: var(--white); border-bottom-left-radius: 3px; }
+.sms-out { align-self: flex-end; background: var(--red); color: #fff; border-bottom-right-radius: 3px; }
+.sms-bubble-meta { font-family: var(--font-mono); font-size: 9px; opacity: .7; margin-top: 4px; }
+.sms-composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border); }
+.sms-composer .c-input { flex: 1; margin: 0; }
+.sms-thread-mini { display: flex; flex-direction: column; height: 380px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+@media (max-width: 760px) { .sms-list { width: 130px; } .sms-wrap { height: calc(100vh - 160px); } }
