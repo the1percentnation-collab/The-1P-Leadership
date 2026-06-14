@@ -114,7 +114,10 @@
         }
         $('displayName').value = d.displayName || user.displayName || '';
         if (d.phone) $('phone').value = d.phone;
+        if (d.address) $('address').value = d.address;
         if (d.company) $('company').value = d.company;
+        if (d.industry) $('industry').value = d.industry;
+        if (d.communityGoals) $('goals').value = d.communityGoals;
       } catch (e) {
         $('displayName').value = user.displayName || '';
       }
