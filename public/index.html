@@ -168,13 +168,45 @@
       color: var(--red);
       text-decoration: none;
       transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
+      animation: portal-flash 3s ease-in-out infinite;
     }
-    /* Light up red with a glow when the cursor is over it. */
+    /* Light up red with a glow when the cursor is over it (pauses the
+       auto-flash while hovered so the hover state stays solid). */
     .btn-portal:hover {
       background: var(--red);
       border-color: #ffffff;
       color: #ffffff;
       box-shadow: 0 0 18px 3px rgba(230,3,6,0.9), 0 0 0 2px rgba(255,255,255,0.5);
+      animation-play-state: paused;
+    }
+
+    /* Periodic attention flash — matches the MEMBER PORTAL badge on the
+       sign-in page: lights up red, white outline + glow, then settles. */
+    @keyframes portal-flash {
+      0%, 70%, 100% {
+        background: transparent;
+        border-color: var(--border-red);
+        color: var(--red);
+        box-shadow: 0 0 0 rgba(230,3,6,0);
+        transform: scale(1);
+      }
+      80% {
+        background: var(--red);
+        border-color: #ffffff;
+        color: #ffffff;
+        box-shadow: 0 0 18px 3px rgba(230,3,6,0.9), 0 0 0 2px rgba(255,255,255,0.5);
+        transform: scale(1.06);
+      }
+      90% {
+        background: transparent;
+        border-color: var(--border-red);
+        color: var(--red);
+        box-shadow: 0 0 0 rgba(230,3,6,0);
+        transform: scale(1);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .btn-portal { animation: none; }
     }
 
     .btn-cta-nav {
