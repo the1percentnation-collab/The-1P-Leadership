@@ -242,6 +242,18 @@ service cloud.firestore {
         allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
       }
 
+      // SMS conversations + messages. Messages are written only by the Twilio
+      // Cloud Functions (Admin SDK), so client writes to messages are denied.
+      match /conversations/{conversationId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create, update: if isOwner() || isCompanyAdmin(cid);
+        allow delete: if isOwner();
+        match /messages/{messageId} {
+          allow read: if isOwner() || isCompanyAdmin(cid);
+          allow write: if false;
+        }
+      }
+
       // ──────────────────────────────────────────────────────────────
       // Campaigns (Phase 3): email broadcasts + per-event telemetry.
       // ──────────────────────────────────────────────────────────────
