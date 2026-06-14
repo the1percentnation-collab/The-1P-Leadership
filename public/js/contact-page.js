@@ -13,7 +13,9 @@ import {
   listNotes, addNote, deleteNote,
   listActivities, addManualActivity,
   listCompanyAdmins,
-  escapeHtml, fmtDateTime
+  ensureDefaultPipeline, listOpportunities, createOpportunity,
+  listTasks, createTask, completeTask, reopenTask,
+  escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate
 } from './crm.js';
 
 const $ = (id) => document.getElementById(id);
@@ -27,7 +29,12 @@ const state = {
   admins: [],
   feedTab: 'notes',
   notes: [],
-  activities: []
+  activities: [],
+  pipeline: null,
+  deals: [],
+  tasks: [],
+  dealsLoaded: false,
+  tasksLoaded: false
 };
 
 function gate(msg) {
@@ -110,6 +117,12 @@ function iconFor(type) {
     case 'manual_meeting': return '🤝';
     case 'manual_email': return '✉';
     case 'manual_sms': return '💬';
+    case 'deal_created': return '◆';
+    case 'deal_won': return '🏆';
+    case 'deal_lost': return '✖';
+    case 'deal_stage_changed': return '⇨';
+    case 'task_created': return '✓';
+    case 'task_completed': return '☑';
     case 'email_sent': return '✉';
     case 'email_event': return '📬';
     case 'event_registration': return '🎟';
@@ -167,6 +180,76 @@ function renderActivities() {
       </div>
     </div>
   `).join('');
+}
+
+// ────────────────────────────────────────────────────────────────
+// Deals + Tasks panes (per-contact)
+// ────────────────────────────────────────────────────────────────
+function dealStageLabel(stageId) {
+  const st = state.pipeline && (state.pipeline.stages || []).find((s) => s.id === stageId);
+  return st ? st.label : (stageId || '—');
+}
+
+function renderDeals() {
+  const host = $('deals-list');
+  if (!host) return;
+  if (!state.deals.length) {
+    host.innerHTML = `<div class="crm-subpanel-empty">No deals yet. Create one to start tracking revenue for this contact.</div>`;
+    return;
+  }
+  host.innerHTML = state.deals.map((o) => {
+    const status = o.status === 'won' ? 'Won' : (o.status === 'lost' ? 'Lost' : dealStageLabel(o.stageId));
+    return `
+      <a class="crm-mini-row" href="/opportunities.html" style="text-decoration:none;">
+        <div class="crm-mini-main">
+          <div class="crm-mini-title">${escapeHtml(o.title)}</div>
+          <div class="crm-mini-sub">${escapeHtml(status)}${o.expectedCloseAt ? ' · close ' + fmtDate(o.expectedCloseAt) : ''}</div>
+        </div>
+        <span class="crm-mini-val">${fmtMoney(o.value)}</span>
+      </a>`;
+  }).join('');
+}
+
+function renderContactTasks() {
+  const host = $('tasks-list');
+  if (!host) return;
+  if (!state.tasks.length) {
+    host.innerHTML = `<div class="crm-subpanel-empty">No tasks for this contact.</div>`;
+    return;
+  }
+  host.innerHTML = state.tasks.map((t) => {
+    const done = t.status === 'done';
+    const due = toDate(t.dueAt);
+    const overdue = !done && due && due < new Date();
+    return `
+      <div class="crm-mini-row">
+        <button class="task-check ${done ? 'checked' : ''}" data-toggle-task="${t.id}" aria-label="Toggle">${done ? '✓' : ''}</button>
+        <div class="crm-mini-main">
+          <div class="crm-mini-title" style="${done ? 'text-decoration:line-through;color:var(--gray-mid);' : ''}">${escapeHtml(t.title)}</div>
+          <div class="crm-mini-sub ${overdue ? 'task-due-overdue' : ''}">${t.dueAt ? 'Due ' + fmtDate(t.dueAt) : 'No due date'}</div>
+        </div>
+      </div>`;
+  }).join('');
+  host.querySelectorAll('[data-toggle-task]').forEach((b) => b.addEventListener('click', async () => {
+    const id = b.getAttribute('data-toggle-task');
+    const t = state.tasks.find((x) => x.id === id);
+    if (!t) return;
+    try {
+      if (t.status === 'done') await reopenTask(state.companyId, id);
+      else await completeTask(state.companyId, id, { contactId: state.contactId, title: t.title });
+      await Promise.all([refreshContactTasks(), refreshActivities()]);
+    } catch (e) { alert('Could not update task: ' + (e.message || e)); }
+  }));
+}
+
+async function refreshDeals() {
+  if (!state.pipeline) state.pipeline = await ensureDefaultPipeline(state.companyId);
+  state.deals = await listOpportunities(state.companyId, { contactId: state.contactId });
+  renderDeals();
+}
+async function refreshContactTasks() {
+  state.tasks = await listTasks(state.companyId, { contactId: state.contactId });
+  renderContactTasks();
 }
 
 async function refreshNotes() {
@@ -248,15 +331,24 @@ async function main() {
   renderContactHeader();
   await Promise.all([refreshNotes(), refreshActivities()]);
 
-  // Feed tabs
+  // Feed tabs (Notes / Deals / Tasks / Activity) with lazy loading.
+  const PANES = { notes: 'feed-notes', deals: 'feed-deals', tasks: 'feed-tasks', activity: 'feed-activity' };
   document.querySelectorAll('.crm-tab[data-feed-tab]').forEach((b) => {
-    b.addEventListener('click', () => {
+    b.addEventListener('click', async () => {
       document.querySelectorAll('.crm-tab[data-feed-tab]').forEach((x) => x.classList.toggle('active', x === b));
       state.feedTab = b.getAttribute('data-feed-tab');
-      $('feed-notes').style.display = state.feedTab === 'notes' ? '' : 'none';
-      $('feed-activity').style.display = state.feedTab === 'activity' ? '' : 'none';
+      Object.keys(PANES).forEach((k) => {
+        const el = $(PANES[k]);
+        if (el) el.style.display = (k === state.feedTab) ? '' : 'none';
+      });
+      if (state.feedTab === 'deals' && !state.dealsLoaded) { state.dealsLoaded = true; await refreshDeals(); }
+      if (state.feedTab === 'tasks' && !state.tasksLoaded) { state.tasksLoaded = true; await refreshContactTasks(); }
     });
   });
+
+  // New deal / new task for this contact
+  $('btn-add-deal').addEventListener('click', openContactDealModal);
+  $('btn-add-task').addEventListener('click', openContactTaskModal);
 
   // Stage change
   $('ct-stage').addEventListener('change', async (e) => {
@@ -417,6 +509,108 @@ function openSendEmailModal() {
       $('se-err').style.display = 'block';
       btn.disabled = false;
       btn.textContent = 'Send';
+    }
+  });
+}
+
+function openContactDealModal() {
+  const root = $('modal-root');
+  const c = state.contact || {};
+  const stages = (state.pipeline && state.pipeline.stages || STAGES).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+  root.innerHTML = `
+    <div class="crm-modal-backdrop" id="modal-bd">
+      <div class="crm-modal auth-card">
+        <h1>New <span>Deal</span></h1>
+        <form id="cd-form" class="crm-form">
+          <div class="crm-form-row"><label>Deal title *</label>
+            <input class="c-input" id="cd-title" required value="${escapeHtml(c.name ? c.name + ' — ' : '')}" placeholder="Annual plan" /></div>
+          <div class="crm-form-row-grid">
+            <div class="crm-form-row"><label>Value ($)</label>
+              <input class="c-input" id="cd-value" type="number" min="0" step="1" placeholder="5000" /></div>
+            <div class="crm-form-row"><label>Stage</label>
+              <select class="c-input crm-select" id="cd-stage">
+                ${stages.map((s) => `<option value="${s.id}">${escapeHtml(s.label)}</option>`).join('')}
+              </select></div>
+          </div>
+          <div class="crm-form-row"><label>Expected close</label>
+            <input class="c-input" id="cd-close" type="date" /></div>
+          <div id="cd-err" class="auth-error" style="display:none;"></div>
+          <div class="crm-modal-actions">
+            <button type="button" class="btn btn-ghost" id="cd-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create deal</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+  const close = () => { root.innerHTML = ''; };
+  $('cd-cancel').addEventListener('click', close);
+  $('modal-bd').addEventListener('click', (e) => { if (e.target.id === 'modal-bd') close(); });
+  $('cd-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      if (!state.pipeline) state.pipeline = await ensureDefaultPipeline(state.companyId);
+      const closeStr = $('cd-close').value;
+      await createOpportunity(state.companyId, {
+        title: $('cd-title').value, value: $('cd-value').value,
+        stageId: $('cd-stage').value, pipelineId: state.pipeline.id,
+        expectedCloseAt: closeStr ? new Date(closeStr + 'T12:00:00') : null,
+        contactId: state.contactId, contactName: c.name || null,
+        ownerUid: c.ownerUid || state.uid, source: c.source || null
+      });
+      close();
+      await Promise.all([refreshDeals(), refreshActivities(), refreshContact()]);
+    } catch (err) {
+      $('cd-err').textContent = err.message || String(err);
+      $('cd-err').style.display = '';
+    }
+  });
+}
+
+function openContactTaskModal() {
+  const root = $('modal-root');
+  const c = state.contact || {};
+  root.innerHTML = `
+    <div class="crm-modal-backdrop" id="modal-bd">
+      <div class="crm-modal auth-card">
+        <h1>New <span>Task</span></h1>
+        <form id="ct-form" class="crm-form">
+          <div class="crm-form-row"><label>Title *</label>
+            <input class="c-input" id="ctk-title" required placeholder="Follow up with ${escapeHtml((c.name || 'contact').split(' ')[0])}" /></div>
+          <div class="crm-form-row-grid">
+            <div class="crm-form-row"><label>Due</label>
+              <input class="c-input" id="ctk-due" type="datetime-local" /></div>
+            <div class="crm-form-row"><label>Priority</label>
+              <select class="c-input crm-select" id="ctk-priority">
+                <option value="normal">Normal</option><option value="high">High</option><option value="low">Low</option>
+              </select></div>
+          </div>
+          <div id="ctk-err" class="auth-error" style="display:none;"></div>
+          <div class="crm-modal-actions">
+            <button type="button" class="btn btn-ghost" id="ctk-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create task</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+  const close = () => { root.innerHTML = ''; };
+  $('ctk-cancel').addEventListener('click', close);
+  $('modal-bd').addEventListener('click', (e) => { if (e.target.id === 'modal-bd') close(); });
+  $('ct-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const dueStr = $('ctk-due').value;
+      await createTask(state.companyId, {
+        title: $('ctk-title').value,
+        dueAt: dueStr ? new Date(dueStr) : null,
+        priority: $('ctk-priority').value,
+        assigneeUid: c.ownerUid || state.uid,
+        contactId: state.contactId, contactName: c.name || null
+      });
+      close();
+      await Promise.all([refreshContactTasks(), refreshActivities()]);
+    } catch (err) {
+      $('ctk-err').textContent = err.message || String(err);
+      $('ctk-err').style.display = '';
     }
   });
 }

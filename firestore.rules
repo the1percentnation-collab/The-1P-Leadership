@@ -222,6 +222,23 @@ service cloud.firestore {
       }
 
       // ──────────────────────────────────────────────────────────────
+      // Sales suite (GHL-style): pipelines, opportunities (deals), tasks.
+      // Same owner/company-admin model as contacts.
+      // ──────────────────────────────────────────────────────────────
+      match /pipelines/{pipelineId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
+      }
+      match /opportunities/{oppId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
+      }
+      match /tasks/{taskId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
+      }
+
+      // ──────────────────────────────────────────────────────────────
       // Campaigns (Phase 3): email broadcasts + per-event telemetry.
       // ──────────────────────────────────────────────────────────────
       match /campaigns/{campaignId} {
