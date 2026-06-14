@@ -1437,6 +1437,12 @@ gmp-place-autocomplete,
   width: 100%;
 }
 
+/* CRM uses the full width of the console for better visibility. */
+.console-body:has(.crm-toolbar) {
+  max-width: none;
+  padding: 24px 44px 64px;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
