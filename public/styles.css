@@ -1175,6 +1175,10 @@ body {
 .pac-matched { color: var(--red); }
 .pac-icon { display: none; }
 
+/* Onboarding ("Your Details") — larger brand lockup than the auth default. */
+.onboarding-card .auth-brand-mark { height: 132px; }
+.onboarding-card .brand-badge { font-size: 12px; letter-spacing: 0.14em; padding: 6px 14px; }
+
 /* ── Onboarding: wider, two-column desktop layout (mobile untouched) ──
    All rules below are gated behind min-width, so the mobile experience
    and the shared login/signup cards are completely unaffected. */
@@ -1184,7 +1188,7 @@ body {
     max-width: 780px;
     padding: 56px 64px;
   }
-  .onboarding-card .auth-brand-mark { height: 84px; }
+  .onboarding-card .auth-brand-mark { height: 156px; }
   .onboarding-card h1 { font-size: 44px; }
   .onboarding-card .auth-sub { max-width: 540px; margin-left: auto; margin-right: auto; }
   .onboarding-card .auth-form {
