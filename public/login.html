@@ -110,6 +110,39 @@
     </div>
   </div>
 
+  <!-- Standalone (non-module) so it runs even if Firebase/module imports fail. -->
+  <script>
+    (function signupNudge() {
+      function start() {
+        var tip = document.getElementById('signup-tip');
+        var link = document.getElementById('link-signup');
+        if (!tip || !link) return;
+        var dismissed = false;
+        function hide() {
+          dismissed = true;
+          tip.classList.remove('show');
+          link.classList.remove('signup-pulse');
+        }
+        var showTimer = setTimeout(function () {
+          if (dismissed) return;
+          tip.classList.add('show');
+          link.classList.add('signup-pulse');
+          setTimeout(function () { if (!dismissed) hide(); }, 9000); // auto-dismiss
+        }, 3000);
+        link.addEventListener('click', function () { clearTimeout(showTimer); });
+        ['email', 'password'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.addEventListener('focus', hide, { once: true });
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', start);
+      } else {
+        start();
+      }
+    })();
+  </script>
+
   <script type="module">
     import { loginEmail, loginGoogle, resetPassword, onAuthReady } from './js/auth.js';
     import { firebaseReady } from './js/firebase.js';
@@ -160,31 +193,6 @@
         showErr(err.message || 'Google sign-in failed.');
       }
     });
-
-    // After 3s, surface a prompt pointing at the Create an account link.
-    (function signupNudge() {
-      const tip = $('signup-tip');
-      const link = $('link-signup');
-      if (!tip || !link) return;
-      let dismissed = false;
-      const hide = () => {
-        dismissed = true;
-        tip.classList.remove('show');
-        link.classList.remove('signup-pulse');
-      };
-      const showTimer = setTimeout(() => {
-        if (dismissed) return;
-        tip.classList.add('show');
-        link.classList.add('signup-pulse');
-        setTimeout(() => { if (!dismissed) hide(); }, 9000); // auto-dismiss
-      }, 3000);
-      // Dismiss once the visitor engages with the form or the link.
-      link.addEventListener('click', () => clearTimeout(showTimer));
-      ['email', 'password'].forEach((id) => {
-        const el = $(id);
-        if (el) el.addEventListener('focus', hide, { once: true });
-      });
-    })();
 
     $('link-forgot').addEventListener('click', async (e) => {
       e.preventDefault();
