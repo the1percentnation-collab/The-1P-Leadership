@@ -492,6 +492,23 @@ service cloud.firestore {
       }
     }
 
+    // Products — generic pre-order / interest items (courses, books, services…).
+    // Public can read visible statuses; admins manage. Interests/preorders are
+    // written only by Cloud Functions (Admin SDK), so client writes are denied.
+    match /products/{productId} {
+      allow read: if isAnyAdmin()
+        || (resource.data.status in ['interest', 'preorder', 'live']);
+      allow create, update, delete: if isAnyAdmin();
+      match /interests/{interestId} {
+        allow read: if isAnyAdmin();
+        allow write: if false;
+      }
+      match /preorders/{preorderId} {
+        allow read: if isAnyAdmin();
+        allow write: if false;
+      }
+    }
+
     // Coupon codes — created in /manage-courses.html, synced to Stripe by the
     // syncCoupon callable (which writes stripePromotionCodeId server-side).
     match /coupons/{code} {
