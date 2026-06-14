@@ -618,3 +618,85 @@ export async function reopenTask(companyId, taskId) {
 export async function deleteTask(companyId, taskId) {
   await deleteDoc(taskRef(companyId, taskId));
 }
+
+// ════════════════════════════════════════════════════════════════
+// APPOINTMENTS — meetings/bookings, optionally linked to a contact.
+// ════════════════════════════════════════════════════════════════
+function appointmentsCol(companyId) { return collection(db, 'companies', companyId, 'appointments'); }
+function appointmentRef(companyId, id) { return doc(db, 'companies', companyId, 'appointments', id); }
+
+export async function listAppointments(companyId, { contactId = null } = {}) {
+  if (!firebaseReady || !companyId) return [];
+  const parts = [appointmentsCol(companyId)];
+  if (contactId) parts.push(where('contactId', '==', contactId));
+  try {
+    const snap = await getDocs(query(...parts));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    try {
+      const snap = await getDocs(appointmentsCol(companyId));
+      let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (contactId) rows = rows.filter((r) => r.contactId === contactId);
+      return rows;
+    } catch (e2) { console.warn('[crm] listAppointments failed', e2); return []; }
+  }
+}
+
+export async function createAppointment(companyId, data = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  if (!companyId) throw new Error('companyId required');
+  const payload = {
+    title: (data.title || '').trim() || 'Appointment',
+    contactId: data.contactId || null,
+    contactName: data.contactName || null,
+    startAt: data.startAt || null,
+    durationMin: Number(data.durationMin) || 30,
+    location: data.location || null,
+    status: 'scheduled',
+    ownerUid: data.ownerUid || user.uid,
+    notes: data.notes || null,
+    remindedAt: null,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    createdBy: user.uid
+  };
+  const ref = await addDoc(appointmentsCol(companyId), payload);
+  if (payload.contactId) {
+    try {
+      await logActivity(companyId, payload.contactId, {
+        type: 'appointment_created',
+        description: `Appointment: ${payload.title}`,
+        meta: { appointmentId: ref.id }
+      });
+    } catch (e) {}
+  }
+  return { id: ref.id, ...payload };
+}
+
+export async function updateAppointment(companyId, apptId, patch = {}) {
+  const allowed = ['title', 'startAt', 'durationMin', 'location', 'notes', 'contactId', 'contactName', 'ownerUid'];
+  const clean = {};
+  allowed.forEach((k) => { if (patch[k] !== undefined) clean[k] = patch[k]; });
+  // Rescheduling re-arms the reminder.
+  if (patch.startAt !== undefined) clean.remindedAt = null;
+  clean.updatedAt = serverTimestamp();
+  await updateDoc(appointmentRef(companyId, apptId), clean);
+}
+
+export async function setAppointmentStatus(companyId, apptId, status, { contactId } = {}) {
+  await updateDoc(appointmentRef(companyId, apptId), { status, updatedAt: serverTimestamp() });
+  if (contactId) {
+    try {
+      await logActivity(companyId, contactId, {
+        type: 'appointment_status',
+        description: `Appointment ${status}`,
+        meta: { appointmentId: apptId, status }
+      });
+    } catch (e) {}
+  }
+}
+
+export async function deleteAppointment(companyId, apptId) {
+  await deleteDoc(appointmentRef(companyId, apptId));
+}

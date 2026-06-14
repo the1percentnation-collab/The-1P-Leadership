@@ -237,6 +237,10 @@ service cloud.firestore {
         allow read: if isOwner() || isCompanyAdmin(cid);
         allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
       }
+      match /appointments/{apptId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
+      }
 
       // ──────────────────────────────────────────────────────────────
       // Campaigns (Phase 3): email broadcasts + per-event telemetry.

@@ -26,7 +26,7 @@ const NAV = [
   { key: 'opportunities', href: '/opportunities.html', label: 'Opportunities', icon: '◆' },
   { key: 'tasks',         href: '/tasks.html',         label: 'Tasks',         icon: '✓' },
   { key: 'conversations', href: '/conversations.html', label: 'Conversations', icon: '✉', soon: true },
-  { key: 'calendar',      href: '/calendar.html',      label: 'Calendar',      icon: '◷', soon: true },
+  { key: 'calendar',      href: '/calendar.html',      label: 'Calendar',      icon: '◷' },
   { key: 'campaigns',     href: '/campaigns.html',     label: 'Campaigns',     icon: '❏' },
   { key: 'settings',      href: '/crm-settings.html',  label: 'Settings',      icon: '⚙' }
 ];
