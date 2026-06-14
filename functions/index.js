@@ -29,13 +29,11 @@ const APP_BASE_URL = 'https://the-1p-leadership.web.app';
 // SENDGRID_WEBHOOK_KEY to exist at deploy time.
 const sendgridKey = defineSecret('SENDGRID_API_KEY');
 
-// Twilio SMS secrets — set in Secret Manager once a Twilio account exists.
-// Until then, sendSms returns a clear "not configured" error and the inbound
-// webhook rejects unsigned traffic, so deploys are safe before setup.
-const twilioSid = defineSecret('TWILIO_ACCOUNT_SID');
-const twilioToken = defineSecret('TWILIO_AUTH_TOKEN');
-const twilioFrom = defineSecret('TWILIO_FROM_NUMBER');
-
+// Twilio SMS credentials are read from process.env (like Stripe), NOT via
+// defineSecret — so deploys succeed before the values exist. Until they're set
+// (functions/.env or runtime env), sendSms returns "not configured" and the
+// inbound webhook rejects unsigned traffic. Provide: TWILIO_ACCOUNT_SID,
+// TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER.
 let _twilioClient = null;
 function getTwilio() {
   const sid = (process.env.TWILIO_ACCOUNT_SID || '').trim();
@@ -2898,7 +2896,6 @@ const _disabled_appointmentReminders = onSchedule(
 // messages subcollection (written only here, via Admin SDK).
 // ════════════════════════════════════════════════════════════════
 exports.sendSms = onCall(
-  { secrets: [twilioSid, twilioToken, twilioFrom] },
   async (request) => {
     const db = admin.firestore();
     const { companyId, contactId, body } = request.data || {};
@@ -2948,7 +2945,7 @@ exports.sendSms = onCall(
 );
 
 exports.twilioInboundWebhook = onRequest(
-  { cors: false, invoker: 'public', secrets: [twilioToken] },
+  { cors: false, invoker: 'public' },
   async (req, res) => {
     const db = admin.firestore();
     const token = (process.env.TWILIO_AUTH_TOKEN || '').trim();
@@ -3010,7 +3007,7 @@ exports.twilioInboundWebhook = onRequest(
 );
 
 exports.twilioStatusWebhook = onRequest(
-  { cors: false, invoker: 'public', secrets: [twilioToken] },
+  { cors: false, invoker: 'public' },
   async (req, res) => {
     const db = admin.firestore();
     const token = (process.env.TWILIO_AUTH_TOKEN || '').trim();
