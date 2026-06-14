@@ -2,12 +2,35 @@
 // `products` collection). Public reads visible products; admins manage them.
 // Interest/early-access signups + launch notify go through Cloud Functions.
 
-import { db, functions, firebaseReady } from './firebase.js';
+import { app, auth, db, functions, firebaseReady } from './firebase.js';
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
   collection, query, where, orderBy, getDocs, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
+import {
+  getStorage, ref as storageRef, uploadBytes, getDownloadURL
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
+
+// Lazy storage (only pages that upload pay the cost).
+let _storage = null;
+function storage() {
+  if (!_storage && firebaseReady) _storage = getStorage(app);
+  return _storage;
+}
+
+// Upload a product image to Storage and return its public download URL.
+export async function uploadProductImage(file) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  const s = storage();
+  if (!s) throw new Error('Storage unavailable');
+  const ext = (file.name.match(/\.(\w+)$/) || [, 'jpg'])[1].toLowerCase();
+  const safe = `${Date.now()}.${ext}`;
+  const r = storageRef(s, `product-images/${user.uid}/${safe}`);
+  await uploadBytes(r, file, { contentType: file.type || 'image/jpeg' });
+  return await getDownloadURL(r);
+}
 
 export const PRODUCT_TYPES = ['course', 'book', 'physical', 'service', 'other'];
 export const PRODUCT_STATUSES = ['planned', 'interest', 'preorder', 'live', 'archived'];
