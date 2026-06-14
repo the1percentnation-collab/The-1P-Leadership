@@ -6,6 +6,7 @@
 
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
@@ -2748,3 +2749,111 @@ exports.markAffiliatePaid = onCall(async (request) => {
 
   return { ok: true, paidCount: pending.size, paidAmount };
 });
+
+// ════════════════════════════════════════════════════════════════
+// Scheduled reminder emails (CRM tasks + appointments). Reuse SendGrid.
+// Each item is reminded once (remindedAt dedupe). Collection-group queries.
+// ════════════════════════════════════════════════════════════════
+async function emailForUid(db, uid) {
+  if (!uid) return null;
+  try {
+    const u = await db.collection('users').doc(uid).get();
+    return u.exists ? (u.data().email || null) : null;
+  } catch (e) { return null; }
+}
+
+function reminderHtml(title, lines) {
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;">
+    <h2 style="color:#E60306;margin:0 0 12px;">${title}</h2>
+    ${lines.map((l) => `<p style="font-size:15px;color:#222;margin:6px 0;">${l}</p>`).join('')}
+    <p style="font-size:13px;color:#888;margin-top:18px;">— The One Percent Nation CRM</p>
+  </div>`;
+}
+
+exports.taskReminders = onSchedule(
+  { schedule: 'every 60 minutes', secrets: [sendgridKey] },
+  async () => {
+    const db = admin.firestore();
+    const now = admin.firestore.Timestamp.now();
+    const horizon = admin.firestore.Timestamp.fromMillis(now.toMillis() + 24 * 3600 * 1000);
+    let snap;
+    try {
+      snap = await db.collectionGroup('tasks')
+        .where('status', '==', 'open')
+        .where('dueAt', '<=', horizon)
+        .limit(200).get();
+    } catch (e) { console.warn('[taskReminders] query failed (index?):', e && e.message); return; }
+    sgMail.setApiKey(sendgridKey.value());
+    let sent = 0;
+    for (const d of snap.docs) {
+      const t = d.data();
+      if (t.remindedAt || !t.dueAt) continue;
+      const email = await emailForUid(db, t.assigneeUid);
+      if (!email) { await d.ref.set({ remindedAt: now }, { merge: true }); continue; }
+      try {
+        const due = t.dueAt.toDate ? t.dueAt.toDate() : new Date(t.dueAt);
+        await sgMail.send({
+          to: email,
+          from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+          replyTo: REPLY_TO,
+          subject: `Reminder: ${t.title}`,
+          html: reminderHtml('Task reminder', [
+            `<strong>${t.title}</strong>`,
+            t.contactName ? `Contact: ${t.contactName}` : '',
+            `Due: ${due.toLocaleString()}`,
+            `<a href="${APP_BASE_URL}/tasks.html" style="color:#E60306;">Open Tasks →</a>`
+          ].filter(Boolean)),
+          text: `Task reminder: ${t.title} — due ${due.toLocaleString()}`
+        });
+        sent++;
+      } catch (e) { console.warn('[taskReminders] send failed', e && e.message); }
+      await d.ref.set({ remindedAt: now }, { merge: true });
+    }
+    console.log(`[taskReminders] processed ${snap.size}, emailed ${sent}`);
+  }
+);
+
+exports.appointmentReminders = onSchedule(
+  { schedule: 'every 60 minutes', secrets: [sendgridKey] },
+  async () => {
+    const db = admin.firestore();
+    const now = admin.firestore.Timestamp.now();
+    const horizon = admin.firestore.Timestamp.fromMillis(now.toMillis() + 24 * 3600 * 1000);
+    let snap;
+    try {
+      snap = await db.collectionGroup('appointments')
+        .where('status', '==', 'scheduled')
+        .where('startAt', '<=', horizon)
+        .limit(200).get();
+    } catch (e) { console.warn('[appointmentReminders] query failed (index?):', e && e.message); return; }
+    sgMail.setApiKey(sendgridKey.value());
+    let sent = 0;
+    for (const d of snap.docs) {
+      const a = d.data();
+      if (a.remindedAt || !a.startAt) continue;
+      if (a.startAt.toMillis && a.startAt.toMillis() < now.toMillis()) { await d.ref.set({ remindedAt: now }, { merge: true }); continue; }
+      const email = await emailForUid(db, a.ownerUid);
+      if (!email) { await d.ref.set({ remindedAt: now }, { merge: true }); continue; }
+      try {
+        const start = a.startAt.toDate ? a.startAt.toDate() : new Date(a.startAt);
+        await sgMail.send({
+          to: email,
+          from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+          replyTo: REPLY_TO,
+          subject: `Upcoming: ${a.title}`,
+          html: reminderHtml('Appointment reminder', [
+            `<strong>${a.title}</strong>`,
+            a.contactName ? `With: ${a.contactName}` : '',
+            `When: ${start.toLocaleString()}`,
+            a.location ? `Where: ${a.location}` : '',
+            `<a href="${APP_BASE_URL}/calendar.html" style="color:#E60306;">Open Calendar →</a>`
+          ].filter(Boolean)),
+          text: `Appointment: ${a.title} at ${start.toLocaleString()}`
+        });
+        sent++;
+      } catch (e) { console.warn('[appointmentReminders] send failed', e && e.message); }
+      await d.ref.set({ remindedAt: now }, { merge: true });
+    }
+    console.log(`[appointmentReminders] processed ${snap.size}, emailed ${sent}`);
+  }
+);

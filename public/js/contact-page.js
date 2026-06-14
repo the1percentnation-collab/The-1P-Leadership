@@ -15,6 +15,7 @@ import {
   listCompanyAdmins,
   ensureDefaultPipeline, listOpportunities, createOpportunity,
   listTasks, createTask, completeTask, reopenTask,
+  listAppointments, createAppointment, setAppointmentStatus,
   escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate
 } from './crm.js';
 
@@ -33,8 +34,10 @@ const state = {
   pipeline: null,
   deals: [],
   tasks: [],
+  appts: [],
   dealsLoaded: false,
-  tasksLoaded: false
+  tasksLoaded: false,
+  apptsLoaded: false
 };
 
 function gate(msg) {
@@ -123,6 +126,8 @@ function iconFor(type) {
     case 'deal_stage_changed': return '⇨';
     case 'task_created': return '✓';
     case 'task_completed': return '☑';
+    case 'appointment_created': return '📅';
+    case 'appointment_status': return '📅';
     case 'email_sent': return '✉';
     case 'email_event': return '📬';
     case 'event_registration': return '🎟';
@@ -242,6 +247,39 @@ function renderContactTasks() {
   }));
 }
 
+function renderAppts() {
+  const host = $('appts-list');
+  if (!host) return;
+  if (!state.appts.length) {
+    host.innerHTML = `<div class="crm-subpanel-empty">No appointments for this contact.</div>`;
+    return;
+  }
+  const rows = state.appts.slice().sort((a, b) => (toDate(b.startAt)?.getTime() || 0) - (toDate(a.startAt)?.getTime() || 0));
+  host.innerHTML = rows.map((a) => {
+    const d = toDate(a.startAt);
+    const statusLabel = a.status === 'scheduled' ? '' : ` · ${a.status}`;
+    return `
+      <div class="crm-mini-row">
+        <div class="crm-mini-main">
+          <div class="crm-mini-title">${escapeHtml(a.title)}</div>
+          <div class="crm-mini-sub">${d ? d.toLocaleString() : '—'}${a.location ? ' · ' + escapeHtml(a.location) : ''}${escapeHtml(statusLabel)}</div>
+        </div>
+        ${a.status === 'scheduled' ? `<button class="crm-chip" data-appt-done="${a.id}">Done</button>` : ''}
+      </div>`;
+  }).join('');
+  host.querySelectorAll('[data-appt-done]').forEach((b) => b.addEventListener('click', async () => {
+    try {
+      await setAppointmentStatus(state.companyId, b.getAttribute('data-appt-done'), 'completed', { contactId: state.contactId });
+      await Promise.all([refreshAppts(), refreshActivities()]);
+    } catch (e) { alert('Could not update: ' + (e.message || e)); }
+  }));
+}
+
+async function refreshAppts() {
+  state.appts = await listAppointments(state.companyId, { contactId: state.contactId });
+  renderAppts();
+}
+
 async function refreshDeals() {
   if (!state.pipeline) state.pipeline = await ensureDefaultPipeline(state.companyId);
   state.deals = await listOpportunities(state.companyId, { contactId: state.contactId });
@@ -332,7 +370,7 @@ async function main() {
   await Promise.all([refreshNotes(), refreshActivities()]);
 
   // Feed tabs (Notes / Deals / Tasks / Activity) with lazy loading.
-  const PANES = { notes: 'feed-notes', deals: 'feed-deals', tasks: 'feed-tasks', activity: 'feed-activity' };
+  const PANES = { notes: 'feed-notes', deals: 'feed-deals', tasks: 'feed-tasks', appts: 'feed-appts', activity: 'feed-activity' };
   document.querySelectorAll('.crm-tab[data-feed-tab]').forEach((b) => {
     b.addEventListener('click', async () => {
       document.querySelectorAll('.crm-tab[data-feed-tab]').forEach((x) => x.classList.toggle('active', x === b));
@@ -343,12 +381,14 @@ async function main() {
       });
       if (state.feedTab === 'deals' && !state.dealsLoaded) { state.dealsLoaded = true; await refreshDeals(); }
       if (state.feedTab === 'tasks' && !state.tasksLoaded) { state.tasksLoaded = true; await refreshContactTasks(); }
+      if (state.feedTab === 'appts' && !state.apptsLoaded) { state.apptsLoaded = true; await refreshAppts(); }
     });
   });
 
-  // New deal / new task for this contact
+  // New deal / task / appointment for this contact
   $('btn-add-deal').addEventListener('click', openContactDealModal);
   $('btn-add-task').addEventListener('click', openContactTaskModal);
+  $('btn-add-appt').addEventListener('click', openContactApptModal);
 
   // Stage change
   $('ct-stage').addEventListener('change', async (e) => {
@@ -611,6 +651,58 @@ function openContactTaskModal() {
     } catch (err) {
       $('ctk-err').textContent = err.message || String(err);
       $('ctk-err').style.display = '';
+    }
+  });
+}
+
+function openContactApptModal() {
+  const root = $('modal-root');
+  const c = state.contact || {};
+  const now = new Date(); now.setMinutes(0, 0, 0); now.setHours(now.getHours() + 1);
+  const localVal = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  root.innerHTML = `
+    <div class="crm-modal-backdrop" id="modal-bd">
+      <div class="crm-modal auth-card">
+        <h1>New <span>Appointment</span></h1>
+        <form id="ca-form" class="crm-form">
+          <div class="crm-form-row"><label>Title *</label>
+            <input class="c-input" id="ca-title" required placeholder="Call with ${escapeHtml((c.name || 'contact').split(' ')[0])}" /></div>
+          <div class="crm-form-row-grid">
+            <div class="crm-form-row"><label>Start *</label>
+              <input class="c-input" id="ca-start" type="datetime-local" required value="${localVal}" /></div>
+            <div class="crm-form-row"><label>Duration (min)</label>
+              <input class="c-input" id="ca-dur" type="number" min="5" step="5" value="30" /></div>
+          </div>
+          <div class="crm-form-row"><label>Location / link</label>
+            <input class="c-input" id="ca-loc" placeholder="Zoom, address, or phone" /></div>
+          <div id="ca-err" class="auth-error" style="display:none;"></div>
+          <div class="crm-modal-actions">
+            <button type="button" class="btn btn-ghost" id="ca-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary">Book</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+  const close = () => { root.innerHTML = ''; };
+  $('ca-cancel').addEventListener('click', close);
+  $('modal-bd').addEventListener('click', (e) => { if (e.target.id === 'modal-bd') close(); });
+  $('ca-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const startStr = $('ca-start').value;
+      await createAppointment(state.companyId, {
+        title: $('ca-title').value,
+        startAt: startStr ? new Date(startStr) : null,
+        durationMin: $('ca-dur').value,
+        location: $('ca-loc').value || null,
+        ownerUid: c.ownerUid || state.uid,
+        contactId: state.contactId, contactName: c.name || null
+      });
+      close();
+      await Promise.all([refreshAppts(), refreshActivities()]);
+    } catch (err) {
+      $('ca-err').textContent = err.message || String(err);
+      $('ca-err').style.display = '';
     }
   });
 }
