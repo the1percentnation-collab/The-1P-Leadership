@@ -99,7 +99,7 @@ function openModal(product) {
             <div class="crm-form-row"><label>Status</label><select class="c-input crm-select" id="p-status">${PRODUCT_STATUSES.map((s) => `<option value="${s}" ${p.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
           </div>
           <div class="crm-form-row-grid">
-            <div class="crm-form-row"><label>Price ($)</label><input class="c-input" id="p-price" type="number" min="0" value="${p.price != null ? p.price : ''}" /></div>
+            <div class="crm-form-row"><label>Price ($)</label><input class="c-input" id="p-price" type="number" min="0" step="0.01" value="${p.price != null ? p.price : ''}" /></div>
             <div class="crm-form-row"><label>Sort order</label><input class="c-input" id="p-sort" type="number" value="${p.sortOrder || 0}" /></div>
           </div>
           <div class="crm-form-row">
