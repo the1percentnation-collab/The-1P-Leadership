@@ -29,6 +29,9 @@ const APP_BASE_URL = 'https://the-1p-leadership.web.app';
 // SENDGRID_WEBHOOK_KEY to exist at deploy time.
 const sendgridKey = defineSecret('SENDGRID_API_KEY');
 
+// Secret: Anthropic API key for the course advisor chatbot.
+const anthropicKey = defineSecret('ANTHROPIC_API_KEY');
+
 // Twilio SMS credentials are read from process.env (like Stripe), NOT via
 // defineSecret — so deploys succeed before the values exist. Until they're set
 // (functions/.env or runtime env), sendSms returns "not configured" and the
@@ -3186,4 +3189,174 @@ exports.notifyProductInterest = onCall({ secrets: [sendgridKey] }, async (reques
   if (!snap.exists) throw new HttpsError('not-found', 'Product not found.');
   const n = await sendProductLaunchEmails(db, productId, snap.data());
   return { ok: true, sent: n };
+});
+
+// ════════════════════════════════════════════════════════════════
+// Course Advisor Chatbot — powered by Claude (Anthropic).
+//
+// courseAdvisorChat({ message, history }) → { reply, sessionId }
+//
+// Public callers (no auth) get general course info and OPN mission guidance.
+// Authenticated callers get their profile + enrolled courses injected into the
+// system prompt for personalised recommendations.
+//
+// When the user expresses intent to suggest a new course topic the function
+// saves a courseSuggestions/{id} doc and acknowledges receipt.
+// ════════════════════════════════════════════════════════════════
+
+const OPN_COURSES = [
+  { slug: '1p-clc',              title: '1P Certified Leader Coach',        price: 497, modules: 7,  eyebrow: 'Certification', desc: 'Mindset, structure, and disciplined progress — one percent at a time.' },
+  { slug: 'bundle-icant',        title: 'The Complete I Can\'t Experience', price: 197, modules: 8,  eyebrow: 'Best Value · Book + Course', desc: 'Book + Course together. The book gives you the map; the course gives you the journey.' },
+  { slug: 'icant',               title: 'I Can\'t: The Course',             price: 197, modules: 8,  eyebrow: 'Self-paced', desc: 'Break the beliefs that have been running your life and build the ones that set you free.' },
+  { slug: 'mindset-foundations', title: 'Mindset Foundations',              price: 197, modules: 5,  eyebrow: 'Self-paced', desc: 'Rewire how you relate to success, setbacks, and self.' },
+  { slug: 'business-alignment',  title: 'Business Alignment',               price: 297, modules: 6,  eyebrow: 'Self-paced', desc: 'Build a business that reflects your values and sustains your life.' },
+  { slug: 'faith-leadership',    title: 'Faith & Leadership',               price: 197, modules: 4,  eyebrow: 'Self-paced', desc: 'Lead from purpose — grounded in principle, not performance.' },
+  { slug: 'performance-discipline', title: 'Performance & Discipline',      price: 247, modules: 5,  eyebrow: 'Self-paced', desc: 'Daily structure and habits that compound into long-term results.' }
+];
+
+function buildCourseKnowledge() {
+  return OPN_COURSES.map((c) =>
+    `- ${c.title} (${c.eyebrow} · ${c.modules} modules · $${c.price}): ${c.desc}`
+  ).join('\n');
+}
+
+function buildSystemPrompt(userContext) {
+  const courseList = buildCourseKnowledge();
+  const base = `You are an intelligent course advisor and member support chatbot for One Percent Nation (OPN). Your role is to help members learn, grow, and discover courses aligned with their goals.
+
+OPN's mission is redefining success, realigning purpose, and releasing potential — one percent at a time.
+
+AVAILABLE COURSES:
+${courseList}
+
+GUIDELINES:
+- Maintain a warm, encouraging tone aligned with OPN's philosophy of releasing potential.
+- Keep responses focused and actionable — avoid long walls of text.
+- When recommending courses, briefly explain WHY a specific course fits the member's stated goal.
+- You never share other members' data or progress information.
+- If a member suggests a new course topic or learning area they wish OPN offered, acknowledge their suggestion enthusiastically, ask 1-2 clarifying questions about their learning goals and preferred outcomes, then tell them you've submitted their suggestion to the course team. Use the keyword COURSE_SUGGESTION_DETECTED in your response ONLY when you have gathered enough context (after the clarifying exchange) and are ready to log the suggestion — wrap the full suggestion detail in JSON after that keyword like: COURSE_SUGGESTION_DETECTED{"topic":"...","goals":"...","outcomes":"..."}`;
+
+  if (!userContext) {
+    return base + '\n\nCONTEXT: You are speaking with a visitor on the public website. They are not yet logged in.';
+  }
+
+  const { displayName, enrolledCourses, progressSummary } = userContext;
+  const name = displayName ? `Their name is ${displayName}.` : '';
+  const enrolled = enrolledCourses && enrolledCourses.length
+    ? `They are currently enrolled in: ${enrolledCourses.join(', ')}.`
+    : 'They are not yet enrolled in any courses.';
+  const progress = progressSummary || '';
+
+  return `${base}\n\nCONTEXT: You are speaking with an authenticated member inside the One Percent Academy portal. ${name} ${enrolled} ${progress}`.trim();
+}
+
+async function fetchMemberContext(db, uid) {
+  try {
+    const userSnap = await db.collection('users').doc(uid).get();
+    if (!userSnap.exists) return null;
+    const u = userSnap.data();
+
+    const enrolledCourses = (u.enrolledCourseSlugs || []).map((slug) => {
+      const course = OPN_COURSES.find((c) => c.slug === slug);
+      return course ? course.title : slug;
+    });
+
+    // Fetch up to 5 most recently active course progress docs.
+    let progressSummary = '';
+    try {
+      const progSnap = await db.collection('users').doc(uid).collection('courseProgress')
+        .orderBy('lastActiveAt', 'desc').limit(5).get();
+      if (!progSnap.empty) {
+        const parts = progSnap.docs.map((d) => {
+          const p = d.data();
+          const course = OPN_COURSES.find((c) => c.slug === d.id);
+          const name = course ? course.title : d.id;
+          const pct = p.progressPct != null ? `${Math.round(p.progressPct)}% complete` : '';
+          const mod = p.currentModule ? `on module ${p.currentModule}` : '';
+          return [name, pct, mod].filter(Boolean).join(', ');
+        });
+        if (parts.length) progressSummary = `Progress: ${parts.join(' | ')}.`;
+      }
+    } catch (e) { /* progress subcollection may not exist yet */ }
+
+    return {
+      displayName: u.displayName || null,
+      enrolledCourses,
+      progressSummary
+    };
+  } catch (e) {
+    console.warn('[courseAdvisorChat] fetchMemberContext failed:', e && e.message);
+    return null;
+  }
+}
+
+exports.courseAdvisorChat = onCall({ secrets: [anthropicKey] }, async (request) => {
+  const db = admin.firestore();
+  const { message, history } = request.data || {};
+
+  if (!message || typeof message !== 'string' || message.trim().length === 0) {
+    throw new HttpsError('invalid-argument', 'message is required.');
+  }
+  if (message.length > 4000) {
+    throw new HttpsError('invalid-argument', 'message is too long (max 4000 chars).');
+  }
+
+  const uid = request.auth && request.auth.uid;
+  const memberContext = uid ? await fetchMemberContext(db, uid) : null;
+  const systemPrompt = buildSystemPrompt(memberContext);
+
+  // Build conversation history (max 20 turns to stay within context limits).
+  const safeHistory = Array.isArray(history) ? history.slice(-20) : [];
+  const messages = [
+    ...safeHistory.map((turn) => ({
+      role: turn.role === 'assistant' ? 'assistant' : 'user',
+      content: String(turn.content || '').slice(0, 4000)
+    })),
+    { role: 'user', content: message.trim() }
+  ];
+
+  let Anthropic;
+  try {
+    Anthropic = require('@anthropic-ai/sdk');
+  } catch (e) {
+    throw new HttpsError('internal', 'Anthropic SDK not available.');
+  }
+
+  const client = new Anthropic.default({ apiKey: anthropicKey.value() });
+
+  const response = await client.messages.create({
+    model: 'claude-opus-4-8',
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages
+  });
+
+  const rawReply = (response.content && response.content[0] && response.content[0].text) || '';
+
+  // Detect and extract course suggestion signal.
+  let replyText = rawReply;
+  if (rawReply.includes('COURSE_SUGGESTION_DETECTED')) {
+    try {
+      const jsonMatch = rawReply.match(/COURSE_SUGGESTION_DETECTED(\{[\s\S]*?\})/);
+      if (jsonMatch) {
+        const suggestionData = JSON.parse(jsonMatch[1]);
+        // Save to Firestore (best-effort — don't fail the reply if this errors).
+        try {
+          await db.collection('courseSuggestions').add({
+            uid: uid || null,
+            displayName: (memberContext && memberContext.displayName) || null,
+            topic: suggestionData.topic || '',
+            goals: suggestionData.goals || '',
+            outcomes: suggestionData.outcomes || '',
+            rawMessage: message,
+            submittedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        } catch (e) { console.warn('[courseAdvisorChat] suggestion save failed:', e && e.message); }
+      }
+    } catch (e) { console.warn('[courseAdvisorChat] suggestion parse failed:', e && e.message); }
+    // Strip the internal signal from the user-facing reply.
+    replyText = rawReply.replace(/COURSE_SUGGESTION_DETECTED\{[\s\S]*?\}/g, '').trim();
+  }
+
+  return { reply: replyText };
 });
