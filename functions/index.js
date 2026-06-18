@@ -29,8 +29,11 @@ const APP_BASE_URL = 'https://the-1p-leadership.web.app';
 // SENDGRID_WEBHOOK_KEY to exist at deploy time.
 const sendgridKey = defineSecret('SENDGRID_API_KEY');
 
-// Secret: Anthropic API key for the course advisor chatbot.
-const anthropicKey = defineSecret('ANTHROPIC_API_KEY');
+// Anthropic API key — read from runtime environment so deploys never block
+// waiting for a secret value. Set via Firebase Console > Functions > Runtime
+// environment variables, or `firebase functions:secrets:set ANTHROPIC_API_KEY`
+// (then also add it to the onCall secrets array below).
+const ANTHROPIC_API_KEY = () => (process.env.ANTHROPIC_API_KEY || '').trim();
 
 // Twilio SMS credentials are read from process.env (like Stripe), NOT via
 // defineSecret — so deploys succeed before the values exist. Until they're set
@@ -3290,7 +3293,7 @@ async function fetchMemberContext(db, uid) {
   }
 }
 
-exports.courseAdvisorChat = onCall({ secrets: [anthropicKey] }, async (request) => {
+exports.courseAdvisorChat = onCall(async (request) => {
   const db = admin.firestore();
   const { message, history } = request.data || {};
 
@@ -3322,7 +3325,12 @@ exports.courseAdvisorChat = onCall({ secrets: [anthropicKey] }, async (request) 
     throw new HttpsError('internal', 'Anthropic SDK not available.');
   }
 
-  const client = new Anthropic.default({ apiKey: anthropicKey.value() });
+  const apiKey = ANTHROPIC_API_KEY();
+  if (!apiKey) {
+    throw new HttpsError('failed-precondition',
+      'ANTHROPIC_API_KEY is not configured. Add it in Firebase Console > Functions > Runtime environment variables.');
+  }
+  const client = new Anthropic.default({ apiKey });
 
   const response = await client.messages.create({
     model: 'claude-opus-4-8',
