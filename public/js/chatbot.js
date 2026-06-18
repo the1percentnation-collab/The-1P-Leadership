@@ -486,7 +486,7 @@ function injectStyles() {
   border-radius: 50%;
   border: none;
   cursor: pointer;
-  background: #0d0d14;
+  background: #0d0d0d;
   box-shadow:
     0 0 0 1.5px rgba(230,3,6,.55),
     0 0 18px rgba(230,3,6,.35),
@@ -552,7 +552,7 @@ function injectStyles() {
   background:
     linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px),
-    #090912;
+    #090909;
   background-size: 22px 22px, 22px 22px, auto;
   border: 1px solid rgba(230,3,6,.38);
   box-shadow:
@@ -611,7 +611,7 @@ function injectStyles() {
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px 12px;
-  background: rgba(5,5,10,.8);
+  background: rgba(5,5,5,.8);
   border-bottom: 1px solid rgba(230,3,6,.18);
   position: relative;
   z-index: 1;
@@ -692,7 +692,7 @@ function injectStyles() {
 
 /* ── Wave visualizer ─────────────────────────────────────────── */
 .opn-viz {
-  background: #05050a;
+  background: #050505;
   border-bottom: 1px solid rgba(255,255,255,.05);
   position: relative;
 }
@@ -752,7 +752,7 @@ function injectStyles() {
   box-shadow: 0 3px 14px rgba(230,3,6,.35);
 }
 .opn-bub-assistant {
-  background: rgba(14,14,22,.95);
+  background: rgba(14,14,14,.95);
   color: #e2e2e8;
   border: 1px solid rgba(230,3,6,.22);
   border-bottom-left-radius: 4px;
@@ -792,7 +792,7 @@ function injectStyles() {
   align-items: flex-end;
   gap: 8px;
   padding: 11px 13px;
-  background: rgba(5,5,10,.85);
+  background: rgba(5,5,5,.85);
   border-top: 1px solid rgba(230,3,6,.15);
   position: relative;
   z-index: 1;
@@ -847,7 +847,7 @@ function injectStyles() {
 /* Textarea */
 .opn-input {
   flex: 1;
-  background: rgba(10,10,18,.95);
+  background: rgba(10,10,10,.95);
   border: 1px solid rgba(255,255,255,.1);
   border-radius: 11px;
   color: #e8e8f0;
