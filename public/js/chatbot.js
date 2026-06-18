@@ -185,11 +185,11 @@ function wireUp(root) {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 112) + 'px';
     // Spike wave on each character change
-    waveState.boost = Math.min(waveState.boost + 9, 32);
+    waveState.boost = Math.min(waveState.boost + 4, 22);
   });
   input.addEventListener('keydown', (e) => {
     // Printable key check (length===1 excludes Enter, Backspace, Arrow, etc.)
-    if (e.key.length === 1) waveState.boost = Math.min(waveState.boost + 6, 32);
+    if (e.key.length === 1) waveState.boost = Math.min(waveState.boost + 3, 22);
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
   });
   sendBtn.addEventListener('click', doSend);
@@ -364,16 +364,17 @@ function startWave(canvas, stateRef) {
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
 
-  let frame = 0;
-  let amp   = 4;
+  let frame   = 0;
+  let amp     = 4;  // target amplitude tracker
+  let liveAmp = 4;  // smoothed amplitude that actually drives drawing
   let raf;
 
-  // Per-state config
+  // Per-state config — gentler speeds, softer amplitudes
   const CFG = {
-    idle:   { targetAmp: 4,  speed: 0.013 },
-    listen: { targetAmp: 26, speed: 0.072 },
-    think:  { targetAmp: 11, speed: 0.038 },
-    speak:  { targetAmp: 18, speed: 0.054 },
+    idle:   { targetAmp: 4,  speed: 0.011 },
+    listen: { targetAmp: 22, speed: 0.048 },
+    think:  { targetAmp: 10, speed: 0.030 },
+    speak:  { targetAmp: 16, speed: 0.042 },
   };
 
   function draw() {
@@ -381,21 +382,23 @@ function startWave(canvas, stateRef) {
     const cfg = CFG[s] || CFG.idle;
     const W   = cssW, H = cssH;
 
-    // Decay typing boost each frame (~1 s half-life at 60 fps)
+    // Slowly decay typing boost (~1.5 s at 60 fps)
     if (stateRef.boost > 0) {
-      stateRef.boost *= 0.88;
-      if (stateRef.boost < 0.2) stateRef.boost = 0;
+      stateRef.boost *= 0.94;
+      if (stateRef.boost < 0.15) stateRef.boost = 0;
     }
 
-    amp += (cfg.targetAmp - amp) * 0.07;
+    // Drive the raw amplitude toward the state target
+    amp += (Math.min(cfg.targetAmp + stateRef.boost, 38) - amp) * 0.05;
 
-    let a = amp;
-    // Breathing effect while thinking
-    if (s === 'think')  a *= 0.55 + 0.45 * Math.sin(frame * 0.055);
-    // Noise while listening
-    if (s === 'listen') a += (Math.random() - 0.5) * 7;
-    // Typing boost — spikes amplitude on each keystroke, decays smoothly
-    a = Math.min(a + stateRef.boost, 40);
+    // liveAmp follows amp with extra lag so nothing ever jumps
+    liveAmp += (amp - liveAmp) * 0.10;
+
+    let a = liveAmp;
+    // Gentle breathing while thinking (organic, no randomness)
+    if (s === 'think')  a *= 0.62 + 0.38 * Math.sin(frame * 0.042);
+    // Organic variation while listening — two slow oscillators, no Math.random
+    if (s === 'listen') a *= 0.78 + 0.15 * Math.sin(frame * 0.07) + 0.07 * Math.sin(frame * 0.13 + 1.1);
 
     ctx.clearRect(0, 0, W, H);
 
@@ -438,7 +441,12 @@ function startWave(canvas, stateRef) {
 function wave(ctx, W, H, amp, speed, frame, phase) {
   ctx.beginPath();
   for (let x = 0; x <= W; x += 2) {
-    const y = H / 2 + Math.sin(x * 0.021 + frame * speed + phase) * amp;
+    // Three harmonically-related frequencies → organic voice-like shape
+    const y = H / 2 + (
+      Math.sin(x * 0.019 + frame * speed          + phase) * amp * 0.55 +
+      Math.sin(x * 0.034 + frame * speed * 1.31   + phase * 1.2) * amp * 0.30 +
+      Math.sin(x * 0.011 + frame * speed * 0.62   + phase * 0.6) * amp * 0.15
+    );
     x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   }
 }
