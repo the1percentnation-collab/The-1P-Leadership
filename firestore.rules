@@ -582,6 +582,15 @@ service cloud.firestore {
         allow write: if false;
       }
     }
+
+    // ────────────────────────────────────────────────────────────────
+    // Course suggestions — written by the courseAdvisorChat Cloud Function
+    // (Admin SDK) on behalf of members. Only owner/admin can read the list.
+    // ────────────────────────────────────────────────────────────────
+    match /courseSuggestions/{suggestionId} {
+      allow read: if isAnyAdmin();
+      allow write: if false; // Cloud Function (Admin SDK) writes only.
+    }
   }
 }
 
