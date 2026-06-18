@@ -3223,14 +3223,24 @@ function buildCourseKnowledge() {
   ).join('\n');
 }
 
-function buildSystemPrompt(userContext) {
+function buildSystemPrompt(userContext, knowledgeEntries) {
   const courseList = buildCourseKnowledge();
+
+  // Inject owner-supplied knowledge base entries
+  let kbSection = '';
+  if (knowledgeEntries && knowledgeEntries.length) {
+    const items = knowledgeEntries
+      .map((e) => `### ${e.title}\n${e.body}`)
+      .join('\n\n');
+    kbSection = `\n\nADDITIONAL KNOWLEDGE BASE:\n${items}`;
+  }
+
   const base = `You are an intelligent course advisor and member support chatbot for One Percent Nation (OPN). Your role is to help members learn, grow, and discover courses aligned with their goals.
 
 OPN's mission is redefining success, realigning purpose, and releasing potential — one percent at a time.
 
 AVAILABLE COURSES:
-${courseList}
+${courseList}${kbSection}
 
 GUIDELINES:
 - Maintain a warm, encouraging tone aligned with OPN's philosophy of releasing potential.
@@ -3293,6 +3303,83 @@ async function fetchMemberContext(db, uid) {
   }
 }
 
+// Fetch all active knowledge base entries (ordered by pinned desc, then order asc).
+async function fetchKnowledgeEntries(db) {
+  try {
+    const snap = await db.collection('chatbotKnowledge')
+      .where('active', '==', true)
+      .orderBy('order', 'asc')
+      .limit(50)
+      .get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    console.warn('[courseAdvisorChat] fetchKnowledgeEntries failed:', e && e.message);
+    return [];
+  }
+}
+
+// saveKnowledgeEntry — create or update a KB entry. Owner/admin only.
+exports.saveKnowledgeEntry = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const { id, title, body, order, active } = request.data || {};
+  if (!title || !title.trim()) throw new HttpsError('invalid-argument', 'title is required.');
+  if (!body  || !body.trim())  throw new HttpsError('invalid-argument', 'body is required.');
+
+  const payload = {
+    title:     String(title).trim().slice(0, 200),
+    body:      String(body).trim().slice(0, 8000),
+    order:     typeof order === 'number' ? order : 0,
+    active:    active !== false,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedBy: request.auth.uid
+  };
+
+  if (id) {
+    // Update existing
+    const ref = db.collection('chatbotKnowledge').doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Entry not found.');
+    await ref.set(payload, { merge: true });
+    return { ok: true, id };
+  } else {
+    // Create new
+    payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
+    payload.createdBy = request.auth.uid;
+    const ref = await db.collection('chatbotKnowledge').add(payload);
+    return { ok: true, id: ref.id };
+  }
+});
+
+// deleteKnowledgeEntry — hard-delete a KB entry. Owner/admin only.
+exports.deleteKnowledgeEntry = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const id = String((request.data && request.data.id) || '').trim();
+  if (!id) throw new HttpsError('invalid-argument', 'id is required.');
+  await db.collection('chatbotKnowledge').doc(id).delete();
+  return { ok: true };
+});
+
+// listKnowledgeEntries — returns all entries (incl. inactive). Owner/admin only.
+exports.listKnowledgeEntries = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const snap = await db.collection('chatbotKnowledge').orderBy('order', 'asc').limit(200).get();
+  return {
+    entries: snap.docs.map((d) => ({ id: d.id, ...d.data(),
+      createdAt: d.data().createdAt ? d.data().createdAt.toMillis() : null,
+      updatedAt: d.data().updatedAt ? d.data().updatedAt.toMillis() : null
+    }))
+  };
+});
+
 exports.courseAdvisorChat = onCall(async (request) => {
   const db = admin.firestore();
   const { message, history } = request.data || {};
@@ -3305,8 +3392,11 @@ exports.courseAdvisorChat = onCall(async (request) => {
   }
 
   const uid = request.auth && request.auth.uid;
-  const memberContext = uid ? await fetchMemberContext(db, uid) : null;
-  const systemPrompt = buildSystemPrompt(memberContext);
+  const [memberContext, knowledgeEntries] = await Promise.all([
+    uid ? fetchMemberContext(db, uid) : Promise.resolve(null),
+    fetchKnowledgeEntries(db)
+  ]);
+  const systemPrompt = buildSystemPrompt(memberContext, knowledgeEntries);
 
   // Build conversation history (max 20 turns to stay within context limits).
   const safeHistory = Array.isArray(history) ? history.slice(-20) : [];

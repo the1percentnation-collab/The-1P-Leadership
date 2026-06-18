@@ -591,6 +591,15 @@ service cloud.firestore {
       allow read: if isAnyAdmin();
       allow write: if false; // Cloud Function (Admin SDK) writes only.
     }
+
+    // ────────────────────────────────────────────────────────────────
+    // Chatbot knowledge base — managed via saveKnowledgeEntry /
+    // deleteKnowledgeEntry Cloud Functions (Admin SDK). Direct client
+    // reads/writes are blocked; the chatbot reads via Admin SDK.
+    // ────────────────────────────────────────────────────────────────
+    match /chatbotKnowledge/{entryId} {
+      allow read, write: if false; // Cloud Functions (Admin SDK) only.
+    }
   }
 }
 
