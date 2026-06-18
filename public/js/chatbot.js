@@ -38,7 +38,7 @@ function buildWidget() {
     </button>
 
     <!-- Chat Panel -->
-    <div class="opn-panel" id="opn-panel" role="dialog" aria-modal="true" aria-label="OPN Course Advisor">
+    <div class="opn-panel" id="opn-panel" role="dialog" aria-modal="true" aria-label="1PN">
       <!-- Corner targeting marks -->
       <i class="opn-crn opn-crn-tl" aria-hidden="true"></i>
       <i class="opn-crn opn-crn-tr" aria-hidden="true"></i>
@@ -49,8 +49,7 @@ function buildWidget() {
       <div class="opn-hdr">
         <div class="opn-hdr-left">
           <span class="opn-led" id="opn-led" aria-hidden="true"></span>
-          <span class="opn-hdr-title">COURSE ADVISOR</span>
-          <span class="opn-hdr-badge" aria-hidden="true">OPN&thinsp;AI</span>
+          <span class="opn-hdr-title">1PN</span>
         </div>
         <div class="opn-hdr-right">
           <button class="opn-tts-btn" id="opn-tts-btn" aria-label="Toggle voice output" title="Toggle voice output">
@@ -163,7 +162,7 @@ function wireUp(root) {
     input.focus();
     if (!greeted) {
       greeted = true;
-      setTimeout(() => addMsg('assistant', 'Hi — I\'m your OPN Course Advisor. Ask me anything about our courses, your progress, or what you\'d like to learn next. You can type or tap the mic to speak.'), 350);
+      setTimeout(() => addMsg('assistant', 'Hi — I\'m 1PN. Ask me anything about our courses, your progress, or what you\'d like to learn next. You can type or tap the mic to speak.'), 350);
     }
   }
 
