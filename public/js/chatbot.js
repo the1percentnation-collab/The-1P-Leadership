@@ -129,7 +129,7 @@ function wireUp(root) {
 
   // ── State ──
   const S = { IDLE: 'idle', LISTEN: 'listen', THINK: 'think', SPEAK: 'speak' };
-  const waveState = { v: S.IDLE };
+  const waveState = { v: S.IDLE, boost: 0 };
   let isOpen      = false;
   let loading     = false;
   let greeted     = false;
@@ -184,8 +184,12 @@ function wireUp(root) {
   input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 112) + 'px';
+    // Spike wave on each character change
+    waveState.boost = Math.min(waveState.boost + 9, 32);
   });
   input.addEventListener('keydown', (e) => {
+    // Printable key check (length===1 excludes Enter, Backspace, Arrow, etc.)
+    if (e.key.length === 1) waveState.boost = Math.min(waveState.boost + 6, 32);
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
   });
   sendBtn.addEventListener('click', doSend);
@@ -377,6 +381,12 @@ function startWave(canvas, stateRef) {
     const cfg = CFG[s] || CFG.idle;
     const W   = cssW, H = cssH;
 
+    // Decay typing boost each frame (~1 s half-life at 60 fps)
+    if (stateRef.boost > 0) {
+      stateRef.boost *= 0.88;
+      if (stateRef.boost < 0.2) stateRef.boost = 0;
+    }
+
     amp += (cfg.targetAmp - amp) * 0.07;
 
     let a = amp;
@@ -384,6 +394,8 @@ function startWave(canvas, stateRef) {
     if (s === 'think')  a *= 0.55 + 0.45 * Math.sin(frame * 0.055);
     // Noise while listening
     if (s === 'listen') a += (Math.random() - 0.5) * 7;
+    // Typing boost — spikes amplitude on each keystroke, decays smoothly
+    a = Math.min(a + stateRef.boost, 40);
 
     ctx.clearRect(0, 0, W, H);
 
