@@ -199,12 +199,12 @@ function wireUp(root) {
   });
   sendBtn.addEventListener('click', doSend);
 
-  // ── Mobile: keyboard-aware panel height (Visual Viewport API) ──
+  // ── Mobile: shrink bottom sheet when keyboard opens ──
   if (window.visualViewport) {
     const onVp = () => {
       if (!window.matchMedia('(max-width: 600px)').matches) return;
-      panel.style.height = window.visualViewport.height + 'px';
-      panel.style.top    = window.visualViewport.offsetTop + 'px';
+      const maxH = Math.round(window.innerHeight * 0.85);
+      panel.style.height = Math.min(window.visualViewport.height, maxH) + 'px';
       msgs.scrollTop = msgs.scrollHeight;
     };
     window.visualViewport.addEventListener('resize', onVp);
@@ -947,40 +947,36 @@ function injectStyles() {
 
 /* ── Mobile ──────────────────────────────────────────────────── */
 @media (max-width: 600px) {
-  /* Widget container fills viewport so the panel can use fixed inset */
+  /* Widget spans full width at the bottom */
   #opn-chat-widget {
-    top: 0; left: 0; right: 0; bottom: 0;
+    bottom: 0; right: 0; left: 0; top: auto;
     pointer-events: none;
   }
-  /* FAB stays pinned to bottom-right independently */
+  /* FAB stays pinned to bottom-right */
   .opn-fab {
     position: fixed;
     bottom: 18px; right: 18px;
     pointer-events: auto;
   }
-  /* Panel: full-screen, slide up from bottom */
+  /* Bottom sheet: ~85vh, rounded top corners, slides up */
   .opn-panel {
     position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
+    bottom: 0; left: 0; right: 0; top: auto;
     width: 100%;
     max-width: 100%;
-    border-radius: 0;
+    height: 85vh;
+    border-radius: 20px 20px 0 0;
     transform: translateY(100%);
     opacity: 1;
-    transition: transform .3s cubic-bezier(.25,.1,.25,1);
+    transition: transform .32s cubic-bezier(.25,.1,.25,1);
     pointer-events: none;
   }
   .opn-panel.opn-open {
     transform: translateY(0);
-    opacity: 1;
     pointer-events: auto;
   }
   /* Messages fill remaining height */
-  .opn-msgs {
-    flex: 1;
-    max-height: none;
-    min-height: 0;
-  }
+  .opn-msgs { flex: 1; max-height: none; min-height: 0; }
   /* 16px prevents iOS auto-zoom on focus */
   .opn-input { font-size: 16px; }
   /* Shorter wave on mobile to preserve message space */
