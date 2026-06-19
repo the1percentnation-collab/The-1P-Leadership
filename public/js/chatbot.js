@@ -65,11 +65,17 @@ function buildWidget() {
             </svg>
           </button>
           <button class="opn-bug-btn" id="opn-bug-btn" aria-label="Report a bug" title="Report a bug">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <ellipse cx="12" cy="13" rx="5" ry="6"/>
-              <path d="M12 7V5"/>
-              <path d="M10 5l-1-2M14 5l1-2"/>
-              <path d="M4 9l3.5 2M20 9l-3.5 2M4 14h3M17 14h3M4 19l3.5-2M20 19l-3.5-2"/>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <!-- skull dome with eye holes (evenodd) -->
+              <path fill-rule="evenodd" d="M12 2C7.58 2 4 5.58 4 10c0 2.94 1.57 5.5 3.88 6.93L8 19.5h8l.12-2.57A8 8 0 0 0 20 10C20 5.58 16.42 2 12 2ZM8.5 9.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0Zm5 0a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0Z"/>
+              <!-- jaw teeth -->
+              <path d="M9 19.5h2.25v2H9zM12.75 19.5H15v2h-2.25z"/>
+              <!-- crossbones -->
+              <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M2.5 22.5 8 17M16 17l5.5 5.5"/>
+              <circle cx="2.5" cy="22.5" r="1.5"/>
+              <circle cx="8" cy="17" r="1.5"/>
+              <circle cx="16" cy="17" r="1.5"/>
+              <circle cx="21.5" cy="22.5" r="1.5"/>
             </svg>
           </button>
           <button class="opn-close" id="opn-close" aria-label="Close chat">
