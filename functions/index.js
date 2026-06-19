@@ -3360,3 +3360,150 @@ exports.courseAdvisorChat = onCall({ secrets: [anthropicKey] }, async (request) 
 
   return { reply: replyText };
 });
+
+// reportBug — any user (authenticated or not) can submit a bug report.
+// Captures description + optional screenshot, runs Claude AI analysis,
+// saves to bugReports collection, and emails the owner.
+exports.reportBug = onCall(async (request) => {
+  const db = admin.firestore();
+
+  const { description, screenshotDataUrl, url: pageUrl, userAgent } = request.data || {};
+  if (!description || typeof description !== 'string' || !description.trim()) {
+    throw new HttpsError('invalid-argument', 'description is required.');
+  }
+  if (description.length > 2000) {
+    throw new HttpsError('invalid-argument', 'description is too long (max 2000 chars).');
+  }
+
+  const uid = request.auth && request.auth.uid;
+  const reportRef = db.collection('bugReports').doc();
+  const reportId = reportRef.id;
+
+  // ── Upload screenshot to Firebase Storage ──────────────────────────────────
+  let screenshotUrl = null;
+  if (screenshotDataUrl && typeof screenshotDataUrl === 'string'
+      && screenshotDataUrl.startsWith('data:image/')) {
+    try {
+      const base64Data = screenshotDataUrl.replace(/^data:image\/\w+;base64,/, '');
+      const buf = Buffer.from(base64Data, 'base64');
+      const bucket = admin.storage().bucket();
+      const file = bucket.file(`bug-screenshots/${reportId}.jpg`);
+      await file.save(buf, { metadata: { contentType: 'image/jpeg' } });
+      const [signedUrl] = await file.getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 30 * 24 * 60 * 60 * 1000
+      });
+      screenshotUrl = signedUrl;
+    } catch (e) {
+      console.warn('[reportBug] screenshot upload failed:', e && e.message);
+    }
+  }
+
+  // ── Claude AI bug analysis ─────────────────────────────────────────────────
+  let aiAnalysis = 'AI analysis unavailable.';
+  let aiSeverity = 'unknown';
+  try {
+    let Anthropic;
+    try { Anthropic = require('@anthropic-ai/sdk'); }
+    catch (e) { throw new Error('Anthropic SDK not available'); }
+
+    const apiKey = ANTHROPIC_API_KEY();
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
+    const client = new Anthropic.default({ apiKey });
+
+    const userContent = [];
+
+    if (screenshotDataUrl && screenshotDataUrl.startsWith('data:image/')) {
+      const base64Only = screenshotDataUrl.replace(/^data:image\/\w+;base64,/, '');
+      userContent.push({
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/jpeg', data: base64Only }
+      });
+    }
+
+    userContent.push({
+      type: 'text',
+      text: [
+        'Bug Report — The One Percent Academy (1PN) web app:',
+        '',
+        `Description: ${description.trim()}`,
+        `Page URL: ${pageUrl || 'unknown'}`,
+        `User Agent: ${userAgent || 'unknown'}`,
+        `Reported by UID: ${uid || 'anonymous'}`,
+        '',
+        'Please analyze this bug and respond with:',
+        '1. **Root Cause**: What is likely causing this?',
+        '2. **Proposed Fix**: Specific code or config change to fix it',
+        '3. **Severity**: one of: low | medium | high | critical',
+        '',
+        'Be concise and specific. The app uses Firebase (Firestore, Auth, Functions, Storage), vanilla JS ES modules, and Firebase Hosting.'
+      ].join('\n')
+    });
+
+    const aiRes = await client.messages.create({
+      model: 'claude-opus-4-8',
+      max_tokens: 1500,
+      system: 'You are a senior software engineer reviewing bug reports for a web app called "The One Percent Academy" (1PN). Provide concise, actionable analysis.',
+      messages: [{ role: 'user', content: userContent }]
+    });
+
+    const rawText = (aiRes.content && aiRes.content[0] && aiRes.content[0].text) || '';
+    aiAnalysis = rawText;
+
+    const sevMatch = rawText.match(/\b(critical|high|medium|low)\b/i);
+    if (sevMatch) aiSeverity = sevMatch[1].toLowerCase();
+
+  } catch (e) {
+    console.warn('[reportBug] AI analysis failed:', e && e.message);
+  }
+
+  // ── Save to Firestore ──────────────────────────────────────────────────────
+  await reportRef.set({
+    reportId,
+    description: description.trim().slice(0, 2000),
+    pageUrl: (pageUrl || '').slice(0, 500),
+    userAgent: (userAgent || '').slice(0, 500),
+    reportedByUid: uid || null,
+    screenshotUrl,
+    aiAnalysis,
+    aiSeverity,
+    status: 'open',
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  // ── Email owner ────────────────────────────────────────────────────────────
+  try {
+    const sgKey = sendgridKey.value();
+    sgMail.setApiKey(sgKey);
+    const shortDesc = description.trim().slice(0, 80);
+    const htmlBody = [
+      `<h2 style="color:#c20000;">Bug Report — ${textToHtml(shortDesc)}</h2>`,
+      `<table style="border-collapse:collapse;font-size:13px;">`,
+      `<tr><td style="padding:4px 12px 4px 0;color:#888;">Severity</td><td><strong>${aiSeverity}</strong></td></tr>`,
+      `<tr><td style="padding:4px 12px 4px 0;color:#888;">Page</td><td>${textToHtml(pageUrl || 'unknown')}</td></tr>`,
+      `<tr><td style="padding:4px 12px 4px 0;color:#888;">Reporter</td><td>${uid || 'anonymous'}</td></tr>`,
+      `</table>`,
+      `<h3>Description</h3>`,
+      `<blockquote style="border-left:3px solid #c20000;margin:0;padding:8px 14px;background:#fff8f8;">${textToHtml(description.trim())}</blockquote>`,
+      `<h3>AI Analysis &amp; Fix Proposal</h3>`,
+      `<pre style="white-space:pre-wrap;font-family:monospace;font-size:13px;background:#f5f5f5;padding:12px;border-radius:6px;line-height:1.5;">${textToHtml(aiAnalysis)}</pre>`,
+      screenshotUrl
+        ? `<p><a href="${screenshotUrl}" style="color:#c20000;">View Screenshot →</a> (link expires in 30 days)</p>`
+        : '<p><em>No screenshot attached.</em></p>',
+      `<hr/><p><a href="https://the-1p-leadership.web.app/bug-reports.html" style="color:#c20000;">Review all bug reports →</a></p>`
+    ].join('');
+
+    await sgMail.send({
+      to: OWNER_EMAIL,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      subject: `[Bug][${aiSeverity.toUpperCase()}] ${shortDesc}`,
+      text: `Bug Report\n\nSeverity: ${aiSeverity}\nPage: ${pageUrl || 'unknown'}\nReporter: ${uid || 'anonymous'}\n\nDescription:\n${description.trim()}\n\nAI Analysis:\n${aiAnalysis}\n\nReview: https://the-1p-leadership.web.app/bug-reports.html`,
+      html: htmlBody
+    });
+  } catch (e) {
+    console.warn('[reportBug] email send failed:', e && e.message);
+  }
+
+  return { ok: true, reportId };
+});

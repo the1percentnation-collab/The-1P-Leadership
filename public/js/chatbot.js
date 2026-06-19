@@ -64,6 +64,14 @@ function buildWidget() {
               <line x1="17" y1="9" x2="23" y2="15"/>
             </svg>
           </button>
+          <button class="opn-bug-btn" id="opn-bug-btn" aria-label="Report a bug" title="Report a bug">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <ellipse cx="12" cy="13" rx="5" ry="6"/>
+              <path d="M12 7V5"/>
+              <path d="M10 5l-1-2M14 5l1-2"/>
+              <path d="M4 9l3.5 2M20 9l-3.5 2M4 14h3M17 14h3M4 19l3.5-2M20 19l-3.5-2"/>
+            </svg>
+          </button>
           <button class="opn-close" id="opn-close" aria-label="Close chat">
             <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
               <line x1="1" y1="1" x2="13" y2="13"/>
@@ -100,6 +108,11 @@ function buildWidget() {
           rows="1"
           maxlength="2000"
           aria-label="Your message"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          inputmode="text"
         ></textarea>
         <button class="opn-send" id="opn-send" aria-label="Send message">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -126,10 +139,11 @@ function wireUp(root) {
   const input    = root.querySelector('#opn-input');
   const sendBtn  = root.querySelector('#opn-send');
   const ttsBtn   = root.querySelector('#opn-tts-btn');
+  const bugBtn   = root.querySelector('#opn-bug-btn');
 
   // ── State ──
   const S = { IDLE: 'idle', LISTEN: 'listen', THINK: 'think', SPEAK: 'speak' };
-  const waveState = { v: S.IDLE };
+  const waveState = { v: S.IDLE, boost: 0 };
   let isOpen      = false;
   let loading     = false;
   let greeted     = false;
@@ -150,6 +164,112 @@ function wireUp(root) {
     voiceOut = !voiceOut;
     ttsBtn.classList.toggle('opn-tts-on', voiceOut);
   });
+
+  // ── Bug report ──
+  let bugFormEl = null;
+  let html2canvasPromise = null;
+
+  function loadHtml2Canvas() {
+    if (html2canvasPromise) return html2canvasPromise;
+    html2canvasPromise = new Promise((resolve, reject) => {
+      if (window.html2canvas) { resolve(window.html2canvas); return; }
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      s.onload = () => resolve(window.html2canvas);
+      s.onerror = () => reject(new Error('html2canvas failed to load'));
+      document.head.appendChild(s);
+    });
+    return html2canvasPromise;
+  }
+
+  function showBugForm() {
+    if (bugFormEl) return;
+    loadHtml2Canvas().catch(() => {}); // pre-load in background
+    bugFormEl = document.createElement('div');
+    bugFormEl.className = 'opn-bug-form';
+    bugFormEl.innerHTML = `
+      <div class="opn-bug-form-lbl">Report a bug</div>
+      <textarea class="opn-bug-ta" placeholder="Describe what happened…" rows="3" maxlength="1000"></textarea>
+      <div class="opn-bug-acts">
+        <button class="opn-bug-submit">Capture &amp; Submit</button>
+        <button class="opn-bug-cancel">Cancel</button>
+      </div>
+    `;
+    msgs.appendChild(bugFormEl);
+    msgs.scrollTop = msgs.scrollHeight;
+    bugFormEl.querySelector('.opn-bug-ta').focus();
+    bugFormEl.querySelector('.opn-bug-cancel').addEventListener('click', () => {
+      if (bugFormEl && bugFormEl.parentNode) bugFormEl.parentNode.removeChild(bugFormEl);
+      bugFormEl = null;
+    });
+    bugFormEl.querySelector('.opn-bug-submit').addEventListener('click', submitBugReport);
+  }
+
+  async function submitBugReport() {
+    if (!bugFormEl) return;
+    const ta = bugFormEl.querySelector('.opn-bug-ta');
+    const description = ta.value.trim();
+    if (!description) { ta.focus(); return; }
+
+    const submitBtn = bugFormEl.querySelector('.opn-bug-submit');
+    const cancelBtn = bugFormEl.querySelector('.opn-bug-cancel');
+    submitBtn.disabled = true;
+    cancelBtn.disabled = true;
+    submitBtn.textContent = 'Capturing…';
+
+    let screenshotDataUrl = null;
+    try {
+      // Hide panel so the screenshot shows the page behind it
+      panel.classList.remove('opn-open');
+      await new Promise(r => setTimeout(r, 400));
+      const h2c = await loadHtml2Canvas();
+      const canvas = await h2c(document.body, {
+        scale: 0.5,
+        useCORS: true,
+        logging: false,
+        width: window.innerWidth,
+        height: window.innerHeight,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+        x: window.scrollX,
+        y: window.scrollY,
+        ignoreElements: (el) => el.id === 'opn-chat-widget'
+      });
+      screenshotDataUrl = canvas.toDataURL('image/jpeg', 0.72);
+      panel.classList.add('opn-open');
+    } catch (e) {
+      console.warn('[chatbot] screenshot failed:', e);
+      panel.classList.add('opn-open');
+    }
+
+    const descCopy = description;
+    if (bugFormEl && bugFormEl.parentNode) bugFormEl.parentNode.removeChild(bugFormEl);
+    bugFormEl = null;
+
+    const thinkRow = addThinking();
+    try {
+      const call = httpsCallable(functions, 'reportBug');
+      await call({
+        description: descCopy,
+        screenshotDataUrl,
+        url: window.location.href,
+        userAgent: navigator.userAgent
+      });
+      thinkRow.remove();
+      const toast = document.createElement('div');
+      toast.className = 'opn-profile-toast';
+      toast.textContent = '✓ Bug report sent — thank you!';
+      msgs.appendChild(toast);
+      msgs.scrollTop = msgs.scrollHeight;
+      setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 6000);
+    } catch (e) {
+      console.error('[chatbot] bug report failed:', e);
+      thinkRow.remove();
+      addMsg('assistant', 'Bug report failed to send — please try again.', true);
+    }
+  }
+
+  bugBtn.addEventListener('click', showBugForm);
 
   // ── Open / close ──
   function openPanel() {
@@ -184,11 +304,27 @@ function wireUp(root) {
   input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 112) + 'px';
+    // Spike wave on each character change
+    waveState.boost = Math.min(waveState.boost + 4, 22);
   });
   input.addEventListener('keydown', (e) => {
+    // Printable key check (length===1 excludes Enter, Backspace, Arrow, etc.)
+    if (e.key.length === 1) waveState.boost = Math.min(waveState.boost + 3, 22);
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
   });
   sendBtn.addEventListener('click', doSend);
+
+  // ── Mobile: shrink bottom sheet when keyboard opens ──
+  if (window.visualViewport) {
+    const onVp = () => {
+      if (!window.matchMedia('(max-width: 600px)').matches) return;
+      const maxH = Math.round(window.innerHeight * 0.85);
+      panel.style.height = Math.min(window.visualViewport.height, maxH) + 'px';
+      msgs.scrollTop = msgs.scrollHeight;
+    };
+    window.visualViewport.addEventListener('resize', onVp);
+    window.visualViewport.addEventListener('scroll', onVp);
+  }
 
   // ── Send ──
   async function doSend() {
@@ -213,6 +349,12 @@ function wireUp(root) {
       history.push({ role: 'assistant', content: reply });
       thinkRow.remove();
       addMsg('assistant', reply);
+
+      // Show confirmation if the bot updated the member's profile.
+      if (res.data && res.data.profileUpdated) {
+        const fields = Object.keys(res.data.profileUpdated);
+        if (fields.length) showProfileToast(fields);
+      }
 
       if (voiceOut) {
         setS(S.SPEAK);
@@ -252,6 +394,18 @@ function wireUp(root) {
     msgs.appendChild(row);
     msgs.scrollTop = msgs.scrollHeight;
     return row;
+  }
+
+  function showProfileToast(fields) {
+    const label = fields.length === 1
+      ? fields[0].replace(/([A-Z])/g, ' $1').toLowerCase()
+      : `${fields.length} profile fields`;
+    const toast = document.createElement('div');
+    toast.className = 'opn-profile-toast';
+    toast.textContent = `✓ Profile saved — ${label} updated`;
+    msgs.appendChild(toast);
+    msgs.scrollTop = msgs.scrollHeight;
+    setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 5000);
   }
 
   // ── Voice input (STT) ──
@@ -360,16 +514,17 @@ function startWave(canvas, stateRef) {
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
 
-  let frame = 0;
-  let amp   = 4;
+  let frame   = 0;
+  let amp     = 4;  // target amplitude tracker
+  let liveAmp = 4;  // smoothed amplitude that actually drives drawing
   let raf;
 
-  // Per-state config
+  // Per-state config — gentler speeds, softer amplitudes
   const CFG = {
-    idle:   { targetAmp: 4,  speed: 0.013 },
-    listen: { targetAmp: 26, speed: 0.072 },
-    think:  { targetAmp: 11, speed: 0.038 },
-    speak:  { targetAmp: 18, speed: 0.054 },
+    idle:   { targetAmp: 4,  speed: 0.011 },
+    listen: { targetAmp: 22, speed: 0.048 },
+    think:  { targetAmp: 10, speed: 0.030 },
+    speak:  { targetAmp: 16, speed: 0.042 },
   };
 
   function draw() {
@@ -377,13 +532,23 @@ function startWave(canvas, stateRef) {
     const cfg = CFG[s] || CFG.idle;
     const W   = cssW, H = cssH;
 
-    amp += (cfg.targetAmp - amp) * 0.07;
+    // Slowly decay typing boost (~1.5 s at 60 fps)
+    if (stateRef.boost > 0) {
+      stateRef.boost *= 0.94;
+      if (stateRef.boost < 0.15) stateRef.boost = 0;
+    }
 
-    let a = amp;
-    // Breathing effect while thinking
-    if (s === 'think')  a *= 0.55 + 0.45 * Math.sin(frame * 0.055);
-    // Noise while listening
-    if (s === 'listen') a += (Math.random() - 0.5) * 7;
+    // Drive the raw amplitude toward the state target
+    amp += (Math.min(cfg.targetAmp + stateRef.boost, 38) - amp) * 0.05;
+
+    // liveAmp follows amp with extra lag so nothing ever jumps
+    liveAmp += (amp - liveAmp) * 0.10;
+
+    let a = liveAmp;
+    // Gentle breathing while thinking (organic, no randomness)
+    if (s === 'think')  a *= 0.62 + 0.38 * Math.sin(frame * 0.042);
+    // Organic variation while listening — two slow oscillators, no Math.random
+    if (s === 'listen') a *= 0.78 + 0.15 * Math.sin(frame * 0.07) + 0.07 * Math.sin(frame * 0.13 + 1.1);
 
     ctx.clearRect(0, 0, W, H);
 
@@ -426,7 +591,12 @@ function startWave(canvas, stateRef) {
 function wave(ctx, W, H, amp, speed, frame, phase) {
   ctx.beginPath();
   for (let x = 0; x <= W; x += 2) {
-    const y = H / 2 + Math.sin(x * 0.021 + frame * speed + phase) * amp;
+    // Three harmonically-related frequencies → organic voice-like shape
+    const y = H / 2 + (
+      Math.sin(x * 0.019 + frame * speed          + phase) * amp * 0.55 +
+      Math.sin(x * 0.034 + frame * speed * 1.31   + phase * 1.2) * amp * 0.30 +
+      Math.sin(x * 0.011 + frame * speed * 0.62   + phase * 0.6) * amp * 0.15
+    );
     x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   }
 }
@@ -466,7 +636,7 @@ function injectStyles() {
   border-radius: 50%;
   border: none;
   cursor: pointer;
-  background: #0d0d14;
+  background: #0d0d0d;
   box-shadow:
     0 0 0 1.5px rgba(230,3,6,.55),
     0 0 18px rgba(230,3,6,.35),
@@ -528,11 +698,13 @@ function injectStyles() {
   max-width: calc(100vw - 40px);
   border-radius: 18px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   /* Subtle grid overlay background */
   background:
     linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px),
-    #090912;
+    #090909;
   background-size: 22px 22px, 22px 22px, auto;
   border: 1px solid rgba(230,3,6,.38);
   box-shadow:
@@ -591,7 +763,7 @@ function injectStyles() {
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px 12px;
-  background: rgba(5,5,10,.8);
+  background: rgba(5,5,5,.8);
   border-bottom: 1px solid rgba(230,3,6,.18);
   position: relative;
   z-index: 1;
@@ -672,7 +844,7 @@ function injectStyles() {
 
 /* ── Wave visualizer ─────────────────────────────────────────── */
 .opn-viz {
-  background: #05050a;
+  background: #050505;
   border-bottom: 1px solid rgba(255,255,255,.05);
   position: relative;
 }
@@ -732,7 +904,7 @@ function injectStyles() {
   box-shadow: 0 3px 14px rgba(230,3,6,.35);
 }
 .opn-bub-assistant {
-  background: rgba(14,14,22,.95);
+  background: rgba(14,14,14,.95);
   color: #e2e2e8;
   border: 1px solid rgba(230,3,6,.22);
   border-bottom-left-radius: 4px;
@@ -772,7 +944,7 @@ function injectStyles() {
   align-items: flex-end;
   gap: 8px;
   padding: 11px 13px;
-  background: rgba(5,5,10,.85);
+  background: rgba(5,5,5,.85);
   border-top: 1px solid rgba(230,3,6,.15);
   position: relative;
   z-index: 1;
@@ -827,7 +999,7 @@ function injectStyles() {
 /* Textarea */
 .opn-input {
   flex: 1;
-  background: rgba(10,10,18,.95);
+  background: rgba(10,10,10,.95);
   border: 1px solid rgba(255,255,255,.1);
   border-radius: 11px;
   color: #e8e8f0;
@@ -872,10 +1044,139 @@ function injectStyles() {
 .opn-send:disabled { background: #2a2a2a; box-shadow: none; cursor: not-allowed; }
 .opn-send svg { width: 17px; height: 17px; }
 
+/* ── Bug report button ───────────────────────────────────────── */
+.opn-bug-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #444;
+  transition: background .15s, color .15s;
+}
+.opn-bug-btn:hover { background: rgba(255,255,255,.05); color: #ff9500; }
+.opn-bug-btn svg { width: 15px; height: 15px; }
+
+/* ── Bug report inline form ──────────────────────────────────── */
+.opn-bug-form {
+  background: rgba(20,12,0,.95);
+  border: 1px solid rgba(255,149,0,.28);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: opn-msg-in .22s ease;
+}
+.opn-bug-form-lbl {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #ff9500;
+}
+.opn-bug-ta {
+  background: rgba(10,8,0,.9);
+  border: 1px solid rgba(255,149,0,.18);
+  border-radius: 8px;
+  color: #e8e8f0;
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  resize: none;
+  outline: none;
+  min-height: 60px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color .15s;
+}
+.opn-bug-ta:focus { border-color: rgba(255,149,0,.45); }
+.opn-bug-acts { display: flex; gap: 6px; }
+.opn-bug-submit {
+  flex: 1;
+  background: #ff9500;
+  border: none;
+  border-radius: 8px;
+  color: #000;
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition: background .15s, opacity .15s;
+}
+.opn-bug-submit:hover { background: #ffaa22; }
+.opn-bug-submit:disabled { opacity: .5; cursor: not-allowed; }
+.opn-bug-cancel {
+  background: none;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px;
+  color: #666;
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.opn-bug-cancel:hover { color: #aaa; border-color: rgba(255,255,255,.22); }
+
+/* ── Profile update toast ────────────────────────────────────── */
+.opn-profile-toast {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #4ade80;
+  border: 1px solid rgba(74,222,128,.25);
+  border-radius: 8px;
+  padding: 6px 14px;
+  text-align: center;
+  margin: 4px auto;
+  max-width: 85%;
+  animation: opn-msg-in .22s ease;
+}
+
 /* ── Mobile ──────────────────────────────────────────────────── */
-@media (max-width: 440px) {
-  #opn-chat-widget { bottom: 18px; right: 18px; }
-  .opn-panel { width: calc(100vw - 36px); bottom: 78px; }
+@media (max-width: 600px) {
+  /* Widget spans full width at the bottom */
+  #opn-chat-widget {
+    bottom: 0; right: 0; left: 0; top: auto;
+    pointer-events: none;
+  }
+  /* FAB stays pinned to bottom-right */
+  .opn-fab {
+    position: fixed;
+    bottom: 18px; right: 18px;
+    pointer-events: auto;
+  }
+  /* Bottom sheet: ~85vh, rounded top corners, slides up */
+  .opn-panel {
+    position: fixed;
+    bottom: 0; left: 0; right: 0; top: auto;
+    width: 100%;
+    max-width: 100%;
+    height: 85vh;
+    border-radius: 20px 20px 0 0;
+    transform: translateY(100%);
+    opacity: 1;
+    transition: transform .32s cubic-bezier(.25,.1,.25,1);
+    pointer-events: none;
+  }
+  .opn-panel.opn-open {
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  /* Messages fill remaining height */
+  .opn-msgs { flex: 1; max-height: none; min-height: 0; }
+  /* 16px prevents iOS auto-zoom on focus */
+  .opn-input { font-size: 16px; }
+  /* Shorter wave on mobile to preserve message space */
+  .opn-canvas { height: 60px; }
 }
   `;
   document.head.appendChild(el);
