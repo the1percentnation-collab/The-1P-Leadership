@@ -3223,7 +3223,7 @@ function buildCourseKnowledge() {
   ).join('\n');
 }
 
-function buildSystemPrompt(userContext, knowledgeEntries) {
+function buildSystemPrompt(userContext, knowledgeEntries, communityContext) {
   const courseList = buildCourseKnowledge();
 
   // Inject owner-supplied knowledge base entries
@@ -3253,14 +3253,34 @@ GUIDELINES:
     return base + '\n\nCONTEXT: You are speaking with a visitor on the public website. They are not yet logged in.';
   }
 
-  const { displayName, enrolledCourses, progressSummary } = userContext;
+  const { displayName, enrolledCourses, progressSummary, bio, profession, location } = userContext;
   const name = displayName ? `Their name is ${displayName}.` : '';
   const enrolled = enrolledCourses && enrolledCourses.length
     ? `They are currently enrolled in: ${enrolledCourses.join(', ')}.`
     : 'They are not yet enrolled in any courses.';
   const progress = progressSummary || '';
 
-  return `${base}\n\nCONTEXT: You are speaking with an authenticated member inside the One Percent Academy portal. ${name} ${enrolled} ${progress}`.trim();
+  // Build profile snapshot for context
+  const profileParts = [];
+  if (displayName) profileParts.push(`Name: ${displayName}`);
+  if (bio)         profileParts.push(`Bio: ${bio}`);
+  if (profession)  profileParts.push(`Profession: ${profession}`);
+  if (location)    profileParts.push(`Location: ${location}`);
+  const profileSnapshot = profileParts.length
+    ? `\nMEMBER PROFILE:\n${profileParts.map(p => `- ${p}`).join('\n')}`
+    : '';
+
+  const communitySection = communityContext
+    ? `\n\nCOMMUNITY SNAPSHOT (last 7 days):\n${communityContext}`
+    : '';
+
+  const portalInstructions = `
+
+PORTAL CAPABILITIES (authenticated members only):
+1. PROFILE UPDATES — If the member asks to update their display name, bio, profession, company, industry, location, LinkedIn URL, website, phone, community goals, or pronouns: confirm what they want, then output PROFILE_UPDATE immediately followed by a compact JSON object with ONLY the fields being changed. Example: PROFILE_UPDATE{"bio":"I'm a leadership coach in Atlanta"}. Never include this signal for fields not in that list (role, email, avatar, etc.). Strip any other commentary from the signal line — just the keyword and JSON. After the signal, confirm what was updated in natural language.
+2. COMMUNITY UPDATES — When asked "what's new", "any updates", "what's happening in the community", or similar: summarize the COMMUNITY SNAPSHOT above. Lead with announcements, then highlight wins. Keep it to 3–5 sentences. If the snapshot is empty, say "Check the Community tab for the latest — I don't have a live feed right now."`;
+
+  return `${base}${profileSnapshot}${communitySection}${portalInstructions}\n\nCONTEXT: You are speaking with an authenticated member inside the One Percent Academy portal. ${name} ${enrolled} ${progress}`.trim();
 }
 
 async function fetchMemberContext(db, uid) {
@@ -3293,7 +3313,11 @@ async function fetchMemberContext(db, uid) {
     } catch (e) { /* progress subcollection may not exist yet */ }
 
     return {
-      displayName: u.displayName || null,
+      displayName:   u.displayName   || null,
+      bio:           u.bio           || null,
+      profession:    u.profession    || null,
+      location:      u.location      || null,
+      companyId:     u.companyId     || null,
       enrolledCourses,
       progressSummary
     };
@@ -3317,6 +3341,79 @@ async function fetchKnowledgeEntries(db) {
     return [];
   }
 }
+
+// Fetch recent community posts visible to this member for chatbot context.
+async function fetchCommunityContext(db, companyId) {
+  try {
+    // Single query ordered by date — no composite index needed.
+    const snap = await db.collection('posts').orderBy('createdAt', 'desc').limit(25).get();
+
+    function relTime(ts) {
+      if (!ts || !ts.toMillis) return '';
+      const m = Math.floor((Date.now() - ts.toMillis()) / 60000);
+      if (m < 60) return `${m}m ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h ago`;
+      return `${Math.floor(h / 24)}d ago`;
+    }
+
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - sevenDaysMs;
+
+    // Visibility: global posts (companyId null/undefined) + member's company posts.
+    const visible = snap.docs.filter((d) => {
+      const cid = d.data().companyId;
+      if (!cid) return true;
+      return companyId && cid === companyId;
+    }).filter((d) => {
+      const ts = d.data().createdAt;
+      return ts && ts.toMillis && ts.toMillis() > cutoff;
+    });
+
+    const byCategory = { announcements: [], wins: [], other: [] };
+    visible.forEach((d) => {
+      const cat = d.data().category || 'other';
+      if (cat === 'announcements') byCategory.announcements.push(d);
+      else if (cat === 'wins')     byCategory.wins.push(d);
+      else                         byCategory.other.push(d);
+    });
+
+    function fmt(d) {
+      const data = d.data();
+      const text = String(data.text || '').trim();
+      const preview = text.length > 200 ? text.slice(0, 200) + '...' : text;
+      const when = relTime(data.createdAt);
+      const author = data.authorName || 'Member';
+      return `"${preview}" — ${author}${when ? ` (${when})` : ''}`;
+    }
+
+    const lines = [];
+    if (byCategory.announcements.length) {
+      lines.push('📣 ANNOUNCEMENTS:');
+      byCategory.announcements.slice(0, 3).forEach((d) => lines.push(`  - ${fmt(d)}`));
+    }
+    if (byCategory.wins.length) {
+      lines.push('🏆 WINS & HIGHLIGHTS:');
+      byCategory.wins.slice(0, 3).forEach((d) => lines.push(`  - ${fmt(d)}`));
+    }
+    if (byCategory.other.length) {
+      lines.push('💬 RECENT ACTIVITY:');
+      byCategory.other.slice(0, 3).forEach((d) => lines.push(`  - ${fmt(d)}`));
+    }
+
+    return lines.length ? lines.join('\n') : null;
+  } catch (e) {
+    console.warn('[courseAdvisorChat] fetchCommunityContext failed:', e && e.message);
+    return null;
+  }
+}
+
+// Allowed fields for PROFILE_UPDATE signal — whitelist keeps sensitive fields safe.
+const PROFILE_UPDATE_ALLOWED = {
+  displayName: 100, bio: 500, profession: 150, company: 150,
+  industry: 100, location: 150, linkedinUrl: 300, website: 300,
+  phone: 40, communityGoals: 1000, pronouns: 50
+};
 
 // saveKnowledgeEntry — create or update a KB entry. Owner/admin only.
 exports.saveKnowledgeEntry = onCall(async (request) => {
@@ -3392,11 +3489,13 @@ exports.courseAdvisorChat = onCall(async (request) => {
   }
 
   const uid = request.auth && request.auth.uid;
-  const [memberContext, knowledgeEntries] = await Promise.all([
-    uid ? fetchMemberContext(db, uid) : Promise.resolve(null),
-    fetchKnowledgeEntries(db)
+  // Fetch member context first so we have companyId for community scoping.
+  const memberContext = uid ? await fetchMemberContext(db, uid) : null;
+  const [knowledgeEntries, communityContext] = await Promise.all([
+    fetchKnowledgeEntries(db),
+    uid ? fetchCommunityContext(db, memberContext && memberContext.companyId) : Promise.resolve(null)
   ]);
-  const systemPrompt = buildSystemPrompt(memberContext, knowledgeEntries);
+  const systemPrompt = buildSystemPrompt(memberContext, knowledgeEntries, communityContext);
 
   // Build conversation history (max 20 turns to stay within context limits).
   const safeHistory = Array.isArray(history) ? history.slice(-20) : [];
@@ -3456,5 +3555,30 @@ exports.courseAdvisorChat = onCall(async (request) => {
     replyText = rawReply.replace(/COURSE_SUGGESTION_DETECTED\{[\s\S]*?\}/g, '').trim();
   }
 
-  return { reply: replyText };
+  // Detect and handle profile update signal (authenticated members only).
+  let profileUpdated = null;
+  if (uid && replyText.includes('PROFILE_UPDATE')) {
+    try {
+      const match = replyText.match(/PROFILE_UPDATE(\{[\s\S]*?\})/);
+      if (match) {
+        const parsed = JSON.parse(match[1]);
+        const patch = {};
+        for (const [key, maxLen] of Object.entries(PROFILE_UPDATE_ALLOWED)) {
+          if (parsed[key] === undefined) continue;
+          const val = String(parsed[key]).trim().slice(0, maxLen);
+          if (val) patch[key] = val;
+        }
+        if (Object.keys(patch).length) {
+          patch.lastActiveAt = admin.firestore.FieldValue.serverTimestamp();
+          await db.collection('users').doc(uid).set(patch, { merge: true });
+          const { lastActiveAt: _ts, ...updatedFields } = patch;
+          profileUpdated = updatedFields;
+          console.info('[courseAdvisorChat] profile updated:', uid, Object.keys(updatedFields));
+        }
+      }
+    } catch (e) { console.warn('[courseAdvisorChat] profile update failed:', e && e.message); }
+    replyText = replyText.replace(/PROFILE_UPDATE\{[\s\S]*?\}/g, '').trim();
+  }
+
+  return { reply: replyText, profileUpdated: profileUpdated || null };
 });

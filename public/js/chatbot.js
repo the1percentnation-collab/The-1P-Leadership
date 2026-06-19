@@ -218,6 +218,12 @@ function wireUp(root) {
       thinkRow.remove();
       addMsg('assistant', reply);
 
+      // Show confirmation if the bot updated the member's profile.
+      if (res.data && res.data.profileUpdated) {
+        const fields = Object.keys(res.data.profileUpdated);
+        if (fields.length) showProfileToast(fields);
+      }
+
       if (voiceOut) {
         setS(S.SPEAK);
         await speakText(reply);
@@ -256,6 +262,18 @@ function wireUp(root) {
     msgs.appendChild(row);
     msgs.scrollTop = msgs.scrollHeight;
     return row;
+  }
+
+  function showProfileToast(fields) {
+    const label = fields.length === 1
+      ? fields[0].replace(/([A-Z])/g, ' $1').toLowerCase()
+      : `${fields.length} profile fields`;
+    const toast = document.createElement('div');
+    toast.className = 'opn-profile-toast';
+    toast.textContent = `✓ Profile saved — ${label} updated`;
+    msgs.appendChild(toast);
+    msgs.scrollTop = msgs.scrollHeight;
+    setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 5000);
   }
 
   // ── Voice input (STT) ──
@@ -891,6 +909,22 @@ function injectStyles() {
 .opn-send:active { transform: scale(.9); }
 .opn-send:disabled { background: #2a2a2a; box-shadow: none; cursor: not-allowed; }
 .opn-send svg { width: 17px; height: 17px; }
+
+/* ── Profile update toast ────────────────────────────────────── */
+.opn-profile-toast {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #4ade80;
+  border: 1px solid rgba(74,222,128,.25);
+  border-radius: 8px;
+  padding: 6px 14px;
+  text-align: center;
+  margin: 4px auto;
+  max-width: 85%;
+  animation: opn-msg-in .22s ease;
+}
 
 /* ── Mobile ──────────────────────────────────────────────────── */
 @media (max-width: 440px) {
