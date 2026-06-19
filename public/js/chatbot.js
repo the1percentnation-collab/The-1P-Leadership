@@ -100,6 +100,11 @@ function buildWidget() {
           rows="1"
           maxlength="2000"
           aria-label="Your message"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          inputmode="text"
         ></textarea>
         <button class="opn-send" id="opn-send" aria-label="Send message">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -193,6 +198,18 @@ function wireUp(root) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
   });
   sendBtn.addEventListener('click', doSend);
+
+  // ── Mobile: keyboard-aware panel height (Visual Viewport API) ──
+  if (window.visualViewport) {
+    const onVp = () => {
+      if (!window.matchMedia('(max-width: 600px)').matches) return;
+      panel.style.height = window.visualViewport.height + 'px';
+      panel.style.top    = window.visualViewport.offsetTop + 'px';
+      msgs.scrollTop = msgs.scrollHeight;
+    };
+    window.visualViewport.addEventListener('resize', onVp);
+    window.visualViewport.addEventListener('scroll', onVp);
+  }
 
   // ── Send ──
   async function doSend() {
@@ -566,6 +583,8 @@ function injectStyles() {
   max-width: calc(100vw - 40px);
   border-radius: 18px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   /* Subtle grid overlay background */
   background:
     linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
@@ -927,9 +946,45 @@ function injectStyles() {
 }
 
 /* ── Mobile ──────────────────────────────────────────────────── */
-@media (max-width: 440px) {
-  #opn-chat-widget { bottom: 18px; right: 18px; }
-  .opn-panel { width: calc(100vw - 36px); bottom: 78px; }
+@media (max-width: 600px) {
+  /* Widget container fills viewport so the panel can use fixed inset */
+  #opn-chat-widget {
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+  }
+  /* FAB stays pinned to bottom-right independently */
+  .opn-fab {
+    position: fixed;
+    bottom: 18px; right: 18px;
+    pointer-events: auto;
+  }
+  /* Panel: full-screen, slide up from bottom */
+  .opn-panel {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 0;
+    transform: translateY(100%);
+    opacity: 1;
+    transition: transform .3s cubic-bezier(.25,.1,.25,1);
+    pointer-events: none;
+  }
+  .opn-panel.opn-open {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  /* Messages fill remaining height */
+  .opn-msgs {
+    flex: 1;
+    max-height: none;
+    min-height: 0;
+  }
+  /* 16px prevents iOS auto-zoom on focus */
+  .opn-input { font-size: 16px; }
+  /* Shorter wave on mobile to preserve message space */
+  .opn-canvas { height: 60px; }
 }
   `;
   document.head.appendChild(el);
