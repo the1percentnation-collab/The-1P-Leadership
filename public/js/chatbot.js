@@ -66,10 +66,13 @@ function buildWidget() {
           </button>
           <button class="opn-bug-btn" id="opn-bug-btn" aria-label="Report a bug" title="Report a bug">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2a8 8 0 0 0-5.66 13.66L7 18h10l.66-2.34A8 8 0 0 0 12 2ZM9.5 9.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0Zm4 0a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0Z"/>
-              <path d="M9 18h2v2.5H9zm4 0h2v2.5h-2z"/>
-              <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M3.5 23.5 9.5 17.5M14.5 17.5 20.5 23.5"/>
+              <path fill-rule="evenodd" clip-rule="evenodd"
+                d="M12 2C7.03 2 3 5.8 3 10.2c0 3.5 2 6.6 5 8.1V22h8v-3.7c3-1.5 5-4.6 5-8.1C21 5.8 16.97 2 12 2z
+                   M4.5 10a2.5 2 0 1 0 5 0 2.5 2 0 0 0-5 0z
+                   M14.5 10a2.5 2 0 1 0 5 0 2.5 2 0 0 0-5 0z
+                   M10 20h1.5v2H10z M12.5 20h1.5v2h-1.5z"/>
             </svg>
+            <span class="opn-bug-lbl">report bug</span>
           </button>
           <button class="opn-close" id="opn-close" aria-label="Close chat">
             <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
@@ -1045,20 +1048,29 @@ function injectStyles() {
 
 /* ── Bug report button ───────────────────────────────────────── */
 .opn-bug-btn {
-  width: 30px;
-  height: 30px;
   border-radius: 8px;
   background: none;
   border: none;
   cursor: pointer;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 1px;
+  padding: 4px 6px;
   color: #888;
   transition: background .15s, color .15s;
 }
 .opn-bug-btn:hover { background: rgba(255,255,255,.05); color: #ff9500; }
-.opn-bug-btn svg { width: 15px; height: 15px; }
+.opn-bug-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+.opn-bug-lbl {
+  font-family: 'Outfit', sans-serif;
+  font-size: 7px;
+  letter-spacing: .04em;
+  line-height: 1;
+  white-space: nowrap;
+  text-transform: lowercase;
+}
 
 /* ── Bug report inline form ──────────────────────────────────── */
 .opn-bug-form {
