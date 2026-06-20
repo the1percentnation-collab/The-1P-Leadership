@@ -1053,6 +1053,39 @@ body {
   transition: background 0.15s, filter 0.15s;
 }
 .user-chip-admin:hover { background: var(--red-dark); filter: brightness(1.05); }
+.c-admin-dropdown-toggle { cursor: pointer; line-height: 1; }
+
+.c-admin-dropdown {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.c-admin-dropdown-menu {
+  position: fixed;
+  background: #1a1a1a;
+  border: 1px solid var(--red);
+  border-radius: 6px;
+  min-width: 170px;
+  z-index: 300;
+  overflow: hidden;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+}
+
+.c-admin-dropdown-item {
+  display: block;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #fff;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background 0.12s, color 0.12s;
+}
+.c-admin-dropdown-item:last-child { border-bottom: none; }
+.c-admin-dropdown-item:hover { background: rgba(230, 3, 6, 0.25); color: var(--red); }
 
 .auth-shell {
   min-height: 100vh;
