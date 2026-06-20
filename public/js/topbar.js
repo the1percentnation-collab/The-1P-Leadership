@@ -50,10 +50,8 @@ function roleAllows(roleRequired, role) {
   return true;
 }
 
-// Privileged destinations rendered as standalone, high-visibility buttons
-// (not blended into the regular link chips) so admins/owners always have
-// one-click access from any portal page — including pages that pass an
-// empty `links` set, like the dashboard.
+// Privileged destinations consolidated into a single dropdown so the topbar
+// stays uncluttered — one button instead of five separate red chips.
 const ADMIN_BUTTONS = [
   { key: 'courses-admin', href: '/manage-courses.html', label: 'Manage Courses', requires: 'admin' },
   { key: 'products-admin', href: '/manage-products.html', label: 'Products', requires: 'admin' },
@@ -61,6 +59,8 @@ const ADMIN_BUTTONS = [
   { key: 'admin', href: '/admin.html', label: 'Admin', requires: 'admin' },
   { key: 'owner', href: '/owner.html', label: 'Owner', requires: 'owner' }
 ];
+
+const adminDropState = { outsideClickBound: false };
 
 /**
  * Returns the role-aware default link set with the active page filtered out.
@@ -475,9 +475,18 @@ export function renderTopbar({
     `<a class="user-chip-link" href="${escapeHtml(l.href)}">${escapeHtml(l.label)}</a>`
   ).join('');
 
-  const adminHtml = adminButtons({ role, currentPage }).map((b) =>
-    `<a class="user-chip-admin" href="${escapeHtml(b.href)}">${escapeHtml(b.label)}</a>`
-  ).join('');
+  const adminBtns = adminButtons({ role, currentPage });
+  const dropLabel = role === 'owner' ? 'Owner&nbsp;&#9660;' : 'Admin&nbsp;&#9660;';
+  const adminHtml = adminBtns.length === 0 ? '' : `
+    <div class="c-admin-dropdown" id="c-admin-dropdown">
+      <button class="user-chip-admin c-admin-dropdown-toggle" id="c-admin-dropdown-btn" type="button">${dropLabel}</button>
+      <div class="c-admin-dropdown-menu" id="c-admin-dropdown-menu" hidden>
+        ${adminBtns.map((b) =>
+          `<a class="c-admin-dropdown-item" href="${escapeHtml(b.href)}">${escapeHtml(b.label)}</a>`
+        ).join('')}
+      </div>
+    </div>
+  `;
 
   const displayName = (profile && profile.displayName) || user.displayName || user.email || '';
   const avatarObj = {
@@ -513,6 +522,29 @@ export function renderTopbar({
     <span class="user-chip-email">${escapeHtml(displayName)}</span>
     ${signOutHtml}
   `;
+
+  // Admin dropdown toggle
+  const ddBtn = chip.querySelector('#c-admin-dropdown-btn');
+  const ddMenu = chip.querySelector('#c-admin-dropdown-menu');
+  if (ddBtn && ddMenu) {
+    ddBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = ddMenu.hidden;
+      if (isHidden) {
+        const rect = ddBtn.getBoundingClientRect();
+        ddMenu.style.top = (rect.bottom + 6) + 'px';
+        ddMenu.style.right = (window.innerWidth - rect.right) + 'px';
+      }
+      ddMenu.hidden = !isHidden;
+    });
+    if (!adminDropState.outsideClickBound) {
+      adminDropState.outsideClickBound = true;
+      document.addEventListener('click', () => {
+        const m = document.getElementById('c-admin-dropdown-menu');
+        if (m) m.hidden = true;
+      });
+    }
+  }
 
   if (withSignOut) {
     const out = chip.querySelector('#btn-signout');
