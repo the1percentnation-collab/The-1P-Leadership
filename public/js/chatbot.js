@@ -64,6 +64,13 @@ function buildWidget() {
               <line x1="17" y1="9" x2="23" y2="15"/>
             </svg>
           </button>
+          <button class="opn-bug-btn" id="opn-bug-btn" aria-label="Report a bug" title="Report a bug">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2a8 8 0 0 0-5.66 13.66L7 18h10l.66-2.34A8 8 0 0 0 12 2ZM9.5 9.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0Zm4 0a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0Z"/>
+              <path d="M9 18h2v2.5H9zm4 0h2v2.5h-2z"/>
+              <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M3.5 23.5 9.5 17.5M14.5 17.5 20.5 23.5"/>
+            </svg>
+          </button>
           <button class="opn-close" id="opn-close" aria-label="Close chat">
             <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
               <line x1="1" y1="1" x2="13" y2="13"/>
@@ -131,6 +138,7 @@ function wireUp(root) {
   const input    = root.querySelector('#opn-input');
   const sendBtn  = root.querySelector('#opn-send');
   const ttsBtn   = root.querySelector('#opn-tts-btn');
+  const bugBtn   = root.querySelector('#opn-bug-btn');
 
   // ── State ──
   const S = { IDLE: 'idle', LISTEN: 'listen', THINK: 'think', SPEAK: 'speak' };
@@ -155,6 +163,112 @@ function wireUp(root) {
     voiceOut = !voiceOut;
     ttsBtn.classList.toggle('opn-tts-on', voiceOut);
   });
+
+  // ── Bug report ──
+  let bugFormEl = null;
+  let html2canvasPromise = null;
+
+  function loadHtml2Canvas() {
+    if (html2canvasPromise) return html2canvasPromise;
+    html2canvasPromise = new Promise((resolve, reject) => {
+      if (window.html2canvas) { resolve(window.html2canvas); return; }
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      s.onload = () => resolve(window.html2canvas);
+      s.onerror = () => reject(new Error('html2canvas failed to load'));
+      document.head.appendChild(s);
+    });
+    return html2canvasPromise;
+  }
+
+  function showBugForm() {
+    if (bugFormEl) return;
+    loadHtml2Canvas().catch(() => {}); // pre-load in background
+    bugFormEl = document.createElement('div');
+    bugFormEl.className = 'opn-bug-form';
+    bugFormEl.innerHTML = `
+      <div class="opn-bug-form-lbl">Report a bug</div>
+      <textarea class="opn-bug-ta" placeholder="Describe what happened…" rows="3" maxlength="1000"></textarea>
+      <div class="opn-bug-acts">
+        <button class="opn-bug-submit">Capture &amp; Submit</button>
+        <button class="opn-bug-cancel">Cancel</button>
+      </div>
+    `;
+    msgs.appendChild(bugFormEl);
+    msgs.scrollTop = msgs.scrollHeight;
+    bugFormEl.querySelector('.opn-bug-ta').focus();
+    bugFormEl.querySelector('.opn-bug-cancel').addEventListener('click', () => {
+      if (bugFormEl && bugFormEl.parentNode) bugFormEl.parentNode.removeChild(bugFormEl);
+      bugFormEl = null;
+    });
+    bugFormEl.querySelector('.opn-bug-submit').addEventListener('click', submitBugReport);
+  }
+
+  async function submitBugReport() {
+    if (!bugFormEl) return;
+    const ta = bugFormEl.querySelector('.opn-bug-ta');
+    const description = ta.value.trim();
+    if (!description) { ta.focus(); return; }
+
+    const submitBtn = bugFormEl.querySelector('.opn-bug-submit');
+    const cancelBtn = bugFormEl.querySelector('.opn-bug-cancel');
+    submitBtn.disabled = true;
+    cancelBtn.disabled = true;
+    submitBtn.textContent = 'Capturing…';
+
+    let screenshotDataUrl = null;
+    try {
+      // Hide panel so the screenshot shows the page behind it
+      panel.classList.remove('opn-open');
+      await new Promise(r => setTimeout(r, 400));
+      const h2c = await loadHtml2Canvas();
+      const canvas = await h2c(document.body, {
+        scale: 0.5,
+        useCORS: true,
+        logging: false,
+        width: window.innerWidth,
+        height: window.innerHeight,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+        x: window.scrollX,
+        y: window.scrollY,
+        ignoreElements: (el) => el.id === 'opn-chat-widget'
+      });
+      screenshotDataUrl = canvas.toDataURL('image/jpeg', 0.72);
+      panel.classList.add('opn-open');
+    } catch (e) {
+      console.warn('[chatbot] screenshot failed:', e);
+      panel.classList.add('opn-open');
+    }
+
+    const descCopy = description;
+    if (bugFormEl && bugFormEl.parentNode) bugFormEl.parentNode.removeChild(bugFormEl);
+    bugFormEl = null;
+
+    const thinkRow = addThinking();
+    try {
+      const call = httpsCallable(functions, 'reportBug');
+      await call({
+        description: descCopy,
+        screenshotDataUrl,
+        url: window.location.href,
+        userAgent: navigator.userAgent
+      });
+      thinkRow.remove();
+      const toast = document.createElement('div');
+      toast.className = 'opn-profile-toast';
+      toast.textContent = '✓ Bug report sent — thank you!';
+      msgs.appendChild(toast);
+      msgs.scrollTop = msgs.scrollHeight;
+      setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 6000);
+    } catch (e) {
+      console.error('[chatbot] bug report failed:', e);
+      thinkRow.remove();
+      addMsg('assistant', 'Bug report failed to send — please try again.', true);
+    }
+  }
+
+  bugBtn.addEventListener('click', showBugForm);
 
   // ── Open / close ──
   function openPanel() {
@@ -928,6 +1042,88 @@ function injectStyles() {
 .opn-send:active { transform: scale(.9); }
 .opn-send:disabled { background: #2a2a2a; box-shadow: none; cursor: not-allowed; }
 .opn-send svg { width: 17px; height: 17px; }
+
+/* ── Bug report button ───────────────────────────────────────── */
+.opn-bug-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+  transition: background .15s, color .15s;
+}
+.opn-bug-btn:hover { background: rgba(255,255,255,.05); color: #ff9500; }
+.opn-bug-btn svg { width: 15px; height: 15px; }
+
+/* ── Bug report inline form ──────────────────────────────────── */
+.opn-bug-form {
+  background: rgba(20,12,0,.95);
+  border: 1px solid rgba(255,149,0,.28);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: opn-msg-in .22s ease;
+}
+.opn-bug-form-lbl {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #ff9500;
+}
+.opn-bug-ta {
+  background: rgba(10,8,0,.9);
+  border: 1px solid rgba(255,149,0,.18);
+  border-radius: 8px;
+  color: #e8e8f0;
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  resize: none;
+  outline: none;
+  min-height: 60px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color .15s;
+}
+.opn-bug-ta:focus { border-color: rgba(255,149,0,.45); }
+.opn-bug-acts { display: flex; gap: 6px; }
+.opn-bug-submit {
+  flex: 1;
+  background: #ff9500;
+  border: none;
+  border-radius: 8px;
+  color: #000;
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition: background .15s, opacity .15s;
+}
+.opn-bug-submit:hover { background: #ffaa22; }
+.opn-bug-submit:disabled { opacity: .5; cursor: not-allowed; }
+.opn-bug-cancel {
+  background: none;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px;
+  color: #666;
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.opn-bug-cancel:hover { color: #aaa; border-color: rgba(255,255,255,.22); }
+
 
 /* ── Profile update toast ────────────────────────────────────── */
 .opn-profile-toast {

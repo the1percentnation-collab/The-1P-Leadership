@@ -600,6 +600,19 @@ service cloud.firestore {
     match /chatbotKnowledge/{entryId} {
       allow read, write: if false; // Cloud Functions (Admin SDK) only.
     }
+
+    // ────────────────────────────────────────────────────────────────
+    // Bug reports — written by the reportBug Cloud Function (Admin SDK).
+    // Owner can read and update status; nobody can create/delete from client.
+    // ────────────────────────────────────────────────────────────────
+    match /bugReports/{reportId} {
+      allow read: if isOwner();
+      // Owner may flip status / add resolution note only.
+      allow update: if isOwner()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'resolvedAt', 'resolution']);
+      allow create, delete: if false;
+    }
   }
 }
 

@@ -38,5 +38,12 @@ service firebase.storage {
                    && request.resource.size < 10 * 1024 * 1024
                    && request.resource.contentType.matches('image/.*');
     }
+
+    // bug-screenshots/{filename} — written by the reportBug Cloud Function
+    // (Admin SDK). No client read or write; owner access is via signed URLs
+    // generated server-side and included in the email notification.
+    match /bug-screenshots/{filename} {
+      allow read, write: if false;
+    }
   }
 }
