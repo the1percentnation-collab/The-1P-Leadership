@@ -45,5 +45,12 @@ service firebase.storage {
     match /bug-screenshots/{filename} {
       allow read, write: if false;
     }
+
+    // certificates/{uid}/{filename} — completion certificates written by the
+    // onCertificateProgress Cloud Function (Admin SDK). Served to learners via
+    // server-generated signed URLs stored on the cert record; no client access.
+    match /certificates/{uid}/{filename} {
+      allow read, write: if false;
+    }
   }
 }

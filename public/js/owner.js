@@ -29,13 +29,20 @@ async function findUidByEmail(email) {
   return snap.docs[0].id;
 }
 
+function planLabel(plan) {
+  if (!plan || typeof plan.amount !== 'number' || plan.amount <= 0) return '—';
+  const suffix = plan.mode === 'recurring' ? (plan.interval === 'year' ? '/yr' : '/mo') : ' one-time';
+  const status = plan.status && plan.status !== 'active' ? ` (${plan.status})` : '';
+  return `$${plan.amount}${suffix}${status}`;
+}
+
 async function loadCompanies() {
   const body = $('companies-body');
   body.innerHTML = '';
   try {
     const snap = await getDocs(collection(db, 'companies'));
     if (snap.empty) {
-      body.innerHTML = `<tr><td colspan="6" style="color:var(--gray-mid);">No companies yet.</td></tr>`;
+      body.innerHTML = `<tr><td colspan="7" style="color:var(--gray-mid);">No companies yet.</td></tr>`;
       return;
     }
     body.innerHTML = snap.docs.map((d) => {
@@ -46,6 +53,7 @@ async function loadCompanies() {
         <td class="num">${c.seatsUsed || 0}/${c.seatCount || 0} <button class="btn btn-ghost" data-edit-seats="${d.id}" style="padding:2px 8px; font-size:11px; margin-left:8px;">edit</button></td>
         <td class="num">${(c.adminUids || []).length}</td>
         <td>${c.tier || '—'}</td>
+        <td class="num">${planLabel(c.plan)} <button class="btn btn-ghost" data-edit-plan="${d.id}" style="padding:2px 8px; font-size:11px; margin-left:8px;">edit</button></td>
         <td><a class="user-chip-link" href="/admin.html?companyId=${encodeURIComponent(d.id)}">Open</a></td>
       </tr>`;
     }).join('');
@@ -63,12 +71,47 @@ async function loadCompanies() {
         await loadCompanies();
       });
     });
+    body.querySelectorAll('[data-edit-plan]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const id = b.dataset.editPlan;
+        const snap = await getDoc(doc(db, 'companies', id));
+        if (!snap.exists()) return;
+        const cur = snap.data();
+        const p = cur.plan || {};
+        const mode = prompt(`Billing mode for ${cur.name || id} — type "one-time" or "recurring":`, p.mode || 'one-time');
+        if (mode == null) return;
+        const m = mode.trim() === 'recurring' ? 'recurring' : 'one-time';
+        let interval = p.interval || 'month';
+        if (m === 'recurring') {
+          const iv = prompt('Interval — "month" or "year":', interval);
+          if (iv == null) return;
+          interval = iv.trim() === 'year' ? 'year' : 'month';
+        }
+        const amtRaw = prompt('Price in dollars:', String(typeof p.amount === 'number' ? p.amount : 0));
+        if (amtRaw == null) return;
+        const amount = Number(amtRaw);
+        if (!Number.isFinite(amount) || amount < 0) return alert('Invalid amount.');
+        await setDoc(doc(db, 'companies', id), {
+          plan: {
+            mode: m,
+            interval: m === 'recurring' ? interval : null,
+            amount,
+            currency: 'usd',
+            source: p.source || 'manual',
+            status: p.status || 'active',
+            stripeSubscriptionId: p.stripeSubscriptionId || null,
+            setAt: serverTimestamp()
+          }
+        }, { merge: true });
+        await loadCompanies();
+      });
+    });
   } catch (e) {
-    body.innerHTML = `<tr><td colspan="6" style="color:var(--red);">Error: ${e.message || e}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="7" style="color:var(--red);">Error: ${e.message || e}</td></tr>`;
   }
 }
 
-async function createCompany(name, adminEmail, seats, tier) {
+async function createCompany(name, adminEmail, seats, tier, plan) {
   const adminUid = await findUidByEmail(adminEmail);
   if (!adminUid) {
     throw new Error(`No user with email ${adminEmail} exists yet. Ask them to sign up first at /signup.html, then retry.`);
@@ -80,6 +123,7 @@ async function createCompany(name, adminEmail, seats, tier) {
     seatCount: seats,
     seatsUsed: 0,
     tier: tier || 'team',
+    plan: plan || null,
     createdAt: serverTimestamp()
   });
   // Mark the admin user as admin + link them to this company.
@@ -131,8 +175,20 @@ async function main() {
     const adminEmail = $('c-admin-email').value.trim();
     const seats = Number($('c-seats').value);
     const tier = $('c-tier').value.trim() || 'team';
+    const planMode = $('c-plan-mode').value === 'recurring' ? 'recurring' : 'one-time';
+    const planAmount = Number($('c-plan-amount').value) || 0;
+    const plan = planAmount > 0 ? {
+      mode: planMode,
+      interval: planMode === 'recurring' ? ($('c-plan-interval').value === 'year' ? 'year' : 'month') : null,
+      amount: planAmount,
+      currency: 'usd',
+      source: 'manual',
+      status: 'active',
+      stripeSubscriptionId: null,
+      setAt: serverTimestamp()
+    } : null;
     try {
-      const id = await createCompany(name, adminEmail, seats, tier);
+      const id = await createCompany(name, adminEmail, seats, tier, plan);
       $('create-result').innerHTML = `<div class="auth-ok">Created company <b>${name}</b> (id: ${id}).</div>`;
       $('c-name').value = '';
       $('c-admin-email').value = '';

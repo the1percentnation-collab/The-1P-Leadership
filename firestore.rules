@@ -65,14 +65,18 @@ service cloud.firestore {
                      && (!('unreadNotifCount' in request.resource.data)
                          || request.resource.data.unreadNotifCount == 0)
                      && (!('enrolledCourseSlugs' in request.resource.data)
-                         || request.resource.data.enrolledCourseSlugs == []));
+                         || request.resource.data.enrolledCourseSlugs == [])
+                     && (!('companyCourseSlugs' in request.resource.data)
+                         || request.resource.data.companyCourseSlugs == []));
       allow update: if isOwner() || (isSelf(uid)
                      && request.resource.data.get('statsPoints', 0) == resource.data.get('statsPoints', 0)
                      && request.resource.data.get('statsWeekPoints', 0) == resource.data.get('statsWeekPoints', 0)
                      && request.resource.data.get('unreadNotifCount', 0) == resource.data.get('unreadNotifCount', 0)
                      // Enrollment writes are server-only (enrollFree callable +
-                     // Stripe webhook) so users can't grant themselves paid courses.
-                     && request.resource.data.get('enrolledCourseSlugs', []) == resource.data.get('enrolledCourseSlugs', []));
+                     // Stripe webhook + assignCompanyCourses) so users can't grant
+                     // themselves paid or company courses.
+                     && request.resource.data.get('enrolledCourseSlugs', []) == resource.data.get('enrolledCourseSlugs', [])
+                     && request.resource.data.get('companyCourseSlugs', []) == resource.data.get('companyCourseSlugs', []));
       allow delete: if isOwner();
 
       // users/{uid}/progress/{moduleId} — STRICTLY private to the user (and owner).
@@ -83,6 +87,17 @@ service cloud.firestore {
       // users/{uid}/capstone — same.
       match /capstone/{docId=**} {
         allow read, write: if isOwner() || isSelf(uid);
+      }
+
+      // users/{uid}/certificates/{slug} — completion certificates. Written only
+      // by the onCertificateProgress trigger (Admin SDK). Readable by the learner,
+      // the owner, and admins of the learner's company (via the cert's companyId).
+      match /certificates/{slug} {
+        allow read: if isOwner()
+                     || isSelf(uid)
+                     || (isSignedIn() && resource.data.companyId != null
+                         && isCompanyAdmin(resource.data.companyId));
+        allow write: if false;
       }
 
       // users/{uid}/stats/{statId} (Phase 2 leaderboard) — server-only writes.
@@ -154,11 +169,15 @@ service cloud.firestore {
       // Create/delete: owner only.
       allow create, delete: if isOwner();
 
-      // Update: owner, or an admin currently in adminUids. Admins cannot change adminUids.
+      // Update: owner, or an admin currently in adminUids. Admins cannot change
+      // adminUids or the billing plan (owner-only). Course assignment is written
+      // server-side by assignCompanyCourses (Admin SDK), but admins may also set
+      // assignedCourseSlugs/roadmap directly under this rule.
       allow update: if isOwner()
                     || (isSignedIn()
                         && request.auth.uid in resource.data.adminUids
-                        && request.resource.data.adminUids == resource.data.adminUids);
+                        && request.resource.data.adminUids == resource.data.adminUids
+                        && request.resource.data.get('plan', {}) == resource.data.get('plan', {}));
 
       // companies/{cid}/invites/{inviteId} — readable by anyone (so new signups can look up by
       // code); writable by company admins and owner. Cloud Function mutates on accept.
@@ -189,6 +208,13 @@ service cloud.firestore {
         // (completedCount, lastActiveAt, capstoneStatus) but not reassign their uid.
         allow create, update: if isOwner()
                                || (isSignedIn() && request.auth.uid == mUid);
+      }
+
+      // companies/{cid}/purchases/{id} — company flat-plan billing records,
+      // written only by the Stripe webhook (Admin SDK). Read by owner + admins.
+      match /purchases/{purchaseId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow write: if false;
       }
 
       // ──────────────────────────────────────────────────────────────

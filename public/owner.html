@@ -74,6 +74,24 @@
               <label for="c-tier">Tier</label>
               <input id="c-tier" type="text" value="team" />
             </div>
+            <div class="field" style="max-width:150px;">
+              <label for="c-plan-mode">Billing</label>
+              <select id="c-plan-mode">
+                <option value="one-time">One-time</option>
+                <option value="recurring">Recurring</option>
+              </select>
+            </div>
+            <div class="field" style="max-width:130px;">
+              <label for="c-plan-interval">Interval</label>
+              <select id="c-plan-interval">
+                <option value="month">Monthly</option>
+                <option value="year">Yearly</option>
+              </select>
+            </div>
+            <div class="field" style="max-width:140px;">
+              <label for="c-plan-amount">Price ($)</label>
+              <input id="c-plan-amount" type="number" min="0" step="1" value="0" />
+            </div>
             <button class="btn btn-primary" type="submit">Create</button>
           </form>
           <div id="create-result" style="margin-top:10px;"></div>
@@ -89,6 +107,7 @@
                 <th>Seats</th>
                 <th>Admins</th>
                 <th>Tier</th>
+                <th>Plan</th>
                 <th></th>
               </tr>
             </thead>
