@@ -65,6 +65,17 @@
     function showErr(txt) { msg.innerHTML = `<div class="auth-error">${txt}</div>`; }
     function showOk(txt) { msg.innerHTML = `<div class="auth-ok">${txt}</div>`; }
     function clearMsg() { msg.innerHTML = ''; }
+    // Friendly prompt shown when the email already has an account: explain the
+    // situation and offer a button that takes them to sign in (with the email
+    // pre-filled on the login page).
+    function showExistingAccount(email) {
+      const href = '/login.html?email=' + encodeURIComponent(email || '');
+      msg.innerHTML =
+        '<div class="auth-error">' +
+        'There is already an account with this email address.' +
+        '<a class="btn btn-primary auth-error-cta" href="' + href + '">Sign in</a>' +
+        '</div>';
+    }
 
     // Pre-fill invite code from ?code=
     const params = new URLSearchParams(location.search);
@@ -99,7 +110,11 @@
         await signupEmail({ email, password, displayName, inviteCode, communityInviteToken });
         location.replace('/onboarding');
       } catch (err) {
-        showErr(err.message || 'Sign-up failed.');
+        if (err && err.code === 'auth/email-already-in-use') {
+          showExistingAccount(email);
+        } else {
+          showErr(err.message || 'Sign-up failed.');
+        }
       } finally {
         $('btn-submit').disabled = false;
       }

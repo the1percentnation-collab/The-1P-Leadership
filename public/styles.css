@@ -1331,6 +1331,14 @@ gmp-place-autocomplete,
   margin-bottom: 16px;
 }
 
+.auth-error-cta {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  text-align: center;
+  text-decoration: none;
+}
+
 .auth-ok {
   background: rgba(92,173,92,0.1);
   border: 1px solid rgba(92,173,92,0.35);

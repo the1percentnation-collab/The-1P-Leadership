@@ -224,6 +224,11 @@
       showErr('Authentication service is unreachable. Check your connection and retry.');
     }
 
+    // Pre-fill email from ?email= (e.g. when redirected here after trying to
+    // sign up with an address that already has an account).
+    const preEmail = new URLSearchParams(location.search).get('email');
+    if (preEmail) $('email').value = preEmail;
+
     // If already signed in, bounce to next.
     onAuthReady((u) => { if (u) location.replace(nextUrl()); });
 
