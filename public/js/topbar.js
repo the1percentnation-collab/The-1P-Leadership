@@ -60,8 +60,6 @@ const ADMIN_BUTTONS = [
   { key: 'owner', href: '/owner.html', label: 'Owner', requires: 'owner' }
 ];
 
-const adminDropState = { outsideClickBound: false };
-
 /**
  * Returns the role-aware default link set with the active page filtered out.
  * `currentPage` is one of the keys in ALL_LINKS (e.g. 'community', 'crm').
@@ -480,11 +478,6 @@ export function renderTopbar({
   const adminHtml = adminBtns.length === 0 ? '' : `
     <div class="c-admin-dropdown" id="c-admin-dropdown">
       <button class="user-chip-admin c-admin-dropdown-toggle" id="c-admin-dropdown-btn" type="button">${dropLabel}</button>
-      <div class="c-admin-dropdown-menu" id="c-admin-dropdown-menu" hidden>
-        ${adminBtns.map((b) =>
-          `<a class="c-admin-dropdown-item" href="${escapeHtml(b.href)}">${escapeHtml(b.label)}</a>`
-        ).join('')}
-      </div>
     </div>
   `;
 
@@ -523,27 +516,39 @@ export function renderTopbar({
     ${signOutHtml}
   `;
 
-  // Admin dropdown toggle
+  // Admin dropdown — menu lives on <body> so it's never clipped by overflow.
   const ddBtn = chip.querySelector('#c-admin-dropdown-btn');
-  const ddMenu = chip.querySelector('#c-admin-dropdown-menu');
-  if (ddBtn && ddMenu) {
+  if (ddBtn && adminBtns.length) {
+    const MENU_ID = 'c-admin-dropdown-menu';
+
+    const closeMenu = () => {
+      const m = document.getElementById(MENU_ID);
+      if (m) m.remove();
+    };
+
+    const openMenu = () => {
+      const rect = ddBtn.getBoundingClientRect();
+      const menu = document.createElement('div');
+      menu.className = 'c-admin-dropdown-menu';
+      menu.id = MENU_ID;
+      menu.style.top = (rect.bottom + 6) + 'px';
+      menu.style.right = (window.innerWidth - rect.right) + 'px';
+      menu.innerHTML = adminBtns.map((b) =>
+        `<a class="c-admin-dropdown-item" href="${escapeHtml(b.href)}">${escapeHtml(b.label)}</a>`
+      ).join('');
+      document.body.appendChild(menu);
+      // Attach outside-click dismissal after this tick so the opening tap
+      // doesn't immediately trigger it on mobile.
+      setTimeout(() => {
+        document.addEventListener('click', closeMenu, { once: true });
+        document.addEventListener('touchend', closeMenu, { once: true, passive: true });
+      }, 0);
+    };
+
     ddBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const isHidden = ddMenu.hidden;
-      if (isHidden) {
-        const rect = ddBtn.getBoundingClientRect();
-        ddMenu.style.top = (rect.bottom + 6) + 'px';
-        ddMenu.style.right = (window.innerWidth - rect.right) + 'px';
-      }
-      ddMenu.hidden = !isHidden;
+      if (document.getElementById(MENU_ID)) { closeMenu(); } else { openMenu(); }
     });
-    if (!adminDropState.outsideClickBound) {
-      adminDropState.outsideClickBound = true;
-      document.addEventListener('click', () => {
-        const m = document.getElementById('c-admin-dropdown-menu');
-        if (m) m.hidden = true;
-      });
-    }
   }
 
   if (withSignOut) {
