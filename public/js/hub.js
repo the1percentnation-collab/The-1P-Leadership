@@ -8,6 +8,7 @@ import { getRoleInfo } from './roles.js';
 import { firebaseReady } from './firebase.js';
 import { renderTopbar } from './topbar.js';
 import { ensureOnboarded } from './onboarding-guard.js';
+import { maybeStartWelcomeTour } from './tour.js';
 import {
   getUserProfile,
   hasNewPostsSinceVisit,
@@ -359,6 +360,10 @@ async function main() {
   renderEnrolledList();
   renderUserChip(currentUser(), role, { profile, hasNewCommunity });
   renderCommunityList({ role, companyId });
+
+  // First-time members get a short guided tour of the portal + chat assistant.
+  const tourName = firstName((profile && profile.displayName) || (currentUser() && currentUser().displayName) || (currentUser() && currentUser().email));
+  maybeStartWelcomeTour({ user: currentUser(), name: tourName });
 }
 
 main();

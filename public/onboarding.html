@@ -85,6 +85,7 @@
 
   <script type="module">
     import { onAuthReady } from './js/auth.js';
+    import { flagWelcomeTourPending } from './js/tour.js';
     import { db, functions, firebaseReady, firebaseConfig } from './js/firebase.js';
     import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
     import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
@@ -228,6 +229,8 @@
       $('btn-submit').disabled = true;
       try {
         await httpsCallable(functions, 'submitOnboarding')(payload);
+        // Cue the one-time welcome tour to run when they land on the dashboard.
+        flagWelcomeTourPending();
         location.replace(nextUrl());
       } catch (err) {
         showErr(err.message || 'Could not save your details. Please try again.');
