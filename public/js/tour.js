@@ -36,9 +36,13 @@ export async function maybeStartWelcomeTour({ user, name } = {}) {
   const pending = localStorage.getItem(PENDING_KEY) === '1';
   const seen = localStorage.getItem(seenKey) === '1';
 
+  // Manual preview: visiting the dashboard with ?tour=1 always replays the
+  // tour, ignoring the pending/seen flags. Handy for reviewing the experience.
+  const forced = new URLSearchParams(location.search).get('tour') === '1';
+
   // Only auto-start when this is a fresh first-time arrival and we haven't
-  // already walked them through it.
-  if (!pending || seen) return;
+  // already walked them through it (unless forced via ?tour=1).
+  if (!forced && (!pending || seen)) return;
 
   // Make sure the chatbot FAB is on the page before we point at it.
   await waitForEl('#opn-fab');
