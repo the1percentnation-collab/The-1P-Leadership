@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Tour preview (sandbox) | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Sandbox-only banner so it's obvious this is a preview, not the live app. */
+    .sandbox-bar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 10001;
+      background: #E60306; color: #fff;
+      font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: .06em;
+      display: flex; align-items: center; justify-content: center; gap: 16px;
+      padding: 8px 16px; text-align: center;
+    }
+    .sandbox-bar button {
+      background: #000; color: #fff; border: 1px solid rgba(255,255,255,.4);
+      border-radius: 7px; padding: 5px 12px; font-family: 'Outfit', sans-serif;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .sandbox-bar button:hover { background: #1a1a1a; }
+    .academy-shell { padding-top: 40px; }
+  </style>
+</head>
+<body class="academy-hub">
+
+<div class="sandbox-bar">
+  TOUR PREVIEW — sandbox only (no login / no data)
+  <button id="replay-tour" type="button">▶ Replay tour</button>
+</div>
+
+<div class="academy-shell">
+
+  <header class="academy-header">
+    <div class="academy-header-inner">
+      <a class="academy-brand" href="#" aria-label="The One Percent Academy">
+        <img src="/assets/academy-logo.png" alt="" class="academy-brand-mark">
+      </a>
+
+      <a class="back-to-main" href="#">← Main Site</a>
+
+      <nav class="academy-tabs" id="academy-tabs">
+        <a class="academy-tab active" href="#" data-tab="dashboard">Dashboard</a>
+        <a class="academy-tab" href="#" data-tab="courses">Courses</a>
+        <a class="academy-tab" href="#" data-tab="community">Community</a>
+        <a class="academy-tab" href="#" data-tab="resources">Resources</a>
+        <a class="academy-tab" href="#" data-tab="profile">Profile</a>
+      </nav>
+
+      <div class="academy-header-right">
+        <div class="user-chip" id="user-chip"></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="academy-container">
+
+    <section class="academy-hero">
+      <div class="academy-eyebrow">Academy Dashboard</div>
+      <h1 id="hub-greeting">Welcome back, <span>Test</span>.</h1>
+      <div class="hub-quote-label"><span class="hub-quote-dot"></span>Quote of the day</div>
+      <p id="hub-subtitle">Progress is quiet. Trust it even on the days it doesn’t feel like winning.</p>
+      <div class="academy-tagline">
+        <strong>Redefining Success.</strong> Realigning Purpose. Releasing Potential.
+      </div>
+    </section>
+
+    <section id="hub-continue-slot">
+      <div class="academy-continue">
+        <div>
+          <div class="academy-continue-meta">Start here · Module 0 · Mindset</div>
+          <div class="academy-continue-title">Foundations of the One Percent</div>
+          <div class="academy-continue-sub">A seven-module path grounded in mindset, structure, and consistent action.</div>
+          <div class="academy-continue-progress">
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <div class="academy-continue-progress-label">0%</div>
+          </div>
+        </div>
+        <a class="btn btn-primary" href="#">Begin Module 0 →</a>
+      </div>
+    </section>
+
+    <section>
+      <div class="academy-section-head">
+        <h2>Quick access</h2>
+        <span class="academy-section-meta">Explore the Academy</span>
+      </div>
+      <div class="academy-grid">
+        <a class="academy-tile" href="#">
+          <span class="academy-tile-label">01 · Courses</span>
+          <span class="academy-tile-title">Your Courses</span>
+          <span class="academy-tile-desc">Pick up where you left off, or browse the Academy library and sign up for what's next.</span>
+          <span class="academy-tile-cta">Open courses</span>
+        </a>
+        <a class="academy-tile" href="#">
+          <span class="academy-tile-label">02 · Community</span>
+          <span class="academy-tile-title">Members Community</span>
+          <span class="academy-tile-desc">Share wins, ask questions, and stay accountable alongside other members.</span>
+          <span class="academy-tile-cta">Enter community</span>
+        </a>
+        <a class="academy-tile" href="#">
+          <span class="academy-tile-label">03 · Resources</span>
+          <span class="academy-tile-title">Resource Library</span>
+          <span class="academy-tile-desc">Frameworks, worksheets, and reference material to put the work into practice.</span>
+          <span class="academy-tile-cta">Browse resources</span>
+        </a>
+        <a class="academy-tile" href="#">
+          <span class="academy-tile-label">04 · Profile</span>
+          <span class="academy-tile-title">Your Profile</span>
+          <span class="academy-tile-desc">Update your display name, bio, and avatar. Manage how you show up in the community.</span>
+          <span class="academy-tile-cta">Edit profile</span>
+        </a>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Real chat assistant widget (builds the #opn-fab the tour points at). -->
+<script type="module">
+  import { init as initChatbot } from './js/chatbot.js';
+  import { startWelcomeTour } from './js/tour.js';
+
+  initChatbot();
+
+  function run() { startWelcomeTour({ name: 'Test' }); }
+
+  // Auto-start once the FAB has been injected.
+  const start = Date.now();
+  const iv = setInterval(() => {
+    if (document.querySelector('#opn-fab') || Date.now() - start > 3000) {
+      clearInterval(iv);
+      run();
+    }
+  }, 100);
+
+  document.getElementById('replay-tour').addEventListener('click', run);
+</script>
+</body>
+</html>
