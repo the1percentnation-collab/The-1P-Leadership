@@ -4,142 +4,275 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex">
-  <title>Tour preview (sandbox) | The One Percent Academy</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <title>Tour preview (sandbox)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <style>
-    /* Sandbox-only banner so it's obvious this is a preview, not the live app. */
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: #0a0a0a; color: #e8e8f0;
+      font-family: 'Outfit', sans-serif;
+    }
     .sandbox-bar {
       position: fixed; top: 0; left: 0; right: 0; z-index: 10001;
-      background: #E60306; color: #fff;
-      font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: .06em;
-      display: flex; align-items: center; justify-content: center; gap: 16px;
-      padding: 8px 16px; text-align: center;
+      background: #E60306; color: #fff; font-family: 'Space Mono', monospace;
+      font-size: 12px; letter-spacing: .06em; display: flex; align-items: center;
+      justify-content: center; gap: 16px; padding: 8px 16px; text-align: center;
     }
     .sandbox-bar button {
       background: #000; color: #fff; border: 1px solid rgba(255,255,255,.4);
       border-radius: 7px; padding: 5px 12px; font-family: 'Outfit', sans-serif;
       font-size: 12px; font-weight: 600; cursor: pointer;
     }
-    .sandbox-bar button:hover { background: #1a1a1a; }
-    .academy-shell { padding-top: 40px; }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 64px 24px 120px; }
+
+    /* Header / nav */
+    .hdr { display: flex; align-items: center; gap: 20px; margin-bottom: 40px; }
+    .brand { font-family: 'Space Mono', monospace; font-weight: 700; color: #E60306; letter-spacing: .1em; }
+    #academy-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    #academy-tabs a {
+      color: #b8b8c0; text-decoration: none; font-size: 14px; font-weight: 500;
+      padding: 7px 12px; border-radius: 8px;
+    }
+    #academy-tabs a.active { color: #fff; background: rgba(230,3,6,.16); }
+
+    /* Hero */
+    .academy-hero { margin-bottom: 36px; }
+    .eyebrow { font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: .18em;
+      text-transform: uppercase; color: #E60306; margin-bottom: 14px; }
+    .academy-hero h1 { font-size: 44px; font-weight: 700; margin: 0 0 16px; line-height: 1.05; }
+    .academy-hero h1 span { color: #E60306; }
+    .quote-label { font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: .14em;
+      text-transform: uppercase; color: #777; margin-bottom: 6px; }
+    .academy-hero p { color: #b0b0b8; font-size: 17px; margin: 0; }
+
+    /* Continue card */
+    #hub-continue-slot { margin-bottom: 40px; }
+    .academy-continue {
+      display: flex; align-items: center; justify-content: space-between; gap: 24px;
+      background: linear-gradient(135deg, rgba(230,3,6,.1), rgba(20,20,20,.6));
+      border: 1px solid rgba(230,3,6,.3); border-radius: 16px; padding: 24px 26px;
+    }
+    .cc-meta { font-family: 'Space Mono', monospace; font-size: 12px; color: #E60306;
+      letter-spacing: .06em; margin-bottom: 8px; }
+    .cc-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+    .cc-sub { color: #aaa; font-size: 14px; max-width: 460px; }
+    .btn {
+      background: #E60306; color: #fff; border: none; border-radius: 10px;
+      padding: 12px 22px; font-weight: 600; font-size: 14px; cursor: pointer;
+      white-space: nowrap; text-decoration: none;
+    }
+
+    /* Quick access grid */
+    .sec-head { font-size: 13px; font-family: 'Space Mono', monospace; letter-spacing: .14em;
+      text-transform: uppercase; color: #888; margin-bottom: 16px; }
+    .academy-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .academy-tile {
+      display: block; background: #121212; border: 1px solid rgba(255,255,255,.08);
+      border-radius: 14px; padding: 20px; text-decoration: none; color: inherit;
+    }
+    .tile-label { font-family: 'Space Mono', monospace; font-size: 11px; color: #E60306; letter-spacing: .08em; }
+    .tile-title { font-size: 18px; font-weight: 700; margin: 8px 0 6px; }
+    .tile-desc { font-size: 13px; color: #999; line-height: 1.5; }
+    @media (max-width: 600px) { .academy-grid { grid-template-columns: 1fr; } .academy-hero h1 { font-size: 34px; } }
+
+    /* Mock chat FAB (stands in for the real 1PN widget) */
+    #opn-fab {
+      position: fixed; bottom: 28px; right: 28px; width: 60px; height: 60px;
+      border-radius: 50%; border: none; cursor: pointer; background: #0d0d0d;
+      box-shadow: 0 0 0 1.5px rgba(230,3,6,.55), 0 0 18px rgba(230,3,6,.35), 0 6px 24px rgba(0,0,0,.7);
+      display: flex; align-items: center; justify-content: center; z-index: 9999;
+    }
+    #opn-fab svg { width: 28px; height: 20px; color: #E60306; }
+
+    /* ── Tour ─────────────────────────────────────────── */
+    .opn-tour { position: fixed; inset: 0; z-index: 10000; animation: opn-tour-fade .25s ease; }
+    @keyframes opn-tour-fade { from { opacity: 0; } to { opacity: 1; } }
+    .opn-tour-hole {
+      position: fixed; top: 0; left: 0; width: 0; height: 0; border-radius: 12px;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,.74), 0 0 0 1.5px rgba(230,3,6,.7);
+      transition: top .3s cubic-bezier(.34,1.1,.64,1), left .3s cubic-bezier(.34,1.1,.64,1),
+                  width .3s cubic-bezier(.34,1.1,.64,1), height .3s cubic-bezier(.34,1.1,.64,1),
+                  border-radius .3s ease;
+      pointer-events: none;
+    }
+    .opn-tour-card {
+      position: fixed; width: 360px; max-width: calc(100vw - 32px); background: #0c0c0c;
+      border: 1px solid rgba(230,3,6,.4); border-radius: 16px; padding: 20px 20px 16px;
+      box-shadow: 0 0 40px rgba(230,3,6,.12), 0 24px 64px rgba(0,0,0,.7);
+      transition: top .3s ease, left .3s ease;
+    }
+    .opn-tour-progress { display: flex; gap: 6px; margin-bottom: 12px; }
+    .opn-tour-dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.18); transition: background .2s, transform .2s; }
+    .opn-tour-dot.is-on { background: #E60306; transform: scale(1.25); box-shadow: 0 0 8px rgba(230,3,6,.6); }
+    .opn-tour-title { margin: 0 0 8px; font-size: 19px; font-weight: 700; color: #fff; line-height: 1.25; }
+    .opn-tour-body { margin: 0 0 18px; font-size: 14px; line-height: 1.6; color: #c4c4cc; }
+    .opn-tour-body strong { color: #fff; font-weight: 600; }
+    .opn-tour-actions { display: flex; align-items: center; justify-content: space-between; }
+    .opn-tour-nav { display: flex; gap: 8px; }
+    .opn-tour-skip, .opn-tour-back, .opn-tour-next {
+      font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 600;
+      border-radius: 9px; padding: 9px 16px; cursor: pointer;
+    }
+    .opn-tour-skip { background: none; border: none; color: #777; padding-left: 0; }
+    .opn-tour-skip:hover { color: #aaa; }
+    .opn-tour-back { background: none; border: 1px solid rgba(255,255,255,.14); color: #bbb; }
+    .opn-tour-back:hover { border-color: rgba(255,255,255,.3); color: #eee; }
+    .opn-tour-next { background: #E60306; border: 1px solid #E60306; color: #fff; box-shadow: 0 3px 14px rgba(230,3,6,.4); }
+    .opn-tour-next:hover { background: #c20205; }
+    @media (max-width: 600px) { .opn-tour-card { left: 16px !important; right: 16px; width: auto !important; } }
   </style>
 </head>
-<body class="academy-hub">
+<body>
 
 <div class="sandbox-bar">
-  TOUR PREVIEW — sandbox only (no login / no data)
+  TOUR PREVIEW — sandbox only
   <button id="replay-tour" type="button">▶ Replay tour</button>
 </div>
 
-<div class="academy-shell">
+<div class="wrap">
+  <div class="hdr">
+    <span class="brand">1PN ACADEMY</span>
+    <nav id="academy-tabs">
+      <a class="active" href="#">Dashboard</a>
+      <a href="#">Courses</a>
+      <a href="#">Community</a>
+      <a href="#">Resources</a>
+      <a href="#">Profile</a>
+    </nav>
+  </div>
 
-  <header class="academy-header">
-    <div class="academy-header-inner">
-      <a class="academy-brand" href="#" aria-label="The One Percent Academy">
-        <img src="/assets/academy-logo.png" alt="" class="academy-brand-mark">
-      </a>
+  <section class="academy-hero">
+    <div class="eyebrow">Academy Dashboard</div>
+    <h1>Welcome back, <span>Test</span>.</h1>
+    <div class="quote-label">● Quote of the day</div>
+    <p>Progress is quiet. Trust it even on the days it doesn’t feel like winning.</p>
+  </section>
 
-      <a class="back-to-main" href="#">← Main Site</a>
-
-      <nav class="academy-tabs" id="academy-tabs">
-        <a class="academy-tab active" href="#" data-tab="dashboard">Dashboard</a>
-        <a class="academy-tab" href="#" data-tab="courses">Courses</a>
-        <a class="academy-tab" href="#" data-tab="community">Community</a>
-        <a class="academy-tab" href="#" data-tab="resources">Resources</a>
-        <a class="academy-tab" href="#" data-tab="profile">Profile</a>
-      </nav>
-
-      <div class="academy-header-right">
-        <div class="user-chip" id="user-chip"></div>
+  <section id="hub-continue-slot">
+    <div class="academy-continue">
+      <div>
+        <div class="cc-meta">Start here · Module 0 · Mindset</div>
+        <div class="cc-title">Foundations of the One Percent</div>
+        <div class="cc-sub">A seven-module path grounded in mindset, structure, and consistent action.</div>
       </div>
+      <a class="btn" href="#">Begin Module 0 →</a>
     </div>
-  </header>
+  </section>
 
-  <main class="academy-container">
-
-    <section class="academy-hero">
-      <div class="academy-eyebrow">Academy Dashboard</div>
-      <h1 id="hub-greeting">Welcome back, <span>Test</span>.</h1>
-      <div class="hub-quote-label"><span class="hub-quote-dot"></span>Quote of the day</div>
-      <p id="hub-subtitle">Progress is quiet. Trust it even on the days it doesn’t feel like winning.</p>
-      <div class="academy-tagline">
-        <strong>Redefining Success.</strong> Realigning Purpose. Releasing Potential.
-      </div>
-    </section>
-
-    <section id="hub-continue-slot">
-      <div class="academy-continue">
-        <div>
-          <div class="academy-continue-meta">Start here · Module 0 · Mindset</div>
-          <div class="academy-continue-title">Foundations of the One Percent</div>
-          <div class="academy-continue-sub">A seven-module path grounded in mindset, structure, and consistent action.</div>
-          <div class="academy-continue-progress">
-            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
-            <div class="academy-continue-progress-label">0%</div>
-          </div>
-        </div>
-        <a class="btn btn-primary" href="#">Begin Module 0 →</a>
-      </div>
-    </section>
-
-    <section>
-      <div class="academy-section-head">
-        <h2>Quick access</h2>
-        <span class="academy-section-meta">Explore the Academy</span>
-      </div>
-      <div class="academy-grid">
-        <a class="academy-tile" href="#">
-          <span class="academy-tile-label">01 · Courses</span>
-          <span class="academy-tile-title">Your Courses</span>
-          <span class="academy-tile-desc">Pick up where you left off, or browse the Academy library and sign up for what's next.</span>
-          <span class="academy-tile-cta">Open courses</span>
-        </a>
-        <a class="academy-tile" href="#">
-          <span class="academy-tile-label">02 · Community</span>
-          <span class="academy-tile-title">Members Community</span>
-          <span class="academy-tile-desc">Share wins, ask questions, and stay accountable alongside other members.</span>
-          <span class="academy-tile-cta">Enter community</span>
-        </a>
-        <a class="academy-tile" href="#">
-          <span class="academy-tile-label">03 · Resources</span>
-          <span class="academy-tile-title">Resource Library</span>
-          <span class="academy-tile-desc">Frameworks, worksheets, and reference material to put the work into practice.</span>
-          <span class="academy-tile-cta">Browse resources</span>
-        </a>
-        <a class="academy-tile" href="#">
-          <span class="academy-tile-label">04 · Profile</span>
-          <span class="academy-tile-title">Your Profile</span>
-          <span class="academy-tile-desc">Update your display name, bio, and avatar. Manage how you show up in the community.</span>
-          <span class="academy-tile-cta">Edit profile</span>
-        </a>
-      </div>
-    </section>
-
-  </main>
+  <section>
+    <div class="sec-head">Quick access</div>
+    <div class="academy-grid">
+      <a class="academy-tile" href="#"><div class="tile-label">01 · Courses</div><div class="tile-title">Your Courses</div><div class="tile-desc">Pick up where you left off, or browse the Academy library.</div></a>
+      <a class="academy-tile" href="#"><div class="tile-label">02 · Community</div><div class="tile-title">Members Community</div><div class="tile-desc">Share wins, ask questions, and stay accountable.</div></a>
+      <a class="academy-tile" href="#"><div class="tile-label">03 · Resources</div><div class="tile-title">Resource Library</div><div class="tile-desc">Frameworks and worksheets to put the work into practice.</div></a>
+      <a class="academy-tile" href="#"><div class="tile-label">04 · Profile</div><div class="tile-title">Your Profile</div><div class="tile-desc">Update your name, bio, and avatar.</div></a>
+    </div>
+  </section>
 </div>
 
-<!-- Real chat assistant widget (builds the #opn-fab the tour points at). -->
-<script type="module">
-  import { init as initChatbot } from './js/chatbot.js';
-  import { startWelcomeTour } from './js/tour.js';
+<!-- Mock chat button (the real one looks identical) -->
+<button id="opn-fab" aria-label="Open chat assistant">
+  <svg viewBox="0 0 28 20" fill="currentColor">
+    <rect x="0" y="7" width="4" height="6" rx="2"/><rect x="6" y="4" width="4" height="12" rx="2"/>
+    <rect x="12" y="0" width="4" height="20" rx="2"/><rect x="18" y="4" width="4" height="12" rx="2"/>
+    <rect x="24" y="7" width="4" height="6" rx="2"/>
+  </svg>
+</button>
 
-  initChatbot();
+<script>
+// Self-contained copy of the welcome tour (mirrors public/js/tour.js).
+(function () {
+  var STEPS = [
+    { selector: '.academy-hero', title: 'Welcome, Test 👋', placement: 'bottom',
+      body: 'This is your Academy home base. Here you\'ll see your daily focus, course progress, and the latest from the community. Let\'s take 30 seconds to show you around.' },
+    { selector: '#academy-tabs', title: 'Get anywhere fast', placement: 'bottom',
+      body: 'Use the top navigation to jump between your Dashboard, Courses, the members Community, the Resource library, and your Profile.' },
+    { selector: '.academy-grid', title: 'Quick access', placement: 'top',
+      body: 'These tiles are your shortcuts — pick up a course where you left off, enter the community, browse resources, or update your profile.' },
+    { selector: '#hub-continue-slot', title: 'Pick up where you left off', placement: 'bottom',
+      body: 'Your current course and next step always live right here, so you can dive back in with one click.' },
+    { selector: '#opn-fab', title: 'Meet 1PN — your AI assistant', placement: 'left',
+      body: 'Tap this anytime for help. 1PN can answer questions about the courses, guide your learning, and point you in the right direction. You can <strong>type or tap the mic to speak</strong>, turn on <strong>voice replies</strong>, and even <strong>report a bug</strong> with a screenshot — all from the chat. It\'s always here in the bottom corner.' }
+  ];
 
-  function run() { startWelcomeTour({ name: 'Test' }); }
+  var active = false;
+  function startTour() {
+    if (active) return;
+    var steps = STEPS.filter(function (s) { return document.querySelector(s.selector); });
+    if (!steps.length) return;
+    active = true;
 
-  // Auto-start once the FAB has been injected.
-  const start = Date.now();
-  const iv = setInterval(() => {
-    if (document.querySelector('#opn-fab') || Date.now() - start > 3000) {
-      clearInterval(iv);
-      run();
+    var overlay = document.createElement('div');
+    overlay.className = 'opn-tour';
+    overlay.innerHTML =
+      '<div class="opn-tour-hole" id="th"></div>' +
+      '<div class="opn-tour-card" id="tc" role="dialog" aria-modal="true">' +
+        '<div class="opn-tour-progress" id="tp"></div>' +
+        '<h3 class="opn-tour-title" id="tt"></h3>' +
+        '<p class="opn-tour-body" id="tb"></p>' +
+        '<div class="opn-tour-actions">' +
+          '<button class="opn-tour-skip" id="tskip" type="button">Skip</button>' +
+          '<div class="opn-tour-nav">' +
+            '<button class="opn-tour-back" id="tback" type="button">Back</button>' +
+            '<button class="opn-tour-next" id="tnext" type="button">Next</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    var hole = overlay.querySelector('#th'), card = overlay.querySelector('#tc');
+    var titleEl = overlay.querySelector('#tt'), bodyEl = overlay.querySelector('#tb');
+    var progressEl = overlay.querySelector('#tp');
+    var backBtn = overlay.querySelector('#tback'), nextBtn = overlay.querySelector('#tnext'), skipBtn = overlay.querySelector('#tskip');
+    var i = 0;
+
+    function finish() {
+      if (!active) return; active = false;
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
     }
-  }, 100);
+    function reposition() {
+      var step = steps[i], target = document.querySelector(step.selector);
+      if (!target) return;
+      var r = target.getBoundingClientRect(), pad = 8;
+      hole.style.top = (r.top - pad) + 'px'; hole.style.left = (r.left - pad) + 'px';
+      hole.style.width = (r.width + pad * 2) + 'px'; hole.style.height = (r.height + pad * 2) + 'px';
+      hole.style.borderRadius = step.selector === '#opn-fab' ? '50%' : '12px';
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var cardW = Math.min(360, vw - 32); card.style.width = cardW + 'px';
+      var cardH = card.offsetHeight || 200, gap = 16, top, left, place = step.placement || 'bottom';
+      if (place === 'bottom') { top = r.bottom + gap; left = r.left; }
+      else if (place === 'top') { top = r.top - cardH - gap; left = r.left; }
+      else if (place === 'left') { top = r.top; left = r.left - cardW - gap; }
+      else { top = r.top; left = r.right + gap; }
+      if (top + cardH > vh - 12) top = Math.max(12, r.top - cardH - gap);
+      if (top < 12) top = 12;
+      if (left + cardW > vw - 12) left = vw - cardW - 12;
+      if (left < 12) left = 12;
+      card.style.top = top + 'px'; card.style.left = left + 'px';
+    }
+    function render() {
+      var step = steps[i], target = document.querySelector(step.selector);
+      if (target && target.scrollIntoView) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      titleEl.textContent = step.title; bodyEl.innerHTML = step.body;
+      progressEl.innerHTML = steps.map(function (_, idx) {
+        return '<span class="opn-tour-dot' + (idx === i ? ' is-on' : '') + '"></span>'; }).join('');
+      backBtn.style.visibility = i === 0 ? 'hidden' : 'visible';
+      nextBtn.textContent = i === steps.length - 1 ? 'Get started' : 'Next';
+      setTimeout(reposition, 180);
+    }
+    nextBtn.addEventListener('click', function () { if (i < steps.length - 1) { i++; render(); } else { finish(); } });
+    backBtn.addEventListener('click', function () { if (i > 0) { i--; render(); } });
+    skipBtn.addEventListener('click', finish);
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    render();
+  }
 
-  document.getElementById('replay-tour').addEventListener('click', run);
+  document.getElementById('replay-tour').addEventListener('click', startTour);
+  setTimeout(startTour, 400);
+})();
 </script>
 </body>
 </html>
