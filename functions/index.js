@@ -697,19 +697,23 @@ exports.onUserCreated = onDocumentCreated(
 // completion onto the company roster, and emails the member + company admins.
 // ────────────────────────────────────────────────────────────────
 
-// Resolves the course slug + total module count for a progress doc.
-// Firestore-rendered courses use ids shaped `{slug}__m{n}`; code-rendered
-// courses use bare integers and self-identify via the doc's `courseSlug`.
+// Resolves the course slug + id scheme for a progress doc.
+// Firestore-rendered courses AND namespaced code courses (e.g. icant) use ids
+// shaped `{slug}__m{n}`; the original 1P-CLC scheme uses bare integers and
+// self-identifies via the doc's `courseSlug` (defaulting to 1p-clc).
 function resolveCourseFromProgress(progressId, data) {
   const m = /^(.+)__m(\d+)$/.exec(progressId);
-  if (m) return { slug: m[1], source: 'firestore' };
-  if (data && data.courseSlug) return { slug: String(data.courseSlug), source: 'code' };
-  if (/^\d+$/.test(progressId)) return { slug: '1p-clc', source: 'code' };
+  if (m) return { slug: m[1], idScheme: 'namespaced' };
+  if (data && data.courseSlug) return { slug: String(data.courseSlug), idScheme: 'bare' };
+  if (/^\d+$/.test(progressId)) return { slug: '1p-clc', idScheme: 'bare' };
   return null;
 }
 
-async function totalModulesForCourse(db, slug, source) {
-  if (source === 'code') return CODE_COURSE_MODULE_COUNTS[slug] || null;
+// Total modules for a course. Code courses (whether bare-id like 1p-clc or
+// namespaced like icant) keep their counts in CODE_COURSE_MODULE_COUNTS; their
+// content isn't in courses/{slug}/modules. Firestore courses use moduleCount.
+async function totalModulesForCourse(db, slug) {
+  if (CODE_COURSE_MODULE_COUNTS[slug]) return CODE_COURSE_MODULE_COUNTS[slug];
   const cs = await db.collection('courses').doc(slug).get();
   if (cs.exists && typeof cs.data().moduleCount === 'number' && cs.data().moduleCount > 0) {
     return cs.data().moduleCount;
@@ -719,14 +723,14 @@ async function totalModulesForCourse(db, slug, source) {
   return mods.size || null;
 }
 
-async function countCompletedForCourse(db, uid, slug, source) {
+async function countCompletedForCourse(db, uid, slug, idScheme) {
   const snap = await db.collection('users').doc(uid).collection('progress').get();
   let count = 0;
-  if (source === 'firestore') {
+  if (idScheme === 'namespaced') {
     const prefix = `${slug}__m`;
     snap.docs.forEach((d) => { if (d.id.startsWith(prefix) && d.data().completed) count++; });
   } else {
-    // Code course: bare-integer ids belonging to this slug.
+    // Bare-integer ids (legacy 1P-CLC scheme); attribute via courseSlug.
     snap.docs.forEach((d) => {
       if (/^\d+$/.test(d.id) && d.data().completed) {
         const ds = d.data().courseSlug || '1p-clc';
@@ -737,7 +741,7 @@ async function countCompletedForCourse(db, uid, slug, source) {
   return count;
 }
 
-function certificatePdfBuffer({ name, courseTitle, dateStr }) {
+function certificatePdfBuffer({ name, courseTitle, dateStr, verifyCode }) {
   // Lazy require so deploys/cold starts not exercising certs stay light.
   const PDFDocument = require('pdfkit');
   return new Promise((resolve, reject) => {
@@ -776,6 +780,11 @@ function certificatePdfBuffer({ name, courseTitle, dateStr }) {
       docPdf.moveDown(2);
       docPdf.fillColor('#777').fontSize(12).font('Helvetica')
         .text(`Issued ${dateStr}`, { align: 'center' });
+      if (verifyCode) {
+        docPdf.moveDown(0.4);
+        docPdf.fillColor('#999').fontSize(9).font('Helvetica')
+          .text(`Verify at ${APP_BASE_URL}/verify?cert=${verifyCode}  ·  ID: ${verifyCode}`, { align: 'center' });
+      }
 
       docPdf.end();
     } catch (e) { reject(e); }
@@ -801,12 +810,12 @@ exports.onCertificateProgress = onDocumentWritten(
 
     const resolved = resolveCourseFromProgress(progressId, afterData);
     if (!resolved) return;
-    const { slug, source } = resolved;
+    const { slug, idScheme } = resolved;
 
     try {
-      const total = await totalModulesForCourse(db, slug, source);
+      const total = await totalModulesForCourse(db, slug);
       if (!total) return;
-      const done = await countCompletedForCourse(db, uid, slug, source);
+      const done = await countCompletedForCourse(db, uid, slug, idScheme);
       if (done < total) return;
 
       // Idempotency: create the cert doc only if absent.
@@ -828,8 +837,11 @@ exports.onCertificateProgress = onDocumentWritten(
 
       const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
+      // Public verification code — short, unguessable, URL-safe.
+      const verifyCode = crypto.randomBytes(9).toString('base64url');
+
       // Generate + upload the PDF.
-      const pdfBuffer = await certificatePdfBuffer({ name: memberName, courseTitle, dateStr });
+      const pdfBuffer = await certificatePdfBuffer({ name: memberName, courseTitle, dateStr, verifyCode });
       const storagePath = `certificates/${uid}/${slug}.pdf`;
       const bucket = admin.storage().bucket();
       const file = bucket.file(storagePath);
@@ -855,9 +867,23 @@ exports.onCertificateProgress = onDocumentWritten(
         issuedAt: admin.firestore.FieldValue.serverTimestamp(),
         storagePath,
         downloadUrl,
+        verifyCode,
         emailedToMember: false,
         emailedToAdmins: false,
         companyId
+      });
+
+      // Public verification lookup, keyed by the unguessable code. Read-only to
+      // the world (see firestore.rules); deliberately excludes email/PII beyond
+      // what's already printed on the shareable PDF.
+      await db.collection('certificateVerifications').doc(verifyCode).set({
+        uid,
+        slug,
+        courseTitle,
+        displayName: memberName,
+        companyId: companyId || null,
+        issuedAt: admin.firestore.FieldValue.serverTimestamp(),
+        valid: true
       });
 
       // Mirror onto the company roster so admins see completion.

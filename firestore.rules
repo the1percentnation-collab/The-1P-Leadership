@@ -518,6 +518,15 @@ service cloud.firestore {
       }
     }
 
+    // certificateVerifications/{code} — public certificate verification lookup.
+    // Written only by the onCertificateProgress trigger (Admin SDK). The doc id
+    // is an unguessable random token; the body holds only name/course/date, so
+    // public read is intentional (lets employers verify a certificate's PDF).
+    match /certificateVerifications/{code} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Products — generic pre-order / interest items (courses, books, services…).
     // Public can read visible statuses; admins manage. Interests/preorders are
     // written only by Cloud Functions (Admin SDK), so client writes are denied.

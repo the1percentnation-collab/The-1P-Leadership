@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify Certificate | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+  <div class="auth-shell">
+    <div class="auth-card">
+      <a class="auth-brand" href="https://the1pnation.com" aria-label="The One Percent Nation">
+        <img src="/assets/academy-logo.png" alt="" class="auth-brand-mark">
+      </a>
+      <div class="brand-badge">Certificate Verification</div>
+      <h1>VERIFY <span>CERTIFICATE</span></h1>
+      <div class="auth-sub" id="sub">Checking this certificate…</div>
+
+      <div id="msg"></div>
+
+      <div id="result" style="display:none; text-align:left; margin-top:18px;">
+        <div style="border:1px solid #2e7d32; background:#f1f8f1; border-radius:10px; padding:18px;">
+          <div style="font-weight:700; color:#2e7d32; font-size:18px; margin-bottom:12px;">✓ Verified</div>
+          <div style="margin-bottom:8px;"><strong>Awarded to:</strong> <span id="r-name"></span></div>
+          <div style="margin-bottom:8px;"><strong>Course:</strong> <span id="r-course"></span></div>
+          <div style="margin-bottom:8px;"><strong>Issued:</strong> <span id="r-date"></span></div>
+          <div style="color:#888; font-size:12px; margin-top:12px;">Certificate ID: <span id="r-id"></span></div>
+        </div>
+        <p style="color:#888; font-size:12px; margin-top:14px;">
+          This certificate was issued by The One Percent Academy. The details above
+          match our records.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./js/verify.js"></script>
+</body>
+</html>
