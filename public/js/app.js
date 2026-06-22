@@ -7,6 +7,7 @@ import { MODULES, PILLARS } from './modules.js';
 import { onAuthReady } from './auth.js';
 import { firebaseReady } from './firebase.js';
 import { escapeHtml } from './community.js';
+import { renderCertCta } from './certificates.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -86,6 +87,19 @@ function updateTopBar() {
     } else {
       statusEl.textContent = 'Certified!';
       statusEl.className = 'cert-status-val active';
+    }
+  }
+
+  // Surface the downloadable certificate once every module is complete. The
+  // server issues it shortly after the final module is marked complete, so we
+  // also retry briefly to catch the just-generated cert.
+  const certDl = $('cert-download');
+  if (certDl) {
+    if (store.completed.size >= MODULES.length) {
+      renderCertCta('1p-clc', certDl);
+      setTimeout(() => renderCertCta('1p-clc', certDl), 4000);
+    } else {
+      certDl.innerHTML = '';
     }
   }
 

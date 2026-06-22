@@ -12,11 +12,30 @@ const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 const sgMail = require('@sendgrid/mail');
+const { TRACK_SLUGS, getTrack } = require('./tracks');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
 
 const OWNER_EMAIL = 'the1percentnation@gmail.com';
+
+// Module counts for code-rendered courses (their content lives in JS, not in
+// courses/{slug}/modules). Used by the certificate trigger to know when a
+// learner has finished every module. Keep in sync with public/js/modules.js
+// (1P-CLC, ids 0–6) and public/js/icant-course.js (ids 1–8).
+const CODE_COURSE_MODULE_COUNTS = { '1p-clc': 7, 'icant': 8 };
+
+// Display titles for courses that may not have a courses/{slug} Firestore doc
+// (registry-only courses). Used on certificates + emails as a fallback.
+const COURSE_TITLE_FALLBACK = {
+  '1p-clc': '1P Certified Leader Coach',
+  'icant': 'I Can\'t: The Course',
+  'bundle-icant': 'The Complete I Can\'t Experience',
+  'mindset-foundations': 'Mindset Foundations',
+  'business-alignment': 'Business Alignment',
+  'faith-leadership': 'Faith & Leadership',
+  'performance-discipline': 'Performance & Discipline'
+};
 
 // SendGrid identity
 const FROM_EMAIL = 'the1percentnation@gmail.com';
@@ -185,7 +204,166 @@ exports.acceptInvite = onCall(async (request) => {
     }, { merge: true });
   });
 
+  // Auto-enroll the new member into the company's assigned courses (free to the
+  // member). Done post-commit so the seat transaction stays small; arrayUnion is
+  // idempotent so a retry is harmless.
+  try {
+    const cSnap = await companyRef.get();
+    const assigned = (cSnap.exists && Array.isArray(cSnap.data().assignedCourseSlugs))
+      ? cSnap.data().assignedCourseSlugs : [];
+    if (assigned.length) {
+      await userRef.set({
+        enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(...assigned),
+        companyCourseSlugs: admin.firestore.FieldValue.arrayUnion(...assigned)
+      }, { merge: true });
+      await companyRef.collection('members').doc(uid).set({
+        assignedCourseSlugs: assigned
+      }, { merge: true });
+    }
+  } catch (e) {
+    console.warn('[acceptInvite] auto-enroll skipped:', e && e.message);
+  }
+
   return { ok: true, companyId };
+});
+
+/**
+ * assignCompanyCourses({ companyId, slugs, trackId, roadmap })
+ * Owner/company-admin sets the company's course set and auto-enrolls every seat
+ * (free to members). Removing a slug strips it from members' access unless they
+ * personally purchased it. enrolledCourseSlugs is rules-frozen for self-writes,
+ * so this must run server-side.
+ */
+exports.assignCompanyCourses = onCall(async (request) => {
+  const db = admin.firestore();
+  const companyId = String((request.data && request.data.companyId) || '').trim();
+  if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+  const { uid } = await assertCompanyAdmin(db, companyId, request);
+
+  const rawSlugs = (request.data && Array.isArray(request.data.slugs)) ? request.data.slugs : [];
+  const slugs = Array.from(new Set(rawSlugs.map((s) => String(s || '').trim()).filter(Boolean)));
+  const trackId = request.data && request.data.trackId ? String(request.data.trackId).trim() : null;
+  if (trackId && !getTrack(trackId)) {
+    throw new HttpsError('invalid-argument', 'Unknown track.');
+  }
+
+  // Validate each slug: must be a live course (courses/{slug}) OR a known
+  // registry course that appears in a curated track.
+  for (const slug of slugs) {
+    const cs = await db.collection('courses').doc(slug).get();
+    const isFirestoreCourse = cs.exists;
+    if (!isFirestoreCourse && !TRACK_SLUGS.has(slug)) {
+      throw new HttpsError('invalid-argument', `Unknown course: ${slug}`);
+    }
+  }
+
+  const companyRef = db.collection('companies').doc(companyId);
+  const companySnap = await companyRef.get();
+  const prevAssigned = Array.isArray(companySnap.data().assignedCourseSlugs)
+    ? companySnap.data().assignedCourseSlugs : [];
+  const removed = prevAssigned.filter((s) => !slugs.includes(s));
+
+  // Roadmap answers (optional, for record).
+  const roadmap = (request.data && request.data.roadmap && typeof request.data.roadmap === 'object')
+    ? request.data.roadmap : null;
+
+  await companyRef.set({
+    assignedCourseSlugs: slugs,
+    assignedTrackId: trackId,
+    ...(roadmap ? { roadmap: { ...roadmap, completedAt: admin.firestore.FieldValue.serverTimestamp() } } : {}),
+    coursesUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    coursesUpdatedBy: uid
+  }, { merge: true });
+
+  // Enroll/unenroll every member. We compute the final arrays explicitly per
+  // member (a single field can't take arrayUnion + arrayRemove together), reading
+  // each member's purchases so removal preserves personally-bought courses.
+  const membersSnap = await companyRef.collection('members').get();
+  let enrolledCount = 0;
+  let batch = db.batch();
+  let ops = 0;
+  const flush = async () => { if (ops) { await batch.commit(); batch = db.batch(); ops = 0; } };
+
+  for (const m of membersSnap.docs) {
+    const memberUid = m.id;
+    const userRef = db.collection('users').doc(memberUid);
+    const userSnap = await userRef.get();
+    const u = userSnap.exists ? userSnap.data() : {};
+    const curEnrolled = new Set(Array.isArray(u.enrolledCourseSlugs) ? u.enrolledCourseSlugs : []);
+
+    // Which removed slugs may also leave enrolledCourseSlugs: only those NOT
+    // personally purchased.
+    let stripFromEnrolled = [];
+    if (removed.length) {
+      const purchasesSnap = await userRef.collection('purchases').get();
+      const purchased = new Set(purchasesSnap.docs.map((p) => p.data().courseSlug).filter(Boolean));
+      stripFromEnrolled = removed.filter((s) => !purchased.has(s));
+    }
+
+    slugs.forEach((s) => curEnrolled.add(s));
+    stripFromEnrolled.forEach((s) => curEnrolled.delete(s));
+
+    // A user belongs to one company, so its company-granted set is exactly `slugs`.
+    batch.set(userRef, {
+      enrolledCourseSlugs: Array.from(curEnrolled),
+      companyCourseSlugs: slugs
+    }, { merge: true });
+    ops++;
+    batch.set(m.ref, { assignedCourseSlugs: slugs }, { merge: true });
+    ops++;
+    enrolledCount++;
+    if (ops >= 450) await flush();
+  }
+  await flush();
+
+  return { ok: true, slugs, enrolledCount };
+});
+
+/**
+ * revokeMember({ companyId, uid })
+ * Removes an employee from the company: deletes their roster doc, frees a seat,
+ * and strips company-granted course access (preserving personally-purchased
+ * courses). Replaces the client-only revoke path so company courses don't linger.
+ */
+exports.revokeMember = onCall(async (request) => {
+  const db = admin.firestore();
+  const companyId = String((request.data && request.data.companyId) || '').trim();
+  const targetUid = String((request.data && request.data.uid) || '').trim();
+  if (!companyId || !targetUid) {
+    throw new HttpsError('invalid-argument', 'companyId and uid are required.');
+  }
+  await assertCompanyAdmin(db, companyId, request);
+
+  const companyRef = db.collection('companies').doc(companyId);
+  const userRef = db.collection('users').doc(targetUid);
+
+  // Strip company courses the member didn't personally buy.
+  const [userSnap, purchasesSnap] = await Promise.all([
+    userRef.get(),
+    userRef.collection('purchases').get()
+  ]);
+  const companyCourses = (userSnap.exists && Array.isArray(userSnap.data().companyCourseSlugs))
+    ? userSnap.data().companyCourseSlugs : [];
+  const purchased = new Set(purchasesSnap.docs.map((p) => p.data().courseSlug).filter(Boolean));
+  const stripFromEnrolled = companyCourses.filter((s) => !purchased.has(s));
+
+  if (companyCourses.length) {
+    await userRef.set({
+      companyCourseSlugs: admin.firestore.FieldValue.arrayRemove(...companyCourses),
+      ...(stripFromEnrolled.length ? { enrolledCourseSlugs: admin.firestore.FieldValue.arrayRemove(...stripFromEnrolled) } : {})
+    }, { merge: true });
+  }
+
+  // Delete the roster doc and free a seat.
+  await companyRef.collection('members').doc(targetUid).delete();
+  await db.runTransaction(async (tx) => {
+    const cs = await tx.get(companyRef);
+    if (!cs.exists) return;
+    const used = Number(cs.data().seatsUsed || 0);
+    tx.update(companyRef, { seatsUsed: Math.max(0, used - 1) });
+  });
+
+  return { ok: true };
 });
 
 /**
@@ -508,6 +686,275 @@ exports.onUserCreated = onDocumentCreated(
       });
     } catch (err) {
       console.error('[onUserCreated] welcome send failed:', err && err.message);
+    }
+  }
+);
+
+// ────────────────────────────────────────────────────────────────
+// Certificates — issued server-side when a learner finishes every module of a
+// course. Triggered on progress writes; generates a PDF (pdfkit), stores it in
+// Cloud Storage, records it at users/{uid}/certificates/{slug}, mirrors the
+// completion onto the company roster, and emails the member + company admins.
+// ────────────────────────────────────────────────────────────────
+
+// Resolves the course slug + id scheme for a progress doc.
+// Firestore-rendered courses AND namespaced code courses (e.g. icant) use ids
+// shaped `{slug}__m{n}`; the original 1P-CLC scheme uses bare integers and
+// self-identifies via the doc's `courseSlug` (defaulting to 1p-clc).
+function resolveCourseFromProgress(progressId, data) {
+  const m = /^(.+)__m(\d+)$/.exec(progressId);
+  if (m) return { slug: m[1], idScheme: 'namespaced' };
+  if (data && data.courseSlug) return { slug: String(data.courseSlug), idScheme: 'bare' };
+  if (/^\d+$/.test(progressId)) return { slug: '1p-clc', idScheme: 'bare' };
+  return null;
+}
+
+// Total modules for a course. Code courses (whether bare-id like 1p-clc or
+// namespaced like icant) keep their counts in CODE_COURSE_MODULE_COUNTS; their
+// content isn't in courses/{slug}/modules. Firestore courses use moduleCount.
+async function totalModulesForCourse(db, slug) {
+  if (CODE_COURSE_MODULE_COUNTS[slug]) return CODE_COURSE_MODULE_COUNTS[slug];
+  const cs = await db.collection('courses').doc(slug).get();
+  if (cs.exists && typeof cs.data().moduleCount === 'number' && cs.data().moduleCount > 0) {
+    return cs.data().moduleCount;
+  }
+  // Fallback: count module docs.
+  const mods = await db.collection('courses').doc(slug).collection('modules').get();
+  return mods.size || null;
+}
+
+async function countCompletedForCourse(db, uid, slug, idScheme) {
+  const snap = await db.collection('users').doc(uid).collection('progress').get();
+  let count = 0;
+  if (idScheme === 'namespaced') {
+    const prefix = `${slug}__m`;
+    snap.docs.forEach((d) => { if (d.id.startsWith(prefix) && d.data().completed) count++; });
+  } else {
+    // Bare-integer ids (legacy 1P-CLC scheme); attribute via courseSlug.
+    snap.docs.forEach((d) => {
+      if (/^\d+$/.test(d.id) && d.data().completed) {
+        const ds = d.data().courseSlug || '1p-clc';
+        if (ds === slug) count++;
+      }
+    });
+  }
+  return count;
+}
+
+function certificatePdfBuffer({ name, courseTitle, dateStr, verifyCode }) {
+  // Lazy require so deploys/cold starts not exercising certs stay light.
+  const PDFDocument = require('pdfkit');
+  return new Promise((resolve, reject) => {
+    try {
+      const docPdf = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 50 });
+      const chunks = [];
+      docPdf.on('data', (c) => chunks.push(c));
+      docPdf.on('end', () => resolve(Buffer.concat(chunks)));
+      docPdf.on('error', reject);
+
+      const W = docPdf.page.width;
+      const red = '#CC1B1B';
+
+      // Border
+      docPdf.lineWidth(3).strokeColor(red)
+        .rect(28, 28, W - 56, docPdf.page.height - 56).stroke();
+
+      docPdf.moveDown(2);
+      docPdf.fillColor(red).fontSize(14).font('Helvetica-Bold')
+        .text('THE ONE PERCENT NATION', { align: 'center', characterSpacing: 2 });
+      docPdf.moveDown(1.5);
+      docPdf.fillColor('#222').fontSize(36).font('Helvetica-Bold')
+        .text('Certificate of Completion', { align: 'center' });
+      docPdf.moveDown(1.2);
+      docPdf.fillColor('#555').fontSize(14).font('Helvetica')
+        .text('This certifies that', { align: 'center' });
+      docPdf.moveDown(0.6);
+      docPdf.fillColor('#111').fontSize(28).font('Helvetica-Bold')
+        .text(name || 'Learner', { align: 'center' });
+      docPdf.moveDown(0.8);
+      docPdf.fillColor('#555').fontSize(14).font('Helvetica')
+        .text('has successfully completed', { align: 'center' });
+      docPdf.moveDown(0.6);
+      docPdf.fillColor(red).fontSize(22).font('Helvetica-Bold')
+        .text(courseTitle || 'the course', { align: 'center' });
+      docPdf.moveDown(2);
+      docPdf.fillColor('#777').fontSize(12).font('Helvetica')
+        .text(`Issued ${dateStr}`, { align: 'center' });
+      if (verifyCode) {
+        docPdf.moveDown(0.4);
+        docPdf.fillColor('#999').fontSize(9).font('Helvetica')
+          .text(`Verify at ${APP_BASE_URL}/verify?cert=${verifyCode}  ·  ID: ${verifyCode}`, { align: 'center' });
+      }
+
+      docPdf.end();
+    } catch (e) { reject(e); }
+  });
+}
+
+exports.onCertificateProgress = onDocumentWritten(
+  { document: 'users/{uid}/progress/{progressId}', secrets: [sendgridKey] },
+  async (event) => {
+    const after = event.data && event.data.after;
+    if (!after || !after.exists) return;
+    const before = event.data && event.data.before;
+    const afterData = after.data() || {};
+    const beforeData = (before && before.exists) ? (before.data() || {}) : {};
+
+    // Only act when this write flips completion on (avoids re-firing).
+    if (!afterData.completed) return;
+    if (beforeData.completed) return;
+
+    const uid = event.params.uid;
+    const progressId = event.params.progressId;
+    const db = admin.firestore();
+
+    const resolved = resolveCourseFromProgress(progressId, afterData);
+    if (!resolved) return;
+    const { slug, idScheme } = resolved;
+
+    try {
+      const total = await totalModulesForCourse(db, slug);
+      if (!total) return;
+      const done = await countCompletedForCourse(db, uid, slug, idScheme);
+      if (done < total) return;
+
+      // Idempotency: create the cert doc only if absent.
+      const certRef = db.collection('users').doc(uid).collection('certificates').doc(slug);
+      const existing = await certRef.get();
+      if (existing.exists) return;
+
+      const userSnap = await db.collection('users').doc(uid).get();
+      const user = userSnap.exists ? userSnap.data() : {};
+      const memberName = user.displayName || (user.email ? user.email.split('@')[0] : 'Learner');
+      const memberEmail = user.email || null;
+      const companyId = user.companyId || null;
+
+      let courseTitle = COURSE_TITLE_FALLBACK[slug] || slug;
+      try {
+        const cs = await db.collection('courses').doc(slug).get();
+        if (cs.exists && cs.data().title) courseTitle = cs.data().title;
+      } catch (e) {}
+
+      const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      // Public verification code — short, unguessable, URL-safe.
+      const verifyCode = crypto.randomBytes(9).toString('base64url');
+
+      // Generate + upload the PDF.
+      const pdfBuffer = await certificatePdfBuffer({ name: memberName, courseTitle, dateStr, verifyCode });
+      const storagePath = `certificates/${uid}/${slug}.pdf`;
+      const bucket = admin.storage().bucket();
+      const file = bucket.file(storagePath);
+      await file.save(pdfBuffer, { metadata: { contentType: 'application/pdf' } });
+      let downloadUrl = null;
+      try {
+        const [signedUrl] = await file.getSignedUrl({
+          action: 'read',
+          expires: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000
+        });
+        downloadUrl = signedUrl;
+      } catch (e) {
+        console.warn('[onCertificateProgress] signed url failed:', e && e.message);
+      }
+
+      // Record the certificate (idempotency guard).
+      await certRef.set({
+        slug,
+        courseTitle,
+        displayName: memberName,
+        email: memberEmail,
+        completedAt: afterData.completedAt || admin.firestore.FieldValue.serverTimestamp(),
+        issuedAt: admin.firestore.FieldValue.serverTimestamp(),
+        storagePath,
+        downloadUrl,
+        verifyCode,
+        emailedToMember: false,
+        emailedToAdmins: false,
+        companyId
+      });
+
+      // Public verification lookup, keyed by the unguessable code. Read-only to
+      // the world (see firestore.rules); deliberately excludes email/PII beyond
+      // what's already printed on the shareable PDF.
+      await db.collection('certificateVerifications').doc(verifyCode).set({
+        uid,
+        slug,
+        courseTitle,
+        displayName: memberName,
+        companyId: companyId || null,
+        issuedAt: admin.firestore.FieldValue.serverTimestamp(),
+        valid: true
+      });
+
+      // Mirror onto the company roster so admins see completion.
+      if (companyId) {
+        try {
+          await db.collection('companies').doc(companyId).collection('members').doc(uid).set({
+            certificates: admin.firestore.FieldValue.arrayUnion(slug)
+          }, { merge: true });
+        } catch (e) {}
+      }
+
+      // Email the member + company admins.
+      try {
+        sgMail.setApiKey(sendgridKey.value());
+        const recipients = [];
+        if (memberEmail) recipients.push(memberEmail);
+        if (companyId) {
+          try {
+            const cSnap = await db.collection('companies').doc(companyId).get();
+            const adminUids = (cSnap.exists && cSnap.data().adminUids) || [];
+            for (const aUid of adminUids) {
+              const aSnap = await db.collection('users').doc(aUid).get();
+              const aEmail = aSnap.exists ? aSnap.data().email : null;
+              if (aEmail && !recipients.includes(aEmail)) recipients.push(aEmail);
+            }
+          } catch (e) {}
+        }
+
+        if (recipients.length) {
+          const attachment = {
+            content: pdfBuffer.toString('base64'),
+            filename: `${slug}-certificate.pdf`,
+            type: 'application/pdf',
+            disposition: 'attachment'
+          };
+          const subject = `🎓 Certificate of Completion — ${courseTitle}`;
+          const textBody =
+            `Congratulations ${memberName}!\n\n` +
+            `You've completed ${courseTitle} on The 1P Leadership dashboard. ` +
+            `Your certificate is attached.\n\n— The One Percent Nation`;
+          const htmlBody = `
+            <div style="font-family:Arial,sans-serif;color:#222;max-width:560px;margin:0 auto;">
+              <h2 style="color:#CC1B1B;margin-bottom:8px;">Congratulations, ${memberName}!</h2>
+              <p>You've completed <strong>${courseTitle}</strong> on The 1P Leadership dashboard.</p>
+              <p>Your certificate of completion is attached as a PDF.${downloadUrl ? ` You can also <a href="${downloadUrl}">download it here</a>.` : ''}</p>
+              <hr style="border:none;border-top:1px solid #eee;margin:24px 0;"/>
+              <p style="color:#999;font-size:11px;">The One Percent Nation</p>
+            </div>`;
+
+          await sgMail.send({
+            to: recipients,
+            from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+            replyTo: REPLY_TO,
+            subject,
+            text: textBody,
+            html: htmlBody,
+            attachments: [attachment],
+            isMultiple: true,
+            customArgs: { type: 'certificate', uid, courseSlug: slug }
+          });
+
+          await certRef.set({
+            emailedToMember: !!memberEmail,
+            emailedToAdmins: recipients.length > (memberEmail ? 1 : 0)
+          }, { merge: true });
+        }
+      } catch (e) {
+        console.error('[onCertificateProgress] email failed:', e && e.message);
+      }
+    } catch (e) {
+      console.error('[onCertificateProgress] handler error:', e && e.message);
     }
   }
 );
@@ -2495,6 +2942,56 @@ exports.createCheckoutSession = onCall(async (request) => {
   return { ok: true, url: session.url };
 });
 
+// createCompanyCheckoutSession — optional online billing for a company's flat
+// plan. The plan (mode + amount) is set by the owner on companies/{cid}.plan;
+// access itself is granted by assignCompanyCourses, not by this payment.
+exports.createCompanyCheckoutSession = onCall(async (request) => {
+  const db = admin.firestore();
+  const companyId = String((request.data && request.data.companyId) || '').trim();
+  if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+  // Owner-only — billing is the owner's responsibility.
+  if (!(request.auth && request.auth.token && request.auth.token.role === 'owner')) {
+    throw new HttpsError('permission-denied', 'Owner role required.');
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    throw new HttpsError('failed-precondition',
+      'Online checkout isn\'t available yet — payments are still being set up.');
+  }
+
+  const cSnap = await db.collection('companies').doc(companyId).get();
+  if (!cSnap.exists) throw new HttpsError('not-found', 'Company not found.');
+  const company = cSnap.data();
+  const plan = company.plan || {};
+  const dollars = typeof plan.amount === 'number' ? plan.amount : null;
+  if (dollars == null || dollars <= 0) {
+    throw new HttpsError('failed-precondition', 'Set a plan amount on this company first.');
+  }
+  const isRecurring = plan.mode === 'recurring';
+  const interval = isRecurring ? (plan.interval === 'year' ? 'year' : 'month') : null;
+
+  const metadata = { type: 'company-flat', companyId };
+  const priceData = {
+    currency: plan.currency || 'usd',
+    unit_amount: Math.round(dollars * 100),
+    product_data: { name: `${company.name || companyId} — team plan` }
+  };
+  if (isRecurring) priceData.recurring = { interval };
+
+  const session = await stripe.checkout.sessions.create({
+    mode: isRecurring ? 'subscription' : 'payment',
+    line_items: [{ price_data: priceData, quantity: 1 }],
+    client_reference_id: companyId,
+    metadata,
+    ...(isRecurring ? { subscription_data: { metadata } } : {}),
+    success_url: `${APP_BASE_URL}/owner.html?company=${encodeURIComponent(companyId)}&billing=success`,
+    cancel_url: `${APP_BASE_URL}/owner.html`
+  });
+
+  return { ok: true, url: session.url };
+});
+
 // stripeWebhook — enrolls buyers after checkout and revokes subscription
 // access on cancellation. Configure the endpoint in the Stripe dashboard to
 // send: checkout.session.completed, customer.subscription.deleted,
@@ -2531,7 +3028,41 @@ exports.stripeWebhook = onRequest(
     }
 
     try {
-      if (event.type === 'checkout.session.completed') {
+      if (event.type === 'checkout.session.completed'
+          && event.data.object.metadata
+          && event.data.object.metadata.type === 'company-flat') {
+        // Company flat-rate plan payment — record it and mark the plan active.
+        // Access is granted separately via assignCompanyCourses; we don't enroll
+        // members here.
+        const session = event.data.object;
+        const companyId = (session.metadata && session.metadata.companyId) || session.client_reference_id;
+        if (companyId) {
+          const companyRef = db.collection('companies').doc(companyId);
+          await companyRef.collection('purchases').doc(session.id).set({
+            amount: (session.amount_total || 0) / 100,
+            mode: session.mode,
+            stripeCustomerId: session.customer || null,
+            subscriptionId: session.subscription || null,
+            status: session.mode === 'subscription' ? 'active' : 'paid',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          await companyRef.set({
+            plan: {
+              status: 'active',
+              source: 'stripe',
+              stripeSubscriptionId: session.subscription || null
+            }
+          }, { merge: true });
+          if (session.mode === 'subscription' && session.subscription) {
+            await db.collection('stripeSubscriptions').doc(String(session.subscription)).set({
+              type: 'company-flat', companyId, sessionId: session.id,
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+          }
+        } else {
+          console.warn('[stripeWebhook] company-flat session missing companyId', session.id);
+        }
+      } else if (event.type === 'checkout.session.completed') {
         const session = event.data.object;
         const uid = (session.metadata && session.metadata.uid) || session.client_reference_id;
         const courseSlug = session.metadata && session.metadata.courseSlug;
@@ -2642,7 +3173,25 @@ exports.stripeWebhook = onRequest(
       } else if (event.type === 'customer.subscription.deleted') {
         const sub = event.data.object;
         const idx = await db.collection('stripeSubscriptions').doc(String(sub.id)).get();
-        const meta = idx.exists ? idx.data() : (sub.metadata && sub.metadata.uid ? sub.metadata : null);
+        const idxData = idx.exists ? idx.data() : null;
+        const subMeta = sub.metadata || {};
+        // Company flat plan lapsed — mark the plan canceled. We do NOT auto-revoke
+        // member course access on a billing lapse; the owner decides via the UI.
+        if ((idxData && idxData.type === 'company-flat') || subMeta.type === 'company-flat') {
+          const companyId = (idxData && idxData.companyId) || subMeta.companyId;
+          if (companyId) {
+            await db.collection('companies').doc(companyId).set({
+              plan: { status: 'canceled' }
+            }, { merge: true });
+          }
+          await evRef.set({
+            type: event.type,
+            processedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          res.status(200).send('ok');
+          return;
+        }
+        const meta = idxData || (sub.metadata && sub.metadata.uid ? sub.metadata : null);
         if (meta && meta.uid && meta.courseSlug) {
           await db.collection('users').doc(meta.uid).set({
             enrolledCourseSlugs: admin.firestore.FieldValue.arrayRemove(meta.courseSlug)

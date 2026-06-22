@@ -12,6 +12,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { escapeHtml } from './community.js';
 import { loadModuleDocs } from './courses-data.js';
+import { renderCertCta } from './certificates.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -157,6 +158,17 @@ function updateTopBar(course) {
       : (totalDone < state.modules.length ? 'In Progress' : 'Complete!');
     statusEl.className = totalDone === state.modules.length && state.modules.length
       ? 'cert-status-val active' : 'cert-status-val';
+  }
+
+  // Downloadable certificate once every module is complete (server-issued).
+  const certDl = $('cert-download');
+  if (certDl) {
+    if (state.modules.length && totalDone === state.modules.length) {
+      renderCertCta(state.slug, certDl);
+      setTimeout(() => renderCertCta(state.slug, certDl), 4000);
+    } else {
+      certDl.innerHTML = '';
+    }
   }
 
   const footer = $('footer-progress');

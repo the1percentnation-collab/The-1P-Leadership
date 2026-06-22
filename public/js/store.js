@@ -178,7 +178,11 @@ export const store = {
     if (user) {
       setDoc(doc(db, 'users', user.uid, 'progress', String(id)), {
         completed: true,
-        completedAt: serverTimestamp()
+        completedAt: serverTimestamp(),
+        // Tag the course so the server-side certificate trigger can attribute
+        // these bare-integer progress docs to 1P-CLC.
+        courseSlug: '1p-clc',
+        moduleId: id
       }, { merge: true }).catch((e) => console.warn('[store] markComplete remote write:', e));
       setDoc(doc(db, 'users', user.uid), {
         lastActiveAt: serverTimestamp(),
