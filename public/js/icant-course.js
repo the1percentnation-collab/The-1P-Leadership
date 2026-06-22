@@ -749,7 +749,7 @@ let _mounted = false;
 
 export async function mount({ startAt } = {}) {
   // Show our section, hide the standard 1P-CLC workspace panels.
-  ['workspace-welcome', 'workspace-roadmap', 'workspace-live-content', 'workspace-coming-soon']
+  ['workspace-welcome', 'workspace-roadmap', 'workspace-live-content', 'workspace-coming-soon', 'workspace-work-less']
     .forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.hidden = true;

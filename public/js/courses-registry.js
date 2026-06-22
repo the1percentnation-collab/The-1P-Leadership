@@ -50,6 +50,21 @@ export const COURSES = [
     }
   },
   {
+    slug: 'work-less',
+    title: 'Work Less, Gain More',
+    short: 'Work Less',
+    subtitle: 'The Time Blocking Blueprint for predictable success — from Anthony Brown\'s latest book.',
+    status: 'coming-soon',
+    eyebrow: 'Self-paced · Book + 15 Modules',
+    price: 99,
+    priceLabel: '$99',
+    priceNote: 'Full course · lifetime access',
+    mount: async (opts) => {
+      const mod = await import('./workless-course.js');
+      if (mod && typeof mod.mount === 'function') await mod.mount(opts);
+    }
+  },
+  {
     slug: 'mindset-foundations',
     title: 'Mindset Foundations',
     short: 'Mindset',
