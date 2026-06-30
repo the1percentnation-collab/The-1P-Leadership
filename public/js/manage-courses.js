@@ -4,8 +4,8 @@
 // (Quill editor → courses/{slug}/modules), and manage coupon codes.
 
 import { db, functions, firebaseReady } from './firebase.js';
-import { onAuthReady } from './auth.js';
-import { getRoleInfo } from './roles.js';
+import { onAuthReady, bootstrapOwner } from './auth.js';
+import { getRoleInfo, clearRoleCache } from './roles.js';
 import { renderTopbar } from './topbar.js';
 import {
   collection, doc, getDoc, getDocs, setDoc, deleteDoc, serverTimestamp
@@ -77,6 +77,9 @@ async function refreshCourses() {
       <td>${p.isSubscription ? `Subscription${p.intervalSuffix}` : 'One-time'}</td>
       <td>${contentKind}</td>
       <td style="white-space:nowrap;">
+        ${c.status !== 'live' ? `<button class="btn btn-ghost" data-status-live="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px; color:var(--green, #2ecc71);">Publish</button>` : ''}
+        ${c.status === 'live' ? `<button class="btn btn-ghost" data-status-inactive="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px; color:var(--red);">Unpublish</button>` : ''}
+        ${c.status !== 'coming-soon' ? `<button class="btn btn-ghost" data-status-soon="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Coming soon</button>` : ''}
         <button class="btn btn-ghost" data-edit="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Details</button>
         <button class="btn btn-ghost" data-content="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Content</button>
       </td>
@@ -87,6 +90,28 @@ async function refreshCourses() {
     b.addEventListener('click', () => openCourseEditor(b.dataset.edit)));
   body.querySelectorAll('[data-content]').forEach((b) =>
     b.addEventListener('click', () => openContent(b.dataset.content)));
+  body.querySelectorAll('[data-status-live]').forEach((b) =>
+    b.addEventListener('click', () => setCourseStatus(b.dataset.statusLive, 'live')));
+  body.querySelectorAll('[data-status-inactive]').forEach((b) =>
+    b.addEventListener('click', () => setCourseStatus(b.dataset.statusInactive, 'inactive')));
+  body.querySelectorAll('[data-status-soon]').forEach((b) =>
+    b.addEventListener('click', () => setCourseStatus(b.dataset.statusSoon, 'coming-soon')));
+}
+
+// Quick status flip from the course list — Publish (live) / Unpublish (inactive) /
+// Coming soon. Same write path as saveCourse(); reloads the table on success.
+async function setCourseStatus(slug, status) {
+  if (!slug) return;
+  try {
+    await setDoc(doc(db, 'courses', slug), {
+      status,
+      updatedAt: serverTimestamp(),
+      updatedBy: _userEmail
+    }, { merge: true });
+    await refreshCourses();
+  } catch (e) {
+    alert(`Could not update status: ${e && e.message ? e.message : e}`);
+  }
 }
 
 async function seedDefaults() {
@@ -463,7 +488,25 @@ async function main() {
   if (!u) { location.replace('/login.html?next=' + encodeURIComponent('/manage-courses.html')); return; }
   _userEmail = u.email || u.uid;
 
-  const info = await getRoleInfo(true);
+  let info = await getRoleInfo(true);
+
+  // The owner account may have role 'owner' in its Firestore user doc but lack the
+  // `role=owner` custom claim that Firestore rules require for course writes. Without
+  // the claim, this page would load but every Save/Publish would be permission-denied.
+  // Auto-run the (email-validated, server-side) bootstrapOwner claim once, refresh the
+  // token, and re-read role info so writes succeed. Failures never block the page.
+  if (info.role === 'owner') {
+    try {
+      const tok = await u.getIdTokenResult();
+      if (!tok.claims || tok.claims.role !== 'owner') {
+        await bootstrapOwner();
+        await u.getIdToken(true);
+        clearRoleCache();
+        info = await getRoleInfo(true);
+      }
+    } catch (e) { console.warn('[manage-courses] owner claim bootstrap skipped', e); }
+  }
+
   renderTopbar({ user: u, role: info.role, currentPage: null });
   if (!info.isAdmin) {
     gate(`You are signed in as <b>${escapeHtml(u.email || '')}</b> but this page requires an admin or owner account.`);
