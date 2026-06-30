@@ -70,7 +70,7 @@ async function refreshCourses() {
     const contentKind = (c.contentSource === 'firestore' || !CODE_CONTENT_SLUGS.has(c.slug))
       ? 'Editable' : 'Built-in';
     return `<tr>
-      <td><b>${escapeHtml(c.title)}</b><br><span style="font-size:11px; color:var(--gray-mid);">${escapeHtml(c.slug)}</span></td>
+      <td><a href="manage-courses.html?content=${encodeURIComponent(c.slug)}" target="_blank" rel="noopener" title="Open this course's content editor in a new window" style="color:inherit; text-decoration:underline;"><b>${escapeHtml(c.title)}</b></a><br><span style="font-size:11px; color:var(--gray-mid);">${escapeHtml(c.slug)}</span></td>
       <td>${statusChip}</td>
       <td class="num">${escapeHtml(p.onSale ? p.originalLabel : (p.label || '—'))}</td>
       <td class="num">${p.onSale ? escapeHtml(p.label) : '—'}</td>
@@ -534,6 +534,24 @@ async function main() {
 
   await refreshCourses();
   await refreshCoupons();
+
+  // Focused "edit this course's content" window: when opened via
+  // manage-courses.html?content=<slug> (the course-name link), hide everything
+  // except the content editor so the new tab IS the course-content editor.
+  const focusSlug = new URLSearchParams(location.search).get('content');
+  if (focusSlug) {
+    ['courses-card', 'course-editor-card', 'coupons-card'].forEach((id) => {
+      const el = $(id); if (el) el.style.display = 'none';
+    });
+    const card = $('content-card');
+    if (card && !$('content-back-link')) {
+      card.insertAdjacentHTML('afterbegin',
+        '<a id="content-back-link" href="/manage-courses.html" ' +
+        'style="display:inline-block; margin-bottom:12px; font-size:13px; color:var(--gray-light); text-decoration:none;">&larr; All courses</a>');
+    }
+    document.title = 'Edit course content | The One Percent Academy';
+    await openContent(focusSlug);
+  }
 }
 
 main();
