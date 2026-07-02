@@ -81,14 +81,11 @@ async function refreshCourses() {
         ${c.status === 'live' ? `<button class="btn btn-ghost" data-status-inactive="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px; color:var(--red);">Unpublish</button>` : ''}
         ${c.status !== 'coming-soon' ? `<button class="btn btn-ghost" data-status-soon="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Coming soon</button>` : ''}
         <button class="btn btn-ghost" data-preview="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Preview</button>
-        <button class="btn btn-ghost" data-edit="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Details</button>
-        <button class="btn btn-ghost" data-content="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Content</button>
+        <button class="btn btn-ghost" data-content="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Edit</button>
       </td>
     </tr>`;
   }).join('');
 
-  body.querySelectorAll('[data-edit]').forEach((b) =>
-    b.addEventListener('click', () => openCourseEditor(b.dataset.edit)));
   body.querySelectorAll('[data-content]').forEach((b) =>
     b.addEventListener('click', () => openContent(b.dataset.content)));
   body.querySelectorAll('[data-preview]').forEach((b) =>
@@ -611,6 +608,7 @@ async function main() {
   $('btn-html-toggle').addEventListener('click', toggleHtmlSource);
   $('btn-preview-toggle').addEventListener('click', togglePreview);
   $('btn-preview-course').addEventListener('click', () => { if (_contentSlug) previewCourse(_contentSlug); });
+  $('btn-course-details').addEventListener('click', () => { if (_contentSlug) openCourseEditor(_contentSlug); });
 
   $('coupon-form').addEventListener('submit', createCoupon);
 
