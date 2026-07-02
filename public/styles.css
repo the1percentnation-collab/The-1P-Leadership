@@ -3884,6 +3884,13 @@ body.academy-course #course-workspace {
   background: var(--black);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
+  /* overflow-x:auto makes the browser compute overflow-y to auto, which removes
+     the strip's automatic min-content height. As a flex item in the column-flex
+     .workspace-live-content scroll container it would then get shrunk to a sliver
+     when the page overflows, clipping the module cards. Pin the axes and stop it
+     from shrinking so it always keeps its full height. */
+  overflow-y: hidden;
+  flex-shrink: 0;
   scrollbar-width: thin;
   position: sticky;
   top: 0;
