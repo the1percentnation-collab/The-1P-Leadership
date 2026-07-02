@@ -111,7 +111,10 @@
         </div>
 
         <div class="card" id="content-card" style="display:none;">
-          <h2 id="content-title">Course content</h2>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+            <h2 id="content-title">Course content</h2>
+            <button class="btn btn-ghost" type="button" id="btn-preview-course" style="font-size:12px;">Preview course →</button>
+          </div>
           <div id="content-note" style="font-size:13px; color:var(--gray-light); margin-bottom:12px;"></div>
           <div id="modules-list"></div>
           <button class="btn btn-primary" id="btn-add-module" style="margin-top:10px;">+ Add module</button>
@@ -133,7 +136,9 @@
                 <div id="m-quill" style="min-height:260px;"></div>
               </div>
               <button class="btn btn-ghost" type="button" id="btn-html-toggle" style="margin-top:8px; font-size:12px;">Edit HTML source</button>
+              <button class="btn btn-ghost" type="button" id="btn-preview-toggle" style="margin-top:8px; margin-left:8px; font-size:12px;">Preview</button>
               <textarea id="m-html" style="display:none; width:100%; min-height:260px; margin-top:8px; font-family:'Space Mono',monospace; font-size:12px;"></textarea>
+              <div id="m-preview" style="display:none; margin-top:8px; background:var(--black, #0b0b0b); border:1px solid rgba(255,255,255,.08); border-radius:8px; padding:20px;"></div>
             </div>
             <div style="display:flex; gap:10px; margin-top:14px;">
               <button class="btn btn-primary" type="button" id="btn-module-save">Save module</button>

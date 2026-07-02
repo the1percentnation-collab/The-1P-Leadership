@@ -80,6 +80,7 @@ async function refreshCourses() {
         ${c.status !== 'live' ? `<button class="btn btn-ghost" data-status-live="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px; color:var(--green, #2ecc71);">Publish</button>` : ''}
         ${c.status === 'live' ? `<button class="btn btn-ghost" data-status-inactive="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px; color:var(--red);">Unpublish</button>` : ''}
         ${c.status !== 'coming-soon' ? `<button class="btn btn-ghost" data-status-soon="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Coming soon</button>` : ''}
+        <button class="btn btn-ghost" data-preview="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Preview</button>
         <button class="btn btn-ghost" data-edit="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Details</button>
         <button class="btn btn-ghost" data-content="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Content</button>
       </td>
@@ -90,6 +91,8 @@ async function refreshCourses() {
     b.addEventListener('click', () => openCourseEditor(b.dataset.edit)));
   body.querySelectorAll('[data-content]').forEach((b) =>
     b.addEventListener('click', () => openContent(b.dataset.content)));
+  body.querySelectorAll('[data-preview]').forEach((b) =>
+    b.addEventListener('click', () => previewCourse(b.dataset.preview)));
   body.querySelectorAll('[data-status-live]').forEach((b) =>
     b.addEventListener('click', () => setCourseStatus(b.dataset.statusLive, 'live')));
   body.querySelectorAll('[data-status-inactive]').forEach((b) =>
@@ -112,6 +115,20 @@ async function setCourseStatus(slug, status) {
   } catch (e) {
     alert(`Could not update status: ${e && e.message ? e.message : e}`);
   }
+}
+
+// Open the member course page in owner preview mode (bypasses status/enrollment
+// gates for admins — see courses-page.js). New tab so the editor stays put.
+function previewCourse(slug) {
+  if (!slug) return;
+  window.open(`courses.html?course=${encodeURIComponent(slug)}&preview=1`, '_blank', 'noopener');
+}
+
+function previewModule(slug, moduleId) {
+  if (!slug) return;
+  window.open(
+    `courses.html?course=${encodeURIComponent(slug)}&module=${encodeURIComponent(moduleId)}&preview=1`,
+    '_blank', 'noopener');
 }
 
 async function seedDefaults() {
@@ -263,6 +280,7 @@ async function refreshModules() {
       <td style="white-space:nowrap; text-align:right;">
         <button class="btn btn-ghost" data-up="${i}" style="padding:2px 8px; font-size:11px;" ${i === 0 ? 'disabled' : ''}>↑</button>
         <button class="btn btn-ghost" data-down="${i}" style="padding:2px 8px; font-size:11px;" ${i === _modules.length - 1 ? 'disabled' : ''}>↓</button>
+        <button class="btn btn-ghost" data-preview-mod="${m.id}" style="padding:2px 8px; font-size:11px;">Preview</button>
         <button class="btn btn-ghost" data-edit-mod="${m.id}" style="padding:2px 8px; font-size:11px;">Edit</button>
         <button class="btn btn-ghost" data-del-mod="${m.id}" style="padding:2px 8px; font-size:11px; color:var(--red);">Delete</button>
       </td>
@@ -271,6 +289,8 @@ async function refreshModules() {
 
   list.querySelectorAll('[data-edit-mod]').forEach((b) =>
     b.addEventListener('click', () => openModuleEditor(Number(b.dataset.editMod))));
+  list.querySelectorAll('[data-preview-mod]').forEach((b) =>
+    b.addEventListener('click', () => previewModule(_contentSlug, Number(b.dataset.previewMod))));
   list.querySelectorAll('[data-del-mod]').forEach((b) =>
     b.addEventListener('click', async () => {
       const m = _modules.find((x) => x.id === Number(b.dataset.delMod));
@@ -354,7 +374,9 @@ function openModuleEditor(moduleId) {
   const src = $('m-html');
   src.style.display = 'none';
   src.value = html;
+  $('m-quill').parentElement.style.display = 'block';
   $('btn-html-toggle').textContent = 'Edit HTML source';
+  resetPreview();
   $('module-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -373,6 +395,64 @@ function toggleHtmlSource() {
     src.style.display = 'none';
     quillBox.style.display = 'block';
     $('btn-html-toggle').textContent = 'Edit HTML source';
+  }
+}
+
+// ─── In-editor lesson preview ───────────────────────────────────────────────
+// Renders the module being edited exactly as the live course renderer does
+// (course-renderer.js): a .lesson-header + DOMPurify-sanitized .lesson-body.
+// styles.css (loaded by this page) gives it the real lesson styling.
+
+let _purify = null;
+async function getPurify() {
+  if (_purify) return _purify;
+  const mod = await import('https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.es.mjs');
+  _purify = mod.default || mod;
+  return _purify;
+}
+
+let _previewOn = false;
+let _htmlWasOpen = false;
+
+function resetPreview() {
+  _previewOn = false;
+  const box = $('m-preview');
+  if (box) box.style.display = 'none';
+  const btn = $('btn-preview-toggle');
+  if (btn) btn.textContent = 'Preview';
+}
+
+async function togglePreview() {
+  const box = $('m-preview');
+  const quillBox = $('m-quill').parentElement;
+  const src = $('m-html');
+  const btn = $('btn-preview-toggle');
+  if (!_previewOn) {
+    const purify = await getPurify();
+    const pillar = $('m-pillar').value.trim();
+    const duration = $('m-duration').value.trim();
+    const title = $('m-title').value.trim();
+    const subtitle = $('m-subtitle').value.trim();
+    const eyebrow = [pillar, duration].filter(Boolean).join(' · ');
+    box.innerHTML =
+      `<div class="lesson-header">` +
+        (eyebrow ? `<div class="academy-eyebrow">${escapeHtml(eyebrow)}</div>` : '') +
+        `<h1>${escapeHtml(title)}</h1>` +
+        (subtitle ? `<p class="lesson-subtitle">${escapeHtml(subtitle)}</p>` : '') +
+      `</div>` +
+      `<div class="lesson-body">${purify.sanitize(quillHtml() || '', { USE_PROFILES: { html: true } })}</div>`;
+    _htmlWasOpen = src.style.display !== 'none';
+    quillBox.style.display = 'none';
+    src.style.display = 'none';
+    box.style.display = 'block';
+    btn.textContent = 'Back to editor';
+    _previewOn = true;
+  } else {
+    box.style.display = 'none';
+    if (_htmlWasOpen) { src.style.display = 'block'; quillBox.style.display = 'none'; }
+    else { quillBox.style.display = 'block'; src.style.display = 'none'; }
+    btn.textContent = 'Preview';
+    _previewOn = false;
   }
 }
 
@@ -529,6 +609,8 @@ async function main() {
   $('btn-module-save').addEventListener('click', saveModule);
   $('btn-module-cancel').addEventListener('click', () => { $('module-editor').style.display = 'none'; });
   $('btn-html-toggle').addEventListener('click', toggleHtmlSource);
+  $('btn-preview-toggle').addEventListener('click', togglePreview);
+  $('btn-preview-course').addEventListener('click', () => { if (_contentSlug) previewCourse(_contentSlug); });
 
   $('coupon-form').addEventListener('submit', createCoupon);
 

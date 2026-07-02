@@ -393,6 +393,31 @@ function renderCourseHero(course) {
   if (sub) sub.textContent = course.subtitle || '';
 }
 
+// ─── Owner preview banner ───────────────────────────────────────────────────
+
+function renderPreviewBanner(course) {
+  const main = $('courses-main');
+  if (!main || $('owner-preview-banner')) return;
+  const editLink = course.contentSource === 'firestore'
+    ? `<a href="/manage-courses.html?content=${encodeURIComponent(course.slug)}" target="_blank" rel="noopener" style="color:#fff; text-decoration:underline;">✎ Edit content</a>`
+    : '';
+  const banner = document.createElement('div');
+  banner.id = 'owner-preview-banner';
+  banner.style.cssText = 'position:sticky; top:0; z-index:50; background:#b91c1c; color:#fff; ' +
+    'padding:8px 16px; font-size:13px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;';
+  banner.innerHTML =
+    `<span>👁 Preview mode (owner) — members see this course as <b>${escapeHtml(course.status || '—')}</b>. ` +
+    `This banner is only visible to you.</span>${editLink}` +
+    `<a href="#" id="exit-preview" style="color:#fff; text-decoration:underline; margin-left:auto;">Exit preview</a>`;
+  main.prepend(banner);
+  const exit = $('exit-preview');
+  if (exit) exit.addEventListener('click', (e) => {
+    e.preventDefault();
+    sessionStorage.removeItem('1p_owner_preview');
+    location.reload();
+  });
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -411,9 +436,18 @@ async function main() {
   try { await loadEnrollments(); } catch (e) {}
   try { await loadCourseInterests(); } catch (e) {}
 
+  // Owner/admin content preview: a session-scoped flag lets owner/admins view
+  // any course (any status, even unenrolled) exactly as members will. Turned on
+  // by ?preview=1 and persisted per-tab so roadmap→lesson navigation keeps it.
+  let roleInfo = null;
+  try { if (firebaseReady && currentUser()) roleInfo = await getRoleInfo(); } catch (e) {}
+  const isAdmin = !!(roleInfo && roleInfo.isAdmin);
+  if (urlParam('preview') === '1' && isAdmin) sessionStorage.setItem('1p_owner_preview', '1');
+  const preview = isAdmin && sessionStorage.getItem('1p_owner_preview') === '1';
+
   const slug = courseSlug();
   const moduleId = moduleParam();
-  const course = slug ? getCourseBySlug(slug) : null;
+  const course = slug ? getCourseBySlug(slug, { includeInactive: preview }) : null;
 
   // Returning from Stripe checkout: the webhook writes the enrollment, which
   // can lag a moment behind the redirect. Poll briefly until it lands.
@@ -431,11 +465,11 @@ async function main() {
   if (!course) {
     renderSidebar(null);
     showWelcome();
-  } else if (course.status !== 'live') {
+  } else if (course.status !== 'live' && !preview) {
     renderSidebar(null);
     renderComingSoon(course);
     showComingSoon();
-  } else if (!isEnrolled(course.slug)) {
+  } else if (!isEnrolled(course.slug) && !preview) {
     // User landed on a course they aren't enrolled in — bounce back to welcome
     // and surface it in the Available list.
     renderSidebar(null);
@@ -462,13 +496,14 @@ async function main() {
     showRoadmap();
   }
 
-  // Shared header user chip.
-  let role = null;
+  // Owner preview banner (only the owner/admin sees this; members never do).
+  if (preview && course) renderPreviewBanner(course);
+
+  // Shared header user chip — reuse the role already fetched above.
+  const role = roleInfo ? roleInfo.role : null;
   let profile = null;
   try {
     if (firebaseReady && currentUser()) {
-      const info = await getRoleInfo();
-      role = info.role;
       try { profile = await getUserProfile(currentUser().uid); } catch (e) {}
     }
   } catch (e) {}
