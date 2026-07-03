@@ -161,6 +161,85 @@ async function seedDefaults() {
   } catch (e) { err(out, e); }
 }
 
+// ─── One-time content migration: "I Can't: The Course" ─────────────────────
+// The icant course ships its 8 lessons in code (icant-course.js). This copies
+// them into courses/icant/modules as editable rich-text lessons and flips the
+// course to contentSource:'firestore' so it renders from — and is editable in —
+// the database. Safe to re-run: setDoc merges by module id.
+
+function icantModuleToHtml(m, ALIGN) {
+  const e = escapeHtml;
+  const align = (ALIGN && ALIGN[m.alignKey]) || { label: '' };
+  const parts = [];
+  parts.push(`<p>${e(m.welcome)}</p>`);
+  if (m.coreTeaching) {
+    parts.push(`<h2>${e(m.coreTeaching.headline)}</h2>`);
+    parts.push('<ul>' + (m.coreTeaching.points || []).map((p) => `<li>${e(p)}</li>`).join('') + '</ul>');
+  }
+  if (m.alignIntegration) {
+    parts.push(`<h2>A.L.I.G.N. — ${e(align.label)}</h2>`);
+    parts.push(`<p>${e(m.alignIntegration.teaching)}</p>`);
+  }
+  if (m.workbook) {
+    parts.push('<h2>Workbook</h2>');
+    if (m.workbook.reflection) parts.push(`<p><strong>Reflection.</strong> ${e(m.workbook.reflection)}</p>`);
+    if (m.workbook.action) parts.push(`<p><strong>Action.</strong> ${e(m.workbook.action)}</p>`);
+    if (m.workbook.prompts && m.workbook.prompts.length) {
+      parts.push('<ul>' + m.workbook.prompts.map((p) => `<li>${e(p)}</li>`).join('') + '</ul>');
+    }
+  }
+  if (m.summary && m.summary.length) {
+    parts.push('<h2>Key Takeaways</h2>');
+    parts.push('<ul>' + m.summary.map((s) => `<li>${e(s)}</li>`).join('') + '</ul>');
+  }
+  if (m.bridge) {
+    parts.push('<h2>What’s Next</h2>');
+    parts.push(`<blockquote>${e(m.bridge)}</blockquote>`);
+  }
+  if (m.id === 1) {
+    parts.push('<p><em>Companion book:</em> <a href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">I Can’t: Is Not A Strategy →</a></p>');
+  }
+  if (m.id === 8) {
+    parts.push('<p><a href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">★ Leave an Amazon review →</a></p>');
+  }
+  return parts.join('\n');
+}
+
+async function migrateIcant() {
+  const out = $('seed-result');
+  if (!confirm('Migrate "I Can’t: The Course" into the editable content editor? This copies its 8 lessons into the database and switches the live course to render from there. You can re-run it safely.')) return;
+  out.innerHTML = '<div style="color:var(--gray-light); font-size:12px;">Migrating "I Can’t"…</div>';
+  try {
+    const { MODULES, ALIGN } = await import('./icant-course.js');
+    let wrote = 0;
+    for (const m of MODULES) {
+      const align = (ALIGN && ALIGN[m.alignKey]) || { label: '' };
+      const pillar = [m.chapterRef, align.label].filter(Boolean).join(' · ');
+      await setDoc(doc(db, 'courses', 'icant', 'modules', String(m.id)), {
+        id: m.id,
+        title: m.title,
+        subtitle: m.subtitle || null,
+        pillar: pillar || null,
+        duration: m.duration || null,
+        tagLabel: m.alignKey || null,
+        html: icantModuleToHtml(m, ALIGN),
+        sortOrder: m.id,
+        updatedAt: serverTimestamp(),
+        updatedBy: _userEmail
+      }, { merge: true });
+      wrote++;
+    }
+    await setDoc(doc(db, 'courses', 'icant'), {
+      contentSource: 'firestore',
+      moduleCount: MODULES.length,
+      updatedAt: serverTimestamp(),
+      updatedBy: _userEmail
+    }, { merge: true });
+    ok(out, `Migrated ${wrote} lessons. "I Can’t: The Course" is now editable below (click <b>Edit</b> on its row) and the live course renders from the database.`);
+    await refreshCourses();
+  } catch (e) { err(out, e); }
+}
+
 // ─── Course details editor ────────────────────────────────────────────────
 
 function openCourseEditor(slug) {
@@ -592,6 +671,8 @@ async function main() {
   $('panel').style.display = 'block';
 
   $('btn-seed').addEventListener('click', seedDefaults);
+  const btnMigrateIcant = $('btn-migrate-icant');
+  if (btnMigrateIcant) btnMigrateIcant.addEventListener('click', migrateIcant);
   $('btn-add-course').addEventListener('click', () => openCourseEditor(null));
   $('btn-editor-cancel').addEventListener('click', () => { $('course-editor-card').style.display = 'none'; });
   $('course-editor-form').addEventListener('submit', saveCourse);

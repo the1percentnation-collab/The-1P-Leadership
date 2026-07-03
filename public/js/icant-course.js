@@ -1,7 +1,7 @@
 // I Can't: The Course — vanilla JS course workspace
 // Mounted via courses-registry.js when ?course=icant&module=N is active.
 
-const ALIGN = {
+export const ALIGN = {
   A: { label: 'Awareness',  desc: 'Seeing the belief clearly' },
   L: { label: 'Leadership', desc: 'Taking ownership of your story' },
   I: { label: 'Identity',   desc: 'Rewriting who you believe you are' },
