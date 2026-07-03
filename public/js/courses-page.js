@@ -480,7 +480,10 @@ async function main() {
     renderCourseHero(course);
     showModule();
     try {
-      if (typeof course.mount === 'function') {
+      // A course migrated to the editor (contentSource === 'firestore') always
+      // renders via the generic Firestore-backed renderer, even if a code
+      // `mount` still exists in the registry — the database is the source of truth.
+      if (course.contentSource !== 'firestore' && typeof course.mount === 'function') {
         await course.mount({ startAt: moduleId });
       } else {
         // Courses authored in /manage-courses.html render via the generic
