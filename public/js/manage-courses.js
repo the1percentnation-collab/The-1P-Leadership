@@ -90,15 +90,32 @@ async function refreshCourses() {
       STATUS_OPTS.map(([v, l]) =>
         `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('') +
       `</select>`;
-    const contentKind = (c.contentSource === 'firestore' || !CODE_CONTENT_SLUGS.has(c.slug))
-      ? 'Editable' : 'Built-in';
+    const basePrice = typeof c.price === 'number' ? c.price : '';
+    const salePrice = typeof c.salePrice === 'number' ? c.salePrice : '';
+    const priceInput = `<input class="row-num" type="number" min="0" step="0.01" data-price="${slug}" value="${basePrice}" placeholder="—" title="Regular price">`;
+    const saleInput = `<input class="row-num" type="number" min="0" step="0.01" data-sale="${slug}" value="${salePrice}" placeholder="—" title="Sale price">`;
+
+    const billingVal = p.isSubscription
+      ? `subscription-${(c.pricing && c.pricing.interval) || 'month'}`
+      : 'one-time';
+    const billingSel = `<select class="row-status" data-billing="${slug}" title="Change billing">` +
+      [['one-time', 'One-time'], ['subscription-month', 'Monthly'], ['subscription-year', 'Yearly']]
+        .map(([v, l]) => `<option value="${v}"${v === billingVal ? ' selected' : ''}>${l}</option>`).join('') +
+      `</select>`;
+
+    const contentVal = (c.contentSource === 'firestore' || !CODE_CONTENT_SLUGS.has(c.slug))
+      ? 'firestore' : 'code';
+    const contentSel = `<select class="row-status" data-content="${slug}" title="Change content source">` +
+      [['firestore', 'Editable'], ['code', 'Built-in']]
+        .map(([v, l]) => `<option value="${v}"${v === contentVal ? ' selected' : ''}>${l}</option>`).join('') +
+      `</select>`;
     return `<tr>
       <td><a href="#" class="course-open" data-open="${slug}" title="Open the course builder"><b>${escapeHtml(c.title)}</b></a><br><span style="font-size:11px; color:var(--gray-mid);">${escapeHtml(c.slug)}</span></td>
       <td>${statusSel}</td>
-      <td class="num">${escapeHtml(p.onSale ? p.originalLabel : (p.label || '—'))}</td>
-      <td class="num">${p.onSale ? escapeHtml(p.label) : '—'}</td>
-      <td>${p.isSubscription ? `Subscription${p.intervalSuffix}` : 'One-time'}</td>
-      <td>${contentKind}</td>
+      <td class="num">${priceInput}</td>
+      <td class="num">${saleInput}</td>
+      <td>${billingSel}</td>
+      <td>${contentSel}</td>
       <td style="text-align:right; white-space:nowrap;">
         <span class="kebab" data-kebab>
           <button class="kebab-btn" type="button" aria-label="More actions" data-kebab-toggle>⋯</button>
@@ -120,6 +137,14 @@ async function refreshCourses() {
     b.addEventListener('click', () => deleteCourse(b.dataset.delCourse)));
   body.querySelectorAll('[data-status]').forEach((sel) =>
     sel.addEventListener('change', () => setCourseStatus(sel.dataset.status, sel.value)));
+  body.querySelectorAll('[data-price]').forEach((inp) =>
+    inp.addEventListener('change', () => setCoursePrice(inp.dataset.price, inp.value)));
+  body.querySelectorAll('[data-sale]').forEach((inp) =>
+    inp.addEventListener('change', () => setCourseSale(inp.dataset.sale, inp.value)));
+  body.querySelectorAll('[data-billing]').forEach((sel) =>
+    sel.addEventListener('change', () => setCourseBilling(sel.dataset.billing, sel.value)));
+  body.querySelectorAll('[data-content]').forEach((sel) =>
+    sel.addEventListener('change', () => setCourseContent(sel.dataset.content, sel.value)));
   body.querySelectorAll('[data-kebab-toggle]').forEach((b) =>
     b.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -164,6 +189,77 @@ async function setCourseStatus(slug, status) {
   } catch (e) {
     alert(`Could not update status: ${e && e.message ? e.message : e}`);
   }
+}
+
+// Shared merge-write for the inline list editors. Always stamps updatedAt/By.
+async function writeCourseField(slug, fields, failMsg) {
+  try {
+    await setDoc(doc(db, 'courses', slug), {
+      ...fields,
+      updatedAt: serverTimestamp(),
+      updatedBy: _userEmail
+    }, { merge: true });
+    await refreshCourses();
+  } catch (e) {
+    alert(`${failMsg}: ${e && e.message ? e.message : e}`);
+    await refreshCourses();
+  }
+}
+
+// Inline price edit from the course list. Clears the seeded priceLabel so the
+// displayed price always derives from `price` (matches saveCourse()).
+async function setCoursePrice(slug, raw) {
+  const price = raw === '' ? null : Number(raw);
+  if (price != null && (!Number.isFinite(price) || price < 0)) {
+    alert('Enter a valid price.');
+    await refreshCourses();
+    return;
+  }
+  const c = getCourses({ includeInactive: true }).find((x) => x.slug === slug);
+  const sale = c && typeof c.salePrice === 'number' ? c.salePrice : null;
+  if (price != null && sale != null && sale >= price) {
+    alert('Regular price must be higher than the current sale price.');
+    await refreshCourses();
+    return;
+  }
+  await writeCourseField(slug, { price, priceLabel: null }, 'Could not update price');
+}
+
+// Inline sale-price edit. Empty clears the sale; otherwise must be below price.
+async function setCourseSale(slug, raw) {
+  const salePrice = raw === '' ? null : Number(raw);
+  if (salePrice != null && (!Number.isFinite(salePrice) || salePrice < 0)) {
+    alert('Enter a valid sale price.');
+    await refreshCourses();
+    return;
+  }
+  const c = getCourses({ includeInactive: true }).find((x) => x.slug === slug);
+  const price = c && typeof c.price === 'number' ? c.price : null;
+  if (salePrice != null && price != null && salePrice >= price) {
+    alert('Sale price must be lower than the regular price.');
+    await refreshCourses();
+    return;
+  }
+  await writeCourseField(slug, { salePrice }, 'Could not update sale price');
+}
+
+// Inline billing edit — one-time vs subscription (monthly/yearly).
+async function setCourseBilling(slug, value) {
+  const mode = value.startsWith('subscription') ? 'subscription' : 'one-time';
+  const interval = mode === 'subscription' ? value.split('-')[1] : null;
+  await writeCourseField(slug, { pricing: { mode, interval } }, 'Could not update billing');
+}
+
+// Inline content-source edit — Editable (firestore) vs Built-in (code).
+async function setCourseContent(slug, value) {
+  const source = value === 'code' ? 'code' : 'firestore';
+  if (source === 'firestore' && CODE_CONTENT_SLUGS.has(slug)) {
+    if (!confirm('Switch this course to editable content? Its lessons will render from the database. If you haven’t migrated them yet, the course may appear empty until you add modules.')) {
+      await refreshCourses();
+      return;
+    }
+  }
+  await writeCourseField(slug, { contentSource: source }, 'Could not update content source');
 }
 
 // Open the member course page in owner preview mode (bypasses status/enrollment
