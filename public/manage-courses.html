@@ -33,146 +33,187 @@
       <div id="gate-msg"></div>
       <div id="panel" style="display:none;">
 
-        <div class="card" id="courses-card">
-          <h2>Courses</h2>
-          <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
-            Edit course details, pricing, and discounts, and control what shows on the site.
-            <b>Live</b> = enrollable · <b>Coming soon</b> = visible, not enrollable ·
-            <b>Inactive</b> = hidden from the course library.
-          </p>
-          <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
-            <button class="btn btn-primary" id="btn-add-course">+ Add course</button>
-            <button class="btn btn-ghost" id="btn-seed">Seed built-in courses to database</button>
-            <button class="btn btn-ghost" id="btn-migrate-icant" title="Copy the I Can't: The Course lessons from code into the editable content editor">Migrate “I Can’t” to editable content</button>
-          </div>
-          <div id="seed-result"></div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Course</th>
-                <th>Status</th>
-                <th>Price</th>
-                <th>Sale</th>
-                <th>Billing</th>
-                <th>Content</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="courses-body"></tbody>
-          </table>
-        </div>
+        <nav class="console-tabs" id="console-tabs" aria-label="Sections">
+          <button class="console-tab is-active" type="button" id="tab-courses" data-view="courses">Courses</button>
+          <button class="console-tab" type="button" id="tab-coupons" data-view="coupons">Coupons</button>
+        </nav>
 
-        <div class="card" id="course-editor-card" style="display:none;">
-          <h2 id="course-editor-title">Edit course</h2>
-          <form id="course-editor-form">
-            <div class="inline-form" style="flex-wrap:wrap;">
-              <div class="field"><label for="f-title">Title</label><input id="f-title" type="text" required></div>
-              <div class="field" style="max-width:160px;"><label for="f-short">Short name</label><input id="f-short" type="text"></div>
-              <div class="field" style="max-width:180px;"><label for="f-slug">Slug (URL id)</label><input id="f-slug" type="text" pattern="[a-z0-9-]+"></div>
-            </div>
-            <div class="field" style="margin-top:10px;"><label for="f-subtitle">Subtitle / description</label><input id="f-subtitle" type="text"></div>
-            <div class="inline-form" style="flex-wrap:wrap; margin-top:10px;">
-              <div class="field"><label for="f-eyebrow">Eyebrow (e.g. "Self-paced · 5 Modules")</label><input id="f-eyebrow" type="text"></div>
-              <div class="field"><label for="f-pricenote">Price note</label><input id="f-pricenote" type="text"></div>
-            </div>
-            <div class="inline-form" style="flex-wrap:wrap; margin-top:10px;">
-              <div class="field" style="max-width:140px;"><label for="f-price">Price ($)</label><input id="f-price" type="number" min="0" step="0.01"></div>
-              <div class="field" style="max-width:140px;"><label for="f-saleprice">Sale price ($)</label><input id="f-saleprice" type="number" min="0" step="0.01" placeholder="optional"></div>
-              <div class="field" style="max-width:170px;">
-                <label for="f-status">Status</label>
-                <select id="f-status">
-                  <option value="live">Live (enrollable)</option>
-                  <option value="coming-soon">Coming soon</option>
-                  <option value="inactive">Inactive (hidden)</option>
-                  <option value="bundle">Bundle (links out)</option>
-                </select>
+        <!-- ─── Courses list (landing) ─────────────────────────────────── -->
+        <div id="courses-view">
+          <div class="card" id="courses-card">
+            <div class="builder-head" style="margin-bottom:6px;">
+              <h2 style="margin-bottom:0;">Courses</h2>
+              <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn btn-primary" id="btn-add-course">+ Add course</button>
+                <button class="btn btn-ghost" id="btn-seed">Seed built-in courses to database</button>
+                <button class="btn btn-ghost" id="btn-migrate-icant" title="Copy the I Can't: The Course lessons from code into the editable content editor">Migrate “I Can’t” to editable content</button>
               </div>
-              <div class="field" style="max-width:170px;">
-                <label for="f-mode">Billing</label>
-                <select id="f-mode">
-                  <option value="one-time">One-time payment</option>
-                  <option value="subscription">Subscription</option>
-                </select>
-              </div>
-              <div class="field" style="max-width:140px;">
-                <label for="f-interval">Interval</label>
-                <select id="f-interval" disabled>
-                  <option value="month">Monthly</option>
-                  <option value="year">Yearly</option>
-                </select>
-              </div>
-              <div class="field" style="max-width:110px;"><label for="f-sort">Sort order</label><input id="f-sort" type="number" step="1"></div>
             </div>
-            <div style="display:flex; gap:10px; margin-top:14px;">
-              <button class="btn btn-primary" type="submit">Save course</button>
-              <button class="btn btn-ghost" type="button" id="btn-editor-cancel">Cancel</button>
-            </div>
-          </form>
-          <div id="course-editor-result" style="margin-top:10px;"></div>
-        </div>
-
-        <div class="card" id="content-card" style="display:none;">
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-            <h2 id="content-title">Course content</h2>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button class="btn btn-ghost" type="button" id="btn-course-details" style="font-size:12px;">Course details &amp; pricing</button>
-              <button class="btn btn-ghost" type="button" id="btn-preview-course" style="font-size:12px;">Preview course →</button>
-            </div>
-          </div>
-          <div id="content-note" style="font-size:13px; color:var(--gray-light); margin-bottom:12px;"></div>
-          <div id="modules-list"></div>
-          <button class="btn btn-primary" id="btn-add-module" style="margin-top:10px;">+ Add module</button>
-
-          <div id="module-editor" style="display:none; margin-top:18px; border-top:1px solid rgba(255,255,255,.08); padding-top:18px;">
-            <h3 id="module-editor-title" style="margin-bottom:10px;">Edit module</h3>
-            <div class="inline-form" style="flex-wrap:wrap;">
-              <div class="field"><label for="m-title">Module title</label><input id="m-title" type="text" required></div>
-              <div class="field"><label for="m-subtitle">Subtitle</label><input id="m-subtitle" type="text"></div>
-            </div>
-            <div class="inline-form" style="flex-wrap:wrap; margin-top:10px;">
-              <div class="field" style="max-width:200px;"><label for="m-pillar">Section / pillar label</label><input id="m-pillar" type="text"></div>
-              <div class="field" style="max-width:140px;"><label for="m-duration">Duration</label><input id="m-duration" type="text" placeholder="15 min"></div>
-              <div class="field" style="max-width:140px;"><label for="m-taglabel">Tag label</label><input id="m-taglabel" type="text" placeholder="LESSON"></div>
-            </div>
-            <div class="field" style="margin-top:14px;">
-              <label>Lesson content</label>
-              <div style="background:#fff; color:#111; border-radius:8px;">
-                <div id="m-quill" style="min-height:260px;"></div>
-              </div>
-              <button class="btn btn-ghost" type="button" id="btn-html-toggle" style="margin-top:8px; font-size:12px;">Edit HTML source</button>
-              <button class="btn btn-ghost" type="button" id="btn-preview-toggle" style="margin-top:8px; margin-left:8px; font-size:12px;">Preview</button>
-              <textarea id="m-html" style="display:none; width:100%; min-height:260px; margin-top:8px; font-family:'Space Mono',monospace; font-size:12px;"></textarea>
-              <div id="m-preview" style="display:none; margin-top:8px; background:var(--black, #0b0b0b); border:1px solid rgba(255,255,255,.08); border-radius:8px; padding:20px;"></div>
-            </div>
-            <div style="display:flex; gap:10px; margin-top:14px;">
-              <button class="btn btn-primary" type="button" id="btn-module-save">Save module</button>
-              <button class="btn btn-ghost" type="button" id="btn-module-cancel">Cancel</button>
-            </div>
-            <div id="module-editor-result" style="margin-top:10px;"></div>
+            <p style="font-size:13px; color:var(--gray-light); margin:6px 0 12px;">
+              Click a course to open its builder. <b>Live</b> = enrollable ·
+              <b>Coming soon</b> = visible, not enrollable · <b>Inactive</b> = hidden from the library.
+            </p>
+            <div id="seed-result"></div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Course</th>
+                  <th>Status</th>
+                  <th>Price</th>
+                  <th>Sale</th>
+                  <th>Billing</th>
+                  <th>Content</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="courses-body"></tbody>
+            </table>
           </div>
         </div>
 
-        <div class="card" id="coupons-card">
-          <h2>Coupon codes</h2>
-          <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
-            Coupon codes are redeemed on the secure checkout page. After creating one, click
-            <b>Sync to Stripe</b> so it becomes redeemable (requires Stripe to be configured).
-            For a simple sale shown directly on the site, use the course's <b>Sale price</b> instead.
-          </p>
-          <form class="inline-form" id="coupon-form" style="flex-wrap:wrap;">
-            <div class="field" style="max-width:160px;"><label for="cp-code">Code</label><input id="cp-code" type="text" required placeholder="WELCOME20"></div>
-            <div class="field" style="max-width:130px;"><label for="cp-percent">% off</label><input id="cp-percent" type="number" min="1" max="100" placeholder="20"></div>
-            <div class="field" style="max-width:130px;"><label for="cp-amount">or $ off</label><input id="cp-amount" type="number" min="1" step="0.01"></div>
-            <div class="field" style="max-width:170px;"><label for="cp-expires">Expires (optional)</label><input id="cp-expires" type="date"></div>
-            <button class="btn btn-primary" type="submit">Create coupon</button>
-          </form>
-          <div id="coupon-result" style="margin-top:10px;"></div>
-          <table class="data-table" style="margin-top:14px;">
-            <thead>
-              <tr><th>Code</th><th>Discount</th><th>Expires</th><th>Status</th><th>Stripe</th><th></th></tr>
-            </thead>
-            <tbody id="coupons-body"></tbody>
-          </table>
+        <!-- ─── Course builder (drill-in) ──────────────────────────────── -->
+        <div id="builder-view" style="display:none;">
+          <div class="builder-head">
+            <div>
+              <a href="#" class="builder-back" id="btn-builder-back">&larr; All courses</a>
+              <h2 id="builder-title" style="margin:6px 0 0;">Building course</h2>
+            </div>
+            <button class="btn btn-ghost" type="button" id="btn-preview-course" style="font-size:12px;">Preview course →</button>
+          </div>
+
+          <!-- Details & pricing -->
+          <details class="builder-section" id="section-details" open>
+            <summary>Details &amp; pricing</summary>
+            <div class="builder-section-body">
+              <form id="course-editor-form">
+                <div class="inline-form" style="flex-wrap:wrap;">
+                  <div class="field"><label for="f-title">Title</label><input id="f-title" type="text" required></div>
+                  <div class="field" style="max-width:160px;"><label for="f-short">Short name</label><input id="f-short" type="text"></div>
+                  <div class="field" style="max-width:180px;"><label for="f-slug">Slug (URL id)</label><input id="f-slug" type="text" pattern="[a-z0-9-]+"></div>
+                </div>
+                <div class="field" style="margin-top:10px;"><label for="f-subtitle">Subtitle / description</label><input id="f-subtitle" type="text"></div>
+                <div class="inline-form" style="flex-wrap:wrap; margin-top:10px;">
+                  <div class="field"><label for="f-eyebrow">Eyebrow (e.g. "Self-paced · 5 Modules")</label><input id="f-eyebrow" type="text"></div>
+                  <div class="field"><label for="f-pricenote">Price note</label><input id="f-pricenote" type="text"></div>
+                </div>
+                <div class="inline-form" style="flex-wrap:wrap; margin-top:10px;">
+                  <div class="field" style="max-width:140px;"><label for="f-price">Price ($)</label><input id="f-price" type="number" min="0" step="0.01"></div>
+                  <div class="field" style="max-width:140px;"><label for="f-saleprice">Sale price ($)</label><input id="f-saleprice" type="number" min="0" step="0.01" placeholder="optional"></div>
+                  <div class="field" style="max-width:170px;">
+                    <label for="f-status">Status</label>
+                    <select id="f-status">
+                      <option value="live">Live (enrollable)</option>
+                      <option value="coming-soon">Coming soon</option>
+                      <option value="inactive">Inactive (hidden)</option>
+                      <option value="bundle">Bundle (links out)</option>
+                    </select>
+                  </div>
+                  <div class="field" style="max-width:170px;">
+                    <label for="f-mode">Billing</label>
+                    <select id="f-mode">
+                      <option value="one-time">One-time payment</option>
+                      <option value="subscription">Subscription</option>
+                    </select>
+                  </div>
+                  <div class="field" style="max-width:140px;">
+                    <label for="f-interval">Interval</label>
+                    <select id="f-interval" disabled>
+                      <option value="month">Monthly</option>
+                      <option value="year">Yearly</option>
+                    </select>
+                  </div>
+                  <div class="field" style="max-width:110px;"><label for="f-sort">Sort order</label><input id="f-sort" type="number" step="1"></div>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:14px;">
+                  <button class="btn btn-primary" type="submit">Save details</button>
+                </div>
+              </form>
+              <div id="course-editor-result" style="margin-top:10px;"></div>
+            </div>
+          </details>
+
+          <!-- Curriculum -->
+          <details class="builder-section" id="section-curriculum">
+            <summary>Curriculum</summary>
+            <div class="builder-section-body" id="content-card">
+              <div id="content-note" style="font-size:13px; color:var(--gray-light); margin-bottom:12px;"></div>
+              <div id="modules-list"></div>
+              <button class="btn btn-primary" id="btn-add-module" style="margin-top:10px;">+ Add module</button>
+
+              <div id="module-editor" style="display:none; margin-top:18px; border-top:1px solid rgba(255,255,255,.08); padding-top:18px;">
+                <h3 id="module-editor-title" style="margin-bottom:10px;">Edit module</h3>
+                <div class="inline-form" style="flex-wrap:wrap;">
+                  <div class="field"><label for="m-title">Module title</label><input id="m-title" type="text" required></div>
+                  <div class="field"><label for="m-subtitle">Subtitle</label><input id="m-subtitle" type="text"></div>
+                </div>
+                <div class="inline-form" style="flex-wrap:wrap; margin-top:10px;">
+                  <div class="field" style="max-width:200px;"><label for="m-pillar">Section / pillar label</label><input id="m-pillar" type="text"></div>
+                  <div class="field" style="max-width:140px;"><label for="m-duration">Duration</label><input id="m-duration" type="text" placeholder="15 min"></div>
+                  <div class="field" style="max-width:140px;"><label for="m-taglabel">Tag label</label><input id="m-taglabel" type="text" placeholder="LESSON"></div>
+                </div>
+                <div class="field" style="margin-top:14px;">
+                  <label>Lesson content</label>
+                  <div style="background:#fff; color:#111; border-radius:8px;">
+                    <div id="m-quill" style="min-height:260px;"></div>
+                  </div>
+                  <button class="btn btn-ghost" type="button" id="btn-html-toggle" style="margin-top:8px; font-size:12px;">Edit HTML source</button>
+                  <button class="btn btn-ghost" type="button" id="btn-preview-toggle" style="margin-top:8px; margin-left:8px; font-size:12px;">Preview</button>
+                  <textarea id="m-html" style="display:none; width:100%; min-height:260px; margin-top:8px; font-family:'Space Mono',monospace; font-size:12px;"></textarea>
+                  <div id="m-preview" style="display:none; margin-top:8px; background:var(--black, #0b0b0b); border:1px solid rgba(255,255,255,.08); border-radius:8px; padding:20px;"></div>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:14px;">
+                  <button class="btn btn-primary" type="button" id="btn-module-save">Save module</button>
+                  <button class="btn btn-ghost" type="button" id="btn-module-cancel">Cancel</button>
+                </div>
+                <div id="module-editor-result" style="margin-top:10px;"></div>
+              </div>
+            </div>
+          </details>
+
+          <!-- Publish -->
+          <details class="builder-section" id="section-publish">
+            <summary>Publish</summary>
+            <div class="builder-section-body">
+              <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+                Control what shows on the site. <b>Live</b> makes the course enrollable;
+                <b>Coming soon</b> shows it without checkout; <b>Inactive</b> hides it entirely.
+              </p>
+              <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <button class="btn btn-ghost" type="button" id="btn-publish-live" style="color:var(--green, #2ecc71);">Publish (go live)</button>
+                <button class="btn btn-ghost" type="button" id="btn-publish-soon">Set coming soon</button>
+                <button class="btn btn-ghost" type="button" id="btn-publish-inactive" style="color:var(--red);">Unpublish (hide)</button>
+                <span style="flex:1;"></span>
+                <button class="btn btn-ghost" type="button" id="btn-delete-course" style="color:var(--red);">Delete course</button>
+              </div>
+              <div id="publish-result" style="margin-top:10px;"></div>
+            </div>
+          </details>
+        </div>
+
+        <!-- ─── Coupons ────────────────────────────────────────────────── -->
+        <div id="coupons-view" style="display:none;">
+          <div class="card" id="coupons-card">
+            <h2>Coupon codes</h2>
+            <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+              Coupon codes are redeemed on the secure checkout page. After creating one, click
+              <b>Sync to Stripe</b> so it becomes redeemable (requires Stripe to be configured).
+              For a simple sale shown directly on the site, use the course's <b>Sale price</b> instead.
+            </p>
+            <form class="inline-form" id="coupon-form" style="flex-wrap:wrap;">
+              <div class="field" style="max-width:160px;"><label for="cp-code">Code</label><input id="cp-code" type="text" required placeholder="WELCOME20"></div>
+              <div class="field" style="max-width:130px;"><label for="cp-percent">% off</label><input id="cp-percent" type="number" min="1" max="100" placeholder="20"></div>
+              <div class="field" style="max-width:130px;"><label for="cp-amount">or $ off</label><input id="cp-amount" type="number" min="1" step="0.01"></div>
+              <div class="field" style="max-width:170px;"><label for="cp-expires">Expires (optional)</label><input id="cp-expires" type="date"></div>
+              <button class="btn btn-primary" type="submit">Create coupon</button>
+            </form>
+            <div id="coupon-result" style="margin-top:10px;"></div>
+            <table class="data-table" style="margin-top:14px;">
+              <thead>
+                <tr><th>Code</th><th>Discount</th><th>Expires</th><th>Status</th><th>Stripe</th><th></th></tr>
+              </thead>
+              <tbody id="coupons-body"></tbody>
+            </table>
+          </div>
         </div>
 
       </div>

@@ -49,6 +49,23 @@ let _modules = [];
 let _editingModuleId = null;
 let _quill = null;
 
+// ─── View router ────────────────────────────────────────────────────────────
+// Three top-level views live under #panel: the course list, the single-course
+// builder, and the coupons manager. Only one shows at a time.
+
+function showView(name) {
+  const views = { courses: 'courses-view', builder: 'builder-view', coupons: 'coupons-view' };
+  Object.entries(views).forEach(([key, id]) => {
+    const el = $(id);
+    if (el) el.style.display = key === name ? 'block' : 'none';
+  });
+  // The builder isn't a real tab — highlight Courses while it's open.
+  const activeTab = name === 'coupons' ? 'coupons' : 'courses';
+  document.querySelectorAll('.console-tab').forEach((t) =>
+    t.classList.toggle('is-active', t.dataset.view === activeTab));
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
 // ─── Course list ──────────────────────────────────────────────────────────
 
 async function refreshCourses() {
@@ -59,43 +76,78 @@ async function refreshCourses() {
     body.innerHTML = `<tr><td colspan="7" style="color:var(--gray-mid);">No courses yet.</td></tr>`;
     return;
   }
+  const STATUS_OPTS = [
+    ['live', 'Live'],
+    ['coming-soon', 'Coming soon'],
+    ['inactive', 'Inactive'],
+    ['bundle', 'Bundle']
+  ];
   body.innerHTML = courses.map((c) => {
     const p = priceInfo(c);
-    const statusChip = {
-      'live': '<span class="auth-ok" style="font-size:12px;">Live</span>',
-      'coming-soon': '<span style="color:var(--gray-light); font-size:12px;">Coming soon</span>',
-      'inactive': '<span style="color:var(--red); font-size:12px;">Inactive</span>',
-      'bundle': '<span style="color:var(--gray-light); font-size:12px;">Bundle</span>'
-    }[c.status] || escapeHtml(c.status || '—');
+    const slug = escapeHtml(c.slug);
+    const cur = c.status || 'coming-soon';
+    const statusSel = `<select class="row-status status-${escapeHtml(cur)}" data-status="${slug}" title="Change status">` +
+      STATUS_OPTS.map(([v, l]) =>
+        `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('') +
+      `</select>`;
     const contentKind = (c.contentSource === 'firestore' || !CODE_CONTENT_SLUGS.has(c.slug))
       ? 'Editable' : 'Built-in';
     return `<tr>
-      <td><a href="manage-courses.html?content=${encodeURIComponent(c.slug)}" target="_blank" rel="noopener" title="Open this course's content editor in a new window" style="color:inherit; text-decoration:underline;"><b>${escapeHtml(c.title)}</b></a><br><span style="font-size:11px; color:var(--gray-mid);">${escapeHtml(c.slug)}</span></td>
-      <td>${statusChip}</td>
+      <td><a href="#" class="course-open" data-open="${slug}" title="Open the course builder"><b>${escapeHtml(c.title)}</b></a><br><span style="font-size:11px; color:var(--gray-mid);">${escapeHtml(c.slug)}</span></td>
+      <td>${statusSel}</td>
       <td class="num">${escapeHtml(p.onSale ? p.originalLabel : (p.label || '—'))}</td>
       <td class="num">${p.onSale ? escapeHtml(p.label) : '—'}</td>
       <td>${p.isSubscription ? `Subscription${p.intervalSuffix}` : 'One-time'}</td>
       <td>${contentKind}</td>
-      <td style="white-space:nowrap;">
-        ${c.status !== 'live' ? `<button class="btn btn-ghost" data-status-live="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px; color:var(--green, #2ecc71);">Publish</button>` : ''}
-        ${c.status === 'live' ? `<button class="btn btn-ghost" data-status-inactive="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px; color:var(--red);">Unpublish</button>` : ''}
-        ${c.status !== 'coming-soon' ? `<button class="btn btn-ghost" data-status-soon="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Coming soon</button>` : ''}
-        <button class="btn btn-ghost" data-preview="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Preview</button>
-        <button class="btn btn-ghost" data-content="${escapeHtml(c.slug)}" style="padding:2px 8px; font-size:11px;">Edit</button>
+      <td style="text-align:right; white-space:nowrap;">
+        <span class="kebab" data-kebab>
+          <button class="kebab-btn" type="button" aria-label="More actions" data-kebab-toggle>⋯</button>
+          <span class="kebab-menu">
+            <button type="button" data-open="${slug}">Open builder</button>
+            <button type="button" data-preview="${slug}">Preview</button>
+            <button type="button" class="kebab-danger" data-del-course="${slug}">Delete</button>
+          </span>
+        </span>
       </td>
     </tr>`;
   }).join('');
 
-  body.querySelectorAll('[data-content]').forEach((b) =>
-    b.addEventListener('click', () => openContent(b.dataset.content)));
+  body.querySelectorAll('[data-open]').forEach((b) =>
+    b.addEventListener('click', (e) => { e.preventDefault(); openBuilder(b.dataset.open); }));
   body.querySelectorAll('[data-preview]').forEach((b) =>
     b.addEventListener('click', () => previewCourse(b.dataset.preview)));
-  body.querySelectorAll('[data-status-live]').forEach((b) =>
-    b.addEventListener('click', () => setCourseStatus(b.dataset.statusLive, 'live')));
-  body.querySelectorAll('[data-status-inactive]').forEach((b) =>
-    b.addEventListener('click', () => setCourseStatus(b.dataset.statusInactive, 'inactive')));
-  body.querySelectorAll('[data-status-soon]').forEach((b) =>
-    b.addEventListener('click', () => setCourseStatus(b.dataset.statusSoon, 'coming-soon')));
+  body.querySelectorAll('[data-del-course]').forEach((b) =>
+    b.addEventListener('click', () => deleteCourse(b.dataset.delCourse)));
+  body.querySelectorAll('[data-status]').forEach((sel) =>
+    sel.addEventListener('change', () => setCourseStatus(sel.dataset.status, sel.value)));
+  body.querySelectorAll('[data-kebab-toggle]').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const menu = b.closest('[data-kebab]');
+      const wasOpen = menu.classList.contains('open');
+      closeKebabs();
+      if (!wasOpen) menu.classList.add('open');
+    }));
+}
+
+// Close any open row kebab menu (also wired to a document click in main()).
+function closeKebabs() {
+  document.querySelectorAll('[data-kebab].open').forEach((m) => m.classList.remove('open'));
+}
+
+// Owner-only hard delete of a course doc. Leaves the modules subcollection
+// orphaned (Firestore can't cascade client-side); gated behind a confirm.
+async function deleteCourse(slug) {
+  if (!slug) return;
+  const c = getCourses({ includeInactive: true }).find((x) => x.slug === slug);
+  if (!confirm(`Delete "${c ? c.title : slug}"? This removes the course. This cannot be undone.`)) return;
+  try {
+    await deleteDoc(doc(db, 'courses', slug));
+    if (_editingSlug === slug) showView('courses');
+    await refreshCourses();
+  } catch (e) {
+    alert(`Could not delete course: ${e && e.message ? e.message : e}`);
+  }
 }
 
 // Quick status flip from the course list — Publish (live) / Unpublish (inactive) /
@@ -235,20 +287,36 @@ async function migrateIcant() {
       updatedAt: serverTimestamp(),
       updatedBy: _userEmail
     }, { merge: true });
-    ok(out, `Migrated ${wrote} lessons. "I Can’t: The Course" is now editable below (click <b>Edit</b> on its row) and the live course renders from the database.`);
+    ok(out, `Migrated ${wrote} lessons. "I Can’t: The Course" is now editable — open its builder from the list and expand <b>Curriculum</b> — and the live course renders from the database.`);
     await refreshCourses();
   } catch (e) { err(out, e); }
 }
 
-// ─── Course details editor ────────────────────────────────────────────────
+// ─── Course builder ─────────────────────────────────────────────────────────
+// One workspace per course: the details/pricing form, the curriculum editor,
+// and publish controls, all in the drill-in builder view. `slug === null`
+// opens a blank builder for a new course.
 
-function openCourseEditor(slug) {
+function openBuilder(slug) {
   _editingSlug = slug || null;
+  _contentSlug = slug || null;
   const c = slug ? getCourses({ includeInactive: true }).find((x) => x.slug === slug) : null;
-  $('course-editor-card').style.display = 'block';
-  $('course-editor-title').textContent = c ? `Edit: ${c.title}` : 'Add a new course';
-  $('course-editor-result').innerHTML = '';
 
+  showView('builder');
+  $('builder-title').textContent = c ? `Building: ${c.title}` : 'Add a new course';
+  fillDetailsForm(c);
+
+  // Curriculum + publish only make sense once the course exists. For a new
+  // (unsaved) course, collapse/hide them until the first save creates the doc.
+  const isNew = !c;
+  $('section-curriculum').style.display = isNew ? 'none' : '';
+  $('section-publish').style.display = isNew ? 'none' : '';
+  $('section-details').open = true;
+  if (!isNew) openContent(slug);
+}
+
+function fillDetailsForm(c) {
+  $('course-editor-result').innerHTML = '';
   $('f-title').value = c ? (c.title || '') : '';
   $('f-short').value = c ? (c.short || '') : '';
   $('f-slug').value = c ? c.slug : '';
@@ -264,8 +332,6 @@ function openCourseEditor(slug) {
   $('f-interval').disabled = mode !== 'subscription';
   $('f-interval').value = (c && c.pricing && c.pricing.interval) || 'month';
   $('f-sort').value = c && typeof c.sortOrder === 'number' ? c.sortOrder : getCourses({ includeInactive: true }).length;
-
-  $('course-editor-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function saveCourse(e) {
@@ -301,7 +367,8 @@ async function saveCourse(e) {
       updatedAt: serverTimestamp(),
       updatedBy: _userEmail
     };
-    if (!_editingSlug) {
+    const wasNew = !_editingSlug;
+    if (wasNew) {
       data.contentSource = 'firestore';
       data.moduleCount = 0;
     }
@@ -309,7 +376,15 @@ async function saveCourse(e) {
     ok(out, `Saved <b>${escapeHtml(title)}</b>.`);
     _editingSlug = slug;
     $('f-slug').disabled = true;
+    $('builder-title').textContent = `Building: ${title}`;
     await refreshCourses();
+    // First save of a brand-new course: reveal the curriculum + publish
+    // sections now that the course doc exists, and load its (empty) modules.
+    if (wasNew) {
+      $('section-curriculum').style.display = '';
+      $('section-publish').style.display = '';
+      await openContent(slug);
+    }
   } catch (e2) { err(out, e2); }
 }
 
@@ -319,18 +394,15 @@ async function openContent(slug) {
   _contentSlug = slug;
   _editingModuleId = null;
   const c = getCourses({ includeInactive: true }).find((x) => x.slug === slug);
-  $('content-card').style.display = 'block';
   $('module-editor').style.display = 'none';
-  $('content-title').textContent = `Content: ${c ? c.title : slug}`;
 
   const isCode = c && c.contentSource !== 'firestore' && CODE_CONTENT_SLUGS.has(slug);
   $('content-note').innerHTML = isCode
     ? 'This course\'s lessons are built into the site code. Modules added here will <b>not</b> be shown — contact your developer to migrate it to the editor.'
-    : 'Modules below are what enrolled students see. Drag order with ↑/↓, then edit each lesson.';
+    : 'Modules below are what enrolled students see. Reorder with ↑/↓, then edit each lesson.';
   $('btn-add-module').style.display = isCode ? 'none' : '';
 
   await refreshModules();
-  $('content-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function refreshModules() {
@@ -670,11 +742,17 @@ async function main() {
   }
   $('panel').style.display = 'block';
 
+  // Top-level tabs + builder back link.
+  document.querySelectorAll('.console-tab').forEach((t) =>
+    t.addEventListener('click', () => showView(t.dataset.view)));
+  $('btn-builder-back').addEventListener('click', (e) => { e.preventDefault(); showView('courses'); });
+  // Close row kebab menus on any outside click.
+  document.addEventListener('click', closeKebabs);
+
   $('btn-seed').addEventListener('click', seedDefaults);
   const btnMigrateIcant = $('btn-migrate-icant');
   if (btnMigrateIcant) btnMigrateIcant.addEventListener('click', migrateIcant);
-  $('btn-add-course').addEventListener('click', () => openCourseEditor(null));
-  $('btn-editor-cancel').addEventListener('click', () => { $('course-editor-card').style.display = 'none'; });
+  $('btn-add-course').addEventListener('click', () => openBuilder(null));
   $('course-editor-form').addEventListener('submit', saveCourse);
   $('f-mode').addEventListener('change', () => {
     $('f-interval').disabled = $('f-mode').value !== 'subscription';
@@ -688,31 +766,51 @@ async function main() {
   $('btn-module-cancel').addEventListener('click', () => { $('module-editor').style.display = 'none'; });
   $('btn-html-toggle').addEventListener('click', toggleHtmlSource);
   $('btn-preview-toggle').addEventListener('click', togglePreview);
-  $('btn-preview-course').addEventListener('click', () => { if (_contentSlug) previewCourse(_contentSlug); });
-  $('btn-course-details').addEventListener('click', () => { if (_contentSlug) openCourseEditor(_contentSlug); });
+  $('btn-preview-course').addEventListener('click', () => { if (_editingSlug) previewCourse(_editingSlug); });
+
+  // Publish section — flips status on the open course, then reflects it in the
+  // details form's Status select and refreshes the list behind the builder.
+  const publish = (status) => builderSetStatus(status);
+  $('btn-publish-live').addEventListener('click', () => publish('live'));
+  $('btn-publish-soon').addEventListener('click', () => publish('coming-soon'));
+  $('btn-publish-inactive').addEventListener('click', () => publish('inactive'));
+  $('btn-delete-course').addEventListener('click', () => { if (_editingSlug) deleteCourse(_editingSlug); });
 
   $('coupon-form').addEventListener('submit', createCoupon);
 
   await refreshCourses();
   await refreshCoupons();
 
-  // Focused "edit this course's content" window: when opened via
-  // manage-courses.html?content=<slug> (the course-name link), hide everything
-  // except the content editor so the new tab IS the course-content editor.
-  const focusSlug = new URLSearchParams(location.search).get('content');
-  if (focusSlug) {
-    ['courses-card', 'course-editor-card', 'coupons-card'].forEach((id) => {
-      const el = $(id); if (el) el.style.display = 'none';
-    });
-    const card = $('content-card');
-    if (card && !$('content-back-link')) {
-      card.insertAdjacentHTML('afterbegin',
-        '<a id="content-back-link" href="/manage-courses.html" ' +
-        'style="display:inline-block; margin-bottom:12px; font-size:13px; color:var(--gray-light); text-decoration:none;">&larr; All courses</a>');
-    }
-    document.title = 'Edit course content | The One Percent Academy';
-    await openContent(focusSlug);
+  // Deep links: ?course=<slug> (primary) and ?content=<slug> (legacy alias,
+  // linked from courses-page.js) open that course's builder; ?view=coupons
+  // opens the coupons tab. Default view is the course list.
+  const params = new URLSearchParams(location.search);
+  const deepSlug = params.get('course') || params.get('content');
+  if (deepSlug && getCourses({ includeInactive: true }).some((c) => c.slug === deepSlug)) {
+    openBuilder(deepSlug);
+    $('section-curriculum').open = true;
+  } else if (params.get('view') === 'coupons') {
+    showView('coupons');
+  } else {
+    showView('courses');
   }
+}
+
+// Flip the open course's status from the Publish section.
+async function builderSetStatus(status) {
+  if (!_editingSlug) return;
+  const out = $('publish-result');
+  try {
+    await setDoc(doc(db, 'courses', _editingSlug), {
+      status,
+      updatedAt: serverTimestamp(),
+      updatedBy: _userEmail
+    }, { merge: true });
+    $('f-status').value = status;
+    const label = { live: 'Live', 'coming-soon': 'Coming soon', inactive: 'Inactive' }[status] || status;
+    ok(out, `Status set to <b>${escapeHtml(label)}</b>.`);
+    await refreshCourses();
+  } catch (e) { err(out, e); }
 }
 
 main();
