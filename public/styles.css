@@ -1666,6 +1666,24 @@ gmp-place-autocomplete,
 .row-status.status-coming-soon,
 .row-status.status-bundle { color: var(--gray-light); }
 
+/* Course title link in the list — plain white, not a blue hyperlink */
+.course-open { color: var(--white); text-decoration: none; }
+.course-open:hover { text-decoration: underline; }
+
+/* Inline editable number fields (price / sale) in the course list */
+.row-num {
+  width: 84px;
+  background: var(--charcoal);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--white);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+}
+.row-num:focus { border-color: rgba(204,27,27,0.5); }
+
 /* Row "⋯" kebab menu */
 .kebab { position: relative; display: inline-block; }
 .kebab-btn {
