@@ -388,6 +388,199 @@ async function migrateIcant() {
   } catch (e) { err(out, e); }
 }
 
+// ─── One-time content migration: "1P Certified Leader Coach" ───────────────
+// Unlike icant (structured data), the 1p-clc lessons live inside render()
+// functions in modules.js that return CSS-class-heavy HTML with runtime state
+// (note textareas, completion banners). We run each render() and transform its
+// markup into the sanitize-safe semantic subset the generic renderer expects
+// (course-renderer.js), then flip the course to contentSource:'firestore'.
+
+// Inline formatting kept when flattening a node to text (styles/classes dropped).
+const INLINE_KEEP = new Set(['STRONG', 'B', 'EM', 'I', 'A', 'BR']);
+function inlineHtml(node) {
+  let html = '';
+  node.childNodes.forEach((n) => {
+    if (n.nodeType === 3) { html += escapeHtml(n.textContent); return; }
+    if (n.nodeType !== 1) return;
+    const tag = n.tagName;
+    if (tag === 'BR') { html += '<br>'; return; }
+    const inner = inlineHtml(n);
+    if (!INLINE_KEEP.has(tag)) { html += inner; return; } // unwrap spans/divs, keep text
+    if (tag === 'A') {
+      const href = n.getAttribute('href') || '';
+      html += href ? `<a href="${escapeHtml(href)}">${inner}</a>` : inner;
+    } else {
+      const t = tag === 'B' ? 'strong' : tag === 'I' ? 'em' : tag.toLowerCase();
+      html += `<${t}>${inner}</${t}>`;
+    }
+  });
+  return html;
+}
+
+function walkChildren(parent, out) {
+  Array.from(parent.children).forEach((el) => convertCodeNode(el, out));
+}
+
+function liList(container, tag) {
+  const lis = Array.from(container.querySelectorAll('li'))
+    .map((li) => `<li>${inlineHtml(li).trim()}</li>`).filter((s) => s !== '<li></li>').join('');
+  return lis ? `<${tag}>${lis}</${tag}>` : '';
+}
+
+// Maps one code-rendered block to editor-friendly HTML (see the plan's mapping table).
+function convertCodeNode(el, out) {
+  const has = (c) => el.classList.contains(c);
+  const tag = el.tagName;
+  const cls = el.className || '';
+
+  if (tag === 'TEXTAREA') return;                        // interactive note field → drop
+  if (typeof cls === 'string' && cls.includes('banner')) return; // completion/capstone banner → drop
+  if (has('module-meta') || has('module-eyebrow')) return;
+  if (has('divider-line')) { out.push('<hr>'); return; }
+
+  if (has('module-header')) {                            // keep only the lead description
+    const desc = el.querySelector('.module-desc');
+    if (desc) { const h = inlineHtml(desc).trim(); if (h) out.push(`<p>${h}</p>`); }
+    return;
+  }
+  if (tag === 'H1' || tag === 'H2' || tag === 'H3') {
+    const t = tag === 'H1' ? 'h2' : tag.toLowerCase();   // renderer supplies the real h1
+    const h = inlineHtml(el).trim();
+    if (h) out.push(`<${t}>${h}</${t}>`);
+    return;
+  }
+  if (tag === 'P') { const h = inlineHtml(el).trim(); if (h) out.push(`<p>${h}</p>`); return; }
+
+  if (has('callout')) {
+    const label = el.querySelector('.callout-label');
+    const labelTxt = label ? label.textContent.trim() : '';
+    const body = Array.from(el.querySelectorAll('p')).map((p) => inlineHtml(p).trim())
+      .filter(Boolean).join(' ');
+    const labelHtml = labelTxt
+      ? `<strong>${escapeHtml(labelTxt)}${/[.?!:]$/.test(labelTxt) ? '' : '.'}</strong> ` : '';
+    out.push(`<blockquote>${labelHtml}${body}</blockquote>`);
+    return;
+  }
+  if (has('quote-block')) {
+    const txt = el.querySelector('.quote-text');
+    const attr = el.querySelector('.quote-attr');
+    const t = (txt ? inlineHtml(txt) : inlineHtml(el)).trim();
+    const a = attr ? escapeHtml(attr.textContent.trim()) : '';
+    out.push(`<blockquote>${t}${a ? `<br><em>${a}</em>` : ''}</blockquote>`);
+    return;
+  }
+  if (has('exercise')) {
+    Array.from(el.children).forEach((child) => {
+      if (child.classList.contains('exercise-header')) {
+        const badge = child.querySelector('.exercise-badge');
+        const title = child.querySelector('.exercise-title');
+        const head = [badge && badge.textContent.trim(), title && title.textContent.trim()]
+          .filter(Boolean).join(' — ');
+        if (head) out.push(`<h2>${escapeHtml(head)}</h2>`);
+      } else if (child.tagName === 'P') {
+        const h = inlineHtml(child).trim(); if (h) out.push(`<p>${h}</p>`);
+      } else if (child.tagName === 'UL' || child.tagName === 'OL') {
+        const list = liList(child, 'ol'); if (list) out.push(list);
+      }
+    });
+    return;
+  }
+  if (has('framework-grid')) {
+    const lis = Array.from(el.querySelectorAll('.framework-card')).map((card) => {
+      const icon = card.querySelector('.fc-icon');
+      const title = card.querySelector('.fc-title');
+      const desc = card.querySelector('.fc-desc');
+      const label = [icon && icon.textContent.trim(), title && title.textContent.trim()]
+        .filter(Boolean).join(' ');
+      const d = desc ? inlineHtml(desc).trim() : '';
+      return `<li>${label ? `<strong>${escapeHtml(label)}</strong>` : ''}${d ? ` — ${d}` : ''}</li>`;
+    }).join('');
+    if (lis) out.push(`<ul>${lis}</ul>`);
+    return;
+  }
+  if (has('tier-grid')) {
+    Array.from(el.querySelectorAll('.tier-card')).forEach((card) => {
+      const name = card.querySelector('.tier-name, .tier-title, h3, h4');
+      const price = card.querySelector('.tier-price');
+      const head = [name && name.textContent.trim(), price && price.textContent.trim()]
+        .filter(Boolean).join(' — ');
+      if (head) out.push(`<h3>${escapeHtml(head)}</h3>`);
+      const feats = card.querySelector('.tier-features, ul');
+      if (feats) { const list = liList(feats, 'ul'); if (list) out.push(list); }
+    });
+    return;
+  }
+  if (has('flow-steps')) {
+    const lis = Array.from(el.querySelectorAll('.flow-step'))
+      .map((s) => `<li>${inlineHtml(s).replace(/\s+/g, ' ').trim()}</li>`).join('');
+    if (lis) out.push(`<ol>${lis}</ol>`);
+    return;
+  }
+  if (has('overview-grid') || has('stat-grid')) {
+    const lis = Array.from(el.querySelectorAll('.stat-card'))
+      .map((c) => `<li>${inlineHtml(c).replace(/\s+/g, ' ').trim()}</li>`).join('');
+    if (lis) out.push(`<ul>${lis}</ul>`);
+    return;
+  }
+  if (tag === 'UL' || tag === 'OL') {
+    const list = liList(el, tag.toLowerCase()); if (list) out.push(list);
+    return;
+  }
+  if (el.children && el.children.length) { walkChildren(el, out); return; } // lesson-block etc.
+  const txt = inlineHtml(el).trim();
+  if (txt) out.push(`<p>${txt}</p>`);
+}
+
+function codeHtmlToLessonHtml(rawHtml) {
+  const docp = new DOMParser().parseFromString(`<body>${rawHtml || ''}</body>`, 'text/html');
+  const out = [];
+  walkChildren(docp.body, out);
+  return out.filter((s) => s && s.trim()).join('\n');
+}
+
+function clcModuleToHtml(m) {
+  try {
+    const raw = typeof m.render === 'function' ? m.render() : '';
+    return codeHtmlToLessonHtml(raw) || `<p>${escapeHtml(m.subtitle || m.title || '')}</p>`;
+  } catch (e) {
+    console.warn('[manage-courses] clc convert failed for module', m && m.id, e);
+    return `<p>${escapeHtml(m.subtitle || m.title || '')}</p>`;
+  }
+}
+
+async function migrateClc() {
+  const out = $('seed-result');
+  if (!confirm('Migrate "1P Certified Leader Coach" into the editable content editor? This copies its lessons into the database and switches the live course to render from there. You can re-run it safely.')) return;
+  out.innerHTML = '<div style="color:var(--gray-light); font-size:12px;">Migrating "1P Leader Coach"…</div>';
+  try {
+    const { MODULES } = await import('./modules.js');
+    let wrote = 0;
+    for (const m of MODULES) {
+      await setDoc(doc(db, 'courses', '1p-clc', 'modules', String(m.id)), {
+        id: m.id,
+        title: m.title,
+        subtitle: m.subtitle || null,
+        pillar: m.pillar || null,
+        duration: m.duration || null,
+        tagLabel: m.tagLabel || null,
+        html: clcModuleToHtml(m),
+        sortOrder: typeof m.id === 'number' ? m.id : wrote,
+        updatedAt: serverTimestamp(),
+        updatedBy: _userEmail
+      }, { merge: true });
+      wrote++;
+    }
+    await setDoc(doc(db, 'courses', '1p-clc'), {
+      contentSource: 'firestore',
+      moduleCount: MODULES.length,
+      updatedAt: serverTimestamp(),
+      updatedBy: _userEmail
+    }, { merge: true });
+    ok(out, `Migrated ${wrote} lessons. "1P Certified Leader Coach" is now editable — open its builder from the list and expand <b>Curriculum</b> — and the live course renders from the database.`);
+    await refreshCourses();
+  } catch (e) { err(out, e); }
+}
+
 // ─── Course builder ─────────────────────────────────────────────────────────
 // One workspace per course: the details/pricing form, the curriculum editor,
 // and publish controls, all in the drill-in builder view. `slug === null`
@@ -848,6 +1041,8 @@ async function main() {
   $('btn-seed').addEventListener('click', seedDefaults);
   const btnMigrateIcant = $('btn-migrate-icant');
   if (btnMigrateIcant) btnMigrateIcant.addEventListener('click', migrateIcant);
+  const btnMigrateClc = $('btn-migrate-clc');
+  if (btnMigrateClc) btnMigrateClc.addEventListener('click', migrateClc);
   $('btn-add-course').addEventListener('click', () => openBuilder(null));
   $('course-editor-form').addEventListener('submit', saveCourse);
   $('f-mode').addEventListener('change', () => {
