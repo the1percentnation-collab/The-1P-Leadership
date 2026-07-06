@@ -157,7 +157,29 @@ function renderAvailableCourses() {
     `;
   }).join('');
 
-  slot.innerHTML = `
+  // With the sidebar gone, enrolled courses live here — above the library.
+  const myCards = enrolled.map((c) => `
+    <div class="available-card is-enrolled" data-slug="${escapeHtml(c.slug)}">
+      <div class="available-card-top">
+        <span class="available-badge is-live">Enrolled</span>
+        <span class="available-card-meta">${escapeHtml(c.eyebrow || '')}</span>
+      </div>
+      <div class="available-card-title">${escapeHtml(c.title)}</div>
+      <div class="available-card-desc">${escapeHtml(c.subtitle || '')}</div>
+      <div class="available-card-actions">
+        <a class="btn btn-primary" href="/courses.html?course=${encodeURIComponent(c.slug)}">Continue →</a>
+      </div>
+    </div>
+  `).join('');
+  const mySection = enrolled.length ? `
+    <div class="academy-section-head">
+      <h2>Your courses</h2>
+      <span class="academy-section-meta">${enrolled.length} enrolled</span>
+    </div>
+    <div class="available-grid" style="margin-bottom:48px;">${myCards}</div>
+  ` : '';
+
+  slot.innerHTML = mySection + `
     <div class="academy-section-head">
       <h2>Course Library</h2>
       <span class="academy-section-meta">${available.length} courses · enroll to unlock</span>
@@ -232,7 +254,7 @@ function updateWelcomeCopy() {
   const enrolled = enrolledCourses();
   if (!hint) return;
   hint.textContent = enrolled.length > 0
-    ? '← Choose one of your courses from the sidebar to begin.'
+    ? '↓ Continue one of your courses below, or browse the library.'
     : '↓ Browse the available courses below and sign up to begin.';
 }
 
