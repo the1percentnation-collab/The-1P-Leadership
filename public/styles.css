@@ -7270,3 +7270,251 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 .p-img-controls { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .p-img-btn { align-self: flex-start; cursor: pointer; }
 .p-img-controls .c-input { margin: 0; }
+
+/* ════════════════════════════════════════════════════════════════
+   Course landing page (/course.html) — Udemy-style course detail,
+   in 1P brand. All classes namespaced `cl-`.
+   ════════════════════════════════════════════════════════════════ */
+
+#cl-root { display: block; color: var(--white); font-family: var(--font-body); }
+.cl-loading { padding: 80px 20px; text-align: center; color: var(--gray-light); }
+
+/* ── Hero band ── */
+.cl-hero { background: var(--black-2); border-bottom: 1px solid var(--border); }
+.cl-hero-inner {
+  max-width: 1440px; margin: 0 auto; padding: 36px 32px 40px; width: 100%;
+}
+/* Leave visual room for the sticky purchase card that overlaps the hero. */
+.cl-hero-main { max-width: calc(100% - 420px); }
+.cl-breadcrumb {
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em;
+  color: var(--gray-light); margin-bottom: 18px; display: flex; gap: 8px; flex-wrap: wrap;
+}
+.cl-breadcrumb a { color: #ff6b6d; text-decoration: none; }
+.cl-breadcrumb a:hover { text-decoration: underline; }
+.cl-breadcrumb span { color: var(--gray-mid); }
+.cl-title {
+  font-family: var(--font-display); font-size: 46px; line-height: 1.02;
+  letter-spacing: 0.02em; margin: 0 0 12px;
+}
+.cl-subtitle { font-size: 18px; color: var(--white-dim); max-width: 720px; margin: 0 0 18px; line-height: 1.5; }
+.cl-meta { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--gray-light); align-items: center; }
+.cl-meta a { color: #ff6b6d; }
+.cl-badge-sale, .cl-badge-new {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 4px; background: var(--red); color: #fff;
+}
+.cl-badge-new { background: rgba(230,3,6,0.14); color: #ff6b6d; border: 1px solid var(--border-red); }
+
+.cl-strip {
+  display: inline-flex; gap: 0; margin-top: 22px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+}
+.cl-strip-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 14px 26px; border-right: 1px solid var(--border); min-width: 130px;
+}
+.cl-strip-cell:last-child { border-right: 0; }
+.cl-strip-big { font-family: var(--font-mono); font-size: 20px; font-weight: 700; color: var(--white); }
+.cl-stars { color: #E59819; font-size: 12px; letter-spacing: 2px; }
+.cl-strip-label { font-size: 11px; color: var(--gray-light); }
+
+/* ── Two-column body ── */
+.cl-body { max-width: 1440px; margin: 0 auto; padding: 32px 32px 96px; width: 100%; }
+.cl-cols { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 40px; align-items: start; }
+.cl-main { min-width: 0; }
+
+.cl-h2 {
+  font-family: var(--font-display); font-size: 26px; letter-spacing: 0.03em;
+  margin: 0 0 16px; color: var(--white);
+}
+.cl-block { margin-bottom: 40px; }
+.cl-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 26px 28px; margin-bottom: 40px;
+}
+
+/* What you'll learn */
+.cl-learn-grid {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px 28px;
+}
+.cl-learn-grid li { display: flex; gap: 12px; font-size: 14px; color: var(--white-dim); line-height: 1.5; }
+.cl-check { color: var(--red); font-weight: 700; flex-shrink: 0; }
+
+/* The 1% Method */
+.cl-method {
+  background: linear-gradient(140deg, rgba(230,3,6,0.07) 0%, rgba(230,3,6,0) 55%), var(--surface);
+  border: 1px solid var(--border); border-radius: 12px; padding: 26px 28px;
+}
+.cl-method-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.cl-method-num { font-family: var(--font-mono); font-size: 12px; color: #ff6b6d; }
+.cl-method-step h3 {
+  font-family: var(--font-display); font-size: 19px; letter-spacing: 0.04em; margin: 6px 0 6px;
+}
+.cl-method-step p { font-size: 13px; color: var(--gray-light); line-height: 1.55; margin: 0; }
+
+/* This course includes */
+.cl-includes { display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px; }
+.cl-includes ul { list-style: none; margin: 0; padding: 0; }
+.cl-includes li {
+  display: flex; gap: 12px; align-items: baseline; font-size: 14px;
+  color: var(--white-dim); padding: 7px 0;
+}
+.cl-inc-icon { width: 20px; flex-shrink: 0; text-align: center; opacity: 0.85; }
+
+/* Course content accordion */
+.cl-cur-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  font-size: 13px; color: var(--gray-light); margin-bottom: 12px; flex-wrap: wrap;
+}
+.cl-expand {
+  background: none; border: 0; color: #ff6b6d; font-family: var(--font-body);
+  font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 0;
+}
+.cl-expand:hover { text-decoration: underline; }
+.cl-accordion { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.cl-sec { border-bottom: 1px solid var(--border); }
+.cl-sec:last-child { border-bottom: 0; }
+.cl-sec summary {
+  list-style: none; display: flex; align-items: center; gap: 12px; cursor: pointer;
+  padding: 16px 18px; background: var(--surface); font-weight: 600; font-size: 14.5px;
+  user-select: none;
+}
+.cl-sec summary::-webkit-details-marker { display: none; }
+.cl-sec summary:hover { background: var(--surface2); }
+.cl-sec-chev { color: var(--gray-light); transition: transform 0.15s ease; font-size: 16px; }
+.cl-sec[open] .cl-sec-chev { transform: rotate(90deg); color: #ff6b6d; }
+.cl-sec-title { flex: 1; min-width: 0; }
+.cl-sec-meta { font-size: 12px; color: var(--gray-light); font-weight: 400; white-space: nowrap; }
+.cl-lessons { list-style: none; margin: 0; padding: 6px 0; background: var(--black-2); }
+.cl-lessons li {
+  display: flex; align-items: center; gap: 12px; padding: 10px 18px 10px 46px;
+  font-size: 13.5px; color: var(--white-dim);
+}
+.cl-lessons li:hover { background: rgba(255,255,255,0.02); }
+.cl-lesson-icon { flex-shrink: 0; opacity: 0.7; font-size: 11px; width: 16px; }
+.cl-lesson-title { flex: 1; min-width: 0; }
+.cl-lesson-dur { font-family: var(--font-mono); font-size: 11px; color: var(--gray-mid); white-space: nowrap; }
+.cl-lesson-tag {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 4px; white-space: nowrap;
+}
+.cl-lesson-tag.is-practice { background: rgba(230,3,6,0.12); color: #ff6b6d; border: 1px solid var(--border-red); }
+.cl-lesson-tag.is-assess { background: rgba(255,255,255,0.06); color: var(--gray-light); border: 1px solid var(--border); }
+
+/* Requirements + description */
+.cl-bullets { margin: 0; padding-left: 20px; color: var(--white-dim); font-size: 14px; line-height: 1.7; }
+.cl-bullets li { margin-bottom: 8px; }
+.cl-desc { position: relative; color: var(--white-dim); font-size: 14.5px; line-height: 1.7; }
+.cl-desc p { margin: 0 0 14px; }
+.cl-desc.is-clamped { max-height: 300px; overflow: hidden; }
+.cl-desc-fade {
+  display: none; position: absolute; inset: auto 0 0 0; height: 90px;
+  background: linear-gradient(rgba(8,8,8,0), var(--black));
+}
+.cl-desc.is-clamped .cl-desc-fade { display: block; }
+
+/* Instructor */
+.cl-instructor { display: flex; gap: 20px; align-items: flex-start; }
+.cl-instructor-avatar {
+  width: 72px; height: 72px; border-radius: 50%; flex-shrink: 0;
+  background: var(--red); color: #fff; display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 28px; letter-spacing: 0.05em;
+}
+.cl-instructor-name { font-size: 17px; font-weight: 700; }
+.cl-instructor-title { font-size: 13px; color: #ff6b6d; margin: 3px 0 10px; }
+.cl-instructor-bio { font-size: 14px; color: var(--white-dim); line-height: 1.65; margin: 0; max-width: 640px; }
+
+/* Members also explore */
+.cl-more { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.cl-more-row {
+  display: flex; align-items: center; gap: 16px; padding: 14px 18px;
+  text-decoration: none; color: var(--white); border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.cl-more-row:last-child { border-bottom: 0; }
+.cl-more-row:hover { background: var(--surface2); }
+.cl-more-thumb {
+  width: 56px; height: 42px; border-radius: 6px; flex-shrink: 0;
+  background: linear-gradient(140deg, rgba(230,3,6,0.35), rgba(230,3,6,0.08)), var(--charcoal);
+  border: 1px solid var(--border-red);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 16px; color: #ff9b9c;
+}
+.cl-more-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.cl-more-title { font-weight: 600; font-size: 14.5px; }
+.cl-more-badge { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; color: var(--gray-light); text-transform: uppercase; }
+.cl-more-price { font-family: var(--font-mono); font-size: 14px; font-weight: 700; white-space: nowrap; }
+.cl-more-price s { color: var(--gray-mid); font-weight: 400; margin-right: 6px; }
+
+/* ── Sticky purchase card ── */
+.cl-buy {
+  position: sticky; top: 90px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+  margin-top: -170px; /* overlap the hero band, Udemy-style */
+}
+.cl-buy-media {
+  height: 180px; position: relative; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px;
+  background:
+    radial-gradient(120% 130% at 15% 10%, rgba(230,3,6,0.5) 0%, rgba(230,3,6,0) 55%),
+    linear-gradient(150deg, #1c0405 0%, var(--black-2) 70%);
+  border-bottom: 1px solid var(--border);
+}
+.cl-buy-media-mark {
+  font-family: var(--font-display); font-size: 40px; letter-spacing: 0.05em; color: #fff;
+  text-shadow: 0 4px 30px rgba(230,3,6,0.55);
+}
+.cl-buy-media-eyebrow { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gray-light); }
+.cl-buy-body { padding: 22px 24px 24px; }
+.cl-price { display: flex; align-items: baseline; gap: 12px; }
+.cl-price-now { font-family: var(--font-mono); font-size: 32px; font-weight: 700; }
+.cl-price-was { color: var(--gray-mid); font-size: 16px; }
+.cl-price-note { font-size: 12px; color: var(--gray-light); margin-top: 4px; }
+.cl-soon-note { font-size: 12px; color: #ff6b6d; margin-top: 8px; }
+.cl-cta {
+  display: block; width: 100%; margin-top: 16px; padding: 14px 18px;
+  background: var(--red); color: #fff; border: 0; border-radius: 8px;
+  font-family: var(--font-body); font-size: 15px; font-weight: 700; cursor: pointer;
+  text-align: center; text-decoration: none; transition: background 0.15s ease, transform 0.1s ease;
+}
+.cl-cta:hover { background: var(--red-dark); }
+.cl-cta:active { transform: scale(0.99); }
+.cl-cta[disabled] { opacity: 0.7; cursor: default; }
+.cl-cta-msg { font-size: 12px; color: #ff6b6d; margin-top: 8px; min-height: 14px; }
+.cl-buy-perks { list-style: none; margin: 14px 0 0; padding: 12px 0 0; border-top: 1px solid var(--border); }
+.cl-buy-perks li { font-size: 12.5px; color: var(--gray-light); padding: 4px 0 4px 20px; position: relative; }
+.cl-buy-perks li::before { content: '✓'; position: absolute; left: 0; color: var(--red); font-weight: 700; }
+.cl-buy-links {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);
+}
+.cl-coupon { font-size: 12px; color: var(--gray-light); text-decoration: underline dotted; cursor: help; }
+.cl-share {
+  background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--white-dim);
+  font-family: var(--font-body); font-size: 12px; font-weight: 600; padding: 6px 12px; cursor: pointer;
+}
+.cl-share:hover { border-color: var(--border-red); color: #ff6b6d; }
+
+/* ── Responsive — single column below 1100px; mobile keeps compact type ── */
+@media (max-width: 1100px) {
+  .cl-hero-main { max-width: none; }
+  .cl-cols { grid-template-columns: 1fr; gap: 28px; }
+  .cl-buy { position: static; margin-top: 0; order: -1; max-width: 520px; }
+}
+@media (max-width: 760px) {
+  .cl-hero-inner { padding: 24px 18px 28px; }
+  .cl-body { padding: 22px 18px 72px; }
+  .cl-title { font-size: 34px; }
+  .cl-subtitle { font-size: 15.5px; }
+  .cl-strip { display: flex; flex-wrap: wrap; }
+  .cl-strip-cell { flex: 1 1 33%; min-width: 100px; padding: 12px 10px; }
+  .cl-learn-grid, .cl-includes, .cl-method-grid { grid-template-columns: 1fr; }
+  .cl-card, .cl-method { padding: 20px 18px; }
+  .cl-sec-meta { display: none; }
+  .cl-lessons li { padding-left: 34px; }
+  .cl-lesson-tag { display: none; }
+  .cl-instructor { flex-direction: column; }
+}

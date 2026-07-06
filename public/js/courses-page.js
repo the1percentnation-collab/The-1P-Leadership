@@ -165,6 +165,15 @@ function renderAvailableCourses() {
     <div class="available-grid">${cards}</div>
   `;
 
+  // Card click (anywhere except a button/link) opens the course detail page.
+  slot.querySelectorAll('.available-card').forEach((card) => {
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('button, a')) return;
+      location.assign(`/course.html?course=${encodeURIComponent(card.dataset.slug)}`);
+    });
+  });
+
   slot.querySelectorAll('.available-enroll').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       const slug = btn.dataset.slug;
@@ -378,7 +387,8 @@ function renderComingSoon(course) {
       <p>${escapeHtml(course.subtitle || '')}</p>
       <p class="course-soon-payment-note">Enrollment opens soon — secure checkout is being set up. Check back shortly to register.</p>
       <div class="course-soon-actions">
-        <a class="btn btn-primary" href="/courses.html">← Back to Course Library</a>
+        <a class="btn btn-primary" href="/course.html?course=${encodeURIComponent(course.slug)}">View course details →</a>
+        <a class="btn btn-ghost" href="/courses.html">← Back to Course Library</a>
       </div>
     </div>
   `;
