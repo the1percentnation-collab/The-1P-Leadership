@@ -1,0 +1,119 @@
+/* ── Author Command Hub — base styles ─────────────────────────────────────────
+   Deliberately minimal and theme-neutral. Swap the variables for your brand.
+   The .site-* classes style the public renderer; everything else styles the Hub. */
+
+:root {
+  --bg: #0f1115;
+  --surface: #171a21;
+  --surface-2: #1e222b;
+  --border: #2a2f3a;
+  --text: #e7e9ee;
+  --muted: #9aa3b2;
+  --primary: #4f7cff;
+  --primary-ink: #fff;
+  --ok: #34d399;
+  --err: #f87171;
+  --radius: 12px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.muted { color: var(--muted); font-size: 13px; }
+.centered { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+
+/* Layout */
+.wrap { max-width: 860px; margin: 0 auto; padding: 24px 16px 80px; }
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 5;
+}
+.brand { font-weight: 700; }
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+
+/* Cards */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px; margin-bottom: 18px;
+}
+.card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 12px; }
+.card h2 { font-size: 17px; margin: 0; display: flex; align-items: center; gap: 10px; }
+.auth-card { width: min(420px, 100%); }
+.auth-h1 { margin: 0 0 4px; font-size: 22px; }
+
+/* Forms */
+.stack { display: grid; gap: 12px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.row-between { display: flex; justify-content: space-between; gap: 10px; margin-top: 12px; }
+label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+label.check { display: flex; align-items: center; gap: 8px; }
+input, select, textarea {
+  width: 100%; padding: 10px 12px; background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; font: inherit;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 9px 14px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: 14px;
+}
+.btn:hover { border-color: var(--muted); text-decoration: none; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: var(--primary-ink); border-color: transparent; }
+.btn-ghost { background: transparent; }
+.btn-link { background: none; border: none; color: var(--primary); padding: 6px 0; }
+.btn-danger { color: var(--err); }
+
+/* Pills + messages */
+.pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); }
+.pill-live { color: var(--ok); border-color: var(--ok); }
+.pill-draft { color: var(--muted); }
+.msg-ok { color: var(--ok); font-size: 13px; margin-top: 8px; }
+.msg-err { color: var(--err); font-size: 13px; margin-top: 8px; }
+.empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
+
+/* Tables */
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl td { padding: 10px 8px; border-top: 1px solid var(--border); vertical-align: top; }
+.tbl td.num { color: var(--muted); width: 32px; }
+.row-actions { white-space: nowrap; text-align: right; }
+.row-actions .btn { padding: 4px 8px; font-size: 12px; }
+
+/* Editor */
+.editor-toolbar-row { display: flex; gap: 8px; margin: 6px 0 8px; }
+.editor-shell { background: #fff; color: #111; border-radius: 8px; overflow: hidden; }
+.ql-toolbar, .ql-container { border-color: var(--border) !important; }
+.html-src { min-height: 280px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+.preview { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+
+/* ── Public site renderer (site.html) ──────────────────────────────────────── */
+.site-view { background: #fff; color: #14161a; }
+.site-view a { color: #1a52ff; }
+#site-root { max-width: 760px; margin: 0 auto; padding: 40px 20px 80px; }
+.site-header { border-bottom: 1px solid #e6e8ec; padding-bottom: 16px; margin-bottom: 28px; }
+.site-title { font-size: 26px; font-weight: 800; }
+.site-tagline { color: #5b616e; margin-top: 2px; }
+.site-nav { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; }
+.site-nav-link { color: #5b616e; font-size: 14px; }
+.site-nav-link.is-active { color: #14161a; font-weight: 600; }
+.site-page-title { font-size: 30px; margin: 0 0 18px; }
+.site-body { font-size: 17px; line-height: 1.7; }
+.site-body h2 { font-size: 22px; margin: 28px 0 10px; }
+.site-body h3 { font-size: 18px; margin: 22px 0 8px; }
+.site-body img { max-width: 100%; border-radius: 8px; }
+.site-body blockquote { border-left: 3px solid #cfd3da; margin: 16px 0; padding: 4px 16px; color: #4b515c; }
+.site-footer { margin-top: 60px; color: #9aa3b2; font-size: 12px; text-align: center; }
+.site-empty { color: #9aa3b2; text-align: center; padding: 80px 20px; }
+
+/* The Hub's in-editor preview reuses the public .site-body styling but on the
+   dark surface, so map the text color back to the app text. */
+.preview .site-page-title, .preview .site-body { color: var(--text); }
+
+@media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }

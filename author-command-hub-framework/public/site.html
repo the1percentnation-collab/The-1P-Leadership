@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Site</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="site-view">
+  <div id="site-root"><div class="site-empty">Loading…</div></div>
+
+  <script type="module">
+    import { mountSite } from '/js/renderer.js';
+    mountSite();
+  </script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    function isSignedIn() { return request.auth != null; }
+    function isSelf(uid)  { return isSignedIn() && request.auth.uid == uid; }
+    // Platform super-admin — server-set custom claim role:'owner'. Lets you
+    // manage every author's site. (See README §Roles for how to set it.)
+    function isPlatformOwner() { return isSignedIn() && request.auth.token.role == 'owner'; }
+
+    // Owner uid of a site document, read via get() (used by page rules).
+    function siteOwner(siteId) {
+      return get(/databases/$(database)/documents/sites/$(siteId)).data.ownerUid;
+    }
+    function siteStatus(siteId) {
+      return get(/databases/$(database)/documents/sites/$(siteId)).data.status;
+    }
+
+    // ── users/{uid} ───────────────────────────────────────────────────────
+    // Each author's profile doc. Private to the author (+ platform owner).
+    match /users/{uid} {
+      allow get:            if isSelf(uid) || isPlatformOwner();
+      allow list:           if isPlatformOwner();
+      allow create, update: if isSelf(uid) || isPlatformOwner();
+      allow delete:         if isPlatformOwner();
+    }
+
+    // ── sites/{siteId} ────────────────────────────────────────────────────
+    // One site per author. Published sites are world-readable; drafts are
+    // visible only to their owner.
+    match /sites/{siteId} {
+      allow get:    if (resource.data.status == 'published')
+                    || isSelf(resource.data.ownerUid)
+                    || isPlatformOwner();
+      // A signed-in author may create a site only with themselves as owner.
+      allow create: if isSignedIn()
+                    && request.resource.data.ownerUid == request.auth.uid;
+      // Only the site's owner (or platform owner) may edit it, and the owner
+      // field can't be reassigned to someone else.
+      allow update: if (isSelf(resource.data.ownerUid) || isPlatformOwner())
+                    && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isSelf(resource.data.ownerUid) || isPlatformOwner();
+
+      // ── sites/{siteId}/pages/{pageId} ───────────────────────────────────
+      // Published pages of the site are world-readable; drafts and all writes
+      // are owner-only. The `read` rule (covers get + list) means a public
+      // list query MUST filter status == 'published' (see loadPublishedPages).
+      match /pages/{pageId} {
+        allow read:  if (resource.data.status == 'published' && siteStatus(siteId) == 'published')
+                     || isSelf(siteOwner(siteId))
+                     || isPlatformOwner();
+        allow write: if isSelf(siteOwner(siteId)) || isPlatformOwner();
+      }
+    }
+  }
+}

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Author Command Hub</title>
+  <link rel="stylesheet" href="/styles.css">
+  <!-- Quill rich-text editor (the visual editor used by hub.js). -->
+  <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Author Command Hub</div>
+    <div class="topbar-right">
+      <a class="btn btn-ghost" id="site-public-link" target="_blank" rel="noopener">Preview site</a>
+      <span class="muted" id="whoami"></span>
+      <button class="btn btn-ghost" id="btn-signout">Sign out</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div id="gate"></div>
+
+    <div id="panel" style="display:none;">
+
+      <!-- Site settings ------------------------------------------------------->
+      <section class="card">
+        <div class="card-head">
+          <h2>Your site <span id="s-status" class="pill pill-draft">Draft</span></h2>
+        </div>
+        <form id="site-form" class="stack">
+          <label>Site title <input id="s-title" type="text" placeholder="My site"></label>
+          <label>Tagline <input id="s-tagline" type="text" placeholder="A short line under the title"></label>
+          <label>Home page
+            <select id="s-home"><option value="">First page</option></select>
+          </label>
+          <div class="row">
+            <button class="btn btn-primary" type="submit">Save settings</button>
+            <button class="btn btn-ghost" type="button" id="btn-publish-site">Publish site</button>
+          </div>
+          <div id="site-result"></div>
+        </form>
+      </section>
+
+      <!-- Pages --------------------------------------------------------------->
+      <section class="card">
+        <div class="card-head">
+          <h2>Pages</h2>
+          <button class="btn btn-primary" id="btn-add-page">Add page</button>
+        </div>
+        <div id="pages-list"></div>
+      </section>
+
+      <!-- Page editor --------------------------------------------------------->
+      <section class="card" id="editor" style="display:none;">
+        <div class="card-head">
+          <h2 id="editor-title">New page</h2>
+          <button class="btn btn-ghost" id="btn-cancel-page">Close</button>
+        </div>
+        <div class="grid2">
+          <label>Title <input id="p-title" type="text" placeholder="Page title"></label>
+          <label>URL slug <input id="p-slug" type="text" placeholder="auto"></label>
+          <label>Status
+            <select id="p-status">
+              <option value="draft">Draft (only you)</option>
+              <option value="published">Published (public)</option>
+            </select>
+          </label>
+          <label class="check"><input id="p-nav" type="checkbox" checked> Show in navigation</label>
+        </div>
+
+        <div class="editor-toolbar-row">
+          <button class="btn btn-ghost" type="button" id="btn-source">Edit HTML source</button>
+          <button class="btn btn-ghost" type="button" id="btn-preview">Preview</button>
+        </div>
+
+        <div class="editor-shell">
+          <div id="q-editor" style="min-height:280px;"></div>
+        </div>
+        <textarea id="p-html" class="html-src" style="display:none;" spellcheck="false"></textarea>
+        <div id="p-preview" class="preview" style="display:none;"></div>
+
+        <div class="row">
+          <button class="btn btn-primary" id="btn-save-page">Save page</button>
+        </div>
+        <div id="editor-result"></div>
+      </section>
+
+    </div>
+  </main>
+
+  <script type="module" src="/js/hub.js"></script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in — Author Command Hub</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="centered">
+  <div class="card auth-card">
+    <h1 class="auth-h1">Author Command Hub</h1>
+    <p class="muted">Sign in to build and host your own site.</p>
+
+    <div id="auth-result"></div>
+
+    <form id="login-form" class="stack">
+      <input id="l-email" type="email" placeholder="Email" autocomplete="email" required>
+      <input id="l-pass" type="password" placeholder="Password" autocomplete="current-password" required>
+      <button class="btn btn-primary" type="submit">Sign in</button>
+    </form>
+
+    <div class="row-between">
+      <button class="btn btn-ghost" id="btn-google">Continue with Google</button>
+      <button class="btn btn-ghost" id="btn-signup">Create account</button>
+    </div>
+    <button class="btn btn-link" id="btn-reset">Forgot password?</button>
+  </div>
+
+  <script type="module">
+    import { onAuthReady, loginEmail, signupEmail, loginGoogle, resetPassword } from '/js/auth.js';
+
+    const $ = (id) => document.getElementById(id);
+    const out = $('auth-result');
+    const show = (cls, msg) => { out.innerHTML = `<div class="${cls}">${msg}</div>`; };
+    const nextUrl = new URLSearchParams(location.search).get('next') || '/hub.html';
+
+    // Already signed in? Go straight to the hub.
+    onAuthReady().then((u) => { if (u) location.replace(nextUrl); });
+
+    $('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try { await loginEmail($('l-email').value.trim(), $('l-pass').value); location.replace(nextUrl); }
+      catch (err) { show('msg-err', err.message || String(err)); }
+    });
+    $('btn-signup').addEventListener('click', async () => {
+      const email = $('l-email').value.trim(), password = $('l-pass').value;
+      if (!email || !password) return show('msg-err', 'Enter an email and password first.');
+      try { await signupEmail({ email, password }); location.replace(nextUrl); }
+      catch (err) { show('msg-err', err.message || String(err)); }
+    });
+    $('btn-google').addEventListener('click', async () => {
+      try { await loginGoogle(); location.replace(nextUrl); }
+      catch (err) { show('msg-err', err.message || String(err)); }
+    });
+    $('btn-reset').addEventListener('click', async () => {
+      const email = $('l-email').value.trim();
+      if (!email) return show('msg-err', 'Enter your email to reset.');
+      try { await resetPassword(email); show('msg-ok', 'Reset email sent.'); }
+      catch (err) { show('msg-err', err.message || String(err)); }
+    });
+  </script>
+</body>
+</html>
