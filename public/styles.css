@@ -1476,6 +1476,38 @@ gmp-place-autocomplete,
   padding: 24px 44px 64px;
 }
 
+/* Manage Courses uses the full console width with a roomier, larger table —
+   overrides the 1200px cap the same way the CRM and profile pages do. */
+.console-body:has(#courses-view) {
+  max-width: none;
+  padding: 24px 44px 64px;
+}
+.console-body:has(#courses-view) .card {
+  padding: 28px 32px;
+}
+.console-body:has(#courses-view) .card h2 {
+  font-size: 22px;
+}
+.console-body:has(#courses-view) .data-table {
+  font-size: 15px;
+}
+.console-body:has(#courses-view) .data-table th,
+.console-body:has(#courses-view) .data-table td {
+  padding: 14px 16px;
+}
+.console-body:has(#courses-view) .data-table th {
+  font-size: 11px;
+}
+.console-body:has(#courses-view) .row-status {
+  font-size: 14px;
+  padding: 6px 10px;
+}
+.console-body:has(#courses-view) .row-num {
+  font-size: 14px;
+  padding: 6px 10px;
+  width: 100px;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
