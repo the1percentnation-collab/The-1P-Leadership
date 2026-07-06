@@ -7290,7 +7290,7 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
   font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em;
   color: var(--gray-light); margin-bottom: 18px; display: flex; gap: 8px; flex-wrap: wrap;
 }
-.cl-breadcrumb a { color: #ff6b6d; text-decoration: none; }
+.cl-breadcrumb a { color: var(--red); text-decoration: none; }
 .cl-breadcrumb a:hover { text-decoration: underline; }
 .cl-breadcrumb span { color: var(--gray-mid); }
 .cl-title {
@@ -7299,12 +7299,12 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 }
 .cl-subtitle { font-size: 18px; color: var(--white-dim); max-width: 720px; margin: 0 0 18px; line-height: 1.5; }
 .cl-meta { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--gray-light); align-items: center; }
-.cl-meta a { color: #ff6b6d; }
+.cl-meta a { color: var(--red); }
 .cl-badge-sale, .cl-badge-new {
   font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
   padding: 3px 8px; border-radius: 4px; background: var(--red); color: #fff;
 }
-.cl-badge-new { background: rgba(230,3,6,0.14); color: #ff6b6d; border: 1px solid var(--border-red); }
+.cl-badge-new { background: rgba(230,3,6,0.14); color: var(--red); border: 1px solid var(--border-red); }
 
 .cl-strip {
   display: inline-flex; gap: 0; margin-top: 22px; background: var(--surface);
@@ -7348,7 +7348,7 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
   border: 1px solid var(--border); border-radius: 12px; padding: 26px 28px;
 }
 .cl-method-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
-.cl-method-num { font-family: var(--font-mono); font-size: 12px; color: #ff6b6d; }
+.cl-method-num { font-family: var(--font-mono); font-size: 12px; color: var(--red); }
 .cl-method-step h3 {
   font-family: var(--font-display); font-size: 19px; letter-spacing: 0.04em; margin: 6px 0 6px;
 }
@@ -7369,7 +7369,7 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
   font-size: 13px; color: var(--gray-light); margin-bottom: 12px; flex-wrap: wrap;
 }
 .cl-expand {
-  background: none; border: 0; color: #ff6b6d; font-family: var(--font-body);
+  background: none; border: 0; color: var(--red); font-family: var(--font-body);
   font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 0;
 }
 .cl-expand:hover { text-decoration: underline; }
@@ -7384,7 +7384,7 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 .cl-sec summary::-webkit-details-marker { display: none; }
 .cl-sec summary:hover { background: var(--surface2); }
 .cl-sec-chev { color: var(--gray-light); transition: transform 0.15s ease; font-size: 16px; }
-.cl-sec[open] .cl-sec-chev { transform: rotate(90deg); color: #ff6b6d; }
+.cl-sec[open] .cl-sec-chev { transform: rotate(90deg); color: var(--red); }
 .cl-sec-title { flex: 1; min-width: 0; }
 .cl-sec-meta { font-size: 12px; color: var(--gray-light); font-weight: 400; white-space: nowrap; }
 .cl-lessons { list-style: none; margin: 0; padding: 6px 0; background: var(--black-2); }
@@ -7400,7 +7400,7 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
   font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
   padding: 2px 7px; border-radius: 4px; white-space: nowrap;
 }
-.cl-lesson-tag.is-practice { background: rgba(230,3,6,0.12); color: #ff6b6d; border: 1px solid var(--border-red); }
+.cl-lesson-tag.is-practice { background: rgba(230,3,6,0.12); color: var(--red); border: 1px solid var(--border-red); }
 .cl-lesson-tag.is-assess { background: rgba(255,255,255,0.06); color: var(--gray-light); border: 1px solid var(--border); }
 
 /* Requirements + description */
@@ -7423,7 +7423,7 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
   font-family: var(--font-display); font-size: 28px; letter-spacing: 0.05em;
 }
 .cl-instructor-name { font-size: 17px; font-weight: 700; }
-.cl-instructor-title { font-size: 13px; color: #ff6b6d; margin: 3px 0 10px; }
+.cl-instructor-title { font-size: 13px; color: var(--red); margin: 3px 0 10px; }
 .cl-instructor-bio { font-size: 14px; color: var(--white-dim); line-height: 1.65; margin: 0; max-width: 640px; }
 
 /* Members also explore */
@@ -7473,7 +7473,7 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 .cl-price-now { font-family: var(--font-mono); font-size: 32px; font-weight: 700; }
 .cl-price-was { color: var(--gray-mid); font-size: 16px; }
 .cl-price-note { font-size: 12px; color: var(--gray-light); margin-top: 4px; }
-.cl-soon-note { font-size: 12px; color: #ff6b6d; margin-top: 8px; }
+.cl-soon-note { font-size: 12px; color: var(--red); margin-top: 8px; }
 .cl-cta {
   display: block; width: 100%; margin-top: 16px; padding: 14px 18px;
   background: var(--red); color: #fff; border: 0; border-radius: 8px;
@@ -7483,7 +7483,7 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 .cl-cta:hover { background: var(--red-dark); }
 .cl-cta:active { transform: scale(0.99); }
 .cl-cta[disabled] { opacity: 0.7; cursor: default; }
-.cl-cta-msg { font-size: 12px; color: #ff6b6d; margin-top: 8px; min-height: 14px; }
+.cl-cta-msg { font-size: 12px; color: var(--red); margin-top: 8px; min-height: 14px; }
 .cl-buy-perks { list-style: none; margin: 14px 0 0; padding: 12px 0 0; border-top: 1px solid var(--border); }
 .cl-buy-perks li { font-size: 12.5px; color: var(--gray-light); padding: 4px 0 4px 20px; position: relative; }
 .cl-buy-perks li::before { content: '✓'; position: absolute; left: 0; color: var(--red); font-weight: 700; }
@@ -7496,7 +7496,7 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
   background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--white-dim);
   font-family: var(--font-body); font-size: 12px; font-weight: 600; padding: 6px 12px; cursor: pointer;
 }
-.cl-share:hover { border-color: var(--border-red); color: #ff6b6d; }
+.cl-share:hover { border-color: var(--border-red); color: var(--red); }
 
 /* ── Responsive — single column below 1100px; mobile keeps compact type ── */
 @media (max-width: 1100px) {
@@ -7522,9 +7522,10 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 /* Back-to-courses link at the top of the course landing hero */
 .cl-back {
   display: inline-flex; align-items: center; gap: 7px;
-  font-size: 13px; font-weight: 600; color: var(--white-dim);
+  font-size: 13px; font-weight: 700; color: var(--red);
   text-decoration: none; margin-bottom: 14px;
 }
 .cl-back-arrow { color: var(--red); font-size: 15px; transition: transform 0.15s ease; }
 .cl-back:hover { color: var(--white); }
+.cl-back:hover .cl-back-arrow { color: var(--white); }
 .cl-back:hover .cl-back-arrow { transform: translateX(-3px); }
