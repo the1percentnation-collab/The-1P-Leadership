@@ -75,6 +75,7 @@ function heroHtml(course) {
     <div class="cl-hero">
       <div class="cl-hero-inner">
         <div class="cl-hero-main">
+          <a class="cl-back" href="/courses.html"><span class="cl-back-arrow">←</span> Back to courses</a>
           <nav class="cl-breadcrumb" aria-label="Breadcrumb">
             <a href="/dashboard.html">Academy</a> <span>›</span>
             <a href="/courses.html">Courses</a> <span>›</span>

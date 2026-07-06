@@ -7518,3 +7518,13 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
   .cl-lesson-tag { display: none; }
   .cl-instructor { flex-direction: column; }
 }
+
+/* Back-to-courses link at the top of the course landing hero */
+.cl-back {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 13px; font-weight: 600; color: var(--white-dim);
+  text-decoration: none; margin-bottom: 14px;
+}
+.cl-back-arrow { color: var(--red); font-size: 15px; transition: transform 0.15s ease; }
+.cl-back:hover { color: var(--white); }
+.cl-back:hover .cl-back-arrow { transform: translateX(-3px); }
