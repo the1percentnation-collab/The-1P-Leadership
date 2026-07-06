@@ -1463,49 +1463,20 @@ gmp-place-autocomplete,
   .user-chip > .c-bell { flex-shrink: 0; }
 }
 
+/* Console pages use the full window width on desktop; below 1200px the
+   old cap never applied anyway, so phones/tablets are unchanged. */
 .console-body {
   padding: 32px;
-  max-width: 1200px;
   margin: 0 auto;
   width: 100%;
 }
+@media (min-width: 1200px) {
+  .console-body { padding: 32px 44px 64px; }
+}
 
-/* CRM uses the full width of the console for better visibility. */
+/* CRM uses tighter top padding within the full-width console. */
 .console-body:has(.crm-toolbar) {
-  max-width: none;
   padding: 24px 44px 64px;
-}
-
-/* Manage Courses uses the full console width with a roomier, larger table —
-   overrides the 1200px cap the same way the CRM and profile pages do. */
-.console-body:has(#courses-view) {
-  max-width: none;
-  padding: 24px 44px 64px;
-}
-.console-body:has(#courses-view) .card {
-  padding: 28px 32px;
-}
-.console-body:has(#courses-view) .card h2 {
-  font-size: 22px;
-}
-.console-body:has(#courses-view) .data-table {
-  font-size: 15px;
-}
-.console-body:has(#courses-view) .data-table th,
-.console-body:has(#courses-view) .data-table td {
-  padding: 14px 16px;
-}
-.console-body:has(#courses-view) .data-table th {
-  font-size: 11px;
-}
-.console-body:has(#courses-view) .row-status {
-  font-size: 14px;
-  padding: 6px 10px;
-}
-.console-body:has(#courses-view) .row-num {
-  font-size: 14px;
-  padding: 6px 10px;
-  width: 100px;
 }
 
 .card {
@@ -1716,6 +1687,19 @@ gmp-place-autocomplete,
 }
 .row-num:focus { border-color: rgba(204,27,27,0.5); }
 
+/* Desktop: consoles span the full window, so scale cards, tables and the
+   inline row controls up to use the room. min-width guard keeps the
+   compact mobile/tablet sizing untouched. */
+@media (min-width: 1200px) {
+  .card { padding: 28px 32px; }
+  .card h2 { font-size: 22px; }
+  .data-table { font-size: 15px; }
+  .data-table th, .data-table td { padding: 14px 16px; }
+  .data-table th { font-size: 11px; }
+  .row-status { font-size: 14px; padding: 6px 10px; }
+  .row-num { font-size: 14px; padding: 6px 10px; width: 100px; }
+}
+
 /* Row "⋯" kebab menu */
 .kebab { position: relative; display: inline-block; }
 .kebab-btn {
@@ -1791,11 +1775,14 @@ gmp-place-autocomplete,
    classes all use the `c-` prefix so they don't collide with anything else. */
 
 .c-shell {
-  max-width: 1320px;
   display: grid;
   grid-template-columns: 220px 1fr 280px;
   gap: 24px;
   align-items: start;
+}
+/* Very wide desktops: give the side rails more room too. */
+@media (min-width: 1500px) {
+  .c-shell { grid-template-columns: 260px 1fr 320px; gap: 32px; }
 }
 .c-shell > #gate-msg,
 .c-shell > .c-dashboard-hero { grid-column: 1 / -1; }
@@ -3209,12 +3196,14 @@ body.academy-hub {
 }
 
 .academy-header-inner {
-  max-width: 1280px;
   margin: 0 auto;
   padding: 18px 32px;
   display: flex;
   align-items: center;
   gap: 32px;
+}
+@media (min-width: 1200px) {
+  .academy-header-inner { padding: 18px 44px; }
 }
 
 .academy-brand {
@@ -3329,10 +3318,12 @@ body.academy-hub {
 }
 
 .academy-container {
-  max-width: 1280px;
   margin: 0 auto;
   padding: 48px 32px 96px;
   width: 100%;
+}
+@media (min-width: 1200px) {
+  .academy-container { padding: 48px 44px 96px; }
 }
 
 .academy-hero {
@@ -4265,7 +4256,7 @@ body.academy-course #course-workspace {
 .workspace-live-content .content {
   flex: 1;
   width: 100%;
-  max-width: 1120px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 40px 48px 60px;
 }
@@ -4413,11 +4404,9 @@ body.academy-course #course-workspace {
 .welcome-inner {
   margin: 0 auto 48px;
   width: 100%;
-  max-width: 1120px;
 }
 
 .workspace-welcome .welcome-available {
-  max-width: 1120px;
   width: 100%;
   margin: 0 auto;
 }
@@ -6253,7 +6242,7 @@ body.academy-course #course-workspace {
    shell for the create-event modal; layout below is page-local. */
 
 .c-events-shell {
-  max-width: 880px;
+  max-width: 1200px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -7239,7 +7228,7 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 /* ════════════════════════════════════════════════════════════════
    Public "What's Coming" (pre-order / interest) page
    ════════════════════════════════════════════════════════════════ */
-.pre-shell { max-width: 1080px; margin: 0 auto; padding: 48px 20px 80px; color: var(--white); }
+.pre-shell { max-width: 1440px; margin: 0 auto; padding: 48px 20px 80px; color: var(--white); }
 .pre-hero { text-align: center; margin-bottom: 40px; }
 .pre-brand { display: inline-block; }
 .pre-logo { height: 72px; width: auto; margin-bottom: 14px; }
