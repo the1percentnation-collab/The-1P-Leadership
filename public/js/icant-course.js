@@ -1,5 +1,9 @@
-// I Can't: The Course — vanilla JS course workspace
+// I Can't: The Course — course content + tab renderers.
 // Mounted via courses-registry.js when ?course=icant&module=N is active.
+// The workspace shell (sidebar, topbar, tabs, complete footer) is the shared
+// Coursera-style player in course-player.js — the same UI every course uses.
+
+import { mountCoursePlayer } from './course-player.js';
 
 export const ALIGN = {
   A: { label: 'Awareness',  desc: 'Seeing the belief clearly' },
@@ -335,11 +339,8 @@ const STORAGE_KEY = 'icant-course-v1';
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const state = {
-  activeModule: 1,
   completed: {},
   answers: {},
-  sidebarOpen: true,
-  tab: 'lesson',
 };
 
 function loadState() {
@@ -371,17 +372,6 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
-function progressBarHtml(current, total) {
-  const pct = Math.round((current / total) * 100);
-  return `
-    <div style="display:flex;align-items:center;gap:12px;">
-      <div style="flex:1;height:3px;background:#2A2A2A;border-radius:2px;">
-        <div style="height:100%;width:${pct}%;background:#E60306;border-radius:2px;transition:width 0.4s ease;"></div>
-      </div>
-      <span style="font-size:12px;color:#AAAAAA;white-space:nowrap;">${current}/${total} modules</span>
-    </div>`;
-}
-
 function alignBadgeHtml(letter) {
   const item = ALIGN[letter];
   return `
@@ -407,36 +397,7 @@ function alignBarHtml(activeKey) {
     </div>`;
 }
 
-function sidebarHtml() {
-  const completedCount = Object.keys(state.completed).length;
-  const items = MODULES.map((mod) => {
-    const isActive = mod.id === state.activeModule;
-    const isDone   = !!state.completed[mod.id];
-    return `
-      <button class="icant-mod-btn" data-mod="${mod.id}"
-        style="width:100%;background:${isActive ? '#1A0000' : 'none'};border:none;
-          border-left:3px solid ${isActive ? '#E60306' : 'transparent'};
-          cursor:pointer;padding:12px 16px;text-align:left;transition:all 0.15s;
-          font-family:'DM Sans',sans-serif;">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;
-            display:flex;align-items:center;justify-content:center;
-            background:${isDone ? '#00AA00' : isActive ? '#E60306' : '#2A2A2A'};
-            font-size:11px;font-weight:700;
-            color:${isDone || isActive ? '#fff' : '#AAAAAA'};
-            transition:all 0.2s;">
-            ${isDone ? '✓' : mod.id}
-          </div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:12px;font-weight:600;
-              color:${isActive ? '#fff' : isDone ? '#888' : '#666'};
-              white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(mod.title)}</div>
-            <div style="font-size:10px;color:#444;margin-top:2px;">${esc(mod.duration)} · ${esc(ALIGN[mod.alignKey].label)}</div>
-          </div>
-        </div>
-      </button>`;
-  }).join('');
-
+function alignLegendHtml() {
   const alignLegend = Object.entries(ALIGN).map(([key]) => `
     <div style="flex:1;text-align:center;font-family:'Bebas Neue',sans-serif;font-size:16px;color:#E60306;">${esc(key)}</div>
   `).join('');
@@ -445,21 +406,9 @@ function sidebarHtml() {
   `).join('');
 
   return `
-    <div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
-      <div style="padding:20px 20px 16px;border-bottom:1px solid #1A1A1A;">
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:3px;color:#E60306;margin-bottom:2px;">THE ONE PERCENT NATION</div>
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:19px;color:#fff;line-height:1.1;margin-bottom:12px;">I CAN'T: THE COURSE</div>
-        ${progressBarHtml(completedCount, MODULES.length)}
-      </div>
-      <div style="flex:1;overflow-y:auto;padding:12px 0;">
-        ${items}
-      </div>
-      <div style="padding:14px 16px;border-top:1px solid #1A1A1A;background:#080808;">
-        <div style="font-size:9px;letter-spacing:2px;color:#444;font-weight:600;margin-bottom:8px;">A.L.I.G.N. FRAMEWORK</div>
-        <div style="display:flex;gap:0;">${alignLegend}</div>
-        <div style="display:flex;gap:0;margin-top:2px;">${alignLabels}</div>
-      </div>
-    </div>`;
+    <div style="font-size:9px;letter-spacing:2px;color:#444;font-weight:600;margin-bottom:8px;">A.L.I.G.N. FRAMEWORK</div>
+    <div style="display:flex;gap:0;">${alignLegend}</div>
+    <div style="display:flex;gap:0;margin-top:2px;">${alignLabels}</div>`;
 }
 
 function lessonTabHtml(mod) {
@@ -518,7 +467,7 @@ function workbookTabHtml(mod) {
           placeholder="Write your answer here..."
           style="width:100%;background:#0D0D0D;border:1px solid #2A2A2A;border-radius:8px;
             color:#fff;padding:10px 12px;font-size:13px;line-height:1.5;
-            font-family:'DM Sans',sans-serif;resize:vertical;min-height:80px;
+            font-family:inherit;resize:vertical;min-height:80px;
             box-sizing:border-box;">${val}</textarea>
       </div>`;
   }).join('');
@@ -551,9 +500,9 @@ function summaryTabHtml(mod) {
       <p style="color:#D0D0D0;line-height:1.6;font-size:13px;margin:0;">${esc(item)}</p>
     </div>`).join('');
 
-  const completeBtn = isCompleted
+  const completeBanner = isCompleted
     ? `<div style="background:#001A00;border:1px solid #00AA00;border-radius:10px;padding:14px 20px;color:#00AA00;font-size:13px;font-weight:600;text-align:center;">✓ Module Complete — Keep Moving</div>`
-    : `<button class="icant-complete-btn" style="background:#E60306;border:none;border-radius:10px;padding:16px 24px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:1px;transition:all 0.2s;font-family:'DM Sans',sans-serif;">MARK MODULE COMPLETE →</button>`;
+    : '';
 
   return `
     <div style="display:flex;flex-direction:column;gap:24px;">
@@ -565,7 +514,7 @@ function summaryTabHtml(mod) {
         <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:10px;">WHAT'S NEXT</div>
         <p style="color:#E0E0E0;line-height:1.7;font-size:13px;margin:0;">${esc(mod.bridge)}</p>
       </div>
-      ${completeBtn}
+      ${completeBanner}
       ${mod.id === 8 && isCompleted ? `
       <div style="background:#0A0A00;border:1px solid #555500;border-radius:12px;padding:20px;text-align:center;">
         <div style="font-size:10px;letter-spacing:2px;color:#CCCC00;font-weight:600;margin-bottom:10px;">ONE LAST THING</div>
@@ -587,184 +536,53 @@ function summaryTabHtml(mod) {
     </div>`;
 }
 
-function moduleViewHtml(mod) {
-  const tab = state.tab;
-  const isCompleted = !!state.completed[mod.id];
-  const tabs = [
-    { id: 'lesson',   label: 'Lesson'   },
-    { id: 'workbook', label: 'Workbook' },
-    { id: 'summary',  label: 'Summary'  },
-  ];
-
-  const tabBtns = tabs.map((t) => `
-    <button class="icant-tab-btn" data-tab="${t.id}"
-      style="background:none;border:none;cursor:pointer;padding:10px 20px;
-        font-size:13px;font-weight:500;
-        color:${tab === t.id ? '#fff' : '#AAAAAA'};
-        border-bottom:2px solid ${tab === t.id ? '#E60306' : 'transparent'};
-        transition:all 0.2s;font-family:'DM Sans',sans-serif;">${esc(t.label)}</button>`).join('');
-
-  let content = '';
-  if (tab === 'lesson')   content = lessonTabHtml(mod);
-  if (tab === 'workbook') content = workbookTabHtml(mod);
-  if (tab === 'summary')  content = summaryTabHtml(mod);
-
-  const completedBadge = isCompleted
-    ? `<div style="background:#001A00;border:1px solid #00AA00;border-radius:20px;padding:4px 12px;font-size:11px;color:#00AA00;font-weight:600;">✓ COMPLETE</div>`
-    : '';
-
-  return `
-    <div style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
-      <div style="padding:24px 28px 0;border-bottom:1px solid #1A1A1A;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
-          <div>
-            <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:6px;">MODULE ${mod.id} · ${esc(mod.chapterRef.toUpperCase())} · ${esc(mod.duration.toUpperCase())}</div>
-            <h1 style="font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:1px;color:#fff;line-height:1;margin:0;">${esc(mod.title)}</h1>
-            <p style="color:#AAAAAA;font-size:13px;margin-top:4px;">${esc(mod.subtitle)}</p>
-          </div>
-          ${completedBadge}
-        </div>
-        ${alignBarHtml(mod.alignKey)}
-        <div style="display:flex;gap:0;">${tabBtns}</div>
-      </div>
-      <div style="flex:1;overflow-y:auto;padding:24px 28px;" id="icant-tab-content">
-        ${content}
-      </div>
-    </div>`;
-}
-
-function fullHtml() {
-  const completedCount = Object.keys(state.completed).length;
-  const mod = MODULES.find((m) => m.id === state.activeModule);
-
-  return `
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
-      #workspace-icant *{box-sizing:border-box;}
-      #workspace-icant textarea:focus{outline:none;border-color:#E60306!important;}
-      #workspace-icant .icant-mod-btn:hover{background:#150000!important;}
-      #workspace-icant .icant-tab-btn:hover{color:#fff!important;}
-      #workspace-icant .icant-complete-btn:hover{opacity:0.85;}
-      #icant-sidebar::-webkit-scrollbar{width:4px;}
-      #icant-sidebar::-webkit-scrollbar-thumb{background:#E60306;border-radius:2px;}
-      #icant-tab-content::-webkit-scrollbar{width:4px;}
-      #icant-tab-content::-webkit-scrollbar-thumb{background:#E60306;border-radius:2px;}
-    </style>
-    <div style="display:flex;height:100%;background:#0A0A0A;overflow:hidden;font-family:'DM Sans',sans-serif;">
-
-      <!-- Sidebar -->
-      <div id="icant-sidebar" style="
-        width:${state.sidebarOpen ? '280px' : '0'};
-        min-width:${state.sidebarOpen ? '280px' : '0'};
-        background:#0D0D0D;border-right:1px solid #1A1A1A;
-        display:flex;flex-direction:column;overflow:hidden;transition:all 0.3s ease;">
-        ${sidebarHtml()}
-      </div>
-
-      <!-- Main -->
-      <div style="flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;">
-
-        <!-- Topbar -->
-        <div style="height:48px;border-bottom:1px solid #1A1A1A;display:flex;align-items:center;padding:0 20px;gap:12px;background:#0A0A0A;">
-          <button id="icant-toggle" style="background:#1A1A1A;border:1px solid #2A2A2A;border-radius:6px;color:#fff;width:32px;height:32px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;">≡</button>
-          <div style="flex:1;"></div>
-          <div style="font-size:11px;color:#AAAAAA;">${completedCount}/${MODULES.length} complete</div>
-          <div style="width:80px;height:4px;background:#1A1A1A;border-radius:2px;">
-            <div style="width:${Math.round((completedCount / MODULES.length) * 100)}%;height:100%;background:#E60306;border-radius:2px;transition:width 0.4s ease;"></div>
-          </div>
-        </div>
-
-        <!-- Module view -->
-        ${mod ? moduleViewHtml(mod) : ''}
-      </div>
-    </div>`;
-}
-
-// ── Render + bind ─────────────────────────────────────────────────────────────
-
-function render() {
-  const container = document.getElementById('workspace-icant');
-  if (!container) return;
-  container.innerHTML = fullHtml();
-  bindEvents(container);
-}
-
-function bindEvents(container) {
-  // Sidebar module buttons
-  container.querySelectorAll('.icant-mod-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.activeModule = Number(btn.dataset.mod);
-      state.tab = 'lesson';
-      render();
-    });
-  });
-
-  // Tab buttons
-  container.querySelectorAll('.icant-tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.tab = btn.dataset.tab;
-      render();
-    });
-  });
-
-  // Sidebar toggle
-  const toggle = container.querySelector('#icant-toggle');
-  if (toggle) {
-    toggle.addEventListener('click', () => {
-      state.sidebarOpen = !state.sidebarOpen;
-      render();
-    });
-  }
-
-  // Mark complete
-  const completeBtn = container.querySelector('.icant-complete-btn');
-  if (completeBtn) {
-    completeBtn.addEventListener('click', () => {
-      state.completed[state.activeModule] = true;
-      persistState();
-      if (state.activeModule < MODULES.length) {
-        setTimeout(() => {
-          state.activeModule += 1;
-          state.tab = 'lesson';
-          render();
-        }, 400);
-      } else {
-        render();
-      }
-    });
-  }
-
-  // Workbook textareas — live save
-  container.querySelectorAll('.icant-textarea').forEach((ta) => {
-    ta.addEventListener('input', () => {
-      state.answers[ta.dataset.key] = ta.value;
-      persistState();
-    });
-  });
-}
-
 // ── Public mount ──────────────────────────────────────────────────────────────
 
-let _mounted = false;
+const byId = (id) => MODULES.find((m) => m.id === id);
+
+let _loaded = false;
 
 export async function mount({ startAt } = {}) {
-  // Show our section, hide the standard 1P-CLC workspace panels.
-  ['workspace-welcome', 'workspace-roadmap', 'workspace-live-content', 'workspace-coming-soon']
-    .forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.hidden = true;
-    });
-  const section = document.getElementById('workspace-icant');
-  if (section) section.hidden = false;
-
-  if (!_mounted) {
+  if (!_loaded) {
     loadState();
-    _mounted = true;
+    _loaded = true;
   }
 
-  if (typeof startAt === 'number' && startAt >= 1 && startAt <= MODULES.length) {
-    state.activeModule = startAt;
-  }
-
-  render();
+  mountCoursePlayer({
+    brand: 'THE ONE PERCENT NATION',
+    courseTitle: "I CAN'T: THE COURSE",
+    modules: MODULES.map((m) => ({
+      id: m.id,
+      title: m.title,
+      subtitle: m.subtitle,
+      eyebrow: m.chapterRef,
+      duration: m.duration,
+      meta: `${m.duration} · ${ALIGN[m.alignKey].label}`
+    })),
+    moduleHeaderHtml: (m) => alignBarHtml(byId(m.id).alignKey),
+    sidebarFooterHtml: alignLegendHtml,
+    tabs: [
+      { id: 'lesson',   label: 'Lesson',   html: (m) => lessonTabHtml(byId(m.id)) },
+      {
+        id: 'workbook', label: 'Workbook', html: (m) => workbookTabHtml(byId(m.id)),
+        bind: (root) => {
+          root.querySelectorAll('.icant-textarea').forEach((ta) => {
+            ta.addEventListener('input', () => {
+              state.answers[ta.dataset.key] = ta.value;
+              persistState();
+            });
+          });
+        }
+      },
+      { id: 'summary',  label: 'Summary',  html: (m) => summaryTabHtml(byId(m.id)) }
+    ],
+    progress: {
+      isComplete: (id) => !!state.completed[id],
+      markComplete: async (id) => {
+        state.completed[id] = true;
+        persistState();
+      }
+    },
+    startAt: typeof startAt === 'number' ? startAt : undefined
+  });
 }

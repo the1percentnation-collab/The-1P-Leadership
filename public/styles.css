@@ -4346,6 +4346,368 @@ body.academy-course #course-workspace {
 }
 
 /* ============================================================
+   COURSE PLAYER — the uniform Coursera-style in-course UI every
+   course renders through (js/course-player.js): module sidebar +
+   progress, topbar, tabbed lesson pane, prev/complete footer.
+   ============================================================ */
+
+.workspace-player {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.cp-shell {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+  background: #0A0A0A;
+  position: relative;
+}
+
+/* ── Sidebar ── */
+.cp-sidebar {
+  width: 280px;
+  min-width: 280px;
+  background: #0D0D0D;
+  border-right: 1px solid #1A1A1A;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.3s ease, min-width 0.3s ease;
+}
+
+.cp-sidebar.is-closed { width: 0; min-width: 0; border-right: none; }
+
+.cp-sidebar-head {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid #1A1A1A;
+  min-width: 280px;
+}
+
+.cp-brand {
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 3px;
+  color: var(--red);
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.cp-course-title {
+  font-family: var(--font-display);
+  font-size: 19px;
+  color: var(--white);
+  line-height: 1.1;
+  margin-bottom: 12px;
+}
+
+.cp-progress { display: flex; align-items: center; gap: 12px; }
+
+.cp-progress-bar {
+  flex: 1;
+  height: 3px;
+  background: #2A2A2A;
+  border-radius: 2px;
+}
+
+.cp-progress-fill {
+  height: 100%;
+  background: var(--red);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.cp-progress-label { font-size: 12px; color: var(--gray-light); white-space: nowrap; }
+
+.cp-modlist {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+  min-width: 280px;
+}
+
+.cp-modlist::-webkit-scrollbar { width: 4px; }
+.cp-modlist::-webkit-scrollbar-thumb { background: var(--red); border-radius: 2px; }
+
+.cp-mod {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  padding: 12px 16px;
+  text-align: left;
+  transition: all 0.15s;
+  font-family: var(--font-body);
+}
+
+.cp-mod:hover { background: #150000; }
+.cp-mod.is-active { background: #1A0000; border-left-color: var(--red); }
+
+.cp-mod-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2A2A2A;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray-light);
+  transition: all 0.2s;
+}
+
+.cp-mod.is-active .cp-mod-num { background: var(--red); color: var(--white); }
+.cp-mod.is-done .cp-mod-num { background: #00AA00; color: var(--white); }
+
+.cp-mod-text { flex: 1; min-width: 0; display: block; }
+
+.cp-mod-title {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cp-mod.is-active .cp-mod-title { color: var(--white); }
+.cp-mod.is-done .cp-mod-title { color: #888; }
+
+.cp-mod-meta { display: block; font-size: 10px; color: #444; margin-top: 2px; }
+
+.cp-sidebar-foot {
+  padding: 14px 16px;
+  border-top: 1px solid #1A1A1A;
+  background: #080808;
+  min-width: 280px;
+}
+
+/* ── Main column ── */
+.cp-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.cp-topbar {
+  height: 48px;
+  border-bottom: 1px solid #1A1A1A;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 12px;
+  background: #0A0A0A;
+  flex-shrink: 0;
+}
+
+.cp-toggle {
+  background: #1A1A1A;
+  border: 1px solid #2A2A2A;
+  border-radius: 6px;
+  color: var(--white);
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cp-topbar-spacer { flex: 1; }
+.cp-topbar-count { font-size: 11px; color: var(--gray-light); }
+
+.cp-minibar {
+  width: 80px;
+  height: 4px;
+  background: #1A1A1A;
+  border-radius: 2px;
+}
+
+.cp-minibar-fill {
+  height: 100%;
+  background: var(--red);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+/* ── Module view ── */
+.cp-module {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cp-module-head {
+  padding: 24px 28px 0;
+  border-bottom: 1px solid #1A1A1A;
+  flex-shrink: 0;
+}
+
+.cp-module-head-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.cp-eyebrow {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--red);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.cp-module-title {
+  font-family: var(--font-display);
+  font-size: 32px;
+  letter-spacing: 1px;
+  color: var(--white);
+  line-height: 1;
+  margin: 0;
+}
+
+.cp-module-sub { color: var(--gray-light); font-size: 13px; margin-top: 4px; }
+
+.cp-complete-badge {
+  background: #001A00;
+  border: 1px solid #00AA00;
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: #00AA00;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cp-tabs { display: flex; gap: 0; }
+
+.cp-tab {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray-light);
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  font-family: var(--font-body);
+}
+
+.cp-tab:hover { color: var(--white); }
+.cp-tab.is-active { color: var(--white); border-bottom-color: var(--red); }
+
+.cp-tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px 40px;
+}
+
+.cp-tab-content::-webkit-scrollbar { width: 4px; }
+.cp-tab-content::-webkit-scrollbar-thumb { background: var(--red); border-radius: 2px; }
+
+.cp-tab-content textarea:focus { outline: none; border-color: var(--red) !important; }
+
+/* ── Footer nav (prev / position / complete) ── */
+.cp-footbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  /* Extra right padding keeps the complete button clear of the floating
+     chatbot bubble pinned to the bottom-right corner. */
+  padding: 14px 120px 14px 28px;
+  border-top: 1px solid #1A1A1A;
+  background: #0A0A0A;
+  flex-shrink: 0;
+}
+
+.cp-footbar-pos {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: #666;
+  text-transform: uppercase;
+}
+
+.cp-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 12px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: all 0.2s;
+  font-family: var(--font-body);
+  white-space: nowrap;
+}
+
+.cp-btn-primary { background: var(--red); color: var(--white); }
+.cp-btn-primary:hover { opacity: 0.85; }
+
+.cp-btn-ghost {
+  background: none;
+  border: 1px solid #2A2A2A;
+  color: var(--gray-light);
+}
+
+.cp-btn-ghost:hover:not(:disabled) { color: var(--white); border-color: #444; }
+.cp-btn-ghost:disabled { opacity: 0.3; cursor: default; }
+
+.cp-btn-done {
+  background: #001A00;
+  border: 1px solid #00AA00;
+  color: #00AA00;
+}
+
+.cp-btn-done:disabled { cursor: default; }
+
+/* Legacy 1P-CLC lesson content renders its own big header inside the tab
+   pane; the player already shows the module title, so the duplicated
+   heading is removed at bind time and the description stays. */
+.cp-tab-content .module-header { margin-bottom: 24px; padding-bottom: 0; border-bottom: none; }
+.cp-tab-content .module-desc { margin-top: 0; }
+
+@media (max-width: 900px) {
+  /* Sidebar overlays the lesson on small screens instead of squeezing it. */
+  .cp-sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 20;
+    box-shadow: 8px 0 32px rgba(0,0,0,0.6);
+  }
+  .cp-module-head { padding: 18px 20px 0; }
+  .cp-module-title { font-size: 26px; }
+  .cp-tab-content { padding: 18px 20px 32px; }
+  .cp-footbar { padding: 12px 100px 12px 16px; gap: 10px; }
+  .cp-footbar-pos { display: none; }
+  .cp-btn { padding: 11px 14px; font-size: 12px; }
+}
+
+/* ============================================================
    COURSES: enrollment UI — sidebar empty state, available courses
    grid on the welcome panel, roadmap view for an enrolled course
    ============================================================ */
