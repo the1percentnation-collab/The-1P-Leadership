@@ -11,7 +11,8 @@ import {
   doc, setDoc, getDocs, collection, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { loadModuleDocs } from './courses-data.js';
-import { mountCoursePlayer } from './course-player.js';
+import { mountCoursePlayer, escPlayer } from './course-player.js';
+import { videoEmbedHtml } from './video-embed.js';
 
 let _purify = null;
 async function getPurify() {
@@ -70,11 +71,105 @@ async function markComplete(slug, moduleId, completedSet) {
   }
 }
 
+// ─── Workbook + Summary tabs ──────────────────────────────────────────────
+// Optional per-module content authored in the course builder. The visual
+// style mirrors the I Can't course tabs so every course feels identical.
+// Workbook answers autosave to localStorage, namespaced per course.
+
+const esc = escPlayer;
+
+function hasWorkbookContent(m) {
+  const w = m && m.workbook;
+  return !!(w && (w.reflection || w.action || (Array.isArray(w.prompts) && w.prompts.length)));
+}
+
+function wbStorageKey(slug) { return `1p_wb_${slug}`; }
+
+function loadWbAnswers(slug) {
+  try { return JSON.parse(localStorage.getItem(wbStorageKey(slug)) || '{}') || {}; }
+  catch (e) { return {}; }
+}
+
+function saveWbAnswer(slug, key, value) {
+  try {
+    const all = loadWbAnswers(slug);
+    all[key] = value;
+    localStorage.setItem(wbStorageKey(slug), JSON.stringify(all));
+  } catch (e) {}
+}
+
+function emptyTabCard(text) {
+  return `<div style="background:#111;border:1px solid #1E1E1E;border-radius:12px;padding:24px;color:#888;font-size:13px;text-align:center;">${esc(text)}</div>`;
+}
+
+function workbookTabHtml(slug, m) {
+  if (!hasWorkbookContent(m)) return emptyTabCard('This lesson has no workbook.');
+  const w = m.workbook;
+  const answers = loadWbAnswers(slug);
+  const prompts = (w.prompts || []).map((prompt, i) => {
+    const key = `m${m.id}_${i}`;
+    const val = esc(answers[key] || '');
+    return `
+      <div>
+        <label style="display:block;font-size:12px;color:#AAAAAA;margin-bottom:6px;font-style:italic;">${esc(prompt)}</label>
+        <textarea class="fsw-textarea" data-wb-key="${esc(key)}"
+          placeholder="Write your answer here..."
+          style="width:100%;background:#0D0D0D;border:1px solid #2A2A2A;border-radius:8px;
+            color:#fff;padding:10px 12px;font-size:13px;line-height:1.5;
+            font-family:inherit;resize:vertical;min-height:80px;
+            box-sizing:border-box;">${val}</textarea>
+      </div>`;
+  }).join('');
+
+  return `
+    <div>
+      <div style="margin-bottom:20px;">
+        <h2 style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:#fff;margin-bottom:6px;letter-spacing:0.5px;">YOUR WORKBOOK</h2>
+        <p style="color:#AAAAAA;font-size:13px;margin:0;">Your answers are saved locally. Be honest — no one else sees this.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:20px;">
+        ${w.reflection ? `
+        <div style="background:#111;border:1px solid #222;border-radius:12px;padding:20px;">
+          <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:8px;">REFLECTION PROMPT</div>
+          <p style="color:#CCC;line-height:1.6;font-size:14px;margin:0;">${esc(w.reflection)}</p>
+        </div>` : ''}
+        ${(w.action || prompts) ? `
+        <div style="background:#111;border:1px solid #222;border-radius:12px;padding:20px;">
+          <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:8px;">ACTION PROMPT</div>
+          ${w.action ? `<p style="color:#CCC;line-height:1.6;font-size:14px;margin-bottom:20px;">${esc(w.action)}</p>` : ''}
+          <div style="display:flex;flex-direction:column;gap:14px;">${prompts}</div>
+        </div>` : ''}
+      </div>
+    </div>`;
+}
+
+function bindWorkbookTab(slug, root) {
+  root.querySelectorAll('.fsw-textarea').forEach((ta) => {
+    ta.addEventListener('input', () => saveWbAnswer(slug, ta.dataset.wbKey, ta.value));
+  });
+}
+
+function summaryTabHtml(m) {
+  const items = Array.isArray(m.summary) ? m.summary : [];
+  if (!items.length) return emptyTabCard('This lesson has no summary.');
+  const rows = items.map((item, i) => `
+    <div style="display:flex;gap:14px;align-items:flex-start;padding:14px 16px;background:#111;border:1px solid #1E1E1E;border-radius:8px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:#E60306;line-height:1;flex-shrink:0;width:20px;">${i + 1}</div>
+      <p style="color:#D0D0D0;line-height:1.6;font-size:13px;margin:0;">${esc(item)}</p>
+    </div>`).join('');
+  return `
+    <div>
+      <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:14px;">KEY TAKEAWAYS</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">${rows}</div>
+    </div>`;
+}
+
 // ─── Mount ────────────────────────────────────────────────────────────────
 
 export async function mountFirestoreCourse(course, { startAt } = {}) {
   const container = document.getElementById('workspace-player');
-  const modules = await loadModuleDocs(course.slug);
+  // Draft lessons (published === false) exist only in the builder.
+  const modules = (await loadModuleDocs(course.slug)).filter((m) => m.published !== false);
 
   if (modules.length === 0) {
     if (container) {
@@ -85,6 +180,32 @@ export async function mountFirestoreCourse(course, { startAt } = {}) {
 
   const completed = await loadCourseProgress(course.slug);
   const purify = await getPurify();
+  const byId = (pm) => modules.find((x) => x.id === pm.id) || {};
+
+  const tabs = [{
+    id: 'lesson',
+    label: 'Lesson',
+    html: (pm) => {
+      const m = byId(pm);
+      return videoEmbedHtml(m.videoUrl) +
+        `<div class="lesson-body">${purify.sanitize(m.html || '', { USE_PROFILES: { html: true } })}</div>`;
+    }
+  }];
+  if (modules.some(hasWorkbookContent)) {
+    tabs.push({
+      id: 'workbook',
+      label: 'Workbook',
+      html: (pm) => workbookTabHtml(course.slug, byId(pm)),
+      bind: (root) => bindWorkbookTab(course.slug, root)
+    });
+  }
+  if (modules.some((m) => Array.isArray(m.summary) && m.summary.length)) {
+    tabs.push({
+      id: 'summary',
+      label: 'Summary',
+      html: (pm) => summaryTabHtml(byId(pm))
+    });
+  }
 
   mountCoursePlayer({
     container,
@@ -97,14 +218,7 @@ export async function mountFirestoreCourse(course, { startAt } = {}) {
       duration: m.duration || '',
       meta: [m.duration, m.tagLabel || m.pillar].filter(Boolean).join(' · ')
     })),
-    tabs: [{
-      id: 'lesson',
-      label: 'Lesson',
-      html: (pm) => {
-        const m = modules.find((x) => x.id === pm.id);
-        return `<div class="lesson-body">${purify.sanitize((m && m.html) || '', { USE_PROFILES: { html: true } })}</div>`;
-      }
-    }],
+    tabs,
     progress: {
       isComplete: (id) => completed.has(id),
       markComplete: (id) => markComplete(course.slug, id, completed)
