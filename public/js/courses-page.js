@@ -374,30 +374,19 @@ async function renderRoadmap(course) {
 
 // ─── Workspace swap ───────────────────────────────────────────────────────
 
-function showWelcome() {
-  $('workspace-welcome').hidden = false;
-  $('workspace-roadmap').hidden = true;
-  $('workspace-live-content').hidden = true;
-  $('workspace-coming-soon').hidden = true;
+const WORKSPACE_SECTIONS = ['workspace-welcome', 'workspace-roadmap', 'workspace-player', 'workspace-coming-soon'];
+
+function showSection(id) {
+  WORKSPACE_SECTIONS.forEach((sid) => {
+    const el = $(sid);
+    if (el) el.hidden = sid !== id;
+  });
 }
-function showRoadmap() {
-  $('workspace-welcome').hidden = true;
-  $('workspace-roadmap').hidden = false;
-  $('workspace-live-content').hidden = true;
-  $('workspace-coming-soon').hidden = true;
-}
-function showModule() {
-  $('workspace-welcome').hidden = true;
-  $('workspace-roadmap').hidden = true;
-  $('workspace-live-content').hidden = false;
-  $('workspace-coming-soon').hidden = true;
-}
-function showComingSoon() {
-  $('workspace-welcome').hidden = true;
-  $('workspace-roadmap').hidden = true;
-  $('workspace-live-content').hidden = true;
-  $('workspace-coming-soon').hidden = false;
-}
+
+function showWelcome()    { showSection('workspace-welcome'); }
+function showRoadmap()    { showSection('workspace-roadmap'); }
+function showModule()     { showSection('workspace-player'); }
+function showComingSoon() { showSection('workspace-coming-soon'); }
 
 function renderComingSoon(course) {
   const slot = $('workspace-coming-soon');
@@ -414,15 +403,6 @@ function renderComingSoon(course) {
       </div>
     </div>
   `;
-}
-
-function renderCourseHero(course) {
-  const eye = $('course-eyebrow');
-  const title = $('course-title');
-  const sub = $('course-subtitle');
-  if (eye) eye.textContent = course.eyebrow || 'Course';
-  if (title) title.textContent = course.title || '—';
-  if (sub) sub.textContent = course.subtitle || '';
 }
 
 // ─── Owner preview banner ───────────────────────────────────────────────────
@@ -507,9 +487,8 @@ async function main() {
     renderSidebar(null);
     showWelcome();
   } else if (moduleId != null) {
-    // Module view — mount the course workspace and start at the requested module.
+    // Module view — mount the shared course player at the requested module.
     renderSidebar(course.slug);
-    renderCourseHero(course);
     showModule();
     try {
       // A course migrated to the editor (contentSource === 'firestore') always

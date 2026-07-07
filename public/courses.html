@@ -61,51 +61,12 @@
     <!-- Roadmap — default view for an enrolled course (click a step to open that module) -->
     <section id="workspace-roadmap" class="workspace-roadmap" hidden></section>
 
-    <!-- Live course body (e.g. 1P-CLC) — main column of the existing course UI -->
-    <section id="workspace-live-content" class="workspace-live-content" hidden>
-
-      <div class="course-hero">
-        <div class="academy-eyebrow" id="course-eyebrow">Course</div>
-        <h1 id="course-title">—</h1>
-        <p id="course-subtitle">—</p>
-        <div class="course-hero-meta">
-          <div class="progress-wrap">
-            <div class="progress-label">
-              <span>Course Progress</span>
-              <span id="progress-pct">0%</span>
-            </div>
-            <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
-          </div>
-          <div class="course-cert-inline">
-            <div class="cert-status-label">Certification</div>
-            <div class="cert-status-val" id="cert-status-val">Not Started</div>
-          </div>
-        </div>
-      </div>
-
-      <nav class="course-modules-strip" id="nav-container" aria-label="Course modules"></nav>
-
-      <div class="topbar">
-        <div class="topbar-left">
-          <div class="topbar-breadcrumb" id="breadcrumb"></div>
-        </div>
-        <div class="topbar-actions">
-          <button class="btn btn-ghost" id="btn-prev">← Previous</button>
-          <button class="btn btn-primary" id="btn-next">Next Module →</button>
-        </div>
-      </div>
-      <div class="content" id="content-area"></div>
-      <div class="module-footer">
-        <div class="footer-progress" id="footer-progress">Module <span id="cur-mod">0</span> of <span id="total-mod">7</span></div>
-        <button class="btn btn-primary" id="btn-complete">Mark Complete & Continue →</button>
-      </div>
-    </section>
+    <!-- In-course view — every course mounts the shared Coursera-style
+         player (js/course-player.js) into this section. -->
+    <section id="workspace-player" class="workspace-player" hidden></section>
 
     <!-- Coming-soon placeholder -->
     <section id="workspace-coming-soon" class="workspace-coming-soon-main" hidden></section>
-
-    <!-- I Can't: The Course workspace -->
-    <section id="workspace-icant" style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;padding:0;" hidden></section>
 
   </main>
 </div>
