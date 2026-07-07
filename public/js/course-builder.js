@@ -776,10 +776,13 @@ function renderCodeBanner() {
   banner.style.display = isCode ? '' : 'none';
   workspace.style.display = isCode ? 'none' : '';
   if (isCode) {
-    $('mc-code-banner-text').innerHTML = S.slug === 'icant'
-      ? 'This course\'s lessons are built into the site code. Migrate them to edit lessons here — the member experience stays identical.'
+    const migratable = CODE_CONTENT_SLUGS.has(S.slug);
+    $('mc-code-banner-text').innerHTML = migratable
+      ? 'This course\'s lessons are built into the site code. Migrate them into the builder to edit every lesson right here — members see the same course.'
       : 'This course\'s lessons are built into the site code. Lessons added here will <b>not</b> be shown until the course is switched to editable content (Settings tab).';
-    migrate.style.display = S.slug === 'icant' ? '' : 'none';
+    migrate.style.display = migratable ? '' : 'none';
+    migrate.disabled = false;
+    migrate.textContent = 'Migrate lessons into the builder';
   }
 }
 
@@ -840,8 +843,16 @@ export function initBuilder(options = {}) {
   $('btn-module-delete').addEventListener('click', deleteLesson);
   $('btn-html-toggle').addEventListener('click', toggleHtmlSource);
   $('btn-preview-toggle').addEventListener('click', togglePreview);
-  $('btn-banner-migrate').addEventListener('click', () => {
-    if (cfg.onMigrateIcant) cfg.onMigrateIcant();
+  $('btn-banner-migrate').addEventListener('click', async () => {
+    if (!cfg.onMigrate || !S.slug) return;
+    const btn = $('btn-banner-migrate');
+    btn.disabled = true;
+    btn.textContent = 'Migrating…';
+    try { await cfg.onMigrate(S.slug); }
+    finally {
+      btn.disabled = false;
+      btn.textContent = 'Migrate lessons into the builder';
+    }
   });
 
   // Dirty tracking + video validation on the lesson form

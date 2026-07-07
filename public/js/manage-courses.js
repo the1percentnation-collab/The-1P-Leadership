@@ -361,46 +361,119 @@ function icantModuleToHtml(m, ALIGN) {
   return parts.join('\n');
 }
 
+async function migrateIcantCore() {
+  const { MODULES, ALIGN } = await import('./icant-course.js');
+  let wrote = 0;
+  for (const m of MODULES) {
+    const align = (ALIGN && ALIGN[m.alignKey]) || { label: '' };
+    const pillar = [m.chapterRef, align.label].filter(Boolean).join(' · ');
+    const wb = m.workbook || null;
+    await setDoc(doc(db, 'courses', 'icant', 'modules', String(m.id)), {
+      id: m.id,
+      title: m.title,
+      subtitle: m.subtitle || null,
+      pillar: pillar || null,
+      duration: m.duration || null,
+      tagLabel: m.alignKey || null,
+      html: icantModuleToHtml(m, ALIGN),
+      videoUrl: null,
+      workbook: wb ? {
+        reflection: wb.reflection || null,
+        action: wb.action || null,
+        prompts: Array.isArray(wb.prompts) ? wb.prompts : []
+      } : null,
+      summary: Array.isArray(m.summary) && m.summary.length ? m.summary : null,
+      published: true,
+      sortOrder: m.id,
+      updatedAt: serverTimestamp(),
+      updatedBy: _userEmail
+    }, { merge: true });
+    wrote++;
+  }
+  await setDoc(doc(db, 'courses', 'icant'), {
+    contentSource: 'firestore',
+    moduleCount: MODULES.length,
+    updatedAt: serverTimestamp(),
+    updatedBy: _userEmail
+  }, { merge: true });
+  return wrote;
+}
+
+// Migrate the 1P Certified Leader Coach lessons (modules.js) into editable
+// module docs. Each lesson's rendered HTML becomes the lesson body — minus the
+// duplicated header, completion banners, and notes fields; the notes fields'
+// prompts become real Workbook prompts (members answer them in the Workbook
+// tab, autosaved, exactly like the I Can't course).
+async function migrateClcCore() {
+  const { MODULES } = await import('./modules.js');
+  const { store } = await import('./store.js');
+  try { await store.load(); } catch (e) { /* render() tolerates empty state */ }
+  let wrote = 0;
+  for (let i = 0; i < MODULES.length; i++) {
+    const m = MODULES[i];
+    const parsed = new DOMParser().parseFromString(m.render(), 'text/html');
+    const body = parsed.body;
+    body.querySelectorAll('.module-header, .completion-banner').forEach((el) => el.remove());
+    const prompts = [];
+    body.querySelectorAll('textarea[data-note-key]').forEach((ta) => {
+      const p = (ta.getAttribute('placeholder') || '').trim();
+      if (p) prompts.push(p);
+      ta.remove();
+    });
+    await setDoc(doc(db, 'courses', '1p-clc', 'modules', String(m.id)), {
+      id: m.id,
+      title: m.title,
+      subtitle: m.subtitle || null,
+      pillar: m.pillar || null,
+      duration: m.duration || null,
+      tagLabel: m.tagLabel || null,
+      html: body.innerHTML.trim(),
+      videoUrl: null,
+      workbook: prompts.length ? { reflection: null, action: null, prompts } : null,
+      summary: null,
+      published: true,
+      sortOrder: i + 1,
+      updatedAt: serverTimestamp(),
+      updatedBy: _userEmail
+    }, { merge: true });
+    wrote++;
+  }
+  await setDoc(doc(db, 'courses', '1p-clc'), {
+    contentSource: 'firestore',
+    moduleCount: MODULES.length,
+    updatedAt: serverTimestamp(),
+    updatedBy: _userEmail
+  }, { merge: true });
+  return wrote;
+}
+
+const MIGRATABLE = {
+  icant: { label: '"I Can’t: The Course"', run: migrateIcantCore },
+  '1p-clc': { label: '"1P Certified Leader Coach"', run: migrateClcCore }
+};
+
+// Banner-triggered migration from inside the builder: migrate, then reopen the
+// builder so the curriculum is immediately editable.
+async function migrateCourseLessons(slug) {
+  const mig = MIGRATABLE[slug];
+  if (!mig) return;
+  if (!confirm(`Copy ${mig.label}'s built-in lessons into the course builder? The course switches to render from the database and every lesson becomes editable here. Members see the same course; their progress tracking starts fresh. Safe to re-run.`)) return;
+  try {
+    await mig.run();
+    await refreshCourses();
+    await openBuilderView(slug);
+  } catch (e) {
+    alert(`Migration failed: ${e && e.message ? e.message : e}`);
+  }
+}
+
 async function migrateIcant() {
   const out = $('seed-result');
   if (!confirm('Migrate "I Can’t: The Course" into the course builder? This copies its 8 lessons into the database (workbook + summary become editable tabs) and switches the live course to render from there. You can re-run it safely.')) return;
   showView('courses');
   out.innerHTML = '<div style="color:var(--gray-light); font-size:12px;">Migrating "I Can’t"…</div>';
   try {
-    const { MODULES, ALIGN } = await import('./icant-course.js');
-    let wrote = 0;
-    for (const m of MODULES) {
-      const align = (ALIGN && ALIGN[m.alignKey]) || { label: '' };
-      const pillar = [m.chapterRef, align.label].filter(Boolean).join(' · ');
-      const wb = m.workbook || null;
-      await setDoc(doc(db, 'courses', 'icant', 'modules', String(m.id)), {
-        id: m.id,
-        title: m.title,
-        subtitle: m.subtitle || null,
-        pillar: pillar || null,
-        duration: m.duration || null,
-        tagLabel: m.alignKey || null,
-        html: icantModuleToHtml(m, ALIGN),
-        videoUrl: null,
-        workbook: wb ? {
-          reflection: wb.reflection || null,
-          action: wb.action || null,
-          prompts: Array.isArray(wb.prompts) ? wb.prompts : []
-        } : null,
-        summary: Array.isArray(m.summary) && m.summary.length ? m.summary : null,
-        published: true,
-        sortOrder: m.id,
-        updatedAt: serverTimestamp(),
-        updatedBy: _userEmail
-      }, { merge: true });
-      wrote++;
-    }
-    await setDoc(doc(db, 'courses', 'icant'), {
-      contentSource: 'firestore',
-      moduleCount: MODULES.length,
-      updatedAt: serverTimestamp(),
-      updatedBy: _userEmail
-    }, { merge: true });
+    const wrote = await migrateIcantCore();
     ok(out, `Migrated ${wrote} lessons. "I Can’t: The Course" is now fully editable in the builder — including its Workbook and Summary tabs.`);
     await refreshCourses();
   } catch (e) { err(out, e); }
@@ -460,7 +533,7 @@ async function main() {
     userEmail: _userEmail,
     onCoursesChanged: renderDashboard,
     onDeleteCourse: deleteCourse,
-    onMigrateIcant: migrateIcant
+    onMigrate: migrateCourseLessons
   });
   initCoupons({ userEmail: _userEmail });
 
