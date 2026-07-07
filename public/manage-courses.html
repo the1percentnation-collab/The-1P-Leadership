@@ -11,7 +11,7 @@
     gtag("config", "G-RBH536HRZE");
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Manage Courses | The One Percent Academy</title>
+  <title>Course Builder | The One Percent Academy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -38,156 +38,264 @@
           <button class="console-tab" type="button" id="tab-coupons" data-view="coupons">Coupons</button>
         </nav>
 
-        <!-- ─── Courses list (landing) ─────────────────────────────────── -->
+        <!-- ─── Courses dashboard (Kajabi-style cards) ─────────────────── -->
         <div id="courses-view">
-          <div class="card" id="courses-card">
-            <div class="builder-head" style="margin-bottom:6px;">
-              <h2 style="margin-bottom:0;">Courses</h2>
-              <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <button class="btn btn-primary" id="btn-add-course">+ Add course</button>
-                <button class="btn btn-ghost" id="btn-seed">Seed built-in courses to database</button>
-                <button class="btn btn-ghost" id="btn-migrate-icant" title="Copy the I Can't: The Course lessons from code into the editable content editor">Migrate “I Can’t” to editable content</button>
-              </div>
+          <div class="builder-head" style="margin-bottom:4px;">
+            <div>
+              <h2 style="margin-bottom:2px;">Courses</h2>
+              <p style="font-size:13px; color:var(--gray-light); margin:0;">
+                <b>Live</b> = enrollable · <b>Coming soon</b> = visible, not enrollable · <b>Inactive</b> = hidden.
+              </p>
             </div>
-            <p style="font-size:13px; color:var(--gray-light); margin:6px 0 12px;">
-              Click a course to open its builder. <b>Live</b> = enrollable ·
-              <b>Coming soon</b> = visible, not enrollable · <b>Inactive</b> = hidden from the library.
-            </p>
-            <div id="seed-result"></div>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Course</th>
-                  <th>Status</th>
-                  <th>Price</th>
-                  <th>Sale</th>
-                  <th>Billing</th>
-                  <th>Content</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody id="courses-body"></tbody>
-            </table>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <button class="btn btn-primary" id="btn-add-course">+ New course</button>
+              <span class="kebab" data-kebab>
+                <button class="kebab-btn" type="button" aria-label="More tools" data-kebab-toggle>⋯</button>
+                <span class="kebab-menu">
+                  <button type="button" id="btn-seed">Seed built-in courses to database</button>
+                  <button type="button" id="btn-migrate-icant" title="Copy the I Can't lessons from code into the editor">Migrate “I Can’t” to editable</button>
+                </span>
+              </span>
+            </div>
           </div>
+          <div id="seed-result"></div>
+          <div class="mc-grid" id="courses-grid"></div>
         </div>
 
         <!-- ─── Course builder (drill-in) ──────────────────────────────── -->
         <div id="builder-view" style="display:none;">
-          <div class="builder-head">
+          <div class="mc-bhead">
             <div>
               <a href="#" class="builder-back" id="btn-builder-back">&larr; All courses</a>
-              <h2 id="builder-title" style="margin:6px 0 0;">Building course</h2>
+              <div class="mc-bhead-title">
+                <h2 id="builder-title">Building course</h2>
+                <span class="mc-pill" id="builder-status-pill" style="display:none;"></span>
+              </div>
             </div>
-            <button class="btn btn-ghost" type="button" id="btn-preview-course" style="font-size:12px;">Preview course →</button>
+            <div class="mc-bhead-actions">
+              <button class="btn btn-ghost" type="button" id="btn-preview-course" style="font-size:12px;">Preview course →</button>
+              <span class="mc-publish" id="mc-publish">
+                <button class="btn btn-primary" type="button" id="btn-publish-toggle" style="font-size:12px;">Publish ▾</button>
+                <span class="mc-publish-menu">
+                  <button type="button" data-publish="live"><b style="color:#2ecc71;">Go live</b><span>Members can enroll and take the course</span></button>
+                  <button type="button" data-publish="coming-soon"><b style="color:#f1b23c;">Coming soon</b><span>Visible in the library, checkout closed</span></button>
+                  <button type="button" data-publish="inactive"><b style="color:#ff7070;">Unpublish</b><span>Hidden from the library entirely</span></button>
+                </span>
+              </span>
+            </div>
+          </div>
+          <div id="publish-result"></div>
+
+          <nav class="mc-btabs" aria-label="Course sections">
+            <button class="mc-btab is-active" type="button" data-btab="curriculum">Curriculum</button>
+            <button class="mc-btab" type="button" data-btab="sales">Sales page</button>
+            <button class="mc-btab" type="button" data-btab="pricing">Pricing</button>
+            <button class="mc-btab" type="button" data-btab="settings">Settings</button>
+          </nav>
+
+          <!-- Curriculum: Skool-style rail + lesson editor -->
+          <div class="mc-tabpanel is-active" id="btab-curriculum">
+            <div class="mc-code-banner" id="mc-code-banner" style="display:none;">
+              <span id="mc-code-banner-text">This course's lessons are built into the site code.</span>
+              <button class="btn btn-ghost" type="button" id="btn-banner-migrate" style="display:none; font-size:12px;">Migrate to editable content</button>
+            </div>
+            <div class="mc-workspace" id="mc-workspace">
+              <aside class="mc-rail">
+                <div class="mc-rail-head">
+                  <span>Lessons</span>
+                  <span id="mc-rail-count" style="font-weight:400;"></span>
+                </div>
+                <div class="mc-rail-list" id="mc-rail-list"></div>
+                <div class="mc-rail-foot">
+                  <button class="btn btn-primary" type="button" id="btn-add-module" style="width:100%; font-size:13px;">+ Add lesson</button>
+                </div>
+              </aside>
+
+              <div class="mc-editor">
+                <div class="mc-editor-empty" id="mc-editor-empty">
+                  <div style="font-family:var(--font-display); font-size:26px; letter-spacing:1px; color:var(--white-dim);">BUILD YOUR FIRST LESSON</div>
+                  <p style="font-size:13px; max-width:380px;">Lessons appear in the rail on the left. Members see them in the course player exactly as you order them here.</p>
+                  <button class="btn btn-primary" type="button" id="btn-add-module-empty">+ Add your first lesson</button>
+                </div>
+
+                <div class="mc-editor-scroll" id="mc-editor-form" style="display:none;">
+                  <div class="inline-form" style="flex-wrap:wrap;">
+                    <div class="field"><label for="m-title">Lesson title</label><input id="m-title" type="text" required></div>
+                    <div class="field"><label for="m-subtitle">Subtitle</label><input id="m-subtitle" type="text"></div>
+                  </div>
+
+                  <div class="field" style="margin-top:12px;">
+                    <label for="m-video">Video URL <span style="color:var(--gray-mid); text-transform:none; letter-spacing:0;">— YouTube, Vimeo, or Loom watch link (not embed code)</span></label>
+                    <input id="m-video" type="text" placeholder="https://youtu.be/… · https://vimeo.com/… · https://loom.com/share/…" style="width:100%;">
+                    <div class="mc-video-hint" id="m-video-hint"></div>
+                  </div>
+
+                  <div class="inline-form" style="flex-wrap:wrap; margin-top:6px;">
+                    <div class="field" style="max-width:220px;"><label for="m-pillar">Section / pillar label</label><input id="m-pillar" type="text" placeholder="Part 1 — Foundations"></div>
+                    <div class="field" style="max-width:140px;"><label for="m-duration">Duration</label><input id="m-duration" type="text" placeholder="15 min"></div>
+                    <div class="field" style="max-width:140px;"><label for="m-taglabel">Tag label</label><input id="m-taglabel" type="text" placeholder="LESSON"></div>
+                  </div>
+
+                  <div class="field" style="margin-top:14px;">
+                    <label>Lesson content</label>
+                    <div style="background:#fff; color:#111; border-radius:8px;">
+                      <div id="m-quill" style="min-height:240px;"></div>
+                    </div>
+                    <button class="btn btn-ghost" type="button" id="btn-html-toggle" style="margin-top:8px; font-size:12px;">Edit HTML source</button>
+                    <textarea id="m-html" style="display:none; width:100%; min-height:240px; margin-top:8px; font-family:'Space Mono',monospace; font-size:12px;"></textarea>
+                    <div id="m-preview" style="display:none; margin-top:8px; background:var(--black, #0b0b0b); border:1px solid rgba(255,255,255,.08); border-radius:8px; padding:20px;"></div>
+                  </div>
+
+                  <details class="mc-collapse" id="mc-workbook">
+                    <summary>Workbook <span class="mc-collapse-note">— optional reflection &amp; prompts members answer (adds a Workbook tab)</span></summary>
+                    <div class="mc-collapse-body">
+                      <div class="field"><label for="m-wb-reflection">Reflection prompt</label><input id="m-wb-reflection" type="text" placeholder="Think about one area of your life where…"></div>
+                      <div class="field" style="margin-top:10px;"><label for="m-wb-action">Action prompt</label><input id="m-wb-action" type="text" placeholder="Write down 3 beliefs you hold…"></div>
+                      <div class="field" style="margin-top:10px;">
+                        <label for="m-wb-prompts">Writing prompts — one per line</label>
+                        <textarea class="mc-lines" id="m-wb-prompts" placeholder="The area where I feel most stuck is...&#10;The story I tell myself about that area is..."></textarea>
+                      </div>
+                    </div>
+                  </details>
+
+                  <details class="mc-collapse" id="mc-summary">
+                    <summary>Summary <span class="mc-collapse-note">— optional key takeaways (adds a Summary tab)</span></summary>
+                    <div class="mc-collapse-body">
+                      <div class="field">
+                        <label for="m-summary">Key takeaways — one per line</label>
+                        <textarea class="mc-lines" id="m-summary" placeholder="Limiting beliefs are learned narratives, not permanent truths.&#10;Naming a belief is the first act of breaking its power."></textarea>
+                      </div>
+                    </div>
+                  </details>
+
+                  <div class="mc-editor-foot">
+                    <label class="mc-switch" title="Draft lessons are hidden from members">
+                      <input type="checkbox" id="m-published">
+                      <span class="mc-switch-track"></span>
+                      <span id="m-published-label">Published</span>
+                    </label>
+                    <span class="mc-dirty-dot" id="mc-dirty" title="Unsaved changes"></span>
+                    <span id="module-editor-result" style="font-size:12px;"></span>
+                    <span style="flex:1;"></span>
+                    <button class="btn btn-ghost" type="button" id="btn-preview-toggle" style="font-size:12px;">Preview lesson</button>
+                    <button class="btn btn-ghost" type="button" id="btn-module-delete" style="font-size:12px; color:var(--red);">Delete</button>
+                    <button class="btn btn-primary" type="button" id="btn-module-save">Save lesson</button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <!-- Details & pricing -->
-          <details class="builder-section" id="section-details" open>
-            <summary>Details &amp; pricing</summary>
-            <div class="builder-section-body">
-              <form id="course-editor-form">
-                <div class="inline-form" style="flex-wrap:wrap;">
-                  <div class="field"><label for="f-title">Title</label><input id="f-title" type="text" required></div>
-                  <div class="field" style="max-width:160px;"><label for="f-short">Short name</label><input id="f-short" type="text"></div>
-                  <div class="field" style="max-width:180px;"><label for="f-slug">Slug (URL id)</label><input id="f-slug" type="text" pattern="[a-z0-9-]+"></div>
-                </div>
-                <div class="field" style="margin-top:10px;"><label for="f-subtitle">Subtitle / description</label><input id="f-subtitle" type="text"></div>
-                <div class="inline-form" style="flex-wrap:wrap; margin-top:10px;">
-                  <div class="field"><label for="f-eyebrow">Eyebrow (e.g. "Self-paced · 5 Modules")</label><input id="f-eyebrow" type="text"></div>
-                  <div class="field"><label for="f-pricenote">Price note</label><input id="f-pricenote" type="text"></div>
-                </div>
-                <div class="inline-form" style="flex-wrap:wrap; margin-top:10px;">
-                  <div class="field" style="max-width:140px;"><label for="f-price">Price ($)</label><input id="f-price" type="number" min="0" step="0.01"></div>
-                  <div class="field" style="max-width:140px;"><label for="f-saleprice">Sale price ($)</label><input id="f-saleprice" type="number" min="0" step="0.01" placeholder="optional"></div>
-                  <div class="field" style="max-width:170px;">
-                    <label for="f-status">Status</label>
-                    <select id="f-status">
-                      <option value="live">Live (enrollable)</option>
-                      <option value="coming-soon">Coming soon</option>
-                      <option value="inactive">Inactive (hidden)</option>
-                      <option value="bundle">Bundle (links out)</option>
-                    </select>
-                  </div>
-                  <div class="field" style="max-width:170px;">
-                    <label for="f-mode">Billing</label>
-                    <select id="f-mode">
-                      <option value="one-time">One-time payment</option>
-                      <option value="subscription">Subscription</option>
-                    </select>
-                  </div>
-                  <div class="field" style="max-width:140px;">
-                    <label for="f-interval">Interval</label>
-                    <select id="f-interval" disabled>
-                      <option value="month">Monthly</option>
-                      <option value="year">Yearly</option>
-                    </select>
-                  </div>
-                  <div class="field" style="max-width:110px;"><label for="f-sort">Sort order</label><input id="f-sort" type="number" step="1"></div>
-                </div>
-                <div style="display:flex; gap:10px; margin-top:14px;">
-                  <button class="btn btn-primary" type="submit">Save details</button>
-                </div>
-              </form>
-              <div id="course-editor-result" style="margin-top:10px;"></div>
-            </div>
-          </details>
-
-          <!-- Curriculum -->
-          <details class="builder-section" id="section-curriculum">
-            <summary>Curriculum</summary>
-            <div class="builder-section-body" id="content-card">
-              <div id="content-note" style="font-size:13px; color:var(--gray-light); margin-bottom:12px;"></div>
-              <div id="modules-list"></div>
-              <button class="btn btn-primary" id="btn-add-module" style="margin-top:10px;">+ Add module</button>
-
-              <div id="module-editor" style="display:none; margin-top:18px; border-top:1px solid rgba(255,255,255,.08); padding-top:18px;">
-                <h3 id="module-editor-title" style="margin-bottom:10px;">Edit module</h3>
-                <div class="inline-form" style="flex-wrap:wrap;">
-                  <div class="field"><label for="m-title">Module title</label><input id="m-title" type="text" required></div>
-                  <div class="field"><label for="m-subtitle">Subtitle</label><input id="m-subtitle" type="text"></div>
-                </div>
-                <div class="inline-form" style="flex-wrap:wrap; margin-top:10px;">
-                  <div class="field" style="max-width:200px;"><label for="m-pillar">Section / pillar label</label><input id="m-pillar" type="text"></div>
-                  <div class="field" style="max-width:140px;"><label for="m-duration">Duration</label><input id="m-duration" type="text" placeholder="15 min"></div>
-                  <div class="field" style="max-width:140px;"><label for="m-taglabel">Tag label</label><input id="m-taglabel" type="text" placeholder="LESSON"></div>
-                </div>
-                <div class="field" style="margin-top:14px;">
-                  <label>Lesson content</label>
-                  <div style="background:#fff; color:#111; border-radius:8px;">
-                    <div id="m-quill" style="min-height:260px;"></div>
-                  </div>
-                  <button class="btn btn-ghost" type="button" id="btn-html-toggle" style="margin-top:8px; font-size:12px;">Edit HTML source</button>
-                  <button class="btn btn-ghost" type="button" id="btn-preview-toggle" style="margin-top:8px; margin-left:8px; font-size:12px;">Preview</button>
-                  <textarea id="m-html" style="display:none; width:100%; min-height:260px; margin-top:8px; font-family:'Space Mono',monospace; font-size:12px;"></textarea>
-                  <div id="m-preview" style="display:none; margin-top:8px; background:var(--black, #0b0b0b); border:1px solid rgba(255,255,255,.08); border-radius:8px; padding:20px;"></div>
-                </div>
-                <div style="display:flex; gap:10px; margin-top:14px;">
-                  <button class="btn btn-primary" type="button" id="btn-module-save">Save module</button>
-                  <button class="btn btn-ghost" type="button" id="btn-module-cancel">Cancel</button>
-                </div>
-                <div id="module-editor-result" style="margin-top:10px;"></div>
+          <!-- Sales page -->
+          <div class="mc-tabpanel" id="btab-sales">
+            <div class="card">
+              <div class="builder-head" style="margin-bottom:10px;">
+                <h3 style="margin:0;">Landing page content</h3>
+                <a class="btn btn-ghost" id="link-view-landing" href="#" target="_blank" rel="noopener" style="font-size:12px;">View landing page ↗</a>
               </div>
-            </div>
-          </details>
-
-          <!-- Publish -->
-          <details class="builder-section" id="section-publish">
-            <summary>Publish</summary>
-            <div class="builder-section-body">
-              <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
-                Control what shows on the site. <b>Live</b> makes the course enrollable;
-                <b>Coming soon</b> shows it without checkout; <b>Inactive</b> hides it entirely.
+              <p style="font-size:13px; color:var(--gray-light); margin:0 0 16px;">
+                This is the public sales page members see before enrolling. Changes go live as soon as you save — no deploy needed.
               </p>
-              <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                <button class="btn btn-ghost" type="button" id="btn-publish-live" style="color:var(--green, #2ecc71);">Publish (go live)</button>
-                <button class="btn btn-ghost" type="button" id="btn-publish-soon">Set coming soon</button>
-                <button class="btn btn-ghost" type="button" id="btn-publish-inactive" style="color:var(--red);">Unpublish (hide)</button>
-                <span style="flex:1;"></span>
+
+              <div class="inline-form" style="flex-wrap:wrap;">
+                <div class="field"><label for="s-category">Category</label><input id="s-category" type="text" placeholder="Mindset & Personal Growth"></div>
+                <div class="field"><label for="s-cover">Cover image URL</label><input id="s-cover" type="text" placeholder="https://…/cover.jpg"></div>
+              </div>
+              <img class="mc-cover-preview" id="s-cover-preview" alt="Cover preview">
+
+              <div class="field" style="margin-top:16px;">
+                <label for="s-learn">What you'll learn — one per line<button class="mc-reset-field" type="button" data-reset="whatYoullLearn" style="display:none;">reset to built-in</button></label>
+                <textarea class="mc-lines" id="s-learn"></textarea>
+              </div>
+              <div class="field" style="margin-top:14px;">
+                <label for="s-requirements">Requirements — one per line<button class="mc-reset-field" type="button" data-reset="requirements" style="display:none;">reset to built-in</button></label>
+                <textarea class="mc-lines" id="s-requirements"></textarea>
+              </div>
+              <div class="field" style="margin-top:14px;">
+                <label for="s-includes">This course includes — one per line<button class="mc-reset-field" type="button" data-reset="includes" style="display:none;">reset to built-in</button></label>
+                <textarea class="mc-lines" id="s-includes"></textarea>
+              </div>
+              <div class="field" style="margin-top:14px;">
+                <label for="s-description">Description — separate paragraphs with a blank line<button class="mc-reset-field" type="button" data-reset="description" style="display:none;">reset to built-in</button></label>
+                <textarea class="mc-lines" id="s-description" style="min-height:170px;"></textarea>
+              </div>
+
+              <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; align-items:center;">
+                <button class="btn btn-primary" type="button" id="btn-save-sales">Save sales page</button>
+                <button class="btn btn-ghost" type="button" id="btn-sync-curriculum" style="font-size:12px;" title="Rebuild the landing page's Course content section from your lessons">Sync course-content preview from lessons</button>
+              </div>
+              <div id="sales-result" style="margin-top:10px;"></div>
+            </div>
+          </div>
+
+          <!-- Pricing -->
+          <div class="mc-tabpanel" id="btab-pricing">
+            <div class="card" style="max-width:720px;">
+              <h3 style="margin:0 0 4px;">Pricing</h3>
+              <p style="font-size:13px; color:var(--gray-light); margin:0 0 16px;">
+                Checkout charges these amounts directly — the sale price applies whenever it's set and lower than the regular price.
+              </p>
+              <div class="inline-form" style="flex-wrap:wrap;">
+                <div class="field" style="max-width:150px;"><label for="p-price">Price ($)</label><input id="p-price" type="number" min="0" step="0.01"></div>
+                <div class="field" style="max-width:150px;"><label for="p-saleprice">Sale price ($)</label><input id="p-saleprice" type="number" min="0" step="0.01" placeholder="optional"></div>
+                <div class="field" style="max-width:190px;">
+                  <label for="p-mode">Billing</label>
+                  <select id="p-mode">
+                    <option value="one-time">One-time payment</option>
+                    <option value="subscription">Subscription</option>
+                  </select>
+                </div>
+                <div class="field" style="max-width:150px;">
+                  <label for="p-interval">Interval</label>
+                  <select id="p-interval" disabled>
+                    <option value="month">Monthly</option>
+                    <option value="year">Yearly</option>
+                  </select>
+                </div>
+              </div>
+              <div class="field" style="margin-top:12px;"><label for="p-pricenote">Price note (shown under the price)</label><input id="p-pricenote" type="text" placeholder="Full course · lifetime access"></div>
+              <div style="display:flex; gap:10px; margin-top:16px;">
+                <button class="btn btn-primary" type="button" id="btn-save-pricing">Save pricing</button>
+              </div>
+              <div id="pricing-result" style="margin-top:10px;"></div>
+            </div>
+          </div>
+
+          <!-- Settings -->
+          <div class="mc-tabpanel" id="btab-settings">
+            <div class="card" style="max-width:720px;">
+              <h3 style="margin:0 0 16px;">Course settings</h3>
+              <div class="inline-form" style="flex-wrap:wrap;">
+                <div class="field"><label for="f-title">Title</label><input id="f-title" type="text" required></div>
+                <div class="field" style="max-width:160px;"><label for="f-short">Short name</label><input id="f-short" type="text"></div>
+                <div class="field" style="max-width:180px;"><label for="f-slug">Slug (URL id)</label><input id="f-slug" type="text" disabled></div>
+              </div>
+              <div class="field" style="margin-top:12px;"><label for="f-subtitle">Subtitle / tagline</label><input id="f-subtitle" type="text"></div>
+              <div class="inline-form" style="flex-wrap:wrap; margin-top:12px;">
+                <div class="field"><label for="f-eyebrow">Eyebrow (e.g. "Self-paced · 5 Modules")</label><input id="f-eyebrow" type="text"></div>
+                <div class="field" style="max-width:120px;"><label for="f-sort">Sort order</label><input id="f-sort" type="number" step="1"></div>
+                <div class="field" style="max-width:190px;">
+                  <label for="f-content">Lesson content</label>
+                  <select id="f-content">
+                    <option value="firestore">Editable (database)</option>
+                    <option value="code">Built-in (code)</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:flex; gap:10px; margin-top:16px;">
+                <button class="btn btn-primary" type="button" id="btn-save-settings">Save settings</button>
+              </div>
+              <div id="settings-result" style="margin-top:10px;"></div>
+
+              <div class="mc-danger">
+                <h4>Danger zone</h4>
+                <p style="font-size:12px; color:var(--gray-light); margin:0 0 10px;">
+                  Deleting a course removes it from the library immediately. Member progress records and lesson documents are not recoverable from here.
+                </p>
                 <button class="btn btn-ghost" type="button" id="btn-delete-course" style="color:var(--red);">Delete course</button>
               </div>
-              <div id="publish-result" style="margin-top:10px;"></div>
             </div>
-          </details>
+          </div>
         </div>
 
         <!-- ─── Coupons ────────────────────────────────────────────────── -->
@@ -219,6 +327,8 @@
       </div>
     </div>
   </div>
+
+  <div id="modal-root"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
   <script type="module" src="js/manage-courses.js"></script>
