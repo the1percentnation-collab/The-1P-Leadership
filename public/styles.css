@@ -3935,6 +3935,29 @@ body.academy-hub {
   max-width: 560px;
 }
 
+/* Small pulsing red dot marks the daily quote without a full label row */
+.hub-hero p::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 8px rgba(230, 3, 6, 0.7);
+  margin-right: 10px;
+  vertical-align: middle;
+  animation: hub-quote-dot-pulse 2s ease-in-out infinite;
+}
+
+@keyframes hub-quote-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(0.7); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-hero p::before { animation: none; }
+}
+
 /* Daily quote entrance — fades up and brightens so it pulls the eye on
    sign-in. Honors reduced-motion: the quote simply appears at rest. */
 #hub-subtitle.hub-quote-enter {
@@ -3995,7 +4018,7 @@ body.academy-hub {
 }
 
 .academy-footer strong {
-  color: var(--gray-light);
+  color: var(--red);
   font-weight: 400;
 }
 
@@ -4090,13 +4113,27 @@ body.academy-hub {
   color: var(--white);
 }
 
+/* Red tick bar in front of every section heading */
+.academy-section-head h2::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 17px;
+  border-radius: 2px;
+  background: var(--red);
+  margin-right: 12px;
+}
+
 .academy-section-head .academy-section-meta {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--gray-mid);
+  color: var(--red);
+  transition: color 0.15s;
 }
+
+a.academy-section-meta:hover { color: var(--white); }
 
 /* Quick-access tile grid */
 .academy-grid {
@@ -4122,10 +4159,26 @@ body.academy-hub {
 }
 
 .academy-tile:hover {
-  border-color: var(--border-red);
+  border-color: var(--red);
   transform: translateY(-2px);
   background: var(--surface2);
+  box-shadow: 0 12px 32px rgba(230, 3, 6, 0.12);
 }
+
+/* Red hairline sweeps across the top edge on hover */
+.academy-tile::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--red), transparent 65%);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.academy-tile:hover::before { opacity: 1; }
 
 /* Small icon chip — replaces the old numbered mono label */
 .academy-tile-icon {
@@ -4135,8 +4188,15 @@ body.academy-hub {
   display: grid;
   place-items: center;
   background: rgba(230, 3, 6, 0.1);
+  border: 1px solid rgba(230, 3, 6, 0.25);
   color: var(--red);
   margin-bottom: 4px;
+  transition: box-shadow 0.2s, background 0.2s;
+}
+
+.academy-tile:hover .academy-tile-icon {
+  background: rgba(230, 3, 6, 0.16);
+  box-shadow: 0 0 16px rgba(230, 3, 6, 0.25);
 }
 
 .academy-tile-icon svg { display: block; }
