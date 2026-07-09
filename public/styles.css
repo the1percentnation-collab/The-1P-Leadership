@@ -3586,7 +3586,7 @@ textarea.mc-lines:focus { outline: none; border-color: rgba(204,27,27,0.5); }
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 12px;
   position: relative;
 }
 
@@ -3741,7 +3741,6 @@ body.academy-hub {
 
 .academy-header-inner {
   margin: 0 auto;
-  max-width: 1280px;
   padding: 18px 32px;
   display: flex;
   align-items: center;
@@ -3864,7 +3863,6 @@ body.academy-hub {
 
 .academy-container {
   margin: 0 auto;
-  max-width: 1280px;
   padding: 48px 32px 96px;
   width: 100%;
 }
@@ -3915,25 +3913,8 @@ body.academy-hub {
   max-width: 640px;
 }
 
-/* Dashboard hero — compact variant. The hub greeting stays in the brand
-   display face but at a calmer scale; the daily quote sits directly under
-   it as a single quiet line instead of a labelled block. */
-.hub-hero {
-  margin-bottom: 44px;
-}
-
-.hub-hero h1 {
-  font-size: clamp(38px, 4.5vw, 58px);
-  margin-bottom: 12px;
-}
-
-.hub-hero p {
-  font-size: 15px;
-  color: var(--gray-light);
-  max-width: 560px;
-}
-
-/* "Quote of the day" caption — small mono label above the daily quote. */
+/* "Quote of the day" caption — small mono label above the daily quote.
+   Deliberately lightweight so it tags the line without adding bulk. */
 .hub-quote-label {
   display: inline-flex;
   align-items: center;
@@ -4008,13 +3989,14 @@ body.academy-hub {
   color: var(--white);
   font-weight: 500;
 }
+
 /* Continue / resume card */
 .academy-continue {
-  background: linear-gradient(120deg, rgba(230, 3, 6, 0.07), transparent 45%), var(--surface);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 12px;
   padding: 28px 32px;
-  margin-bottom: 48px;
+  margin-bottom: 40px;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 24px;
@@ -4082,32 +4064,22 @@ body.academy-hub {
   letter-spacing: 0.02em;
 }
 
-/* Hub section heading — no rule underneath; whitespace does the separating */
+/* Hub section heading */
 .academy-section-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
 }
 
 .academy-section-head h2 {
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 24px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.01em;
   color: var(--white);
-}
-
-/* Red tick bar in front of every section heading */
-.academy-section-head h2::before {
-  content: '';
-  display: inline-block;
-  width: 4px;
-  height: 17px;
-  border-radius: 2px;
-  background: var(--red);
-  margin-right: 12px;
 }
 
 .academy-section-head .academy-section-meta {
@@ -4115,11 +4087,8 @@ body.academy-hub {
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--red);
-  transition: color 0.15s;
+  color: var(--gray-mid);
 }
-
-a.academy-section-meta:hover { color: var(--white); }
 
 /* Quick-access tile grid */
 .academy-grid {
@@ -4132,13 +4101,14 @@ a.academy-section-meta:hover { color: var(--white); }
 .academy-tile {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 22px;
+  border-radius: 12px;
+  padding: 24px;
   text-decoration: none;
   color: var(--white);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+  min-height: 160px;
   transition: border-color 0.2s, transform 0.2s, background 0.2s;
   position: relative;
   overflow: hidden;
@@ -4148,51 +4118,21 @@ a.academy-section-meta:hover { color: var(--white); }
   border-color: var(--red);
   transform: translateY(-2px);
   background: var(--surface2);
-  box-shadow: 0 12px 32px rgba(230, 3, 6, 0.12);
 }
 
-/* Red hairline sweeps across the top edge on hover */
-.academy-tile::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--red), transparent 65%);
-  opacity: 0;
-  transition: opacity 0.2s;
+.academy-tile-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gray-light);
 }
-
-.academy-tile:hover::before { opacity: 1; }
-
-/* Small icon chip — replaces the old numbered mono label */
-.academy-tile-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  background: rgba(230, 3, 6, 0.1);
-  border: 1px solid rgba(230, 3, 6, 0.25);
-  color: var(--red);
-  margin-bottom: 4px;
-  transition: box-shadow 0.2s, background 0.2s;
-}
-
-.academy-tile:hover .academy-tile-icon {
-  background: rgba(230, 3, 6, 0.16);
-  box-shadow: 0 0 16px rgba(230, 3, 6, 0.25);
-}
-
-.academy-tile-icon svg { display: block; }
 
 .academy-tile-title {
   font-family: var(--font-display);
-  font-weight: 400;
+  font-weight: 700;
   font-size: 20px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: -0.01em;
   color: var(--white);
 }
 
@@ -4312,7 +4252,7 @@ a.academy-section-meta:hover { color: var(--white); }
 .academy-list {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 12px;
   padding: 8px;
 }
 
