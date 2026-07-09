@@ -79,6 +79,53 @@ Firestore rules deploy **separately** from hosting. Hosting continues to auto-de
 
 ---
 
+## Security & compliance hardening (added in the security audit)
+
+These changes are wired in code and deploy automatically. A few require a
+one-time console step or content edit to fully activate.
+
+### Rate limiting (active on deploy — no setup)
+Expensive/abusable callables are throttled by a Firestore-backed limiter
+(`rateLimits/{doc}`, server-only). Limits: AI chat 20/5 min per user, bug
+reports 5/10 min per uid+IP, contact email 60/10 min, campaigns 10/hr, SMS
+100/10 min, checkout 15/10 min, community invites 30/hr, affiliate clicks
+30/10 min per IP, data export 5/hr. Tune the numbers in `functions/index.js`
+(search `rateLimitCaller` / `enforceRateLimit`). Optionally add a Firestore TTL
+policy on `rateLimits.expiresAt` to auto-prune old counters.
+
+### Firebase App Check (optional — off until you add a key)
+App Check adds bot/abuse attestation. To enable:
+1. Firebase Console → **App Check** → register this web app with the
+   **reCAPTCHA v3** provider; copy the site key.
+2. Paste it into `RECAPTCHA_V3_SITE_KEY` in `public/js/firebase.js`.
+3. After confirming tokens flow (Console → App Check → Requests), optionally set
+   `enforceAppCheck: true` on sensitive callables in `functions/index.js`.
+Leaving the key blank is a safe no-op, so nothing breaks before you configure it.
+
+### Session timeout / forced re-login (active on deploy — no setup)
+`public/js/session.js` signs users out after **30 min idle** or **12 hr** since
+sign-in, and periodically force-refreshes the ID token so a revoked session is
+caught. Adjust the limits at the top of that file.
+
+### Privacy / Terms / data rights (needs content review)
+- `public/privacy.html` and `public/terms.html` are live and linked in the
+  footer. **Fill in every highlighted `[[placeholder]]`** (legal business name,
+  address, contact email, governing state, effective date) and have counsel
+  review them before launch.
+- Signed-in members can export or delete their own data from
+  `/profile.html` (backed by the `requestDataExport` / `deleteMyAccount`
+  callables). No setup needed.
+- SMS `STOP`/`START` opt-out is handled in `twilioInboundWebhook`; `sendSms`
+  refuses opted-out contacts. Works once Twilio is configured.
+- A cookie-consent banner (`public/js/consent-banner.js`) is included on
+  `index`, `login`, and `signup`. Add the same
+  `<script src="/js/consent-banner.js" defer></script>` tag to other public
+  pages if you want it site-wide.
+
+> Note: code provides the mechanisms for privacy compliance (CCPA/CPRA and other
+> state laws, TCPA, CAN-SPAM). It does **not** constitute legal advice or certify
+> compliance — confirm with qualified counsel.
+
 ## Data model (for reference)
 
 ```

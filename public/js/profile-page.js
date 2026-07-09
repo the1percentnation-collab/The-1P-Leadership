@@ -1,13 +1,14 @@
 // Profile page — edit own profile (no ?uid) OR view any member by uid.
 
-import { db, firebaseReady, auth } from './firebase.js';
-import { onAuthReady } from './auth.js';
+import { db, firebaseReady, auth, functions } from './firebase.js';
+import { onAuthReady, signOut } from './auth.js';
 import { renderTopbar } from './topbar.js';
 import { getRoleInfo } from './roles.js';
 import { getUserProfile, updateOwnProfile, uploadAvatar, avatarHtml, escapeHtml } from './community.js';
 import {
   collection, getDocs, query, where, getCountFromServer
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 const $ = (id) => document.getElementById(id);
 const TOTAL_MODULES = 7;
@@ -161,6 +162,19 @@ function renderEdit(me) {
           </div>
         </section>
 
+        <section class="profile-section" id="privacy-section">
+          <div class="profile-section-head">
+            <h3>Privacy &amp; your data</h3>
+            <p>Download a copy of your personal data, or permanently delete your account. See our <a href="/privacy.html">Privacy Policy</a>.</p>
+          </div>
+          <div class="profile-privacy-actions" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;">
+            <button class="btn btn-ghost" id="data-export-btn" type="button">Download my data</button>
+            <button class="btn btn-ghost" id="account-delete-btn" type="button"
+              style="color:var(--red,#E60306);border-color:var(--red,#E60306);">Delete my account</button>
+            <div id="privacy-status" class="profile-save-status"></div>
+          </div>
+        </section>
+
         <div class="profile-footer-actions">
           <button class="btn btn-primary btn-lg" id="save-btn-2">Save changes</button>
           <div id="save-status-2" class="profile-save-status"></div>
@@ -218,6 +232,59 @@ function renderEdit(me) {
   }
   $('save-btn').addEventListener('click', () => doSave('save-status'));
   $('save-btn-2').addEventListener('click', () => doSave('save-status-2'));
+
+  // ── Privacy: self-service data export + account deletion ──────────────────
+  const exportBtn = $('data-export-btn');
+  if (exportBtn) exportBtn.addEventListener('click', async () => {
+    const status = $('privacy-status');
+    exportBtn.disabled = true;
+    status.textContent = 'Preparing your data…';
+    try {
+      const call = httpsCallable(functions, 'requestDataExport');
+      const res = await call({});
+      const blob = new Blob([JSON.stringify(res.data && res.data.data ? res.data.data : res.data, null, 2)],
+        { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'my-data-export.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      status.textContent = '✓ Download started';
+      setTimeout(() => { status.textContent = ''; }, 3000);
+    } catch (err) {
+      status.textContent = 'Export failed: ' + (err.message || err);
+    } finally {
+      exportBtn.disabled = false;
+    }
+  });
+
+  const deleteBtn = $('account-delete-btn');
+  if (deleteBtn) deleteBtn.addEventListener('click', async () => {
+    const status = $('privacy-status');
+    const typed = window.prompt(
+      'This will PERMANENTLY delete your account and all your data. This cannot be undone.\n\nType DELETE to confirm.');
+    if ((typed || '').trim().toUpperCase() !== 'DELETE') {
+      status.textContent = 'Deletion cancelled.';
+      setTimeout(() => { status.textContent = ''; }, 3000);
+      return;
+    }
+    deleteBtn.disabled = true;
+    status.textContent = 'Deleting your account…';
+    try {
+      const call = httpsCallable(functions, 'deleteMyAccount');
+      await call({});
+      // The Auth user is now gone; sign out locally and send them home.
+      try { await signOut(); } catch (e) {}
+      window.alert('Your account and data have been deleted.');
+      location.replace('/index.html');
+    } catch (err) {
+      status.textContent = 'Deletion failed: ' + (err.message || err);
+      deleteBtn.disabled = false;
+    }
+  });
 }
 
 function profileCompletion(me) {

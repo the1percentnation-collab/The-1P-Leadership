@@ -54,10 +54,26 @@ service cloud.firestore {
 
       // Write:
       //  - owner: always
-      //  - self: can create/update own doc (role/companyId writes by self are allowed at signup;
-      //          the Cloud Function enforces invite-driven role/companyId writes)
-      //          BUT self may not write the leaderboard mirror fields; those are server-only.
+      //  - self: can create/update own doc, BUT privilege fields (role, tier,
+      //          companyId) and the leaderboard mirror fields are frozen — those
+      //          change ONLY server-side (Admin SDK) via the acceptInvite /
+      //          enrollFree callables and the Stripe webhook. This prevents a
+      //          signed-in user from self-assigning role:'admin' (which would
+      //          unlock every company's CRM/PII) or granting themselves paid
+      //          courses / a different company.
+      //
+      // On CREATE the privilege fields must start at their unprivileged defaults:
+      //   role == 'user' (or absent), tier == 'individual' (or absent),
+      //   companyId == null (or absent). Invite-driven signups still work because
+      //   acceptInvite runs server-side AFTER the doc is created and bumps role /
+      //   companyId with the Admin SDK (which bypasses these rules).
       allow create: if isOwner() || (isSelf(uid)
+                     && (!('role' in request.resource.data)
+                         || request.resource.data.role == 'user')
+                     && (!('tier' in request.resource.data)
+                         || request.resource.data.tier == 'individual')
+                     && (!('companyId' in request.resource.data)
+                         || request.resource.data.companyId == null)
                      && (!('statsPoints' in request.resource.data)
                          || request.resource.data.statsPoints == 0)
                      && (!('statsWeekPoints' in request.resource.data)
@@ -66,7 +82,12 @@ service cloud.firestore {
                          || request.resource.data.unreadNotifCount == 0)
                      && (!('enrolledCourseSlugs' in request.resource.data)
                          || request.resource.data.enrolledCourseSlugs == []));
+      // On UPDATE the privilege fields must be byte-for-byte unchanged from the
+      // existing doc. (Owner writes bypass; server writes use the Admin SDK.)
       allow update: if isOwner() || (isSelf(uid)
+                     && request.resource.data.get('role', 'user') == resource.data.get('role', 'user')
+                     && request.resource.data.get('tier', 'individual') == resource.data.get('tier', 'individual')
+                     && request.resource.data.get('companyId', null) == resource.data.get('companyId', null)
                      && request.resource.data.get('statsPoints', 0) == resource.data.get('statsPoints', 0)
                      && request.resource.data.get('statsWeekPoints', 0) == resource.data.get('statsWeekPoints', 0)
                      && request.resource.data.get('unreadNotifCount', 0) == resource.data.get('unreadNotifCount', 0)
@@ -599,6 +620,15 @@ service cloud.firestore {
     // ────────────────────────────────────────────────────────────────
     match /chatbotKnowledge/{entryId} {
       allow read, write: if false; // Cloud Functions (Admin SDK) only.
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Rate-limit counters — written ONLY by the Cloud Functions limiter
+    // (Admin SDK). Clients must never read or write these; exposing them
+    // would let an attacker probe or reset their own quota.
+    // ────────────────────────────────────────────────────────────────
+    match /rateLimits/{docId} {
+      allow read, write: if false;
     }
 
     // ────────────────────────────────────────────────────────────────

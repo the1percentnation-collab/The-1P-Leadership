@@ -2,6 +2,7 @@
 // Exposes `onAuthReady(cb)` which resolves once the first auth state fires.
 
 import { auth, db, functions, firebaseReady } from './firebase.js';
+import { startSessionGuard } from './session.js';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -144,5 +145,9 @@ export async function requireAuth(redirectTo = '/login.html') {
     location.replace(`${redirectTo}?next=${next}`);
     return null;
   }
+  // Enforce idle + absolute session limits on every authenticated page. This
+  // may itself sign the user out and redirect if the session has already
+  // expired (e.g. a tab left open overnight).
+  startSessionGuard();
   return u;
 }

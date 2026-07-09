@@ -224,6 +224,17 @@
       showErr('Authentication service is unreachable. Check your connection and retry.');
     }
 
+    // Explain why the user landed back here after an automatic sign-out.
+    (function showSessionReason() {
+      const reason = new URLSearchParams(location.search).get('reason');
+      const messages = {
+        'idle-timeout': 'You were signed out after a period of inactivity. Please sign in again.',
+        'session-expired': 'Your session reached its time limit. Please sign in again to continue.',
+        'token-invalid': 'Your session is no longer valid. Please sign in again.'
+      };
+      if (reason && messages[reason]) showOk(messages[reason]);
+    })();
+
     // If already signed in, bounce to next.
     onAuthReady((u) => { if (u) location.replace(nextUrl()); });
 
@@ -267,5 +278,6 @@
       }
     });
   </script>
+<script src="/js/consent-banner.js" defer></script>
 </body>
 </html>
