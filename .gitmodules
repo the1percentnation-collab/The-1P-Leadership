@@ -1,3 +1,4 @@
 [submodule "OpenMontage"]
 	path = OpenMontage
 	url = https://github.com/calesthio/OpenMontage.git
+	ignore = dirty
