@@ -101,6 +101,80 @@ async function assertCompanyAdmin(db, companyId, request) {
   return { uid, isOwner: !!isOwnerClaim, company: companySnap.data() };
 }
 
+// ────────────────────────────────────────────────────────────────
+// Rate limiting
+// ────────────────────────────────────────────────────────────────
+// Firestore-backed fixed-window limiter. Each caller (uid, or client IP for
+// unauthenticated endpoints) gets a counter document per action, bucketed into
+// a time window. When the count exceeds `max` inside `windowSec`, the call is
+// rejected with resource-exhausted. This bounds abuse of expensive endpoints
+// (AI calls, email/SMS sends, checkout, invite creation) without any external
+// dependency. Counters are best-effort: if the transaction itself errors we
+// fail OPEN (allow the call) so a Firestore hiccup never hard-locks the app.
+//
+// Note: this is a per-instance-agnostic, durable limiter — it counts across all
+// function instances because the state lives in Firestore, not memory.
+function clientIp(request) {
+  // onCall exposes the raw request on request.rawRequest (Express req).
+  const raw = request && request.rawRequest;
+  if (!raw) return 'unknown';
+  const fwd = (raw.headers && (raw.headers['x-forwarded-for'] || raw.headers['X-Forwarded-For'])) || '';
+  if (fwd) return String(fwd).split(',')[0].trim();
+  return (raw.ip || (raw.connection && raw.connection.remoteAddress) || 'unknown');
+}
+
+/**
+ * enforceRateLimit(db, { action, key, max, windowSec })
+ *  - action: logical bucket name, e.g. 'courseAdvisorChat'
+ *  - key:    stable caller id (uid or ip). Combined with action + window.
+ *  - max:    max allowed calls within the window
+ *  - windowSec: window length in seconds
+ * Throws HttpsError('resource-exhausted', ...) when the limit is exceeded.
+ */
+async function enforceRateLimit(db, { action, key, max, windowSec }) {
+  if (!action || !key) return; // nothing to key on — allow.
+  // Bucket boundary: current time floored to the window. Using seconds keeps the
+  // doc id short and rotates buckets automatically (old buckets are simply
+  // never read again; a scheduled cleanup can prune them later if desired).
+  const nowSec = Math.floor(Date.now() / 1000);
+  const bucket = Math.floor(nowSec / windowSec);
+  const safeKey = String(key).replace(/[^A-Za-z0-9_.@:-]/g, '_').slice(0, 200);
+  const docId = `${action}__${safeKey}__${bucket}`;
+  const ref = db.collection('rateLimits').doc(docId);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const count = snap.exists ? Number(snap.data().count || 0) : 0;
+      if (count >= max) {
+        throw new HttpsError('resource-exhausted',
+          'Too many requests. Please slow down and try again in a minute.');
+      }
+      tx.set(ref, {
+        count: count + 1,
+        action,
+        key: safeKey,
+        // Expiry hint so a TTL policy (rateLimits.expiresAt) can auto-prune.
+        expiresAt: admin.firestore.Timestamp.fromMillis((bucket + 2) * windowSec * 1000),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    });
+  } catch (e) {
+    // Re-throw our own limit error; swallow infrastructure errors (fail open).
+    if (e instanceof HttpsError) throw e;
+    console.warn('[rateLimit] counter write failed (failing open):', e && e.message);
+  }
+}
+
+// Convenience: rate-limit by uid when signed in, else by client IP. Returns the
+// key used (handy for logging). Call at the top of a handler, after you know
+// whether auth is required.
+async function rateLimitCaller(db, request, { action, max, windowSec }) {
+  const uid = request.auth && request.auth.uid;
+  const key = uid ? `uid:${uid}` : `ip:${clientIp(request)}`;
+  await enforceRateLimit(db, { action, key, max, windowSec });
+  return key;
+}
+
 /**
  * acceptInvite({ code })
  */
@@ -343,6 +417,130 @@ exports.deleteUser = onCall(async (request) => {
 });
 
 /**
+ * deleteMyAccount() — self-service account + data deletion (CCPA/CPRA "right to
+ * delete", and the equivalent right under the other state privacy laws).
+ * The signed-in user erases their OWN account: user doc, all private
+ * subcollections, company roster entry + seat, and the Firebase Auth user.
+ *
+ * The bootstrap owner cannot self-delete here (that would orphan the platform).
+ */
+exports.deleteMyAccount = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  const data = userSnap.exists ? (userSnap.data() || {}) : {};
+  const email = (data.email || (request.auth.token && request.auth.token.email) || '').toLowerCase();
+
+  if (email && email === OWNER_EMAIL.toLowerCase()) {
+    throw new HttpsError('failed-precondition',
+      'The owner account cannot be self-deleted. Contact support to transfer ownership first.');
+  }
+
+  // Wipe every per-user subcollection that holds their data.
+  async function deleteCollection(colRef) {
+    let deleted = 0;
+    while (true) {
+      const snap = await colRef.limit(400).get();
+      if (snap.empty) break;
+      const batch = db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      deleted += snap.size;
+      if (snap.size < 400) break;
+    }
+    return deleted;
+  }
+  const subcollections = ['progress', 'capstone', 'enrollments', 'notifications',
+    'registrations', 'courseInterests', 'purchases', 'stats'];
+  for (const name of subcollections) {
+    try { await deleteCollection(userRef.collection(name)); } catch (e) { /* best-effort */ }
+  }
+
+  // Remove from company roster, free the seat, strip any admin grant.
+  const companyId = data.companyId || null;
+  if (companyId) {
+    const companyRef = db.collection('companies').doc(companyId);
+    try { await companyRef.collection('members').doc(uid).delete(); } catch (e) { /* best-effort */ }
+    try {
+      await db.runTransaction(async (tx) => {
+        const s = await tx.get(companyRef);
+        if (!s.exists) return;
+        const c = s.data() || {};
+        const newUsed = Math.max(0, (c.seatsUsed || 0) - 1);
+        const adminUids = (c.adminUids || []).filter((u) => u !== uid);
+        tx.update(companyRef, { seatsUsed: newUsed, adminUids });
+      });
+    } catch (e) { /* best-effort */ }
+  }
+
+  try { await userRef.delete(); } catch (e) { /* best-effort */ }
+  try {
+    await admin.auth().deleteUser(uid);
+  } catch (e) {
+    if (e && e.code !== 'auth/user-not-found') {
+      console.warn('[deleteMyAccount] auth.deleteUser failed:', e.message);
+    }
+  }
+
+  return { ok: true };
+});
+
+/**
+ * requestDataExport() — self-service data access/portability (CCPA/CPRA "right
+ * to know", GDPR-style portability). Returns the signed-in user's own profile
+ * doc plus their private subcollections as a plain JSON object the client can
+ * download. No PII of anyone else is included.
+ */
+exports.requestDataExport = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  await rateLimitCaller(admin.firestore(), request,
+    { action: 'requestDataExport', max: 5, windowSec: 3600 });
+
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  if (!userSnap.exists) throw new HttpsError('not-found', 'No account data found.');
+
+  // Firestore Timestamps -> ISO strings so the JSON is portable/readable.
+  function serialize(obj) {
+    if (obj == null) return obj;
+    if (obj && typeof obj.toDate === 'function') return obj.toDate().toISOString();
+    if (Array.isArray(obj)) return obj.map(serialize);
+    if (typeof obj === 'object') {
+      const out = {};
+      for (const [k, v] of Object.entries(obj)) out[k] = serialize(v);
+      return out;
+    }
+    return obj;
+  }
+
+  const exportData = {
+    exportedAt: new Date().toISOString(),
+    uid,
+    profile: serialize(userSnap.data()),
+    collections: {}
+  };
+
+  const subcollections = ['progress', 'capstone', 'enrollments', 'notifications',
+    'registrations', 'courseInterests', 'purchases', 'stats'];
+  for (const name of subcollections) {
+    try {
+      const snap = await userRef.collection(name).get();
+      if (!snap.empty) {
+        exportData.collections[name] = snap.docs.map((d) => ({ id: d.id, ...serialize(d.data()) }));
+      }
+    } catch (e) { /* best-effort */ }
+  }
+
+  return { ok: true, data: exportData };
+});
+
+/**
  * bootstrapOwner()
  */
 exports.bootstrapOwner = onCall(async (request) => {
@@ -533,6 +731,9 @@ exports.sendContactEmail = onCall(
 
     const { uid } = await assertCompanyAdmin(db, companyId, request);
 
+    // Throttle single-contact sends: 60 per admin per 10 minutes.
+    await rateLimitCaller(db, request, { action: 'sendContactEmail', max: 60, windowSec: 600 });
+
     const contactRef = db.collection('companies').doc(companyId).collection('contacts').doc(contactId);
     const contactSnap = await contactRef.get();
     if (!contactSnap.exists) throw new HttpsError('not-found', 'Contact not found.');
@@ -669,6 +870,9 @@ exports.sendCampaign = onCall(
     if (!companyId || !campaignId) throw new HttpsError('invalid-argument', 'companyId and campaignId are required.');
 
     await assertCompanyAdmin(db, companyId, request);
+
+    // Throttle broadcast sends: 10 campaign dispatches per admin per hour.
+    await rateLimitCaller(db, request, { action: 'sendCampaign', max: 10, windowSec: 3600 });
 
     const campaignRef = db.collection('companies').doc(companyId).collection('campaigns').doc(campaignId);
     const campaignSnap = await campaignRef.get();
@@ -2142,6 +2346,9 @@ exports.createCommunityInvite = onCall(async (request) => {
     }
   }
 
+  // Throttle invite creation: 30 per caller per hour.
+  await rateLimitCaller(db, request, { action: 'createCommunityInvite', max: 30, windowSec: 3600 });
+
   const data = request.data || {};
   const usesAllowed = Math.max(1, Math.min(1000, Number(data.usesAllowed) || COMMUNITY_INVITE_DEFAULT_USES));
   const ttlMs = Math.max(60 * 60 * 1000, Math.min(365 * 24 * 60 * 60 * 1000, Number(data.ttlMs) || COMMUNITY_INVITE_DEFAULT_TTL_MS));
@@ -2417,6 +2624,10 @@ exports.createCheckoutSession = onCall(async (request) => {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
   const slug = String((request.data && request.data.slug) || '').trim();
   if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
+
+  // Throttle checkout session creation: 15 per user per 10 minutes.
+  await rateLimitCaller(admin.firestore(), request,
+    { action: 'createCheckoutSession', max: 15, windowSec: 600 });
 
   const stripe = getStripe();
   if (!stripe) {
@@ -2735,6 +2946,19 @@ exports.recordAffiliateClick = onCall(async (request) => {
   const code = String((request.data && request.data.code) || '').trim().toUpperCase();
   if (!code || code.length > 32) return { ok: false };
   const db = admin.firestore();
+  // Throttle click inflation: 30 clicks per IP per 10 minutes per code.
+  // Fails open on limiter error, and returns a soft {ok:false} on overflow
+  // rather than throwing (this is a fire-and-forget beacon from the client).
+  try {
+    await enforceRateLimit(db, {
+      action: 'recordAffiliateClick',
+      key: `ip:${clientIp(request)}:${code}`,
+      max: 30, windowSec: 600
+    });
+  } catch (e) {
+    if (e instanceof HttpsError) return { ok: false };
+    throw e;
+  }
   const ref = db.collection('affiliates').doc(code);
   const snap = await ref.get();
   if (!snap.exists || snap.data().active === false) return { ok: false };
@@ -2910,6 +3134,9 @@ exports.sendSms = onCall(
     }
     await assertCompanyAdmin(db, companyId, request);
 
+    // Throttle outbound SMS: 100 per admin per 10 minutes.
+    await rateLimitCaller(db, request, { action: 'sendSms', max: 100, windowSec: 600 });
+
     const client = getTwilio();
     const from = (process.env.TWILIO_FROM_NUMBER || '').trim();
     if (!client || !from) {
@@ -2921,6 +3148,11 @@ exports.sendSms = onCall(
     if (!cSnap.exists) throw new HttpsError('not-found', 'Contact not found.');
     const to = normalizePhone(cSnap.data().phone);
     if (!to) throw new HttpsError('failed-precondition', 'Contact has no phone number.');
+    // TCPA opt-out: never message a contact who has replied STOP.
+    if (cSnap.data().smsOptedOut === true) {
+      throw new HttpsError('failed-precondition',
+        'This contact has opted out of SMS (replied STOP) and cannot be messaged.');
+    }
 
     let msg;
     try {
@@ -3003,6 +3235,31 @@ exports.twilioInboundWebhook = onRequest(
           type: 'sms_received', description: 'SMS received: ' + String(text).slice(0, 120),
           actorUid: 'twilio', actorName: from, createdAt: FV.serverTimestamp(), meta: { direction: 'in' }
         });
+
+        // ── TCPA opt-out / opt-in keyword handling ──────────────────────────
+        // Carriers honor STOP at the network level, but we must also record it
+        // so our own sendSms/sendCampaign never message an opted-out number.
+        const kw = String(text).trim().toUpperCase().replace(/[^A-Z]/g, '');
+        const STOP_WORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'OPTOUT'];
+        const START_WORDS = ['START', 'YES', 'UNSTOP', 'OPTIN'];
+        if (STOP_WORDS.includes(kw)) {
+          await contactDoc.ref.set({
+            smsOptedOut: true, smsOptedOutAt: FV.serverTimestamp()
+          }, { merge: true });
+          await contactDoc.ref.collection('activities').add({
+            type: 'sms_opt_out', description: 'Contact opted OUT of SMS (replied ' + kw + ').',
+            actorUid: 'twilio', actorName: from, createdAt: FV.serverTimestamp(), meta: { keyword: kw }
+          });
+        } else if (START_WORDS.includes(kw)) {
+          await contactDoc.ref.set({
+            smsOptedOut: false, smsOptedInAt: FV.serverTimestamp()
+          }, { merge: true });
+          await contactDoc.ref.collection('activities').add({
+            type: 'sms_opt_in', description: 'Contact opted IN to SMS (replied ' + kw + ').',
+            actorUid: 'twilio', actorName: from, createdAt: FV.serverTimestamp(), meta: { keyword: kw }
+          });
+        }
+
         await contactDoc.ref.set({ lastActivityAt: FV.serverTimestamp() }, { merge: true });
       }
     } catch (e) { console.warn('[twilioInbound]', e && e.message); }
@@ -3481,6 +3738,11 @@ exports.courseAdvisorChat = onCall(async (request) => {
   const db = admin.firestore();
   const { message, history } = request.data || {};
 
+  // Require auth: this endpoint calls a paid LLM on every request, so it must
+  // not be open to anonymous callers.
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
   if (!message || typeof message !== 'string' || message.trim().length === 0) {
     throw new HttpsError('invalid-argument', 'message is required.');
   }
@@ -3488,7 +3750,8 @@ exports.courseAdvisorChat = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'message is too long (max 4000 chars).');
   }
 
-  const uid = request.auth && request.auth.uid;
+  // Throttle: at most 20 AI messages per user per 5 minutes.
+  await rateLimitCaller(db, request, { action: 'courseAdvisorChat', max: 20, windowSec: 300 });
   // Fetch member context first so we have companyId for community scoping.
   const memberContext = uid ? await fetchMemberContext(db, uid) : null;
   const [knowledgeEntries, communityContext] = await Promise.all([
@@ -3596,6 +3859,10 @@ exports.reportBug = onCall(async (request) => {
   if (description.length > 2000) {
     throw new HttpsError('invalid-argument', 'description is too long (max 2000 chars).');
   }
+
+  // Open to anonymous users (bug reports from logged-out visitors are useful),
+  // but throttled by uid/IP since it runs Claude analysis + emails the owner.
+  await rateLimitCaller(db, request, { action: 'reportBug', max: 5, windowSec: 600 });
 
   const uid = request.auth && request.auth.uid;
   const reportRef = db.collection('bugReports').doc();
