@@ -3586,7 +3586,7 @@ textarea.mc-lines:focus { outline: none; border-color: rgba(204,27,27,0.5); }
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 16px;
   position: relative;
 }
 
@@ -3741,6 +3741,7 @@ body.academy-hub {
 
 .academy-header-inner {
   margin: 0 auto;
+  max-width: 1280px;
   padding: 18px 32px;
   display: flex;
   align-items: center;
@@ -3863,6 +3864,7 @@ body.academy-hub {
 
 .academy-container {
   margin: 0 auto;
+  max-width: 1280px;
   padding: 48px 32px 96px;
   width: 100%;
 }
@@ -3913,36 +3915,24 @@ body.academy-hub {
   max-width: 640px;
 }
 
-/* "Quote of the day" caption — small mono label above the daily quote.
-   Deliberately lightweight so it tags the line without adding bulk. */
-.hub-quote-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--red);
-  margin-bottom: 10px;
+/* Dashboard hero — compact variant. The hub greeting stays in the brand
+   display face but at a calmer scale; the daily quote sits directly under
+   it as a single quiet line instead of a labelled block. */
+.hub-hero {
+  margin-bottom: 44px;
+  padding-bottom: 36px;
+  border-bottom: 1px solid var(--border);
 }
 
-.hub-quote-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--red);
-  box-shadow: 0 0 8px rgba(230, 3, 6, 0.7);
-  animation: hub-quote-dot-pulse 2s ease-in-out infinite;
+.hub-hero h1 {
+  font-size: clamp(38px, 4.5vw, 58px);
+  margin-bottom: 12px;
 }
 
-@keyframes hub-quote-dot-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.4; transform: scale(0.7); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hub-quote-dot { animation: none; }
+.hub-hero p {
+  font-size: 15px;
+  color: var(--gray-light);
+  max-width: 560px;
 }
 
 /* Daily quote entrance — fades up and brightens so it pulls the eye on
@@ -3990,13 +3980,32 @@ body.academy-hub {
   font-weight: 500;
 }
 
+/* Slim brand footer — carries the tagline at the foot of the page so the
+   hero can stay light. margin-top:auto pins it to the shell's bottom. */
+.academy-footer {
+  margin-top: auto;
+  padding: 26px 32px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+}
+
+.academy-footer strong {
+  color: var(--gray-light);
+  font-weight: 400;
+}
+
 /* Continue / resume card */
 .academy-continue {
-  background: var(--surface);
+  background: linear-gradient(120deg, rgba(230, 3, 6, 0.07), transparent 45%), var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 28px 32px;
-  margin-bottom: 40px;
+  margin-bottom: 48px;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 24px;
@@ -4064,21 +4073,20 @@ body.academy-hub {
   letter-spacing: 0.02em;
 }
 
-/* Hub section heading */
+/* Hub section heading — no rule underneath; whitespace does the separating */
 .academy-section-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 20px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
+  margin-bottom: 18px;
 }
 
 .academy-section-head h2 {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 22px;
-  letter-spacing: -0.01em;
+  font-weight: 400;
+  font-size: 24px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--white);
 }
 
@@ -4101,38 +4109,44 @@ body.academy-hub {
 .academy-tile {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 24px;
+  border-radius: 16px;
+  padding: 22px;
   text-decoration: none;
   color: var(--white);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-height: 160px;
+  gap: 10px;
   transition: border-color 0.2s, transform 0.2s, background 0.2s;
   position: relative;
   overflow: hidden;
 }
 
 .academy-tile:hover {
-  border-color: var(--red);
+  border-color: var(--border-red);
   transform: translateY(-2px);
   background: var(--surface2);
 }
 
-.academy-tile-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--gray-light);
+/* Small icon chip — replaces the old numbered mono label */
+.academy-tile-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(230, 3, 6, 0.1);
+  color: var(--red);
+  margin-bottom: 4px;
 }
+
+.academy-tile-icon svg { display: block; }
 
 .academy-tile-title {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 400;
   font-size: 20px;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--white);
 }
 
@@ -4252,7 +4266,7 @@ body.academy-hub {
 .academy-list {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 8px;
 }
 

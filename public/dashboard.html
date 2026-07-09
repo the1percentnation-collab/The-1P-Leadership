@@ -48,14 +48,9 @@
 
   <main class="academy-container">
 
-    <section class="academy-hero">
-      <div class="academy-eyebrow">Academy Dashboard</div>
+    <section class="academy-hero hub-hero">
       <h1 id="hub-greeting">Welcome back.</h1>
-      <div class="hub-quote-label"><span class="hub-quote-dot"></span>Quote of the day</div>
       <p id="hub-subtitle">Continue your work. Stay grounded in purpose. Move forward with intention — one percent better every day.</p>
-      <div class="academy-tagline">
-        <strong>Redefining Success.</strong> Realigning Purpose. Releasing Potential.
-      </div>
     </section>
 
     <section id="hub-continue-slot"></section>
@@ -71,32 +66,39 @@
     <section>
       <div class="academy-section-head">
         <h2>Quick access</h2>
-        <span class="academy-section-meta">Explore the Academy</span>
       </div>
       <div class="academy-grid">
         <a class="academy-tile" href="/courses.html">
-          <span class="academy-tile-label">01 · Courses</span>
-          <span class="academy-tile-title">Your Courses</span>
-          <span class="academy-tile-desc">Pick up where you left off, or browse the Academy library and sign up for what's next.</span>
+          <span class="academy-tile-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          </span>
+          <span class="academy-tile-title">Courses</span>
+          <span class="academy-tile-desc">Pick up where you left off, or browse the library.</span>
           <span class="academy-tile-cta">Open courses</span>
         </a>
         <a class="academy-tile" href="/community.html">
-          <span class="academy-tile-label">02 · Community</span>
-          <span class="academy-tile-title">Members Community</span>
-          <span class="academy-tile-desc">Share wins, ask questions, and stay accountable alongside other members.</span>
+          <span class="academy-tile-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </span>
+          <span class="academy-tile-title">Community</span>
+          <span class="academy-tile-desc">Share wins and stay accountable with other members.</span>
           <span class="academy-tile-cta">Enter community</span>
           <span class="academy-tile-badge" id="hub-community-badge" style="display:none;">New</span>
         </a>
         <a class="academy-tile" href="/resources.html">
-          <span class="academy-tile-label">03 · Resources</span>
-          <span class="academy-tile-title">Resource Library</span>
-          <span class="academy-tile-desc">Frameworks, worksheets, and reference material to put the work into practice.</span>
+          <span class="academy-tile-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          </span>
+          <span class="academy-tile-title">Resources</span>
+          <span class="academy-tile-desc">Frameworks and worksheets to put the work into practice.</span>
           <span class="academy-tile-cta">Browse resources</span>
         </a>
         <a class="academy-tile" href="/profile.html">
-          <span class="academy-tile-label">04 · Profile</span>
-          <span class="academy-tile-title">Your Profile</span>
-          <span class="academy-tile-desc">Update your display name, bio, and avatar. Manage how you show up in the community.</span>
+          <span class="academy-tile-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </span>
+          <span class="academy-tile-title">Profile</span>
+          <span class="academy-tile-desc">Manage your name, bio, avatar, and settings.</span>
           <span class="academy-tile-cta">Edit profile</span>
         </a>
       </div>
@@ -125,6 +127,10 @@
     </section>
 
   </main>
+
+  <footer class="academy-footer">
+    <strong>Redefining Success.</strong> Realigning Purpose. Releasing Potential.
+  </footer>
 </div>
 
 <script type="module" src="js/hub.js"></script>
