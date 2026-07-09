@@ -36,8 +36,6 @@
         <a class="academy-tab" href="/community.html" data-tab="community">Community</a>
         <a class="academy-tab" href="/resources.html" data-tab="resources">Resources</a>
         <a class="academy-tab" href="/profile.html" data-tab="profile">Profile</a>
-        <a class="academy-tab academy-tab-owner" href="/crm.html" data-tab="crm" hidden>CRM</a>
-        <a class="academy-tab academy-tab-owner" href="/owner.html" data-tab="owner" hidden>Owner</a>
       </nav>
 
       <div class="academy-header-right">
@@ -128,20 +126,6 @@
 </div>
 
 <script type="module" src="js/hub.js"></script>
-<!-- Reveal owner/admin-only nav tabs (CRM, Owner) when signed in with that role. -->
-<script type="module">
-  import { onAuthReady } from './js/auth.js';
-  import { getRoleInfo } from './js/roles.js';
-  onAuthReady(async (u) => {
-    if (!u) return;
-    try {
-      const info = await getRoleInfo();
-      if (info && info.isAdmin) {
-        document.querySelectorAll('.academy-tab-owner').forEach(function (el) { el.hidden = false; });
-      }
-    } catch (e) { /* non-fatal: tabs simply stay hidden */ }
-  });
-</script>
 <script type="module">
   import { init as initChatbot } from './js/chatbot.js';
   initChatbot();
