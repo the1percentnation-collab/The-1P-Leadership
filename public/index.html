@@ -49,7 +49,7 @@
       --font-body: 'Outfit', system-ui, sans-serif;
       --font-mono: 'Space Mono', monospace;
 
-      --nav-h: 72px;
+      --nav-h: 88px;
       --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
       --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
     }
@@ -126,15 +126,15 @@
       backdrop-filter: blur(20px);
     }
     .nav-inner {
-      height: 100%; max-width: 1400px; margin: 0 auto; padding: 0 32px;
+      height: 100%; max-width: 1400px; margin: 0 auto; padding: 0 40px;
       display: flex; align-items: center; justify-content: space-between; gap: 24px;
     }
     .nav-logo {
-      display: flex; align-items: center; gap: 12px;
+      display: flex; align-items: center; gap: 14px;
       flex-shrink: 0;
     }
     .nav-logo-mark {
-      width: 42px; height: 42px;
+      width: 54px; height: 54px;
     }
     .nav-logo-text {
       display: flex; flex-direction: column;
@@ -142,28 +142,28 @@
       letter-spacing: 0.06em;
       line-height: 1;
     }
-    .nav-logo-line1 { font-size: 13px; color: var(--gray-400); }
-    .nav-logo-line2 { font-size: 18px; color: var(--white); }
+    .nav-logo-line1 { font-size: 15px; color: var(--gray-400); }
+    .nav-logo-line2 { font-size: 24px; color: var(--white); }
 
     .nav-links {
-      display: flex; align-items: center; gap: 2px;
+      display: flex; align-items: center; gap: 6px;
       list-style: none;
     }
     .nav-links a {
-      font-size: 13px; font-weight: 500; letter-spacing: 0.04em;
-      padding: 8px 14px; border-radius: 4px;
+      font-size: 15px; font-weight: 500; letter-spacing: 0.04em;
+      padding: 10px 18px; border-radius: 5px;
       color: var(--gray-400);
       transition: color 0.2s, background 0.2s;
     }
     .nav-links a:hover { color: var(--white); background: var(--surface); }
 
-    .nav-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+    .nav-actions { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
 
     .btn-portal {
       display: inline-block;
-      font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+      font-family: var(--font-mono); font-size: 13px; font-weight: 700;
       letter-spacing: 0.14em; text-transform: uppercase;
-      padding: 10px 20px; border-radius: 3px;
+      padding: 13px 26px; border-radius: 4px;
       border: 1px solid var(--border-red);
       color: var(--red);
       text-decoration: none;
@@ -210,9 +210,9 @@
     }
 
     .btn-cta-nav {
-      font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+      font-family: var(--font-mono); font-size: 13px; font-weight: 700;
       letter-spacing: 0.14em; text-transform: uppercase;
-      padding: 10px 22px; border-radius: 3px;
+      padding: 13px 28px; border-radius: 4px;
       background: var(--red); color: var(--white);
       transition: background 0.2s, transform 0.15s;
     }
@@ -1416,9 +1416,14 @@
       .stats-grid { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 768px) {
+      :root { --nav-h: 72px; }
       .nav-links { display: none; }
       .btn-cta-nav { display: none; }
       .nav-hamburger { display: flex; }
+      .nav-logo-mark { width: 42px; height: 42px; }
+      .nav-logo-line1 { font-size: 13px; }
+      .nav-logo-line2 { font-size: 18px; }
+      .btn-portal { font-size: 11px; padding: 10px 20px; }
       .courses-grid { grid-template-columns: 1fr; }
       .testimonials-grid { grid-template-columns: 1fr; }
       .footer-grid { grid-template-columns: 1fr; }
