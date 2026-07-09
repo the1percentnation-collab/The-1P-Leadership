@@ -3920,8 +3920,6 @@ body.academy-hub {
    it as a single quiet line instead of a labelled block. */
 .hub-hero {
   margin-bottom: 44px;
-  padding-bottom: 36px;
-  border-bottom: 1px solid var(--border);
 }
 
 .hub-hero h1 {
@@ -3935,17 +3933,25 @@ body.academy-hub {
   max-width: 560px;
 }
 
-/* Small pulsing red dot marks the daily quote without a full label row */
-.hub-hero p::before {
-  content: '';
-  display: inline-block;
+/* "Quote of the day" caption — small mono label above the daily quote. */
+.hub-quote-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--red);
+  margin-bottom: 10px;
+}
+
+.hub-quote-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--red);
   box-shadow: 0 0 8px rgba(230, 3, 6, 0.7);
-  margin-right: 10px;
-  vertical-align: middle;
   animation: hub-quote-dot-pulse 2s ease-in-out infinite;
 }
 
@@ -3955,7 +3961,7 @@ body.academy-hub {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hub-hero p::before { animation: none; }
+  .hub-quote-dot { animation: none; }
 }
 
 /* Daily quote entrance — fades up and brightens so it pulls the eye on
@@ -4002,26 +4008,6 @@ body.academy-hub {
   color: var(--white);
   font-weight: 500;
 }
-
-/* Slim brand footer — carries the tagline at the foot of the page so the
-   hero can stay light. margin-top:auto pins it to the shell's bottom. */
-.academy-footer {
-  margin-top: auto;
-  padding: 26px 32px;
-  border-top: 1px solid var(--border);
-  text-align: center;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--gray-mid);
-}
-
-.academy-footer strong {
-  color: var(--red);
-  font-weight: 400;
-}
-
 /* Continue / resume card */
 .academy-continue {
   background: linear-gradient(120deg, rgba(230, 3, 6, 0.07), transparent 45%), var(--surface);
