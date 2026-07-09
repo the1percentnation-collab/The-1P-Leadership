@@ -3741,6 +3741,7 @@ body.academy-hub {
 
 .academy-header-inner {
   margin: 0 auto;
+  max-width: 1280px;
   padding: 18px 32px;
   display: flex;
   align-items: center;
@@ -3863,6 +3864,7 @@ body.academy-hub {
 
 .academy-container {
   margin: 0 auto;
+  max-width: 1280px;
   padding: 48px 32px 96px;
   width: 100%;
 }
@@ -3996,7 +3998,7 @@ body.academy-hub {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 28px 32px;
-  margin-bottom: 40px;
+  margin-bottom: 48px;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 24px;
@@ -4095,7 +4097,7 @@ body.academy-hub {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
-  margin-bottom: 56px;
+  margin-bottom: 48px;
 }
 
 .academy-tile {
@@ -4177,10 +4179,10 @@ body.academy-hub {
   color: #fff;
 }
 
-/* Two-column split for lower hub sections */
+/* Two-column split for lower hub sections — equal halves keep the page balanced */
 .academy-split {
   display: grid;
-  grid-template-columns: 1.3fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 32px;
 }
 
