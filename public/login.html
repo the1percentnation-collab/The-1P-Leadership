@@ -225,30 +225,13 @@
       showErr('Authentication service is unreachable. Check your connection and retry.');
     }
 
-    // Explain why the user landed back here after an automatic sign-out.
-    (function showSessionReason() {
-      const reason = new URLSearchParams(location.search).get('reason');
-      const messages = {
-        'idle-timeout': 'You were signed out after a period of inactivity. Please sign in again.',
-        'session-expired': 'Your session reached its time limit. Please sign in again to continue.',
-        'token-invalid': 'Your session is no longer valid. Please sign in again.'
-      };
-      if (reason && messages[reason]) showOk(messages[reason]);
-    })();
-
     // If already signed in, bounce to next — unless the session has already
-    // exceeded its idle/absolute limit, in which case end it here and require
-    // a real sign-in instead of silently resuming.
+    // exceeded its idle/absolute limit, in which case end it here silently and
+    // require a real sign-in instead of resuming.
     onAuthReady(async (u) => {
       if (!u) return;
-      const reason = expiredReason(u);
-      if (reason) {
+      if (expiredReason(u)) {
         try { await signOut(); } catch (e) { /* ignore */ }
-        const messages = {
-          'idle-timeout': 'You were signed out after a period of inactivity. Please sign in again.',
-          'session-expired': 'Your session reached its time limit. Please sign in again to continue.'
-        };
-        showOk(messages[reason] || 'Please sign in again to continue.');
         return;
       }
       location.replace(nextUrl());
