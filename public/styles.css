@@ -4223,10 +4223,15 @@ body.academy-hub {
   .academy-header-right #btn-signout { padding: 6px 10px; font-size: 12px; }
   .academy-header-right .user-chip-link { font-size: 10px; padding: 4px 8px; }
   .academy-header-right .user-chip-admin { font-size: 10px; padding: 4px 10px; }
-  /* Row 2: tabs fill full width */
+  /* Row 2: tabs fill full width. The desktop rule sets `flex: 1`
+     (flex-basis 0), which lets the tabs squeeze onto row 1 beside the
+     user chip and overflow off-screen — flex-basis 100% forces the
+     wrap onto their own row. */
   .academy-tabs {
     order: 3;
+    flex: 0 0 100%;
     width: 100%;
+    min-width: 0;
     overflow-x: auto;
     justify-content: flex-start;
     gap: 4px;
@@ -4258,8 +4263,18 @@ body.academy-hub {
     color: var(--red);
   }
 
-  /* Tighter user-chip controls */
-  .academy-header-right .user-chip { gap: 5px; }
+  /* Tighter user-chip controls — the chip is the last item in row 1, so
+     its trailing divider/margin and the avatar divider only waste width
+     the row doesn't have on phones (Sign out clips off-screen otherwise). */
+  .academy-header-right .user-chip {
+    gap: 5px;
+    margin-right: 0;
+    padding-right: 0;
+    border-right: none;
+  }
+  .academy-header-right .user-chip .c-avatar-link { margin-left: 0; padding-left: 8px; }
+  .academy-header-right .c-search-btn,
+  .academy-header-right .c-bell { width: 28px; height: 28px; }
   .academy-header-right #btn-signout { padding: 5px 8px; font-size: 11px; }
 
   /* Slightly smaller tabs so more fit before scrolling */
@@ -4402,11 +4417,16 @@ body.academy-course {
   min-height: 100vh;
 }
 
-body.academy-course .academy-header { grid-row: 1; position: static; }
+/* min-width: 0 — grid items default to min-width auto, so the header
+   tabs' min-content width would widen the 1fr column past the viewport
+   on phones (pushing the tab row / Sign out off-screen) instead of
+   letting the tabs scroll inside their own row. */
+body.academy-course .academy-header { grid-row: 1; position: static; min-width: 0; }
 body.academy-course #course-workspace {
   grid-row: 2;
   display: flex;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
 
