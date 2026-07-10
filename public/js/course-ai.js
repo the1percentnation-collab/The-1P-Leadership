@@ -33,6 +33,65 @@ function slugify(s) {
 
 const cleanLines = (v) => (Array.isArray(v) ? v.map((x) => String(x || '').trim()).filter(Boolean) : []);
 
+// ─── Reference documents ────────────────────────────────────────────────────
+// Manuscripts, notes, and outlines the admin uploads to ground the AI's
+// writing. Text is extracted in the browser (nothing is stored) and passed
+// to the Cloud Functions as prompt context, trimmed to SOURCE_MAX chars.
+
+const SOURCE_MAX = 60000;
+const DOC_FILE_MAX = 20 * 1024 * 1024;
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(`Could not load ${src}`));
+    document.head.appendChild(s);
+  });
+}
+
+let _pdfjs = null;
+async function getPdfjs() {
+  if (!_pdfjs) {
+    _pdfjs = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4/build/pdf.min.mjs');
+    _pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4/build/pdf.worker.min.mjs';
+  }
+  return _pdfjs;
+}
+
+async function extractPdfText(file) {
+  const pdfjs = await getPdfjs();
+  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const parts = [];
+  let total = 0;
+  for (let p = 1; p <= doc.numPages && total < SOURCE_MAX * 1.5; p++) {
+    const page = await doc.getPage(p);
+    const tc = await page.getTextContent();
+    const text = tc.items.map((it) => it.str).join(' ');
+    parts.push(text);
+    total += text.length;
+  }
+  return parts.join('\n');
+}
+
+async function extractDocxText(file) {
+  if (!window.mammoth) {
+    await loadScript('https://cdn.jsdelivr.net/npm/mammoth@1/mammoth.browser.min.js');
+  }
+  const result = await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+  return result.value || '';
+}
+
+async function extractDocText(file) {
+  const name = file.name.toLowerCase();
+  if (file.size > DOC_FILE_MAX) throw new Error(`"${file.name}" is too large (max 20MB).`);
+  if (name.endsWith('.pdf')) return extractPdfText(file);
+  if (name.endsWith('.docx')) return extractDocxText(file);
+  if (name.endsWith('.txt') || name.endsWith('.md')) return file.text();
+  throw new Error(`"${file.name}" isn't supported — upload a PDF, Word (.docx), .txt, or .md file.`);
+}
+
 export function openAiGeneratorModal({ userEmail, onDone }) {
   const root = $('modal-root');
   root.innerHTML = `
@@ -63,6 +122,18 @@ export function openAiGeneratorModal({ userEmail, onDone }) {
             <label for="ai-notes">Anything else the AI should know? <span style="text-transform:none; letter-spacing:0; color:var(--gray-mid);">(optional)</span></label>
             <input id="ai-notes" type="text" placeholder="tone, must-cover topics, frameworks…" autocomplete="off">
           </div>
+          <div class="crm-form-row">
+            <label>Reference documents <span style="text-transform:none; letter-spacing:0; color:var(--gray-mid);">(optional — manuscripts, notes, or outlines the AI should draw from)</span></label>
+            <div id="ai-docs-list"></div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <button class="btn btn-ghost" type="button" id="btn-ai-doc" style="font-size:12px;">+ Upload document</button>
+              <input type="file" id="ai-doc-file" multiple accept=".pdf,.docx,.txt,.md" style="display:none">
+              <span id="ai-doc-status" style="font-size:12px; color:var(--gray-light);"></span>
+            </div>
+            <div style="font-size:11px; color:var(--gray-mid); margin-top:4px;">
+              PDF, Word (.docx), .txt, or .md. Text is read in your browser and used as writing material — very long documents are trimmed to the first ~60,000 characters.
+            </div>
+          </div>
           <div id="ai-result"></div>
           <div class="crm-modal-actions">
             <button class="btn btn-ghost" type="button" id="ai-cancel">Cancel</button>
@@ -83,6 +154,7 @@ export function openAiGeneratorModal({ userEmail, onDone }) {
   let running = false;
   let stopRequested = false;
   let doneSlug = null;
+  const docs = [];   // { name, text }
 
   const close = () => { root.innerHTML = ''; };
   $('modal-bd').addEventListener('click', (e) => {
@@ -90,6 +162,51 @@ export function openAiGeneratorModal({ userEmail, onDone }) {
   });
   $('ai-cancel').addEventListener('click', close);
   $('ai-topic').focus();
+
+  function renderDocsList() {
+    const list = $('ai-docs-list');
+    if (!docs.length) { list.innerHTML = ''; return; }
+    list.innerHTML = docs.map((d, i) => `
+      <div style="display:flex; gap:10px; align-items:center; padding:5px 0; font-size:13px;">
+        <span>📄</span>
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(d.name)}</span>
+        <span style="color:var(--gray-mid); font-size:12px;">${Math.round(d.text.length / 1000)}k chars</span>
+        <span style="flex:1;"></span>
+        <button class="mc-reset-field" type="button" data-doc-remove="${i}">remove</button>
+      </div>`).join('');
+    list.querySelectorAll('[data-doc-remove]').forEach((b) =>
+      b.addEventListener('click', () => {
+        docs.splice(Number(b.dataset.docRemove), 1);
+        renderDocsList();
+      }));
+  }
+
+  $('btn-ai-doc').addEventListener('click', () => $('ai-doc-file').click());
+  $('ai-doc-file').addEventListener('change', async () => {
+    const input = $('ai-doc-file');
+    const files = Array.from(input.files || []);
+    input.value = '';
+    const status = $('ai-doc-status');
+    for (const f of files) {
+      try {
+        status.textContent = `Reading ${f.name}…`;
+        const text = (await extractDocText(f)).trim();
+        if (!text) throw new Error(`No readable text found in "${f.name}" (scanned/image-only PDFs can't be read).`);
+        docs.push({ name: f.name, text });
+        renderDocsList();
+        status.textContent = '';
+      } catch (e) {
+        status.innerHTML = `<span style="color:var(--red, #ff7070);">${escapeHtml(e && e.message ? e.message : String(e))}</span>`;
+      }
+    }
+  });
+
+  // Combine every uploaded document into one prompt-context block.
+  function combinedSource() {
+    if (!docs.length) return '';
+    const joined = docs.map((d) => `--- ${d.name} ---\n${d.text}`).join('\n\n');
+    return joined.length > SOURCE_MAX ? joined.slice(0, SOURCE_MAX) + '\n[…trimmed]' : joined;
+  }
 
   const steps = () => $('ai-steps');
   function addStep(text) {
@@ -112,6 +229,7 @@ export function openAiGeneratorModal({ userEmail, onDone }) {
     const audience = $('ai-audience').value.trim();
     const notes = $('ai-notes').value.trim();
     const lessonCount = Number($('ai-lessons').value) || 5;
+    const source = combinedSource();
 
     running = true;
     $('ai-form').style.display = 'none';
@@ -138,10 +256,12 @@ export function openAiGeneratorModal({ userEmail, onDone }) {
     };
 
     // 1. Outline
-    const outlineStep = addStep('Designing the course outline…');
+    const outlineStep = addStep(docs.length
+      ? `Designing the course outline from ${docs.length} reference document${docs.length === 1 ? '' : 's'}…`
+      : 'Designing the course outline…');
     let outline;
     try {
-      const res = await httpsCallable(functions, 'generateCourseOutline')({ topic, audience, notes, lessonCount });
+      const res = await httpsCallable(functions, 'generateCourseOutline')({ topic, audience, notes, lessonCount, source });
       outline = res.data && res.data.outline;
       if (!outline || !Array.isArray(outline.lessons) || !outline.lessons.length) {
         throw new Error('The AI returned an empty outline.');
@@ -208,7 +328,8 @@ export function openAiGeneratorModal({ userEmail, onDone }) {
             brief: String(l.brief || ''),
             lessonNumber: i + 1,
             totalLessons: outline.lessons.length,
-            outlineTitles
+            outlineTitles,
+            source
           });
           lesson = res.data && res.data.lesson;
         } catch (e) {

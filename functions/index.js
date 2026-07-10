@@ -4053,6 +4053,7 @@ exports.generateCourseOutline = onCall({ timeoutSeconds: 300 }, async (request) 
   if (!topic) throw new HttpsError('invalid-argument', 'topic is required.');
   const audience = clampStr(request.data && request.data.audience, 500);
   const notes = clampStr(request.data && request.data.notes, 2000);
+  const source = clampStr(request.data && request.data.source, 80000);
   let lessonCount = parseInt(request.data && request.data.lessonCount, 10);
   if (!Number.isFinite(lessonCount)) lessonCount = 5;
   lessonCount = Math.max(1, Math.min(12, lessonCount));
@@ -4077,13 +4078,16 @@ exports.generateCourseOutline = onCall({ timeoutSeconds: 300 }, async (request) 
     '  ]',
     '}',
     `The lessons array must contain exactly ${lessonCount} lessons that build on`,
-    'each other in a logical arc. Group lessons into 2-3 pillars when it helps.'
+    'each other in a logical arc. Group lessons into 2-3 pillars when it helps.',
+    'When the creator provides reference material, base the course structure and',
+    'lesson briefs on it — use its concepts, terminology, and examples.'
   ].join('\n');
 
   const user = [
     `Course topic / description: ${topic}`,
     audience ? `Target audience: ${audience}` : '',
-    notes ? `Additional notes from the course creator: ${notes}` : ''
+    notes ? `Additional notes from the course creator: ${notes}` : '',
+    source ? `Reference material from the course creator (manuscripts/notes to base the course on):\n"""\n${source}\n"""` : ''
   ].filter(Boolean).join('\n');
 
   const client = getAnthropicClient();
@@ -4120,6 +4124,7 @@ exports.generateCourseLesson = onCall({ timeoutSeconds: 300 }, async (request) =
   const totalLessons = parseInt(d.totalLessons, 10) || 1;
   const outlineTitles = (Array.isArray(d.outlineTitles) ? d.outlineTitles : [])
     .slice(0, 12).map((t) => clampStr(t, 200));
+  const source = clampStr(d.source, 80000);
 
   const system = [
     'You write full lessons for online courses on The One Percent Academy, a',
@@ -4135,7 +4140,9 @@ exports.generateCourseLesson = onCall({ timeoutSeconds: 300 }, async (request) =
     '}',
     'The html field: 600-1000 words using ONLY these tags: <h2>, <h3>, <p>,',
     '<ul>, <ol>, <li>, <blockquote>, <strong>, <em>. No images, iframes,',
-    'scripts, styles, or classes. Escape the HTML properly inside the JSON string.'
+    'scripts, styles, or classes. Escape the HTML properly inside the JSON string.',
+    'When the creator provides reference material, ground the lesson in it —',
+    'draw on its concepts, terminology, stories, and examples rather than inventing your own.'
   ].join('\n');
 
   const user = [
@@ -4144,7 +4151,8 @@ exports.generateCourseLesson = onCall({ timeoutSeconds: 300 }, async (request) =
     outlineTitles.length ? `Full course outline:\n${outlineTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}` : '',
     `Write lesson ${lessonNumber} of ${totalLessons}: "${lessonTitle}"`,
     lessonSubtitle ? `Lesson subtitle: ${lessonSubtitle}` : '',
-    brief ? `This lesson must cover: ${brief}` : ''
+    brief ? `This lesson must cover: ${brief}` : '',
+    source ? `Reference material from the course creator (base the lesson on this):\n"""\n${source}\n"""` : ''
   ].filter(Boolean).join('\n');
 
   const client = getAnthropicClient();
