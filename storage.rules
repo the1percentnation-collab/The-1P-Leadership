@@ -2,6 +2,43 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
+    // Mirrors firestore.rules isAnyAdmin(): owner custom claim OR
+    // users/{uid}.role == 'admin' (cross-service Firestore lookup).
+    function isCourseAdmin() {
+      return request.auth != null && (
+        request.auth.token.role == 'owner' ||
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    // courses/{slug}/images — inline lesson images inserted via the course
+    // builder's editor. Shown to members (and on public sales pages), so
+    // reads are public like product-images.
+    match /courses/{slug}/images/{fileName} {
+      allow read: if true;
+      allow write: if isCourseAdmin()
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // courses/{slug}/attachments — downloadable lesson resources
+    // (PDFs, docs, slides, sheets, zips, audio, images).
+    match /courses/{slug}/attachments/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if isCourseAdmin()
+                   && request.resource.size < 25 * 1024 * 1024
+                   && request.resource.contentType.matches('application/pdf|application/msword|application/vnd\\.openxmlformats-officedocument\\..*|application/vnd\\.ms-excel|application/vnd\\.ms-powerpoint|text/csv|text/plain|application/zip|application/x-zip-compressed|image/.*|audio/.*');
+    }
+
+    // courses/{slug}/videos — uploaded lesson videos played via a native
+    // <video> tag in the course player.
+    match /courses/{slug}/videos/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if isCourseAdmin()
+                   && request.resource.size < 500 * 1024 * 1024
+                   && request.resource.contentType.matches('video/(mp4|webm)');
+    }
+
     // avatars/{uid}/{filename} — readable by any signed-in user, writable only by that uid.
     match /avatars/{uid}/{filename} {
       allow read: if request.auth != null;

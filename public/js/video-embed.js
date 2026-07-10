@@ -81,6 +81,27 @@ export function videoEmbedHtml(raw) {
   return `<div class="cp-video"><iframe src="${escAttr(v.embedSrc)}" title="Lesson video" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
 }
 
+/**
+ * videoFileHtml(videoFile) → native <video> block for an UPLOADED lesson
+ * video ({ url, name, size, type } stored on the module doc), or '' when
+ * unset. Like videoEmbedHtml, callers inject this OUTSIDE the
+ * DOMPurify-sanitized lesson body — the src attribute is escaped and the
+ * URL is admin-authored (Firebase Storage download URL).
+ */
+export function videoFileHtml(vf) {
+  if (!vf || !vf.url) return '';
+  return `<div class="cp-video is-file"><video controls preload="metadata" src="${escAttr(vf.url)}"></video></div>`;
+}
+
+/**
+ * lessonVideoHtml(module) → the lesson's video block from either source.
+ * An uploaded file takes precedence over a pasted provider link.
+ */
+export function lessonVideoHtml(m) {
+  if (!m) return '';
+  return videoFileHtml(m.videoFile) || videoEmbedHtml(m.videoUrl);
+}
+
 /** Short human label for the builder's validation hint ("YouTube video"…). */
 export function providerLabel(raw) {
   const v = parseVideoUrl(raw);

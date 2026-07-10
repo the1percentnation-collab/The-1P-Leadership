@@ -5264,6 +5264,15 @@ body.academy-course #course-workspace {
   border: 0;
 }
 
+/* Uploaded lesson video — native player in the same 16:9 block */
+.cp-video video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 /* Legacy 1P-CLC lesson content renders its own big header inside the tab
    pane; the player already shows the module title, so the duplicated
    heading is removed at bind time and the description stays. */

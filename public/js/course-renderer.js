@@ -12,7 +12,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { loadModuleDocs } from './courses-data.js';
 import { mountCoursePlayer, escPlayer } from './course-player.js';
-import { videoEmbedHtml } from './video-embed.js';
+import { lessonVideoHtml } from './video-embed.js';
 
 let _purify = null;
 async function getPurify() {
@@ -149,6 +149,35 @@ function bindWorkbookTab(slug, root) {
   });
 }
 
+// Downloadable lesson attachments, shown under the lesson body. Injected
+// OUTSIDE the DOMPurify-sanitized block (like the video embed), so it is
+// built only from escaped scalar fields.
+function fmtSize(n) {
+  const b = Number(n) || 0;
+  if (b >= 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+  if (b >= 1024) return `${Math.round(b / 1024)} KB`;
+  return b ? `${b} B` : '';
+}
+
+function resourcesHtml(m) {
+  const files = Array.isArray(m.attachments) ? m.attachments.filter((a) => a && a.url) : [];
+  if (!files.length) return '';
+  const rows = files.map((a) => `
+    <a href="${esc(a.url)}" target="_blank" rel="noopener" download
+       style="display:flex;gap:12px;align-items:center;padding:12px 16px;background:#111;border:1px solid #1E1E1E;border-radius:8px;color:#D0D0D0;text-decoration:none;font-size:13px;">
+      <span style="font-size:16px;">📎</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.name || 'Download')}</span>
+      <span style="flex:1;"></span>
+      <span style="color:#888;font-size:12px;flex-shrink:0;">${esc(fmtSize(a.size))}</span>
+      <span style="color:#E60306;font-size:12px;flex-shrink:0;">Download ↓</span>
+    </a>`).join('');
+  return `
+    <div style="margin-top:28px;">
+      <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:12px;">RESOURCES</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">${rows}</div>
+    </div>`;
+}
+
 function summaryTabHtml(m) {
   const items = Array.isArray(m.summary) ? m.summary : [];
   if (!items.length) return emptyTabCard('This lesson has no summary.');
@@ -187,8 +216,9 @@ export async function mountFirestoreCourse(course, { startAt } = {}) {
     label: 'Lesson',
     html: (pm) => {
       const m = byId(pm);
-      return videoEmbedHtml(m.videoUrl) +
-        `<div class="lesson-body">${purify.sanitize(m.html || '', { USE_PROFILES: { html: true } })}</div>`;
+      return lessonVideoHtml(m) +
+        `<div class="lesson-body">${purify.sanitize(m.html || '', { USE_PROFILES: { html: true } })}</div>` +
+        resourcesHtml(m);
     }
   }];
   if (modules.some(hasWorkbookContent)) {

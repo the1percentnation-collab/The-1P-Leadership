@@ -16,6 +16,7 @@ import {
   initBuilder, openBuilder, builderHasUnsavedChanges, builderDiscardChanges, CODE_CONTENT_SLUGS
 } from './course-builder.js';
 import { initCoupons } from './manage-coupons.js';
+import { openAiGeneratorModal } from './course-ai.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -528,6 +529,13 @@ async function main() {
   $('btn-seed').addEventListener('click', seedDefaults);
   $('btn-migrate-icant').addEventListener('click', migrateIcant);
   $('btn-add-course').addEventListener('click', openNewCourseModal);
+  $('btn-ai-course').addEventListener('click', () => openAiGeneratorModal({
+    userEmail: _userEmail,
+    onDone: async (slug) => {
+      await refreshCourses();
+      await openBuilderView(slug);
+    }
+  }));
 
   initBuilder({
     userEmail: _userEmail,

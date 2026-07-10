@@ -15,7 +15,8 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { COURSES } from './courses-registry.js';
 import { loadCourses, getCourses } from './courses-data.js';
-import { parseVideoUrl, videoEmbedHtml, providerLabel } from './video-embed.js';
+import { parseVideoUrl, videoEmbedHtml, videoFileHtml, providerLabel } from './video-embed.js';
+import { uploadCourseFile, deleteCourseFile, formatBytes } from './course-uploads.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -50,7 +51,9 @@ const S = {
   quill: null,
   suppress: false,   // true while programmatically filling fields
   previewOn: false,
-  htmlWasOpen: false
+  htmlWasOpen: false,
+  attachments: [],   // working copy of the open lesson's attachments
+  videoFile: null    // working copy of the open lesson's uploaded video
 };
 
 let cfg = {};        // { userEmail, onCoursesChanged, onDeleteCourse, onMigrateIcant }
@@ -139,7 +142,7 @@ function railItemHtml(m, i) {
       <span class="mc-rail-num">${i + 1}</span>
       <span class="mc-rail-text">
         <span class="mc-rail-title">${escapeHtml(m.title || `Lesson ${m.id}`)}</span>
-        <span class="mc-rail-sub">${escapeHtml([m.duration, m.videoUrl ? '▶ video' : ''].filter(Boolean).join(' · '))}</span>
+        <span class="mc-rail-sub">${escapeHtml([m.duration, (m.videoUrl || m.videoFile) ? '▶ video' : ''].filter(Boolean).join(' · '))}</span>
       </span>
       ${draft ? '<span class="mc-draft-pill">Draft</span>' : ''}
       <span class="mc-rail-arrows">
@@ -287,7 +290,40 @@ function ensureQuill() {
     }
   });
   S.quill.on('text-change', () => markDirty());
+  // Replace Quill's default image behavior (inlines base64 into the doc,
+  // bloating it toward Firestore's 1MB limit) with a Storage upload.
+  S.quill.getModule('toolbar').addHandler('image', quillImageHandler);
   return S.quill;
+}
+
+let _imgInput = null;
+function quillImageHandler() {
+  if (!_imgInput) {
+    _imgInput = document.createElement('input');
+    _imgInput.type = 'file';
+    _imgInput.accept = 'image/*';
+    _imgInput.style.display = 'none';
+    document.body.appendChild(_imgInput);
+    _imgInput.addEventListener('change', async () => {
+      const file = _imgInput.files && _imgInput.files[0];
+      _imgInput.value = '';
+      if (!file || !S.slug) return;
+      const out = $('module-editor-result');
+      const q = ensureQuill();
+      const range = q.getSelection(true);
+      try {
+        out.innerHTML = '<span style="color:var(--gray-light);">Uploading image…</span>';
+        const meta = await uploadCourseFile(S.slug, 'images', file, (pct) => {
+          out.innerHTML = `<span style="color:var(--gray-light);">Uploading image… ${pct}%</span>`;
+        });
+        q.insertEmbed(range.index, 'image', meta.url, 'user');
+        q.setSelection(range.index + 1);
+        out.innerHTML = '';
+        markDirty();
+      } catch (e) { err(out, e); }
+    });
+  }
+  _imgInput.click();
 }
 
 function quillHtml() {
@@ -300,6 +336,11 @@ function quillHtml() {
 function updateVideoHint() {
   const raw = $('m-video').value.trim();
   const hint = $('m-video-hint');
+  if (S.videoFile) {
+    hint.textContent = 'An uploaded video is set — it takes precedence. Remove it to use a link instead.';
+    hint.className = 'mc-video-hint';
+    return;
+  }
   if (!raw) { hint.textContent = ''; hint.className = 'mc-video-hint'; return; }
   const label = providerLabel(raw);
   if (label) {
@@ -309,6 +350,114 @@ function updateVideoHint() {
     hint.textContent = 'Unrecognized URL — paste a YouTube, Vimeo, or Loom watch link (not embed code).';
     hint.className = 'mc-video-hint err';
   }
+}
+
+// ─── Uploaded lesson video ──────────────────────────────────────────────────
+
+function renderVideoFileInfo() {
+  const info = $('m-video-file-info');
+  const urlInput = $('m-video');
+  if (S.videoFile) {
+    info.innerHTML =
+      `▶ ${escapeHtml(S.videoFile.name)} (${formatBytes(S.videoFile.size)}) ` +
+      `<button class="mc-reset-field" type="button" data-video-remove>remove</button>`;
+    info.querySelector('[data-video-remove]').addEventListener('click', () => {
+      const removed = S.videoFile;
+      S.videoFile = null;
+      // Only clean up Storage for files never saved to the lesson — a saved
+      // file may still be referenced until the admin hits Save.
+      const saved = activeModule();
+      if (removed && (!saved || !saved.videoFile || saved.videoFile.path !== removed.path)) {
+        deleteCourseFile(removed.path);
+      }
+      urlInput.disabled = false;
+      renderVideoFileInfo();
+      updateVideoHint();
+      markDirty();
+    });
+    urlInput.disabled = true;
+  } else {
+    info.textContent = '';
+    urlInput.disabled = false;
+  }
+}
+
+async function onVideoFilePicked() {
+  const input = $('m-video-file');
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file || !S.slug) return;
+  const info = $('m-video-file-info');
+  const btn = $('btn-video-upload');
+  btn.disabled = true;
+  try {
+    info.textContent = 'Uploading… 0%';
+    const meta = await uploadCourseFile(S.slug, 'videos', file, (pct) => {
+      info.textContent = `Uploading… ${pct}%`;
+    });
+    S.videoFile = meta;
+    renderVideoFileInfo();
+    updateVideoHint();
+    markDirty();
+  } catch (e) {
+    info.innerHTML = `<span style="color:var(--red, #ff7070);">${escapeHtml(e && e.message ? e.message : String(e))}</span>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ─── Lesson attachments ─────────────────────────────────────────────────────
+
+function renderAttachList() {
+  const list = $('m-attach-list');
+  if (!S.attachments.length) {
+    list.innerHTML = '<div style="font-size:12px; color:var(--gray-mid);">No files attached yet.</div>';
+    return;
+  }
+  list.innerHTML = S.attachments.map((a, i) => `
+    <div style="display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.06); font-size:13px;">
+      <span>📎</span>
+      <a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="color:var(--white-dim); text-decoration:underline; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(a.name)}</a>
+      <span style="color:var(--gray-mid); font-size:12px;">${formatBytes(a.size)}</span>
+      <span style="flex:1;"></span>
+      <button class="mc-reset-field" type="button" data-attach-remove="${i}">remove</button>
+    </div>`).join('');
+  list.querySelectorAll('[data-attach-remove]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const [removed] = S.attachments.splice(Number(b.dataset.attachRemove), 1);
+      // Same policy as video: only delete from Storage if never saved.
+      const saved = activeModule();
+      const savedPaths = new Set(((saved && saved.attachments) || []).map((x) => x.path));
+      if (removed && !savedPaths.has(removed.path)) deleteCourseFile(removed.path);
+      renderAttachList();
+      markDirty();
+    }));
+}
+
+async function onAttachFilesPicked() {
+  const input = $('m-attach-file');
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if (!files.length || !S.slug) return;
+  const status = $('m-attach-status');
+  const btn = $('btn-attach-upload');
+  btn.disabled = true;
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    try {
+      status.textContent = `Uploading ${f.name}… 0%`;
+      const meta = await uploadCourseFile(S.slug, 'attachments', f, (pct) => {
+        status.textContent = `Uploading ${f.name}… ${pct}%`;
+      });
+      S.attachments.push(meta);
+      renderAttachList();
+      markDirty();
+      status.textContent = '';
+    } catch (e) {
+      status.innerHTML = `<span style="color:var(--red, #ff7070);">${escapeHtml(e && e.message ? e.message : String(e))}</span>`;
+    }
+  }
+  btn.disabled = false;
 }
 
 function activeModule() { return S.modules.find((m) => m.id === S.activeId) || null; }
@@ -342,6 +491,14 @@ function selectModule(id, { force = false } = {}) {
   const summary = Array.isArray(m.summary) ? m.summary : [];
   $('m-summary').value = summary.join('\n');
   $('mc-summary').open = summary.length > 0;
+
+  S.videoFile = m.videoFile || null;
+  renderVideoFileInfo();
+
+  S.attachments = Array.isArray(m.attachments) ? m.attachments.map((a) => ({ ...a })) : [];
+  $('mc-attachments').open = S.attachments.length > 0;
+  renderAttachList();
+  $('m-attach-status').textContent = '';
 
   const published = m.published !== false;
   $('m-published').checked = published;
@@ -384,7 +541,7 @@ async function saveModule() {
   try {
     const title = $('m-title').value.trim();
     if (!title) throw new Error('Lesson title is required.');
-    const rawVideo = $('m-video').value.trim();
+    const rawVideo = S.videoFile ? '' : $('m-video').value.trim();
     if (rawVideo && !parseVideoUrl(rawVideo)) {
       throw new Error('Video URL not recognized — use a YouTube, Vimeo, or Loom link, or clear the field.');
     }
@@ -402,6 +559,8 @@ async function saveModule() {
       tagLabel: $('m-taglabel').value.trim() || null,
       html: quillHtml(),
       videoUrl: rawVideo || null,
+      videoFile: S.videoFile || null,
+      attachments: S.attachments.length ? S.attachments.map((a) => ({ ...a })) : null,
       workbook: buildWorkbook(),
       summary: summary.length ? summary : null,
       published: $('m-published').checked,
@@ -441,6 +600,8 @@ async function addLesson() {
       tagLabel: null,
       html: '',
       videoUrl: null,
+      videoFile: null,
+      attachments: null,
       workbook: null,
       summary: null,
       published: false,
@@ -542,14 +703,23 @@ async function togglePreview() {
         <ul style="margin-top:8px;">${summary.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>
       </div>` : '');
 
+    const attachRows = S.attachments.length
+      ? `<div style="margin-top:24px; border-top:1px solid rgba(255,255,255,.08); padding-top:16px;">
+          <div class="academy-eyebrow">Resources</div>
+          <ul style="margin-top:8px;">${S.attachments.map((a) =>
+            `<li>📎 ${escapeHtml(a.name)} <span style="color:var(--gray-mid); font-size:12px;">${formatBytes(a.size)}</span></li>`).join('')}</ul>
+        </div>`
+      : '';
+
     box.innerHTML =
-      videoEmbedHtml($('m-video').value) +
+      (videoFileHtml(S.videoFile) || videoEmbedHtml($('m-video').value)) +
       `<div class="lesson-header">` +
         (eyebrow ? `<div class="academy-eyebrow">${escapeHtml(eyebrow)}</div>` : '') +
         `<h1>${escapeHtml(title)}</h1>` +
         (subtitle ? `<p class="lesson-subtitle">${escapeHtml(subtitle)}</p>` : '') +
       `</div>` +
       `<div class="lesson-body">${purify.sanitize(quillHtml() || '', { USE_PROFILES: { html: true } })}</div>` +
+      attachRows +
       extras;
     S.htmlWasOpen = src.style.display !== 'none';
     quillBox.style.display = 'none';
@@ -843,6 +1013,10 @@ export function initBuilder(options = {}) {
   $('btn-module-delete').addEventListener('click', deleteLesson);
   $('btn-html-toggle').addEventListener('click', toggleHtmlSource);
   $('btn-preview-toggle').addEventListener('click', togglePreview);
+  $('btn-video-upload').addEventListener('click', () => $('m-video-file').click());
+  $('m-video-file').addEventListener('change', onVideoFilePicked);
+  $('btn-attach-upload').addEventListener('click', () => $('m-attach-file').click());
+  $('m-attach-file').addEventListener('change', onAttachFilesPicked);
   $('btn-banner-migrate').addEventListener('click', async () => {
     if (!cfg.onMigrate || !S.slug) return;
     const btn = $('btn-banner-migrate');

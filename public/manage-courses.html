@@ -48,6 +48,7 @@
               </p>
             </div>
             <div style="display:flex; gap:10px; align-items:center;">
+              <button class="btn btn-ghost" id="btn-ai-course" title="Draft a full course with AI">✨ Generate with AI</button>
               <button class="btn btn-primary" id="btn-add-course">+ New course</button>
               <span class="kebab" data-kebab>
                 <button class="kebab-btn" type="button" aria-label="More tools" data-kebab-toggle>⋯</button>
@@ -128,6 +129,12 @@
                     <label for="m-video">Video URL <span style="color:var(--gray-mid); text-transform:none; letter-spacing:0;">— YouTube, Vimeo, or Loom watch link (not embed code)</span></label>
                     <input id="m-video" type="text" placeholder="https://youtu.be/… · https://vimeo.com/… · https://loom.com/share/…" style="width:100%;">
                     <div class="mc-video-hint" id="m-video-hint"></div>
+                    <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+                      <span style="font-size:12px; color:var(--gray-mid);">— or —</span>
+                      <button class="btn btn-ghost" type="button" id="btn-video-upload" style="font-size:12px;">Upload a video file</button>
+                      <input type="file" id="m-video-file" accept="video/mp4,video/webm" style="display:none;">
+                      <span id="m-video-file-info" style="font-size:12px; color:var(--gray-light);"></span>
+                    </div>
                   </div>
 
                   <div class="inline-form" style="flex-wrap:wrap; margin-top:6px;">
@@ -165,6 +172,17 @@
                         <label for="m-summary">Key takeaways — one per line</label>
                         <textarea class="mc-lines" id="m-summary" placeholder="Limiting beliefs are learned narratives, not permanent truths.&#10;Naming a belief is the first act of breaking its power."></textarea>
                       </div>
+                    </div>
+                  </details>
+
+                  <details class="mc-collapse" id="mc-attachments">
+                    <summary>Attachments <span class="mc-collapse-note">— downloadable files members get with this lesson (adds a Resources section)</span></summary>
+                    <div class="mc-collapse-body">
+                      <div id="m-attach-list"></div>
+                      <button class="btn btn-ghost" type="button" id="btn-attach-upload" style="font-size:12px;">+ Upload file</button>
+                      <input type="file" id="m-attach-file" multiple style="display:none"
+                             accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.zip,image/*,audio/*">
+                      <div id="m-attach-status" style="font-size:12px; color:var(--gray-light); margin-top:6px;"></div>
                     </div>
                   </details>
 
