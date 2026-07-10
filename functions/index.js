@@ -3996,3 +3996,169 @@ exports.reportBug = onCall(async (request) => {
 
   return { ok: true, reportId };
 });
+
+// ════════════════════════════════════════════════════════════════
+// AI Course Generator — powered by Claude (Anthropic).
+//
+// Two admin-only callables orchestrated by the course builder
+// (public/js/course-ai.js): generateCourseOutline returns the course
+// skeleton fast, then the browser calls generateCourseLesson once per
+// lesson and writes each result to courses/{slug}/modules/* itself as a
+// draft — Firestore writes stay client-side so the security model lives
+// in firestore.rules, and a cancelled run simply keeps the drafts
+// written so far.
+// ════════════════════════════════════════════════════════════════
+
+function getAnthropicClient() {
+  let Anthropic;
+  try {
+    Anthropic = require('@anthropic-ai/sdk');
+  } catch (e) {
+    throw new HttpsError('internal', 'Anthropic SDK not available.');
+  }
+  const apiKey = ANTHROPIC_API_KEY();
+  if (!apiKey) {
+    throw new HttpsError('failed-precondition',
+      'ANTHROPIC_API_KEY is not configured. Add it in Firebase Console > Functions > Runtime environment variables.');
+  }
+  return new Anthropic.default({ apiKey });
+}
+
+// Claude is told to answer with ONLY JSON, but be tolerant of markdown
+// fences and stray prose around the object.
+function extractJson(text) {
+  const raw = String(text || '').replace(/```(?:json)?/gi, '');
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start < 0 || end <= start) {
+    throw new HttpsError('internal', 'AI returned malformed JSON — please try again.');
+  }
+  try {
+    return JSON.parse(raw.slice(start, end + 1));
+  } catch (e) {
+    throw new HttpsError('internal', 'AI returned malformed JSON — please try again.');
+  }
+}
+
+const clampStr = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
+
+exports.generateCourseOutline = onCall({ timeoutSeconds: 300 }, async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  await rateLimitCaller(db, request, { action: 'generateCourse', max: 30, windowSec: 3600 });
+
+  const topic = clampStr(request.data && request.data.topic, 2000);
+  if (!topic) throw new HttpsError('invalid-argument', 'topic is required.');
+  const audience = clampStr(request.data && request.data.audience, 500);
+  const notes = clampStr(request.data && request.data.notes, 2000);
+  let lessonCount = parseInt(request.data && request.data.lessonCount, 10);
+  if (!Number.isFinite(lessonCount)) lessonCount = 5;
+  lessonCount = Math.max(1, Math.min(12, lessonCount));
+
+  const system = [
+    'You design online courses for The One Percent Academy, a personal-growth and',
+    'leadership platform focused on mindset, discipline, and self-mastery.',
+    'You respond with ONLY a valid JSON object — no prose, no markdown fences.',
+    'Schema:',
+    '{',
+    '  "title": "course title (max 70 chars)",',
+    '  "short": "very short display name (max 20 chars)",',
+    '  "subtitle": "one-line tagline",',
+    '  "category": "e.g. Mindset & Personal Growth",',
+    '  "description": ["2-4 sales-page paragraphs"],',
+    '  "whatYoullLearn": ["4-6 concrete outcomes"],',
+    '  "lessons": [',
+    '    { "title": "lesson title", "subtitle": "one line",',
+    '      "pillar": "section label like \'Part 1 — Foundations\'",',
+    '      "duration": "estimate like \'15 min\'", "tagLabel": "LESSON",',
+    '      "brief": "2-3 sentences specifying exactly what this lesson must cover" }',
+    '  ]',
+    '}',
+    `The lessons array must contain exactly ${lessonCount} lessons that build on`,
+    'each other in a logical arc. Group lessons into 2-3 pillars when it helps.'
+  ].join('\n');
+
+  const user = [
+    `Course topic / description: ${topic}`,
+    audience ? `Target audience: ${audience}` : '',
+    notes ? `Additional notes from the course creator: ${notes}` : ''
+  ].filter(Boolean).join('\n');
+
+  const client = getAnthropicClient();
+  const response = await client.messages.create({
+    model: 'claude-opus-4-8',
+    max_tokens: 3000,
+    system,
+    messages: [{ role: 'user', content: user }]
+  });
+
+  const outline = extractJson(
+    (response.content && response.content[0] && response.content[0].text) || '');
+  if (!Array.isArray(outline.lessons) || !outline.lessons.length) {
+    throw new HttpsError('internal', 'AI outline had no lessons — please try again.');
+  }
+  return { outline };
+});
+
+exports.generateCourseLesson = onCall({ timeoutSeconds: 300 }, async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  await rateLimitCaller(db, request, { action: 'generateCourseLesson', max: 60, windowSec: 3600 });
+
+  const d = request.data || {};
+  const lessonTitle = clampStr(d.lessonTitle, 200);
+  if (!lessonTitle) throw new HttpsError('invalid-argument', 'lessonTitle is required.');
+  const courseTitle = clampStr(d.courseTitle, 200);
+  const audience = clampStr(d.audience, 500);
+  const lessonSubtitle = clampStr(d.lessonSubtitle, 300);
+  const brief = clampStr(d.brief, 2000);
+  const lessonNumber = parseInt(d.lessonNumber, 10) || 1;
+  const totalLessons = parseInt(d.totalLessons, 10) || 1;
+  const outlineTitles = (Array.isArray(d.outlineTitles) ? d.outlineTitles : [])
+    .slice(0, 12).map((t) => clampStr(t, 200));
+
+  const system = [
+    'You write full lessons for online courses on The One Percent Academy, a',
+    'personal-growth and leadership platform. Write with energy and directness;',
+    'be practical and specific, never generic filler.',
+    'You respond with ONLY a valid JSON object — no prose, no markdown fences.',
+    'Schema:',
+    '{',
+    '  "html": "the complete lesson body as HTML",',
+    '  "workbook": { "reflection": "one reflection prompt", "action": "one action prompt",',
+    '                "prompts": ["2-4 writing prompts"] } or null,',
+    '  "summary": ["3-5 key takeaways"] or null',
+    '}',
+    'The html field: 600-1000 words using ONLY these tags: <h2>, <h3>, <p>,',
+    '<ul>, <ol>, <li>, <blockquote>, <strong>, <em>. No images, iframes,',
+    'scripts, styles, or classes. Escape the HTML properly inside the JSON string.'
+  ].join('\n');
+
+  const user = [
+    courseTitle ? `Course: ${courseTitle}` : '',
+    audience ? `Audience: ${audience}` : '',
+    outlineTitles.length ? `Full course outline:\n${outlineTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}` : '',
+    `Write lesson ${lessonNumber} of ${totalLessons}: "${lessonTitle}"`,
+    lessonSubtitle ? `Lesson subtitle: ${lessonSubtitle}` : '',
+    brief ? `This lesson must cover: ${brief}` : ''
+  ].filter(Boolean).join('\n');
+
+  const client = getAnthropicClient();
+  const response = await client.messages.create({
+    model: 'claude-opus-4-8',
+    max_tokens: 6000,
+    system,
+    messages: [{ role: 'user', content: user }]
+  });
+
+  const lesson = extractJson(
+    (response.content && response.content[0] && response.content[0].text) || '');
+  if (!lesson.html || typeof lesson.html !== 'string') {
+    throw new HttpsError('internal', 'AI lesson had no content — please try again.');
+  }
+  return { lesson };
+});
