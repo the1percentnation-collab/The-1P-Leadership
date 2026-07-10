@@ -5552,8 +5552,11 @@ body.academy-course #course-workspace {
 
 .course-card:hover {
   transform: translateY(-4px);
-  border-color: var(--border-red);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  border-color: var(--red);
+  box-shadow:
+    0 0 0 1px var(--red),
+    0 0 28px rgba(230, 3, 6, 0.45),
+    0 18px 44px rgba(0, 0, 0, 0.55);
 }
 
 /* Cover — generated brand art; a Firestore `image` field swaps in a photo. */
