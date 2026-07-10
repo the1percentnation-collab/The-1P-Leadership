@@ -72,6 +72,22 @@ async function expireNow(reason) {
   location.replace(`/login.html?next=${next}&reason=${encodeURIComponent(reason)}`);
 }
 
+// Pure check against persisted state — no side effects, safe to call before
+// the guard starts. Returns the expiry reason if a limit has already been
+// exceeded (e.g. the browser was closed and reopened later), else null.
+// Idle time counts from the later of last recorded activity and last sign-in,
+// so a fresh login is never expired by a stale activity record.
+export function expiredReason(user) {
+  if (!user) return null;
+  const t = nowMs();
+  const anchor = signInAnchor(user);
+  if (anchor && (t - anchor) > ABSOLUTE_LIMIT_MS) return 'session-expired';
+  const stored = Number(localStorage.getItem(LS_LAST_ACTIVITY) || 0);
+  const lastActive = Math.max(stored, anchor || 0);
+  if (lastActive > 0 && (t - lastActive) > IDLE_LIMIT_MS) return 'idle-timeout';
+  return null;
+}
+
 async function checkExpiry() {
   const user = auth && auth.currentUser;
   if (!user) return;
@@ -104,6 +120,12 @@ export function startSessionGuard() {
   if (!auth) return; // Firebase failed to init; nothing to guard.
   _started = true;
 
+  // Before touching the clocks, see whether the persisted session already
+  // exceeded a limit while no tab was open (browser closed, machine asleep).
+  // Seeding first would erase the idle record and silently resume the session.
+  const preReason = expiredReason(auth.currentUser);
+  if (preReason) { expireNow(preReason); return; }
+
   // Seed activity + token-check clocks.
   const t = nowMs();
   setLastActivity(t);
@@ -115,9 +137,13 @@ export function startSessionGuard() {
     window.addEventListener(ev, markActivity, { passive: true }));
 
   // Reset bookkeeping on sign-out so the next login starts a clean clock.
+  // When a user appears after the guard started (auth resolved late), re-run
+  // the persisted-state check before accepting the session.
   onAuthStateChanged(auth, (u) => {
-    if (!u) { clearSession(); }
-    else if (!localStorage.getItem(LS_LAST_ACTIVITY)) { setLastActivity(nowMs()); }
+    if (!u) { clearSession(); return; }
+    const r = expiredReason(u);
+    if (r) { expireNow(r); return; }
+    if (!localStorage.getItem(LS_LAST_ACTIVITY)) { setLastActivity(nowMs()); }
   });
 
   setInterval(checkExpiry, CHECK_INTERVAL_MS);
