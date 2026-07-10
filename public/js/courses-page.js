@@ -105,6 +105,48 @@ function renderSidebar(activeSlug) {
 
 // ─── Welcome + Available Courses ─────────────────────────────────────────
 
+// One modern library card. The cover is generated on-brand (big display
+// title over a dark/red gradient); a Firestore `image` field replaces it
+// with real cover art without a deploy.
+function courseCardHtml(c, { action, statusBadge, saleBadge = '', featured = false, soon = false } = {}) {
+  const p = priceInfo(c);
+  // eyebrow is "Format · N Modules" — split it into the meta row.
+  const [fmt, mods] = String(c.eyebrow || '').split('·').map((s) => s.trim());
+  const cover = c.image
+    ? `<div class="course-card-cover has-image" style="background-image:url('${escapeHtml(c.image)}')">`
+    : `<div class="course-card-cover"><span class="course-card-cover-title">${escapeHtml(c.short || c.title)}</span>`;
+  const price = p.label ? `
+    <div class="course-card-price">
+      ${p.onSale ? `<s>${escapeHtml(p.originalLabel)}</s>` : ''}
+      <span>${escapeHtml(p.label)}</span>
+    </div>` : '<div class="course-card-price"></div>';
+  const priceNote = c.priceNote ? `<div class="course-card-note">${escapeHtml(c.priceNote)}</div>` : '';
+  const searchText = [c.title, c.short, c.category, c.subtitle, c.eyebrow]
+    .filter(Boolean).join(' ').toLowerCase();
+  return `
+    <article class="course-card${featured ? ' is-featured' : ''}${soon ? ' is-soon' : ''}"
+             data-slug="${escapeHtml(c.slug)}" data-search="${escapeHtml(searchText)}">
+      ${cover}
+        <div class="course-card-badges">${statusBadge}${saleBadge}</div>
+      </div>
+      <div class="course-card-body">
+        <div class="course-card-category">${escapeHtml(c.category || fmt || 'Course')}</div>
+        <h3 class="course-card-title">${escapeHtml(c.title)}</h3>
+        <p class="course-card-desc">${escapeHtml(c.subtitle || '')}</p>
+        <div class="course-card-meta">
+          <span>${escapeHtml(fmt || 'Self-paced')}</span>
+          ${mods ? `<span>${escapeHtml(mods)}</span>` : ''}
+        </div>
+      </div>
+      <div class="course-card-foot">
+        ${price}
+        ${action}
+        ${priceNote}
+      </div>
+    </article>
+  `;
+}
+
 function renderAvailableCourses() {
   const slot = $('welcome-available');
   if (!slot) return;
@@ -122,73 +164,74 @@ function renderAvailableCourses() {
     const isBundle = c.status === 'bundle';
     const isLive   = c.status === 'live';
     const statusBadge = isBundle
-      ? `<span class="available-badge is-bundle">★ Best Value</span>`
+      ? `<span class="course-badge is-bundle">★ Best Value</span>`
       : isLive
-        ? `<span class="available-badge is-live">Available</span>`
-        : `<span class="available-badge is-soon">Coming Soon</span>`;
+        ? `<span class="course-badge is-live">Available</span>`
+        : `<span class="course-badge is-soon">Coming Soon</span>`;
     const p = priceInfo(c);
-    const saleBadge = p.onSale ? `<span class="available-badge is-sale">Sale</span>` : '';
-    const price = p.label ? `
-      <div class="available-card-price">
-        ${p.onSale ? `<s class="available-card-price-was">${escapeHtml(p.originalLabel)}</s> ` : ''}${escapeHtml(p.label)}
-      </div>` : '';
-    const priceNote = c.priceNote ? `<div class="available-card-pricenote">${escapeHtml(c.priceNote)}</div>` : '';
-    const enrollLabel = p.isFree
-      ? 'Enroll Free →'
-      : `Enroll${p.label ? ' · ' + escapeHtml(p.label) : ''} →`;
+    const saleBadge = p.onSale ? `<span class="course-badge is-sale">Sale</span>` : '';
     const joined = courseInterests.has(c.slug);
     const action = isBundle
-      ? `<a class="btn btn-primary available-bundle-link" href="${escapeHtml(c.bundleHref || '/bundle.html')}">See Bundle Deal →</a>`
+      ? `<a class="course-card-btn available-bundle-link" href="${escapeHtml(c.bundleHref || '/bundle.html')}">See Bundle ↗</a>`
       : isLive
-        ? `<button class="btn btn-primary available-enroll" data-slug="${escapeHtml(c.slug)}">${enrollLabel}</button>`
-        : `<button class="btn available-notify${joined ? ' is-joined' : ''}" data-slug="${escapeHtml(c.slug)}" data-title="${escapeHtml(c.title)}"${joined ? ' disabled' : ''}>${joined ? "✓ You're on the list" : 'Notify me when live'}</button>`;
-    return `
-      <div class="available-card ${isBundle ? 'is-bundle' : isLive ? '' : 'is-soon'}" data-slug="${escapeHtml(c.slug)}">
-        <div class="available-card-top">
-          ${statusBadge}${saleBadge}
-          <span class="available-card-meta">${escapeHtml(c.eyebrow || '')}</span>
-        </div>
-        <div class="available-card-title">${escapeHtml(c.title)}</div>
-        <div class="available-card-desc">${escapeHtml(c.subtitle || '')}</div>
-        ${price}
-        ${priceNote}
-        <div class="available-card-actions">${action}</div>
-      </div>
-    `;
+        ? `<button class="course-card-btn available-enroll" data-slug="${escapeHtml(c.slug)}">${p.isFree ? 'Join Free' : 'Join Course'}</button>`
+        : `<button class="course-card-btn available-notify${joined ? ' is-joined' : ''}" data-slug="${escapeHtml(c.slug)}" data-title="${escapeHtml(c.title)}"${joined ? ' disabled' : ''}>${joined ? "✓ You're on the list" : 'Notify me when live'}</button>`;
+    // The bundle is the one filled "featured" card in the grid, even while
+    // it's still coming soon.
+    const featured = isBundle || /best value/i.test(c.eyebrow || '');
+    return courseCardHtml(c, { action, statusBadge, saleBadge, featured, soon: !featured && !isLive });
   }).join('');
 
-  // With the sidebar gone, enrolled courses live here — above the library.
-  const myCards = enrolled.map((c) => `
-    <div class="available-card is-enrolled" data-slug="${escapeHtml(c.slug)}">
-      <div class="available-card-top">
-        <span class="available-badge is-live">Enrolled</span>
-        <span class="available-card-meta">${escapeHtml(c.eyebrow || '')}</span>
-      </div>
-      <div class="available-card-title">${escapeHtml(c.title)}</div>
-      <div class="available-card-desc">${escapeHtml(c.subtitle || '')}</div>
-      <div class="available-card-actions">
-        <a class="btn btn-primary" href="/courses.html?course=${encodeURIComponent(c.slug)}">Continue →</a>
-      </div>
-    </div>
-  `).join('');
+  // Enrolled courses live here — above the library.
+  const myCards = enrolled.map((c) => courseCardHtml(c, {
+    statusBadge: `<span class="course-badge is-live">Enrolled</span>`,
+    action: `<a class="course-card-btn" href="/courses.html?course=${encodeURIComponent(c.slug)}">Continue →</a>`
+  })).join('');
   const mySection = enrolled.length ? `
-    <div class="academy-section-head">
-      <h2>Your courses</h2>
-      <span class="academy-section-meta">${enrolled.length} enrolled</span>
+    <div class="library-head">
+      <div class="library-head-text">
+        <div class="academy-eyebrow">Continue Learning</div>
+        <h2 class="library-title">Your <span>courses</span></h2>
+      </div>
+      <span class="library-count">${enrolled.length} enrolled</span>
     </div>
-    <div class="available-grid" style="margin-bottom:48px;">${myCards}</div>
+    <div class="course-grid" style="margin-bottom:64px;">${myCards}</div>
   ` : '';
 
   slot.innerHTML = mySection + `
-    <div class="academy-section-head">
-      <h2>Course Library</h2>
-      <span class="academy-section-meta">${available.length} courses · enroll to unlock</span>
+    <div class="library-head">
+      <div class="library-head-text">
+        <div class="academy-eyebrow">Course Library</div>
+        <h2 class="library-title">Explore our <span>courses</span></h2>
+      </div>
+      <div class="library-search" role="search">
+        <input type="search" id="course-search" placeholder="Search courses…" aria-label="Search courses" autocomplete="off">
+        <span class="library-search-icon" aria-hidden="true">⌕</span>
+      </div>
     </div>
-    <div class="available-grid">${cards}</div>
+    <div class="course-grid" id="library-grid">${cards}</div>
+    <div class="available-empty" id="library-empty" hidden></div>
   `;
 
+  // Live search — filters the library grid as you type.
+  const search = $('course-search');
+  if (search) search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase();
+    let shown = 0;
+    slot.querySelectorAll('#library-grid .course-card').forEach((card) => {
+      const hit = !q || (card.dataset.search || '').includes(q);
+      card.hidden = !hit;
+      if (hit) shown++;
+    });
+    const empty = $('library-empty');
+    if (empty) {
+      empty.hidden = shown > 0;
+      empty.textContent = `No courses match “${search.value.trim()}”.`;
+    }
+  });
+
   // Card click (anywhere except a button/link) opens the course detail page.
-  slot.querySelectorAll('.available-card').forEach((card) => {
+  slot.querySelectorAll('.course-card').forEach((card) => {
     card.style.cursor = 'pointer';
     card.addEventListener('click', (e) => {
       if (e.target.closest('button, a')) return;
@@ -247,15 +290,6 @@ function renderAvailableCourses() {
       }
     });
   });
-}
-
-function updateWelcomeCopy() {
-  const hint = $('welcome-hint');
-  const enrolled = enrolledCourses();
-  if (!hint) return;
-  hint.textContent = enrolled.length > 0
-    ? '↓ Continue one of your courses below, or browse the library.'
-    : '↓ Browse the available courses below and sign up to begin.';
 }
 
 // ─── Roadmap ─────────────────────────────────────────────────────────────
@@ -472,7 +506,6 @@ async function main() {
 
   // Always render welcome content + available courses in case we fall back to welcome.
   renderAvailableCourses();
-  updateWelcomeCopy();
 
   if (!course) {
     renderSidebar(null);
