@@ -123,7 +123,7 @@ Files: `public/js/community.js`, `public/js/topbar.js`.
 
 ## 4. Remaining Items & Remediation Plans
 
-**R1 — Migrate `1p-clc` content out of the public static file (H3).** *(M effort — NOT safely doable in-repo; needs live DB + runtime. Confirmed on closer inspection.)*
+**R1 — Migrate `1p-clc` content out of the public static file (H3). 🟡 SCAFFOLDING SHIPPED / you run it (1af2e1d).** `scripts/extract-1pclc.js` (browser), `scripts/migrate-1pclc.js` (Admin SDK, dry-run default), and `scripts/README-1pclc-migration.md` (cutover order) are ready. The cutover is a DATA change — set `courses/1p-clc.contentSource='firestore'` (a flag already honored by `loadModulesMeta`) after migrating — so no live-code flip is needed until the final `modules.js` cleanup. *(M effort — needs your browser session + live DB; nothing flips until you verify.)*
 The `1p-clc` lessons in `public/js/modules.js` are **not** static HTML — they are 7 JavaScript `render()` functions with ~19 calls to per-user runtime state (`store.isComplete`, `getNotes`, completion banners, notes textareas) woven into the lesson body. Extracting clean content requires executing them in a logged-in browser session, and the target data must be written to the live Firestore DB (no repo-only path). The generic course player also uses a different notes/completion model, so this is a content + UX reauthoring job. Recommended steps:
 1. In a browser session as an admin, stub `store`/`getNotes` to no-ops and capture each `render()` output; strip the injected notes/completion chrome to leave pure lesson HTML.
 2. Write the cleaned HTML into `courses/1p-clc/modules/{n}` docs via the course builder (which already writes this shape) or a one-off Admin SDK script.
@@ -132,19 +132,23 @@ Do **not** rewire the renderer before the data exists in Firestore — that whit
 
 **R2 — Signed, expiring media URLs (defense-in-depth for C1).** *(M)* The rules fix stops enumeration, but a Storage download URL already leaked keeps working (token in URL). For true protection, mint short-lived signed URLs from a Cloud Function after an enrollment check and stop persisting long-lived tokened URLs in Firestore. Rotate existing tokens.
 
-**R3 — Enforce email verification (H2).** *(S)* (a) Backfill: treat all existing accounts as grandfathered. (b) Add a non-blocking "verify your email" banner now. (c) After a grace window, gate *sensitive* actions (checkout, posting) on `emailVerified` in the relevant callables, not on login, so nobody is locked out of their account.
+**R3 — Enforce email verification (H2). ✅ DONE (fc100dd).** Verification email sent on signup; non-blocking dismissible banner on authed pages with resend; server-side `email_verified` gate on `createCheckoutSession` and on the `posts`/`comments` create rules (verified via rules tests). Login and existing entitlement access are NOT gated, so no existing user is stranded.
 
-**R4 — Enable App Check (M4).** *(S)* Register the web app with reCAPTCHA v3, set `RECAPTCHA_V3_SITE_KEY` in `firebase.js`, confirm tokens flow, then set `enforceAppCheck: true` on sensitive callables.
+**R4 — Enable App Check (M4). 🟡 CODE DONE / BLOCKED ON YOU (35893f6).** Init is a safe no-op and the enablement runbook is now in `firebase.js` (ordered callable-enforcement list). Remaining (yours): register the web app with reCAPTCHA v3, paste `RECAPTCHA_V3_SITE_KEY`, confirm verified traffic in the console, THEN flip `enforceAppCheck:true` (payments → invites → AI → bulk email). Not enabled in code because flipping before tokens flow rejects every call.
 
-**R5 — Console hardening (M5).** *(S)* Enable Email Enumeration Protection; normalize client auth error messages to a generic "check your credentials".
+**R5 — Console hardening (M5). 🟡 CODE DONE / one console step is yours (a43c5e4).** Auth error messages normalized via `public/js/auth-errors.js` (no user-not-found vs wrong-password leak; reset always shows a neutral message). Remaining (yours): enable **Authentication → Settings → Email Enumeration Protection** in the console.
 
-**R6 — Dependency upgrades (L5).** *(S)* `cd functions && npm i firebase-admin@latest firebase-functions@latest && npm audit`; deploy to a preview channel and smoke-test callables before promoting.
+**R6 — Dependency upgrades (L5). 🟡 CODE DONE / deploy-test is yours (4ad0064).** `firebase-admin` 12→13.10, `firebase-functions` 5→7.2.5 (admin 14 not yet supported by functions 7). A non-breaking `npm audit fix` cleared the HIGH `form-data` CVE; `index.js` loads all 46 handlers under v7. 9 moderate `uuid` advisories remain deep in Google's client libs (only "fixable" by forcing admin→10, breaking) — accepted low risk. Remaining (yours): deploy to a preview channel and smoke-test before promoting:
+```
+cd functions && firebase hosting:channel:deploy preview --expires 7d   # + functions deploy to a test project
+# Smoke: a test checkout, `stripe trigger checkout.session.completed`, one courseAdvisorChat call, one campaign email.
+```
 
-**R7 — Tighten CSP (M1 follow-up).** *(M)* Add nonces/hashes to inline scripts and drop `'unsafe-inline'` from `script-src`. Report-only mode (`Content-Security-Policy-Report-Only`) first to catch breakage.
+**R7 — Tighten CSP (M1 follow-up). 🟡 STARTED / large sweep remains (791a1c2).** Added a `Content-Security-Policy-Report-Only` header without `'unsafe-inline'` in `script-src` — it blocks nothing but logs a violation for every inline script. **Architecture note:** Firebase Hosting serves static files with static headers, so per-request nonces aren't possible; the path is externalizing inline scripts (36 HTML files carry them) + hashes. Remaining: work through the report-only violations, externalize inline `<script>` blocks into `public/js/`, then drop `'unsafe-inline'` from the enforcing policy. Chunked, still open.
 
 **R8 — Validate client-supplied IDs (L1) — DONE.** `safeId()` added and applied across all affected callables (see L1 above).
 
-**R9 — Server-side session controls (M6).** *(M)* Consider shorter token lifetimes / periodic forced re-auth for sensitive roles; use `revokeRefreshTokens` on suspicious activity.
+**R9 — Server-side session controls (M6). 🟡 LOW-RISK PART DONE (cde3dee).** Added a `revokeMySessions` callable (`admin.auth().revokeRefreshTokens`) + a "Sign out all devices" button in the profile; the session guard's 10-min refresh loop then bounces open tabs. Deferred (flagged, not done — needs Identity Platform console settings and risks mass logout): shorter global refresh-token TTL and automatic forced re-auth for owner/admin.
 
 ---
 
