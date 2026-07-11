@@ -164,6 +164,10 @@ describe('users subcollections — private to self', () => {
   it('DENIES another user reading purchases', async () => {
     await assertFails(getDoc(doc(user('bob'), 'users/alice/purchases/sess_1')));
   });
+
+  it('ALLOWS self listing own purchases (billing UI depends on this)', async () => {
+    await assertSucceeds(getDocs(collection(user('alice'), 'users/alice/purchases')));
+  });
 });
 
 describe('posts — community feed scope', () => {

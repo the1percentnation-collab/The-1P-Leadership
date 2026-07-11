@@ -453,6 +453,25 @@ exports.deleteMyAccount = onCall(async (request) => {
       'The owner account cannot be self-deleted. Contact support to transfer ownership first.');
   }
 
+  // Stop billing: cancel any active Stripe subscriptions BEFORE wiping the
+  // purchases subcollection, so a deleted account is never charged again.
+  // Best-effort — a Stripe hiccup must not block account deletion.
+  try {
+    const stripe = getStripe();
+    if (stripe) {
+      const subs = await userRef.collection('purchases').where('mode', '==', 'subscription').get();
+      const seen = new Set();
+      for (const d of subs.docs) {
+        const sid = d.data().subscriptionId;
+        if (sid && !seen.has(sid)) {
+          seen.add(sid);
+          try { await stripe.subscriptions.cancel(sid); }
+          catch (e) { console.warn('[deleteMyAccount] subscription cancel failed:', e && e.message); }
+        }
+      }
+    }
+  } catch (e) { console.warn('[deleteMyAccount] subscription cleanup skipped:', e && e.message); }
+
   // Wipe every per-user subcollection that holds their data.
   async function deleteCollection(colRef) {
     let deleted = 0;
@@ -2744,8 +2763,8 @@ exports.createCheckoutSession = onCall(async (request) => {
 
 // stripeWebhook — enrolls buyers after checkout and revokes subscription
 // access on cancellation. Configure the endpoint in the Stripe dashboard to
-// send: checkout.session.completed, customer.subscription.deleted,
-// invoice.payment_failed.
+// send: checkout.session.completed, customer.subscription.updated,
+// customer.subscription.deleted, invoice.payment_failed.
 exports.stripeWebhook = onRequest(
   { cors: false, invoker: 'public' },
   async (req, res) => {
@@ -2899,6 +2918,33 @@ exports.stripeWebhook = onRequest(
               .set({ status: 'canceled' }, { merge: true });
           }
         }
+      } else if (event.type === 'customer.subscription.updated') {
+        // Reflect a pending cancellation (cancel_at_period_end), a resume, or a
+        // recovery on the member's purchase doc. Actual access removal happens
+        // later via customer.subscription.deleted — we never touch
+        // enrolledCourseSlugs here.
+        const sub = event.data.object;
+        const idx = await db.collection('stripeSubscriptions').doc(String(sub.id)).get();
+        const meta = idx.exists ? idx.data() : (sub.metadata && sub.metadata.uid ? sub.metadata : null);
+        if (meta && meta.uid && meta.sessionId) {
+          const cpe = sub.current_period_end
+            || (sub.items && sub.items.data && sub.items.data[0] && sub.items.data[0].current_period_end)
+            || null;
+          let patch;
+          if (sub.cancel_at_period_end) {
+            patch = {
+              status: 'cancel_pending',
+              cancelAtPeriodEnd: true,
+              currentPeriodEnd: cpe ? admin.firestore.Timestamp.fromMillis(cpe * 1000) : null
+            };
+          } else if (sub.status === 'past_due' || sub.status === 'unpaid') {
+            patch = { status: 'past_due', cancelAtPeriodEnd: false };
+          } else {
+            patch = { status: 'active', cancelAtPeriodEnd: false };
+          }
+          await db.collection('users').doc(meta.uid).collection('purchases').doc(meta.sessionId)
+            .set(patch, { merge: true });
+        }
       } else if (event.type === 'invoice.payment_failed') {
         const invoice = event.data.object;
         const subId = invoice.subscription;
@@ -2924,6 +2970,86 @@ exports.stripeWebhook = onRequest(
     }
   }
 );
+
+// cancelSubscription — member-facing: schedule the caller's own subscription to
+// cancel at the end of the current paid period. Ownership is verified against the
+// stripeSubscriptions index so a member can only touch their own subscription.
+// Access is removed later by the customer.subscription.deleted webhook; here we
+// only flip cancel_at_period_end and mirror the pending state onto the purchase.
+exports.cancelSubscription = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const subscriptionId = safeId(request.data && request.data.subscriptionId, 'subscriptionId');
+  if (!subscriptionId) throw new HttpsError('invalid-argument', 'subscriptionId is required.');
+
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'cancelSubscription', max: 10, windowSec: 600 });
+
+  const stripe = getStripe();
+  if (!stripe) throw new HttpsError('failed-precondition', 'Billing isn\'t configured yet.');
+
+  const idxSnap = await db.collection('stripeSubscriptions').doc(subscriptionId).get();
+  if (!idxSnap.exists || idxSnap.data().uid !== uid) {
+    throw new HttpsError('permission-denied', 'You can only manage your own subscription.');
+  }
+  const meta = idxSnap.data();
+
+  let sub;
+  try {
+    sub = await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+  } catch (e) {
+    console.warn('[cancelSubscription] stripe update failed:', e && e.message);
+    throw new HttpsError('internal', 'Could not cancel the subscription — please try again.');
+  }
+
+  const cpe = sub.current_period_end
+    || (sub.items && sub.items.data && sub.items.data[0] && sub.items.data[0].current_period_end)
+    || null;
+  if (meta.sessionId) {
+    await db.collection('users').doc(uid).collection('purchases').doc(meta.sessionId).set({
+      status: 'cancel_pending',
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: cpe ? admin.firestore.Timestamp.fromMillis(cpe * 1000) : null
+    }, { merge: true });
+  }
+  return { ok: true, cancelAt: cpe };
+});
+
+// resumeSubscription — member-facing: undo a pending cancellation before the
+// period ends. Same ownership check as cancelSubscription.
+exports.resumeSubscription = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const subscriptionId = safeId(request.data && request.data.subscriptionId, 'subscriptionId');
+  if (!subscriptionId) throw new HttpsError('invalid-argument', 'subscriptionId is required.');
+
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'resumeSubscription', max: 10, windowSec: 600 });
+
+  const stripe = getStripe();
+  if (!stripe) throw new HttpsError('failed-precondition', 'Billing isn\'t configured yet.');
+
+  const idxSnap = await db.collection('stripeSubscriptions').doc(subscriptionId).get();
+  if (!idxSnap.exists || idxSnap.data().uid !== uid) {
+    throw new HttpsError('permission-denied', 'You can only manage your own subscription.');
+  }
+  const meta = idxSnap.data();
+
+  try {
+    await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: false });
+  } catch (e) {
+    console.warn('[resumeSubscription] stripe update failed:', e && e.message);
+    throw new HttpsError('internal', 'Could not resume the subscription — please try again.');
+  }
+
+  if (meta.sessionId) {
+    await db.collection('users').doc(uid).collection('purchases').doc(meta.sessionId).set({
+      status: 'active',
+      cancelAtPeriodEnd: false
+    }, { merge: true });
+  }
+  return { ok: true };
+});
 
 // syncCoupon — mirrors a coupons/{code} doc into a Stripe Coupon +
 // Promotion Code so it's redeemable on the checkout page. Admin/owner only.

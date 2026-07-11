@@ -175,6 +175,15 @@ function renderEdit(me) {
           </div>
         </section>
 
+        <section class="profile-section" id="billing-section" style="display:none;">
+          <div class="profile-section-head">
+            <h3>Billing &amp; subscriptions</h3>
+            <p>Manage your recurring course subscriptions. Cancelling keeps your access until the end of the paid period.</p>
+          </div>
+          <div id="billing-list" class="profile-billing-list"></div>
+          <div id="billing-status" class="profile-save-status"></div>
+        </section>
+
         <div class="profile-footer-actions">
           <button class="btn btn-primary btn-lg" id="save-btn-2">Save changes</button>
           <div id="save-status-2" class="profile-save-status"></div>
@@ -285,6 +294,96 @@ function renderEdit(me) {
       deleteBtn.disabled = false;
     }
   });
+
+  // ── Billing: list + cancel/resume the member's own subscriptions ──────────
+  const billingSection = $('billing-section');
+  const billingList = $('billing-list');
+  const billingStatus = $('billing-status');
+  const billingUid = auth.currentUser && auth.currentUser.uid;
+
+  function prettySlug(s) {
+    return String(s || '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  function fmtDate(ts) {
+    try {
+      const d = ts && typeof ts.toDate === 'function' ? ts.toDate() : (ts ? new Date(ts) : null);
+      return d ? d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+    } catch (e) { return ''; }
+  }
+
+  const ROW_STYLE = 'display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid var(--border,rgba(255,255,255,.12));';
+  const META_STYLE = 'font-size:13px;color:var(--gray-mid,#888);margin-top:4px;';
+  const DANGER = 'color:var(--red,#E60306);border-color:var(--red,#E60306);';
+
+  async function loadBilling() {
+    if (!billingUid || !billingList || !billingSection) return;
+    let subs = [];
+    try {
+      const snap = await getDocs(collection(db, 'users', billingUid, 'purchases'));
+      subs = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((p) => p.mode === 'subscription' && p.subscriptionId && p.status !== 'canceled');
+    } catch (e) {
+      return; // best-effort — leave the section hidden on read failure
+    }
+    if (!subs.length) { billingSection.style.display = 'none'; return; }
+    billingSection.style.display = '';
+    billingList.innerHTML = subs.map((p) => {
+      const name = escapeHtml(prettySlug(p.courseSlug));
+      const sid = escapeHtml(p.subscriptionId);
+      if (p.status === 'cancel_pending') {
+        const when = fmtDate(p.currentPeriodEnd);
+        return `<div class="profile-billing-row" style="${ROW_STYLE}">
+          <div><strong>${name}</strong><div style="${META_STYLE}">Cancels${when ? ' on ' + escapeHtml(when) : ' at period end'}</div></div>
+          <button class="btn btn-ghost resume-sub-btn" type="button" data-subid="${sid}">Resume</button>
+        </div>`;
+      }
+      if (p.status === 'past_due') {
+        return `<div class="profile-billing-row" style="${ROW_STYLE}">
+          <div><strong>${name}</strong><div style="${META_STYLE}color:var(--red,#E60306);">Payment past due</div></div>
+          <button class="btn btn-ghost cancel-sub-btn" type="button" data-subid="${sid}" style="${DANGER}">Cancel</button>
+        </div>`;
+      }
+      return `<div class="profile-billing-row" style="${ROW_STYLE}">
+        <div><strong>${name}</strong><div style="${META_STYLE}">Active${typeof p.amount === 'number' ? ' · $' + p.amount : ''}</div></div>
+        <button class="btn btn-ghost cancel-sub-btn" type="button" data-subid="${sid}" style="${DANGER}">Cancel subscription</button>
+      </div>`;
+    }).join('');
+  }
+
+  if (billingList) {
+    billingList.addEventListener('click', async (e) => {
+      const cancelBtn = e.target.closest('.cancel-sub-btn');
+      const resumeBtn = e.target.closest('.resume-sub-btn');
+      if (cancelBtn) {
+        const subId = cancelBtn.getAttribute('data-subid');
+        if (!window.confirm('Cancel this subscription? You\'ll keep access until the end of the current paid period.')) return;
+        cancelBtn.disabled = true;
+        billingStatus.textContent = 'Cancelling…';
+        try {
+          await httpsCallable(functions, 'cancelSubscription')({ subscriptionId: subId });
+          billingStatus.textContent = '✓ Your subscription will cancel at the end of the paid period.';
+          await loadBilling();
+        } catch (err) {
+          billingStatus.textContent = 'Cancel failed: ' + (err.message || err);
+          cancelBtn.disabled = false;
+        }
+      } else if (resumeBtn) {
+        const subId = resumeBtn.getAttribute('data-subid');
+        resumeBtn.disabled = true;
+        billingStatus.textContent = 'Resuming…';
+        try {
+          await httpsCallable(functions, 'resumeSubscription')({ subscriptionId: subId });
+          billingStatus.textContent = '✓ Subscription resumed.';
+          await loadBilling();
+        } catch (err) {
+          billingStatus.textContent = 'Resume failed: ' + (err.message || err);
+          resumeBtn.disabled = false;
+        }
+      }
+    });
+    loadBilling();
+  }
 }
 
 function profileCompletion(me) {
