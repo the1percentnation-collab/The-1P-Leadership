@@ -189,11 +189,21 @@ describe('posts — community feed scope', () => {
   });
 
   it('DENIES creating a post with a forged authorUid', async () => {
-    await assertFails(setDoc(doc(user('alice'), 'posts/x'), { authorUid: 'someone_else', companyId: 'acme', text: 't', likeCount: 0, commentCount: 0 }));
+    await assertFails(setDoc(doc(user('alice', { email_verified: true }), 'posts/x'), { authorUid: 'someone_else', companyId: 'acme', text: 't', likeCount: 0, commentCount: 0 }));
   });
 
   it('DENIES a non-owner creating a GLOBAL post', async () => {
-    await assertFails(setDoc(doc(user('alice'), 'posts/x'), { authorUid: 'alice', companyId: null, text: 't', likeCount: 0, commentCount: 0 }));
+    await assertFails(setDoc(doc(user('alice', { email_verified: true }), 'posts/x'), { authorUid: 'alice', companyId: null, text: 't', likeCount: 0, commentCount: 0 }));
+  });
+
+  it('ALLOWS a verified user to create a valid company post', async () => {
+    await assertSucceeds(setDoc(doc(user('alice', { email_verified: true }), 'posts/newp'),
+      { authorUid: 'alice', companyId: 'acme', text: 'hi', likeCount: 0, commentCount: 0 }));
+  });
+
+  it('DENIES an UNVERIFIED user creating an otherwise-valid post (R3 gate)', async () => {
+    await assertFails(setDoc(doc(user('alice'), 'posts/newp2'),
+      { authorUid: 'alice', companyId: 'acme', text: 'hi', likeCount: 0, commentCount: 0 }));
   });
 });
 

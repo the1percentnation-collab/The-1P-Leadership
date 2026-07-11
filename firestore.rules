@@ -8,6 +8,10 @@ service cloud.firestore {
     function isSignedIn() { return request.auth != null; }
     function isOwner() { return isSignedIn() && request.auth.token.role == 'owner'; }
     function isSelf(uid) { return isSignedIn() && request.auth.uid == uid; }
+    // Staged email-verification gate for NEW sensitive actions (e.g. community
+    // posting). Google sign-ins are auto-verified; email/password users verify
+    // via the link sent on signup. Reads and existing access are never gated.
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
 
     // Owner, or any user whose users/{uid}.role == 'admin' (company admins).
     function isAnyAdmin() {
@@ -336,6 +340,7 @@ service cloud.firestore {
       // Category (Phase 1 channels) must be one of the allowed enum values when present.
       // mentionedUids (Phase 3) must be a list of strings, capped at 10 to bound trigger fan-out.
       allow create: if isSignedIn()
+        && isVerified()
         && request.resource.data.authorUid == request.auth.uid
         && request.resource.data.likeCount == 0
         && request.resource.data.commentCount == 0
@@ -452,7 +457,7 @@ service cloud.firestore {
         }
 
         allow read: if isSignedIn();
-        allow create: if isSignedIn() && canReadParent()
+        allow create: if isSignedIn() && isVerified() && canReadParent()
           && request.resource.data.authorUid == request.auth.uid
           && (
             !('mentionedUids' in request.resource.data)

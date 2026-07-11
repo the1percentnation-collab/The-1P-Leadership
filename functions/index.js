@@ -2677,6 +2677,14 @@ exports.enrollFree = onCall(async (request) => {
 exports.createCheckoutSession = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  // Staged email-verification enforcement: require a verified email before a
+  // purchase. Google sign-ins are auto-verified; email/password users must click
+  // the link (sent on signup). This gates only NEW sensitive actions — it never
+  // blocks login or access to courses a member already owns.
+  if (!(request.auth.token && request.auth.token.email_verified)) {
+    throw new HttpsError('failed-precondition',
+      'Please verify your email before purchasing. Check your inbox for the verification link.');
+  }
   const slug = safeId(request.data && request.data.slug, 'slug');
   if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
 
