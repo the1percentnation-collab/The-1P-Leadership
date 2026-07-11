@@ -88,6 +88,20 @@ function htmlToText(html) {
     .trim();
 }
 
+// Validate a client-supplied Firestore document id before it is used in a
+// `.doc()` path. Rejects path separators and Firestore-reserved patterns that
+// could re-root a reference into an unintended path (path traversal). Empty is
+// allowed through so callers keep their own "required" checks and friendlier
+// messages. Returns the trimmed, validated id.
+function safeId(value, label = 'id') {
+  const s = (value == null ? '' : String(value)).trim();
+  if (!s) return '';
+  if (s.length > 1500 || s.includes('/') || s === '.' || s === '..' || /^__.*__$/.test(s)) {
+    throw new HttpsError('invalid-argument', `Invalid ${label}.`);
+  }
+  return s;
+}
+
 async function assertCompanyAdmin(db, companyId, request) {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -270,7 +284,7 @@ exports.deleteContact = onCall(async (request) => {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
 
   const companyId = (request.data && request.data.companyId || '').toString().trim();
-  const contactId = (request.data && request.data.contactId || '').toString().trim();
+  const contactId = safeId(request.data && request.data.contactId, 'contactId');
   if (!companyId || !contactId) {
     throw new HttpsError('invalid-argument', 'companyId and contactId are required.');
   }
@@ -720,7 +734,7 @@ exports.sendContactEmail = onCall(
     const db = admin.firestore();
     const data = request.data || {};
     const companyId = (data.companyId || '').toString().trim();
-    const contactId = (data.contactId || '').toString().trim();
+    const contactId = safeId(data.contactId, 'contactId');
     const subject = (data.subject || '').toString().trim();
     const bodyHtml = (data.bodyHtml || '').toString();
     const bodyText = (data.bodyText || '').toString();
@@ -1067,7 +1081,7 @@ exports.shareEventToContacts = onCall(
     const db = admin.firestore();
     const data = request.data || {};
     const companyId = (data.companyId || '').toString().trim();
-    const eventId = (data.eventId || '').toString().trim();
+    const eventId = safeId(data.eventId, 'eventId');
     const customMessage = (data.message || '').toString().slice(0, 1000);
     const recipientFilter = data.recipientFilter || { mode: 'all_contacts' };
     if (!companyId || !eventId) throw new HttpsError('invalid-argument', 'companyId and eventId are required.');
@@ -1206,7 +1220,7 @@ exports.registerForEvent = onCall(async (request) => {
   // contact spam (each call can create a registration + CRM contact/activity).
   await rateLimitCaller(db, request, { action: 'registerForEvent', max: 20, windowSec: 600 });
   const data = request.data || {};
-  const eventId = (data.eventId || '').toString().trim();
+  const eventId = safeId(data.eventId, 'eventId');
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 200);
   const phone = (data.phone || '').toString().trim().slice(0, 40);
@@ -1351,7 +1365,7 @@ exports.registerCourseInterest = onCall(async (request) => {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
 
   const data = request.data || {};
-  const slug = (data.slug || '').toString().trim().slice(0, 80);
+  const slug = safeId(data.slug, 'slug').slice(0, 80);
   const title = (data.title || '').toString().trim().slice(0, 120) || slug;
   if (!slug) throw new HttpsError('invalid-argument', 'A course slug is required.');
 
@@ -2417,7 +2431,7 @@ exports.acceptCommunityInvite = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
 
-  const token = (request.data && request.data.token || '').toString().trim();
+  const token = safeId(request.data && request.data.token, 'token');
   if (!token) throw new HttpsError('invalid-argument', 'Token is required.');
 
   const db = admin.firestore();
@@ -2606,7 +2620,7 @@ function effectivePriceDollars(course) {
 exports.enrollFree = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
-  const slug = String((request.data && request.data.slug) || '').trim();
+  const slug = safeId(request.data && request.data.slug, 'slug');
   if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
 
   const db = admin.firestore();
@@ -2644,7 +2658,7 @@ exports.enrollFree = onCall(async (request) => {
 exports.createCheckoutSession = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
-  const slug = String((request.data && request.data.slug) || '').trim();
+  const slug = safeId(request.data && request.data.slug, 'slug');
   if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
 
   // Throttle checkout session creation: 15 per user per 10 minutes.
@@ -2924,7 +2938,7 @@ exports.syncCoupon = onCall(async (request) => {
       'Stripe isn\'t configured yet — set STRIPE_SECRET_KEY first.');
   }
 
-  const code = String((request.data && request.data.code) || '').trim().toUpperCase();
+  const code = safeId(request.data && request.data.code, 'code').toUpperCase();
   if (!code) throw new HttpsError('invalid-argument', 'code is required.');
   const ref = db.collection('coupons').doc(code);
   const snap = await ref.get();
@@ -2965,7 +2979,7 @@ exports.syncCoupon = onCall(async (request) => {
 
 // recordAffiliateClick — public, best-effort click counter for ?ref= visits.
 exports.recordAffiliateClick = onCall(async (request) => {
-  const code = String((request.data && request.data.code) || '').trim().toUpperCase();
+  const code = safeId(request.data && request.data.code, 'code').toUpperCase();
   if (!code || code.length > 32) return { ok: false };
   const db = admin.firestore();
   // Throttle click inflation: 30 clicks per IP per 10 minutes per code.
@@ -2999,7 +3013,7 @@ exports.markAffiliatePaid = onCall(async (request) => {
   if (!(await isAdminCaller(db, request))) {
     throw new HttpsError('permission-denied', 'Admin or owner role required.');
   }
-  const code = String((request.data && request.data.code) || '').trim().toUpperCase();
+  const code = safeId(request.data && request.data.code, 'code').toUpperCase();
   if (!code) throw new HttpsError('invalid-argument', 'code is required.');
 
   const affRef = db.collection('affiliates').doc(code);
@@ -3154,6 +3168,8 @@ exports.sendSms = onCall(
     if (!companyId || !contactId || !body) {
       throw new HttpsError('invalid-argument', 'companyId, contactId and body are required.');
     }
+    safeId(companyId, 'companyId');
+    safeId(contactId, 'contactId');
     await assertCompanyAdmin(db, companyId, request);
 
     // Throttle outbound SMS: 100 per admin per 10 minutes.
@@ -3330,7 +3346,7 @@ exports.registerProductInterest = onCall(async (request) => {
   // Public endpoint — throttle by uid/IP to bound CRM contact spam.
   await rateLimitCaller(db, request, { action: 'registerProductInterest', max: 20, windowSec: 600 });
   const data = request.data || {};
-  const productId = (data.productId || '').toString().trim();
+  const productId = safeId(data.productId, 'productId');
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
   const phone = (data.phone || '').toString().trim().slice(0, 40) || null;
@@ -3470,7 +3486,7 @@ exports.onProductWritten = onDocumentWritten(
 exports.notifyProductInterest = onCall({ secrets: [sendgridKey] }, async (request) => {
   const db = admin.firestore();
   if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admin or owner role required.');
-  const productId = (request.data && request.data.productId || '').toString();
+  const productId = safeId(request.data && request.data.productId, 'productId');
   const snap = await db.collection('products').doc(productId).get();
   if (!snap.exists) throw new HttpsError('not-found', 'Product not found.');
   const n = await sendProductLaunchEmails(db, productId, snap.data());

@@ -96,9 +96,11 @@ Files: `public/js/community.js`, `public/js/topbar.js`.
 - **M5 — Account enumeration:** login/reset surface raw Firebase errors (`login.html:251/276`), distinguishing registered vs unknown emails. Mitigated by enabling **Email Enumeration Protection** in the Firebase console + generic client messages.
 - **M6 — Session expiry is client-side only** (`session.js`): idle/absolute timeouts sign out the UI but don't revoke the refresh token server-side; a held token keeps minting IDs. Needs server-side session controls / token revocation.
 
-### LOW (documented)
+### LOW
 
-- **L1 — Firestore path-traversal via unsanitized client IDs** used in `.doc()` (`contactId`, `token`, `eventId`, `code` in several callables). All are tenant/admin-scoped so impact is limited, but IDs should be validated (reject `/`). Pattern is applied inconsistently (the rate-limiter and `registerProductInterest` *do* sanitize).
+- **L1 — Firestore path-traversal via unsanitized client IDs — FIXED.** Client strings used in `.doc()` paths (`contactId`, `token`, `code`, `eventId`, `productId`, `slug`) were passed through without rejecting `/` or Firestore-reserved patterns. Added a `safeId()` helper (`functions/index.js`) that trims and rejects values containing `/`, `.`/`..`, `__…__`, or over-length, and applied it at every affected callable (deleteContact, sendContactEmail, sendSms, registerForEvent, shareEventToContacts, acceptCommunityInvite, syncCoupon, markAffiliatePaid, registerProductInterest, notifyProductInterest, registerCourseInterest, createCheckoutSession, enrollFree). Empty is allowed through so existing "required" checks and messages are unchanged. (`acceptInvite`'s `code` is used in a `where()` query, not a path, so it needs no change.) Logic verified in isolation.
+
+### LOW (documented)
 - **L2 — Indirect prompt injection** into `courseAdvisorChat`: community post text is injected into the system prompt and output is parsed for a `PROFILE_UPDATE{}` signal. Bounded — writes go only to the requester's own doc and only to a field allowlist — but worth monitoring.
 - **L3 — Rate limiter fails open** on infra error (`enforceRateLimit`): an attacker who can induce Firestore contention on the `rateLimits` doc bypasses throttles. Documented design choice.
 - **L4 — `onboarding-guard` / `app.js` fail open** if Firebase init fails. Low impact given content is otherwise gated.
@@ -121,10 +123,12 @@ Files: `public/js/community.js`, `public/js/topbar.js`.
 
 ## 4. Remaining Items & Remediation Plans
 
-**R1 — Migrate `1p-clc` content out of the public static file (H3).** *(M effort)*
-1. Move each lesson's HTML from `public/js/modules.js` into `courses/1p-clc/modules/{n}` docs (a one-time script; the course builder already writes this shape).
-2. Point the `1p-clc` renderer at `loadModuleDocs` like every other course (remove the `modules.js` special-case in `courses-data.js:112`).
-3. Delete lesson bodies from `modules.js`. The C1 gate then protects it automatically.
+**R1 — Migrate `1p-clc` content out of the public static file (H3).** *(M effort — NOT safely doable in-repo; needs live DB + runtime. Confirmed on closer inspection.)*
+The `1p-clc` lessons in `public/js/modules.js` are **not** static HTML — they are 7 JavaScript `render()` functions with ~19 calls to per-user runtime state (`store.isComplete`, `getNotes`, completion banners, notes textareas) woven into the lesson body. Extracting clean content requires executing them in a logged-in browser session, and the target data must be written to the live Firestore DB (no repo-only path). The generic course player also uses a different notes/completion model, so this is a content + UX reauthoring job. Recommended steps:
+1. In a browser session as an admin, stub `store`/`getNotes` to no-ops and capture each `render()` output; strip the injected notes/completion chrome to leave pure lesson HTML.
+2. Write the cleaned HTML into `courses/1p-clc/modules/{n}` docs via the course builder (which already writes this shape) or a one-off Admin SDK script.
+3. Only after verifying enrolled users can read the migrated course, point the `1p-clc` renderer at `loadModuleDocs` (remove the `modules.js` special-case in `courses-data.js:112`) and delete the lesson bodies from `modules.js`. The C1 gate then protects it automatically.
+Do **not** rewire the renderer before the data exists in Firestore — that white-screens the live $497 course.
 
 **R2 — Signed, expiring media URLs (defense-in-depth for C1).** *(M)* The rules fix stops enumeration, but a Storage download URL already leaked keeps working (token in URL). For true protection, mint short-lived signed URLs from a Cloud Function after an enrollment check and stop persisting long-lived tokened URLs in Firestore. Rotate existing tokens.
 
@@ -138,7 +142,7 @@ Files: `public/js/community.js`, `public/js/topbar.js`.
 
 **R7 — Tighten CSP (M1 follow-up).** *(M)* Add nonces/hashes to inline scripts and drop `'unsafe-inline'` from `script-src`. Report-only mode (`Content-Security-Policy-Report-Only`) first to catch breakage.
 
-**R8 — Validate client-supplied IDs (L1).** *(S)* Add a `safeId()` helper rejecting `/` and over-long strings; apply to every callable that uses a client string in a `.doc()` path.
+**R8 — Validate client-supplied IDs (L1) — DONE.** `safeId()` added and applied across all affected callables (see L1 above).
 
 **R9 — Server-side session controls (M6).** *(M)* Consider shorter token lifetimes / periodic forced re-auth for sensitive roles; use `revokeRefreshTokens` on suspicious activity.
 
