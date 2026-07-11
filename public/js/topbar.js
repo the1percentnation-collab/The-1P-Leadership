@@ -105,7 +105,7 @@ function avatarHtml(profile, size = 28) {
   const name = (profile && (profile.displayName || profile.authorName)) || '';
   const src = profile && (profile.avatarUrl || profile.authorAvatar);
   const s = `width:${size}px; height:${size}px; font-size:${Math.round(size * 0.38)}px;`;
-  if (src) return `<div class="c-avatar" style="${s}"><img src="${src}" alt="" loading="lazy"></div>`;
+  if (src) return `<div class="c-avatar" style="${s}"><img src="${escapeHtml(src)}" alt="" loading="lazy"></div>`;
   return `<div class="c-avatar c-avatar-initials" style="${s}">${initials(name)}</div>`;
 }
 

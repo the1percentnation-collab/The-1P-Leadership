@@ -17,6 +17,19 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
 
+    // The set of course slugs the caller is enrolled in (server-written +
+    // frozen against self-writes on the user doc). Used to gate reads of paid
+    // course content (courses/{slug}/modules). Empty for signed-out callers.
+    function myEnrolledSlugs() {
+      return isSignedIn()
+             && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('enrolledCourseSlugs', [])
+        : [];
+    }
+    function isEnrolledIn(slug) {
+      return slug in myEnrolledSlugs();
+    }
+
     // Is the caller an admin of company `cid`? We read the company doc and check adminUids.
     function isCompanyAdmin(cid) {
       return isSignedIn()
@@ -496,9 +509,18 @@ service cloud.firestore {
     // ────────────────────────────────────────────────────────────────
     // ────────────────────────────────────────────────────────────────
     // Courses — Firestore-backed course catalog managed from
-    // /manage-courses.html. Public read (marketing surface, like /events);
-    // owner + admins write. The `stripe` map is server-only (written by
+    // /manage-courses.html. The course DOC itself is the marketing surface
+    // (title, price, description, curriculum meta) so it stays publicly
+    // readable, like /events. The `stripe` map is server-only (written by
     // Cloud Functions when syncing products/prices).
+    //
+    // The `modules` subcollection holds the actual PAID lesson content
+    // (lesson body HTML, uploaded video URLs, downloadable attachment URLs).
+    // It must NOT be world-readable — that would let anyone read/download the
+    // full paid curriculum via the SDK, bypassing checkout entirely. Reads
+    // are therefore gated to admins/owner and users enrolled in that course.
+    // (The legitimate client only ever reads modules for enrolled users or an
+    // admin in preview mode, so this does not affect normal usage.)
     // ────────────────────────────────────────────────────────────────
     match /courses/{slug} {
       allow read: if true;
@@ -508,7 +530,7 @@ service cloud.firestore {
       allow delete: if isOwner();
 
       match /modules/{moduleId} {
-        allow read: if true;
+        allow read: if isAnyAdmin() || isEnrolledIn(slug);
         allow create, update, delete: if isAnyAdmin();
       }
     }

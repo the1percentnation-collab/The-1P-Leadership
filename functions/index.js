@@ -1074,6 +1074,9 @@ exports.shareEventToContacts = onCall(
 
     await assertCompanyAdmin(db, companyId, request);
 
+    // Bulk email — throttle to bound cost/abuse from a rogue or compromised admin.
+    await rateLimitCaller(db, request, { action: 'shareEventToContacts', max: 10, windowSec: 3600 });
+
     const eventSnap = await db.collection('events').doc(eventId).get();
     if (!eventSnap.exists) throw new HttpsError('not-found', 'Event not found.');
     const event = eventSnap.data();
@@ -1199,6 +1202,9 @@ async function upsertEventContact(db, companyId, event, name, email, ownerUid, e
 
 exports.registerForEvent = onCall(async (request) => {
   const db = admin.firestore();
+  // Public endpoint — throttle by uid/IP to bound fake-registration + CRM
+  // contact spam (each call can create a registration + CRM contact/activity).
+  await rateLimitCaller(db, request, { action: 'registerForEvent', max: 20, windowSec: 600 });
   const data = request.data || {};
   const eventId = (data.eventId || '').toString().trim();
   const name = (data.name || '').toString().trim().slice(0, 120);
@@ -1523,20 +1529,26 @@ exports.sendgridEventWebhook = onRequest(
       // Get raw body for signature verification. Firebase Functions v2 provides req.rawBody.
       const rawBody = req.rawBody ? Buffer.from(req.rawBody) : Buffer.from(JSON.stringify(req.body || []));
 
-      // Webhook signing is optional. Read from env if set; otherwise accept unsigned.
+      // Signature verification is MANDATORY and fails closed. This endpoint
+      // writes into per-tenant campaign/contact records using IDs carried in
+      // the payload (companyId/campaignId/contactId), so an unsigned request
+      // would let anyone on the internet forge analytics or inject activity
+      // rows into any company's data. If SENDGRID_WEBHOOK_KEY is unset, we
+      // reject rather than trust the body. (Configure the Signed Event Webhook
+      // verification key in the SendGrid dashboard and set the secret.)
       const webhookKey = (process.env.SENDGRID_WEBHOOK_KEY || '').trim();
-
-      if (webhookKey && webhookKey.trim()) {
-        const signature = req.get('X-Twilio-Email-Event-Webhook-Signature');
-        const timestamp = req.get('X-Twilio-Email-Event-Webhook-Timestamp');
-        const ok = verifySignature(webhookKey, rawBody, signature, timestamp);
-        if (!ok) {
-          console.warn('[webhook] signature invalid — ignoring payload');
-          res.status(200).send('ok');
-          return;
-        }
-      } else {
-        console.warn('[webhook] SENDGRID_WEBHOOK_KEY not set — accepting without signature verification');
+      if (!webhookKey) {
+        console.warn('[webhook] SENDGRID_WEBHOOK_KEY not set — rejecting unsigned payload');
+        res.status(503).send('webhook not configured');
+        return;
+      }
+      const signature = req.get('X-Twilio-Email-Event-Webhook-Signature');
+      const timestamp = req.get('X-Twilio-Email-Event-Webhook-Timestamp');
+      const ok = verifySignature(webhookKey, rawBody, signature, timestamp);
+      if (!ok) {
+        console.warn('[webhook] signature invalid — rejecting payload');
+        res.status(403).send('invalid signature');
+        return;
       }
 
       const events = Array.isArray(req.body) ? req.body : [];
@@ -1787,7 +1799,9 @@ exports.getLeaderboard = onCall(async (request) => {
     const u = d.data() || {};
     return {
       uid: d.id,
-      displayName: u.displayName || u.email || 'Unknown',
+      // Never fall back to the raw email — that leaks addresses to every other
+      // member. Use the display name or a neutral label.
+      displayName: u.displayName || 'Member',
       avatarUrl: u.avatarUrl || null,
       statsPoints: Number(u.statsPoints || 0),
       statsWeekPoints: Number(u.statsWeekPoints || 0)
@@ -2238,6 +2252,9 @@ exports.searchMembers = onCall(async (request) => {
   const callerUid = request.auth && request.auth.uid;
   if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
 
+  // Reads up to 500 docs per call — throttle to bound read-amplification DoS.
+  await rateLimitCaller(admin.firestore(), request, { action: 'searchMembers', max: 60, windowSec: 60 });
+
   const data = request.data || {};
   const q = (data.query || '').toString().trim().toLowerCase();
   if (!q) return { ok: true, results: [] };
@@ -2261,7 +2278,9 @@ exports.searchMembers = onCall(async (request) => {
     const u = doc || {};
     pool.set(uid, {
       uid,
-      displayName: u.displayName || u.email || 'Unknown',
+      // Never fall back to the raw email — that leaks addresses to every other
+      // member. Use the display name or a neutral label.
+      displayName: u.displayName || 'Member',
       avatarUrl: u.avatarUrl || null
     });
   }
@@ -2460,6 +2479,9 @@ const SEARCH_POSTS_RESULTS = 10;     // results returned
 exports.searchPosts = onCall(async (request) => {
   const callerUid = request.auth && request.auth.uid;
   if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  // Reads up to 200 docs per call — throttle to bound read-amplification DoS.
+  await rateLimitCaller(admin.firestore(), request, { action: 'searchPosts', max: 60, windowSec: 60 });
 
   const data = request.data || {};
   const q = (data.query || '').toString().trim().toLowerCase();
@@ -3305,6 +3327,8 @@ exports.twilioStatusWebhook = onRequest(
 // registerProductInterest({ productId, name, email, phone, consent })
 exports.registerProductInterest = onCall(async (request) => {
   const db = admin.firestore();
+  // Public endpoint — throttle by uid/IP to bound CRM contact spam.
+  await rateLimitCaller(db, request, { action: 'registerProductInterest', max: 20, windowSec: 600 });
   const data = request.data || {};
   const productId = (data.productId || '').toString().trim();
   const name = (data.name || '').toString().trim().slice(0, 120);
@@ -3362,6 +3386,8 @@ exports.registerProductInterest = onCall(async (request) => {
 // joinEarlyAccess({ name, email, consent }) — general "future products" list.
 exports.joinEarlyAccess = onCall(async (request) => {
   const db = admin.firestore();
+  // Public endpoint — throttle by uid/IP to bound CRM contact spam.
+  await rateLimitCaller(db, request, { action: 'joinEarlyAccess', max: 20, windowSec: 600 });
   const data = request.data || {};
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);

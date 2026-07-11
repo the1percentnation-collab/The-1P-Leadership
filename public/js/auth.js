@@ -9,6 +9,7 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   sendPasswordResetEmail,
+  sendEmailVerification,
   signOut as fbSignOut,
   updateProfile,
   onAuthStateChanged
@@ -83,6 +84,11 @@ export async function signupEmail({ email, password, displayName, inviteCode, co
     try { await updateProfile(cred.user, { displayName }); } catch (e) {}
   }
   await ensureUserDoc(cred.user, { displayName });
+  // Fire a verification email so members can confirm ownership of the address.
+  // Non-blocking: the account is usable immediately (hard enforcement would
+  // lock out existing pre-verification accounts — see SECURITY_AUDIT.md for the
+  // staged rollout plan to require `emailVerified` before sensitive actions).
+  try { await sendEmailVerification(cred.user); } catch (e) { console.warn('[auth] verification email failed', e); }
   if (inviteCode) {
     await acceptInvite(inviteCode);
   }
