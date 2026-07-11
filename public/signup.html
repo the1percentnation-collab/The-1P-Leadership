@@ -59,6 +59,7 @@
   <script type="module">
     import { signupEmail, loginGoogle, acceptInvite, acceptCommunityInvite, onAuthReady } from './js/auth.js';
     import { firebaseReady } from './js/firebase.js';
+    import { friendlyAuthError } from './js/auth-errors.js';
 
     const $ = (id) => document.getElementById(id);
     const msg = $('auth-msg');
@@ -99,7 +100,7 @@
         await signupEmail({ email, password, displayName, inviteCode, communityInviteToken });
         location.replace('/onboarding');
       } catch (err) {
-        showErr(err.message || 'Sign-up failed.');
+        showErr(friendlyAuthError(err, 'signup'));
       } finally {
         $('btn-submit').disabled = false;
       }
@@ -118,7 +119,7 @@
         }
         location.replace('/onboarding');
       } catch (err) {
-        showErr(err.message || 'Google sign-in failed.');
+        showErr(friendlyAuthError(err, 'google'));
       }
     });
   </script>

@@ -207,6 +207,7 @@
     import { loginEmail, loginGoogle, resetPassword, onAuthReady, signOut } from './js/auth.js';
     import { firebaseReady } from './js/firebase.js';
     import { expiredReason } from './js/session.js';
+    import { friendlyAuthError } from './js/auth-errors.js';
 
     const $ = (id) => document.getElementById(id);
     const msg = $('auth-msg');
@@ -248,7 +249,7 @@
         await loginEmail(email, password);
         location.replace(nextUrl());
       } catch (err) {
-        showErr(err.message || 'Sign-in failed.');
+        showErr(friendlyAuthError(err, 'signin'));
       } finally {
         $('btn-submit').disabled = false;
       }
@@ -260,7 +261,7 @@
         await loginGoogle();
         location.replace(nextUrl());
       } catch (err) {
-        showErr(err.message || 'Google sign-in failed.');
+        showErr(friendlyAuthError(err, 'google'));
       }
     });
 
@@ -271,10 +272,13 @@
       if (!email) return showErr('Enter your email first, then click Forgot password.');
       try {
         await resetPassword(email);
-        showOk('Password reset email sent. Check your inbox.');
       } catch (err) {
-        showErr(err.message || 'Could not send reset email.');
+        // Swallow user-not-found (and similar) so we never reveal whether an
+        // email is registered. Keep the real error in the console.
+        console.warn('[auth] reset', err && (err.code || err.message));
       }
+      // Same neutral message whether or not the address exists.
+      showOk('If that email is registered, a reset link is on the way.');
     });
   </script>
 <script src="/js/consent-banner.js" defer></script>
