@@ -12,6 +12,15 @@
 // server-side (e.g. account disabled, password reset) is caught promptly and
 // the user is bounced to the login page.
 //
+// Server-side complement (R9): this guard is client-side, so it can't revoke a
+// stolen refresh token on its own. The `revokeMySessions` callable
+// (functions/index.js) lets a member force-logout everywhere via
+// admin.auth().revokeRefreshTokens(), and the TOKEN_REFRESH_MS loop below then
+// bounces any still-open tab within ~10 min. Deferred (need Identity Platform
+// console settings or a broader change, so NOT done here to avoid mass logouts):
+// a shorter global refresh-token TTL, and automatic forced re-auth for
+// owner/admin sessions.
+//
 // Tunables — change these to adjust the policy (default: 30 min idle / 12 hr max).
 const IDLE_LIMIT_MS      = 30 * 60 * 1000;        // 30 minutes of inactivity
 const ABSOLUTE_LIMIT_MS  = 12 * 60 * 60 * 1000;   // 12 hours since sign-in

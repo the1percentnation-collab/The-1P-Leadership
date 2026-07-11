@@ -169,6 +169,7 @@ function renderEdit(me) {
           </div>
           <div class="profile-privacy-actions" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;">
             <button class="btn btn-ghost" id="data-export-btn" type="button">Download my data</button>
+            <button class="btn btn-ghost" id="signout-all-btn" type="button">Sign out all devices</button>
             <button class="btn btn-ghost" id="account-delete-btn" type="button"
               style="color:var(--red,#E60306);border-color:var(--red,#E60306);">Delete my account</button>
             <div id="privacy-status" class="profile-save-status"></div>
@@ -267,6 +268,22 @@ function renderEdit(me) {
       status.textContent = 'Export failed: ' + (err.message || err);
     } finally {
       exportBtn.disabled = false;
+    }
+  });
+
+  const signoutAllBtn = $('signout-all-btn');
+  if (signoutAllBtn) signoutAllBtn.addEventListener('click', async () => {
+    const status = $('privacy-status');
+    if (!window.confirm('Sign out of all devices? You\'ll need to sign in again everywhere, including here.')) return;
+    signoutAllBtn.disabled = true;
+    status.textContent = 'Signing out all devices…';
+    try {
+      await httpsCallable(functions, 'revokeMySessions')({});
+      try { await signOut(); } catch (e) {}
+      location.replace('/login.html');
+    } catch (err) {
+      status.textContent = 'Could not sign out all devices: ' + (err.message || err);
+      signoutAllBtn.disabled = false;
     }
   });
 

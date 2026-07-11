@@ -574,6 +574,22 @@ exports.requestDataExport = onCall(async (request) => {
 });
 
 /**
+ * revokeMySessions() — self-service "sign out of all devices". Revokes every
+ * refresh token for the caller, forcing a fresh sign-in everywhere. The client
+ * session guard (session.js) force-refreshes the ID token every 10 min and will
+ * bounce any still-open tab to the login page shortly after. Low-risk: only ever
+ * affects the caller's own account.
+ */
+exports.revokeMySessions = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  await rateLimitCaller(admin.firestore(), request,
+    { action: 'revokeMySessions', max: 5, windowSec: 3600 });
+  await admin.auth().revokeRefreshTokens(uid);
+  return { ok: true };
+});
+
+/**
  * bootstrapOwner()
  */
 exports.bootstrapOwner = onCall(async (request) => {
