@@ -5561,8 +5561,9 @@ body.academy-course #course-workspace {
 
 .course-card:hover {
   transform: translateY(-4px);
-  border-color: var(--border-red);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(165deg, var(--red) 0%, #8f0204 55%, #430102 100%);
+  border-color: var(--red);
+  box-shadow: 0 18px 48px rgba(230, 3, 6, 0.35);
 }
 
 /* Cover — generated brand art; a Firestore `image` field swaps in a photo. */
@@ -5662,7 +5663,7 @@ body.academy-course #course-workspace {
   transition: color 0.2s;
 }
 
-.course-card:hover .course-card-title { color: var(--red); }
+.course-card:hover .course-card-title { color: #fff; }
 
 .course-card-desc {
   flex: 1;
@@ -5766,39 +5767,28 @@ body.academy-course #course-workspace {
   box-shadow: none;
 }
 
-/* Featured (bundle) card — the single filled card in the grid. */
-.course-card.is-featured {
-  background: linear-gradient(165deg, var(--red) 0%, #8f0204 55%, #430102 100%);
-  border-color: var(--red);
-}
-
-.course-card.is-featured:hover {
-  border-color: rgba(255, 255, 255, 0.5);
-  box-shadow: 0 18px 48px rgba(230, 3, 6, 0.35);
-}
-
-.course-card.is-featured .course-card-cover {
+/* Hovered card fills red — recolor its content for legibility on the fill. */
+.course-card:hover .course-card-cover {
   background:
     radial-gradient(circle at 82% 115%, rgba(255, 255, 255, 0.22), transparent 60%),
     linear-gradient(150deg, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.12));
 }
 
-.course-card.is-featured .course-card-category { color: rgba(255, 255, 255, 0.8); }
-.course-card.is-featured:hover .course-card-title { color: #fff; }
-.course-card.is-featured .course-card-desc { color: rgba(255, 255, 255, 0.88); }
-.course-card.is-featured .course-card-meta { color: rgba(255, 255, 255, 0.65); }
-.course-card.is-featured .course-card-meta span:not(:first-child)::before { color: rgba(255, 255, 255, 0.4); }
-.course-card.is-featured .course-card-foot { border-top-color: rgba(255, 255, 255, 0.28); }
-.course-card.is-featured .course-card-price s { color: rgba(255, 255, 255, 0.6); }
-.course-card.is-featured .course-card-note { color: rgba(255, 255, 255, 0.7); }
+.course-card:hover .course-card-category { color: rgba(255, 255, 255, 0.8); }
+.course-card:hover .course-card-desc { color: rgba(255, 255, 255, 0.88); }
+.course-card:hover .course-card-meta { color: rgba(255, 255, 255, 0.65); }
+.course-card:hover .course-card-meta span:not(:first-child)::before { color: rgba(255, 255, 255, 0.4); }
+.course-card:hover .course-card-foot { border-top-color: rgba(255, 255, 255, 0.28); }
+.course-card:hover .course-card-price s { color: rgba(255, 255, 255, 0.6); }
+.course-card:hover .course-card-note { color: rgba(255, 255, 255, 0.7); }
 
-.course-card.is-featured .course-card-btn {
+.course-card:hover .course-card-btn {
   background: #fff;
   border-color: #fff;
   color: var(--red);
 }
 
-.course-card.is-featured .course-card-btn:hover {
+.course-card:hover .course-card-btn:hover {
   background: var(--white-soft);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
 }

@@ -108,7 +108,7 @@ function renderSidebar(activeSlug) {
 // One modern library card. The cover is generated on-brand (big display
 // title over a dark/red gradient); a Firestore `image` field replaces it
 // with real cover art without a deploy.
-function courseCardHtml(c, { action, statusBadge, saleBadge = '', featured = false, soon = false } = {}) {
+function courseCardHtml(c, { action, statusBadge, saleBadge = '', soon = false } = {}) {
   const p = priceInfo(c);
   // eyebrow is "Format · N Modules" — split it into the meta row.
   const [fmt, mods] = String(c.eyebrow || '').split('·').map((s) => s.trim());
@@ -124,7 +124,7 @@ function courseCardHtml(c, { action, statusBadge, saleBadge = '', featured = fal
   const searchText = [c.title, c.short, c.category, c.subtitle, c.eyebrow]
     .filter(Boolean).join(' ').toLowerCase();
   return `
-    <article class="course-card${featured ? ' is-featured' : ''}${soon ? ' is-soon' : ''}"
+    <article class="course-card${soon ? ' is-soon' : ''}"
              data-slug="${escapeHtml(c.slug)}" data-search="${escapeHtml(searchText)}">
       ${cover}
         <div class="course-card-badges">${statusBadge}${saleBadge}</div>
@@ -176,10 +176,7 @@ function renderAvailableCourses() {
       : isLive
         ? `<button class="course-card-btn available-enroll" data-slug="${escapeHtml(c.slug)}">${p.isFree ? 'Join Free' : 'Join Course'}</button>`
         : `<button class="course-card-btn available-notify${joined ? ' is-joined' : ''}" data-slug="${escapeHtml(c.slug)}" data-title="${escapeHtml(c.title)}"${joined ? ' disabled' : ''}>${joined ? "✓ You're on the list" : 'Notify me when live'}</button>`;
-    // The bundle is the one filled "featured" card in the grid, even while
-    // it's still coming soon.
-    const featured = isBundle || /best value/i.test(c.eyebrow || '');
-    return courseCardHtml(c, { action, statusBadge, saleBadge, featured, soon: !featured && !isLive });
+    return courseCardHtml(c, { action, statusBadge, saleBadge, soon: !isLive });
   }).join('');
 
   // Enrolled courses live here — above the library.
