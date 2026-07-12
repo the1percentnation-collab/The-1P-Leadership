@@ -33,6 +33,62 @@ function slugify(s) {
 
 const cleanLines = (v) => (Array.isArray(v) ? v.map((x) => String(x || '').trim()).filter(Boolean) : []);
 
+// ─── Voice dictation ────────────────────────────────────────────────────────
+// Adds a mic button to a text field so the admin can speak instead of type —
+// same Web Speech API the portal chatbot uses (js/chatbot.js). Dictation
+// appends to whatever is already typed. In browsers without support the
+// button simply never appears.
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+function attachDictation(field) {
+  if (!SpeechRec || !field) return () => {};
+
+  const wrap = document.createElement('div');
+  wrap.className = 'voice-field' + (field.tagName === 'TEXTAREA' ? ' is-area' : '');
+  field.parentNode.insertBefore(wrap, field);
+  wrap.appendChild(field);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'voice-btn';
+  btn.title = 'Dictate — click and speak';
+  btn.setAttribute('aria-label', 'Dictate into this field');
+  btn.textContent = '🎤';
+  wrap.appendChild(btn);
+
+  let rec = null;
+  let base = '';
+
+  const stop = () => {
+    const r = rec;
+    rec = null;
+    if (r) { try { r.stop(); } catch (e) {} }
+    btn.classList.remove('is-listening');
+    btn.title = 'Dictate — click and speak';
+  };
+
+  btn.addEventListener('click', () => {
+    if (rec) { stop(); return; }
+    rec = new SpeechRec();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+    base = field.value.trim() ? field.value.replace(/\s+$/, '') + ' ' : '';
+    btn.classList.add('is-listening');
+    btn.title = 'Listening — click to stop';
+    rec.onresult = (e) => {
+      let text = '';
+      for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript;
+      field.value = base + text;
+    };
+    rec.onend = stop;
+    rec.onerror = (e) => { console.warn('[course-ai] dictation:', e.error); stop(); };
+    try { rec.start(); field.focus(); } catch (e) { stop(); }
+  });
+
+  return stop;
+}
+
 // ─── Reference documents ────────────────────────────────────────────────────
 // Manuscripts, notes, and outlines the admin uploads to ground the AI's
 // writing. Text is extracted in the browser (nothing is stored) and passed
@@ -156,7 +212,10 @@ export function openAiGeneratorModal({ userEmail, onDone }) {
   let doneSlug = null;
   const docs = [];   // { name, text }
 
-  const close = () => { root.innerHTML = ''; };
+  // Mic buttons on the free-text fields (no-ops if the browser lacks STT).
+  const dictationStops = ['ai-topic', 'ai-audience', 'ai-notes'].map((id) => attachDictation($(id)));
+
+  const close = () => { dictationStops.forEach((stop) => stop()); root.innerHTML = ''; };
   $('modal-bd').addEventListener('click', (e) => {
     if (e.target.id === 'modal-bd' && !running) close();
   });
