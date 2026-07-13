@@ -636,7 +636,7 @@ export function avatarHtml(profile, size = 40) {
   const src = profile && (profile.avatarUrl || profile.authorAvatar);
   const s = `width:${size}px; height:${size}px; font-size:${Math.round(size * 0.38)}px;`;
   if (src) {
-    return `<div class="c-avatar" style="${s}"><img src="${src}" alt="" loading="lazy"></div>`;
+    return `<div class="c-avatar" style="${s}"><img src="${escapeHtml(src)}" alt="" loading="lazy"></div>`;
   }
   return `<div class="c-avatar c-avatar-initials" style="${s}">${initials(name)}</div>`;
 }

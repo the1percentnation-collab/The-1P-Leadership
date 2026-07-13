@@ -88,6 +88,20 @@ function htmlToText(html) {
     .trim();
 }
 
+// Validate a client-supplied Firestore document id before it is used in a
+// `.doc()` path. Rejects path separators and Firestore-reserved patterns that
+// could re-root a reference into an unintended path (path traversal). Empty is
+// allowed through so callers keep their own "required" checks and friendlier
+// messages. Returns the trimmed, validated id.
+function safeId(value, label = 'id') {
+  const s = (value == null ? '' : String(value)).trim();
+  if (!s) return '';
+  if (s.length > 1500 || s.includes('/') || s === '.' || s === '..' || /^__.*__$/.test(s)) {
+    throw new HttpsError('invalid-argument', `Invalid ${label}.`);
+  }
+  return s;
+}
+
 async function assertCompanyAdmin(db, companyId, request) {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -270,7 +284,7 @@ exports.deleteContact = onCall(async (request) => {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
 
   const companyId = (request.data && request.data.companyId || '').toString().trim();
-  const contactId = (request.data && request.data.contactId || '').toString().trim();
+  const contactId = safeId(request.data && request.data.contactId, 'contactId');
   if (!companyId || !contactId) {
     throw new HttpsError('invalid-argument', 'companyId and contactId are required.');
   }
@@ -439,6 +453,25 @@ exports.deleteMyAccount = onCall(async (request) => {
       'The owner account cannot be self-deleted. Contact support to transfer ownership first.');
   }
 
+  // Stop billing: cancel any active Stripe subscriptions BEFORE wiping the
+  // purchases subcollection, so a deleted account is never charged again.
+  // Best-effort — a Stripe hiccup must not block account deletion.
+  try {
+    const stripe = getStripe();
+    if (stripe) {
+      const subs = await userRef.collection('purchases').where('mode', '==', 'subscription').get();
+      const seen = new Set();
+      for (const d of subs.docs) {
+        const sid = d.data().subscriptionId;
+        if (sid && !seen.has(sid)) {
+          seen.add(sid);
+          try { await stripe.subscriptions.cancel(sid); }
+          catch (e) { console.warn('[deleteMyAccount] subscription cancel failed:', e && e.message); }
+        }
+      }
+    }
+  } catch (e) { console.warn('[deleteMyAccount] subscription cleanup skipped:', e && e.message); }
+
   // Wipe every per-user subcollection that holds their data.
   async function deleteCollection(colRef) {
     let deleted = 0;
@@ -538,6 +571,22 @@ exports.requestDataExport = onCall(async (request) => {
   }
 
   return { ok: true, data: exportData };
+});
+
+/**
+ * revokeMySessions() — self-service "sign out of all devices". Revokes every
+ * refresh token for the caller, forcing a fresh sign-in everywhere. The client
+ * session guard (session.js) force-refreshes the ID token every 10 min and will
+ * bounce any still-open tab to the login page shortly after. Low-risk: only ever
+ * affects the caller's own account.
+ */
+exports.revokeMySessions = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  await rateLimitCaller(admin.firestore(), request,
+    { action: 'revokeMySessions', max: 5, windowSec: 3600 });
+  await admin.auth().revokeRefreshTokens(uid);
+  return { ok: true };
 });
 
 /**
@@ -720,7 +769,7 @@ exports.sendContactEmail = onCall(
     const db = admin.firestore();
     const data = request.data || {};
     const companyId = (data.companyId || '').toString().trim();
-    const contactId = (data.contactId || '').toString().trim();
+    const contactId = safeId(data.contactId, 'contactId');
     const subject = (data.subject || '').toString().trim();
     const bodyHtml = (data.bodyHtml || '').toString();
     const bodyText = (data.bodyText || '').toString();
@@ -1067,12 +1116,15 @@ exports.shareEventToContacts = onCall(
     const db = admin.firestore();
     const data = request.data || {};
     const companyId = (data.companyId || '').toString().trim();
-    const eventId = (data.eventId || '').toString().trim();
+    const eventId = safeId(data.eventId, 'eventId');
     const customMessage = (data.message || '').toString().slice(0, 1000);
     const recipientFilter = data.recipientFilter || { mode: 'all_contacts' };
     if (!companyId || !eventId) throw new HttpsError('invalid-argument', 'companyId and eventId are required.');
 
     await assertCompanyAdmin(db, companyId, request);
+
+    // Bulk email — throttle to bound cost/abuse from a rogue or compromised admin.
+    await rateLimitCaller(db, request, { action: 'shareEventToContacts', max: 10, windowSec: 3600 });
 
     const eventSnap = await db.collection('events').doc(eventId).get();
     if (!eventSnap.exists) throw new HttpsError('not-found', 'Event not found.');
@@ -1199,8 +1251,11 @@ async function upsertEventContact(db, companyId, event, name, email, ownerUid, e
 
 exports.registerForEvent = onCall(async (request) => {
   const db = admin.firestore();
+  // Public endpoint — throttle by uid/IP to bound fake-registration + CRM
+  // contact spam (each call can create a registration + CRM contact/activity).
+  await rateLimitCaller(db, request, { action: 'registerForEvent', max: 20, windowSec: 600 });
   const data = request.data || {};
-  const eventId = (data.eventId || '').toString().trim();
+  const eventId = safeId(data.eventId, 'eventId');
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 200);
   const phone = (data.phone || '').toString().trim().slice(0, 40);
@@ -1345,7 +1400,7 @@ exports.registerCourseInterest = onCall(async (request) => {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
 
   const data = request.data || {};
-  const slug = (data.slug || '').toString().trim().slice(0, 80);
+  const slug = safeId(data.slug, 'slug').slice(0, 80);
   const title = (data.title || '').toString().trim().slice(0, 120) || slug;
   if (!slug) throw new HttpsError('invalid-argument', 'A course slug is required.');
 
@@ -1523,20 +1578,26 @@ exports.sendgridEventWebhook = onRequest(
       // Get raw body for signature verification. Firebase Functions v2 provides req.rawBody.
       const rawBody = req.rawBody ? Buffer.from(req.rawBody) : Buffer.from(JSON.stringify(req.body || []));
 
-      // Webhook signing is optional. Read from env if set; otherwise accept unsigned.
+      // Signature verification is MANDATORY and fails closed. This endpoint
+      // writes into per-tenant campaign/contact records using IDs carried in
+      // the payload (companyId/campaignId/contactId), so an unsigned request
+      // would let anyone on the internet forge analytics or inject activity
+      // rows into any company's data. If SENDGRID_WEBHOOK_KEY is unset, we
+      // reject rather than trust the body. (Configure the Signed Event Webhook
+      // verification key in the SendGrid dashboard and set the secret.)
       const webhookKey = (process.env.SENDGRID_WEBHOOK_KEY || '').trim();
-
-      if (webhookKey && webhookKey.trim()) {
-        const signature = req.get('X-Twilio-Email-Event-Webhook-Signature');
-        const timestamp = req.get('X-Twilio-Email-Event-Webhook-Timestamp');
-        const ok = verifySignature(webhookKey, rawBody, signature, timestamp);
-        if (!ok) {
-          console.warn('[webhook] signature invalid — ignoring payload');
-          res.status(200).send('ok');
-          return;
-        }
-      } else {
-        console.warn('[webhook] SENDGRID_WEBHOOK_KEY not set — accepting without signature verification');
+      if (!webhookKey) {
+        console.warn('[webhook] SENDGRID_WEBHOOK_KEY not set — rejecting unsigned payload');
+        res.status(503).send('webhook not configured');
+        return;
+      }
+      const signature = req.get('X-Twilio-Email-Event-Webhook-Signature');
+      const timestamp = req.get('X-Twilio-Email-Event-Webhook-Timestamp');
+      const ok = verifySignature(webhookKey, rawBody, signature, timestamp);
+      if (!ok) {
+        console.warn('[webhook] signature invalid — rejecting payload');
+        res.status(403).send('invalid signature');
+        return;
       }
 
       const events = Array.isArray(req.body) ? req.body : [];
@@ -1787,7 +1848,9 @@ exports.getLeaderboard = onCall(async (request) => {
     const u = d.data() || {};
     return {
       uid: d.id,
-      displayName: u.displayName || u.email || 'Unknown',
+      // Never fall back to the raw email — that leaks addresses to every other
+      // member. Use the display name or a neutral label.
+      displayName: u.displayName || 'Member',
       avatarUrl: u.avatarUrl || null,
       statsPoints: Number(u.statsPoints || 0),
       statsWeekPoints: Number(u.statsWeekPoints || 0)
@@ -2238,6 +2301,9 @@ exports.searchMembers = onCall(async (request) => {
   const callerUid = request.auth && request.auth.uid;
   if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
 
+  // Reads up to 500 docs per call — throttle to bound read-amplification DoS.
+  await rateLimitCaller(admin.firestore(), request, { action: 'searchMembers', max: 60, windowSec: 60 });
+
   const data = request.data || {};
   const q = (data.query || '').toString().trim().toLowerCase();
   if (!q) return { ok: true, results: [] };
@@ -2261,7 +2327,9 @@ exports.searchMembers = onCall(async (request) => {
     const u = doc || {};
     pool.set(uid, {
       uid,
-      displayName: u.displayName || u.email || 'Unknown',
+      // Never fall back to the raw email — that leaks addresses to every other
+      // member. Use the display name or a neutral label.
+      displayName: u.displayName || 'Member',
       avatarUrl: u.avatarUrl || null
     });
   }
@@ -2398,7 +2466,7 @@ exports.acceptCommunityInvite = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
 
-  const token = (request.data && request.data.token || '').toString().trim();
+  const token = safeId(request.data && request.data.token, 'token');
   if (!token) throw new HttpsError('invalid-argument', 'Token is required.');
 
   const db = admin.firestore();
@@ -2460,6 +2528,9 @@ const SEARCH_POSTS_RESULTS = 10;     // results returned
 exports.searchPosts = onCall(async (request) => {
   const callerUid = request.auth && request.auth.uid;
   if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  // Reads up to 200 docs per call — throttle to bound read-amplification DoS.
+  await rateLimitCaller(admin.firestore(), request, { action: 'searchPosts', max: 60, windowSec: 60 });
 
   const data = request.data || {};
   const q = (data.query || '').toString().trim().toLowerCase();
@@ -2584,7 +2655,7 @@ function effectivePriceDollars(course) {
 exports.enrollFree = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
-  const slug = String((request.data && request.data.slug) || '').trim();
+  const slug = safeId(request.data && request.data.slug, 'slug');
   if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
 
   const db = admin.firestore();
@@ -2622,7 +2693,15 @@ exports.enrollFree = onCall(async (request) => {
 exports.createCheckoutSession = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
-  const slug = String((request.data && request.data.slug) || '').trim();
+  // Staged email-verification enforcement: require a verified email before a
+  // purchase. Google sign-ins are auto-verified; email/password users must click
+  // the link (sent on signup). This gates only NEW sensitive actions — it never
+  // blocks login or access to courses a member already owns.
+  if (!(request.auth.token && request.auth.token.email_verified)) {
+    throw new HttpsError('failed-precondition',
+      'Please verify your email before purchasing. Check your inbox for the verification link.');
+  }
+  const slug = safeId(request.data && request.data.slug, 'slug');
   if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
 
   // Throttle checkout session creation: 15 per user per 10 minutes.
@@ -2708,8 +2787,8 @@ exports.createCheckoutSession = onCall(async (request) => {
 
 // stripeWebhook — enrolls buyers after checkout and revokes subscription
 // access on cancellation. Configure the endpoint in the Stripe dashboard to
-// send: checkout.session.completed, customer.subscription.deleted,
-// invoice.payment_failed.
+// send: checkout.session.completed, customer.subscription.updated,
+// customer.subscription.deleted, invoice.payment_failed.
 exports.stripeWebhook = onRequest(
   { cors: false, invoker: 'public' },
   async (req, res) => {
@@ -2863,6 +2942,33 @@ exports.stripeWebhook = onRequest(
               .set({ status: 'canceled' }, { merge: true });
           }
         }
+      } else if (event.type === 'customer.subscription.updated') {
+        // Reflect a pending cancellation (cancel_at_period_end), a resume, or a
+        // recovery on the member's purchase doc. Actual access removal happens
+        // later via customer.subscription.deleted — we never touch
+        // enrolledCourseSlugs here.
+        const sub = event.data.object;
+        const idx = await db.collection('stripeSubscriptions').doc(String(sub.id)).get();
+        const meta = idx.exists ? idx.data() : (sub.metadata && sub.metadata.uid ? sub.metadata : null);
+        if (meta && meta.uid && meta.sessionId) {
+          const cpe = sub.current_period_end
+            || (sub.items && sub.items.data && sub.items.data[0] && sub.items.data[0].current_period_end)
+            || null;
+          let patch;
+          if (sub.cancel_at_period_end) {
+            patch = {
+              status: 'cancel_pending',
+              cancelAtPeriodEnd: true,
+              currentPeriodEnd: cpe ? admin.firestore.Timestamp.fromMillis(cpe * 1000) : null
+            };
+          } else if (sub.status === 'past_due' || sub.status === 'unpaid') {
+            patch = { status: 'past_due', cancelAtPeriodEnd: false };
+          } else {
+            patch = { status: 'active', cancelAtPeriodEnd: false };
+          }
+          await db.collection('users').doc(meta.uid).collection('purchases').doc(meta.sessionId)
+            .set(patch, { merge: true });
+        }
       } else if (event.type === 'invoice.payment_failed') {
         const invoice = event.data.object;
         const subId = invoice.subscription;
@@ -2889,6 +2995,86 @@ exports.stripeWebhook = onRequest(
   }
 );
 
+// cancelSubscription — member-facing: schedule the caller's own subscription to
+// cancel at the end of the current paid period. Ownership is verified against the
+// stripeSubscriptions index so a member can only touch their own subscription.
+// Access is removed later by the customer.subscription.deleted webhook; here we
+// only flip cancel_at_period_end and mirror the pending state onto the purchase.
+exports.cancelSubscription = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const subscriptionId = safeId(request.data && request.data.subscriptionId, 'subscriptionId');
+  if (!subscriptionId) throw new HttpsError('invalid-argument', 'subscriptionId is required.');
+
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'cancelSubscription', max: 10, windowSec: 600 });
+
+  const stripe = getStripe();
+  if (!stripe) throw new HttpsError('failed-precondition', 'Billing isn\'t configured yet.');
+
+  const idxSnap = await db.collection('stripeSubscriptions').doc(subscriptionId).get();
+  if (!idxSnap.exists || idxSnap.data().uid !== uid) {
+    throw new HttpsError('permission-denied', 'You can only manage your own subscription.');
+  }
+  const meta = idxSnap.data();
+
+  let sub;
+  try {
+    sub = await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+  } catch (e) {
+    console.warn('[cancelSubscription] stripe update failed:', e && e.message);
+    throw new HttpsError('internal', 'Could not cancel the subscription — please try again.');
+  }
+
+  const cpe = sub.current_period_end
+    || (sub.items && sub.items.data && sub.items.data[0] && sub.items.data[0].current_period_end)
+    || null;
+  if (meta.sessionId) {
+    await db.collection('users').doc(uid).collection('purchases').doc(meta.sessionId).set({
+      status: 'cancel_pending',
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: cpe ? admin.firestore.Timestamp.fromMillis(cpe * 1000) : null
+    }, { merge: true });
+  }
+  return { ok: true, cancelAt: cpe };
+});
+
+// resumeSubscription — member-facing: undo a pending cancellation before the
+// period ends. Same ownership check as cancelSubscription.
+exports.resumeSubscription = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const subscriptionId = safeId(request.data && request.data.subscriptionId, 'subscriptionId');
+  if (!subscriptionId) throw new HttpsError('invalid-argument', 'subscriptionId is required.');
+
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'resumeSubscription', max: 10, windowSec: 600 });
+
+  const stripe = getStripe();
+  if (!stripe) throw new HttpsError('failed-precondition', 'Billing isn\'t configured yet.');
+
+  const idxSnap = await db.collection('stripeSubscriptions').doc(subscriptionId).get();
+  if (!idxSnap.exists || idxSnap.data().uid !== uid) {
+    throw new HttpsError('permission-denied', 'You can only manage your own subscription.');
+  }
+  const meta = idxSnap.data();
+
+  try {
+    await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: false });
+  } catch (e) {
+    console.warn('[resumeSubscription] stripe update failed:', e && e.message);
+    throw new HttpsError('internal', 'Could not resume the subscription — please try again.');
+  }
+
+  if (meta.sessionId) {
+    await db.collection('users').doc(uid).collection('purchases').doc(meta.sessionId).set({
+      status: 'active',
+      cancelAtPeriodEnd: false
+    }, { merge: true });
+  }
+  return { ok: true };
+});
+
 // syncCoupon — mirrors a coupons/{code} doc into a Stripe Coupon +
 // Promotion Code so it's redeemable on the checkout page. Admin/owner only.
 exports.syncCoupon = onCall(async (request) => {
@@ -2902,7 +3088,7 @@ exports.syncCoupon = onCall(async (request) => {
       'Stripe isn\'t configured yet — set STRIPE_SECRET_KEY first.');
   }
 
-  const code = String((request.data && request.data.code) || '').trim().toUpperCase();
+  const code = safeId(request.data && request.data.code, 'code').toUpperCase();
   if (!code) throw new HttpsError('invalid-argument', 'code is required.');
   const ref = db.collection('coupons').doc(code);
   const snap = await ref.get();
@@ -2943,7 +3129,7 @@ exports.syncCoupon = onCall(async (request) => {
 
 // recordAffiliateClick — public, best-effort click counter for ?ref= visits.
 exports.recordAffiliateClick = onCall(async (request) => {
-  const code = String((request.data && request.data.code) || '').trim().toUpperCase();
+  const code = safeId(request.data && request.data.code, 'code').toUpperCase();
   if (!code || code.length > 32) return { ok: false };
   const db = admin.firestore();
   // Throttle click inflation: 30 clicks per IP per 10 minutes per code.
@@ -2977,7 +3163,7 @@ exports.markAffiliatePaid = onCall(async (request) => {
   if (!(await isAdminCaller(db, request))) {
     throw new HttpsError('permission-denied', 'Admin or owner role required.');
   }
-  const code = String((request.data && request.data.code) || '').trim().toUpperCase();
+  const code = safeId(request.data && request.data.code, 'code').toUpperCase();
   if (!code) throw new HttpsError('invalid-argument', 'code is required.');
 
   const affRef = db.collection('affiliates').doc(code);
@@ -3132,6 +3318,8 @@ exports.sendSms = onCall(
     if (!companyId || !contactId || !body) {
       throw new HttpsError('invalid-argument', 'companyId, contactId and body are required.');
     }
+    safeId(companyId, 'companyId');
+    safeId(contactId, 'contactId');
     await assertCompanyAdmin(db, companyId, request);
 
     // Throttle outbound SMS: 100 per admin per 10 minutes.
@@ -3305,8 +3493,10 @@ exports.twilioStatusWebhook = onRequest(
 // registerProductInterest({ productId, name, email, phone, consent })
 exports.registerProductInterest = onCall(async (request) => {
   const db = admin.firestore();
+  // Public endpoint — throttle by uid/IP to bound CRM contact spam.
+  await rateLimitCaller(db, request, { action: 'registerProductInterest', max: 20, windowSec: 600 });
   const data = request.data || {};
-  const productId = (data.productId || '').toString().trim();
+  const productId = safeId(data.productId, 'productId');
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
   const phone = (data.phone || '').toString().trim().slice(0, 40) || null;
@@ -3362,6 +3552,8 @@ exports.registerProductInterest = onCall(async (request) => {
 // joinEarlyAccess({ name, email, consent }) — general "future products" list.
 exports.joinEarlyAccess = onCall(async (request) => {
   const db = admin.firestore();
+  // Public endpoint — throttle by uid/IP to bound CRM contact spam.
+  await rateLimitCaller(db, request, { action: 'joinEarlyAccess', max: 20, windowSec: 600 });
   const data = request.data || {};
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
@@ -3444,7 +3636,7 @@ exports.onProductWritten = onDocumentWritten(
 exports.notifyProductInterest = onCall({ secrets: [sendgridKey] }, async (request) => {
   const db = admin.firestore();
   if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admin or owner role required.');
-  const productId = (request.data && request.data.productId || '').toString();
+  const productId = safeId(request.data && request.data.productId, 'productId');
   const snap = await db.collection('products').doc(productId).get();
   if (!snap.exists) throw new HttpsError('not-found', 'Product not found.');
   const n = await sendProductLaunchEmails(db, productId, snap.data());

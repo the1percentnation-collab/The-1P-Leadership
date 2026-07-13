@@ -27,6 +27,48 @@ import {
   collection, doc, query, where, orderBy, limit, onSnapshot, updateDoc
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
+import { sendEmailVerification } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+// ────────────────────────────────────────────────────────────────
+// Email-verification banner (R3). Non-blocking nudge shown on authed
+// pages when the signed-in user hasn't verified their email yet. It
+// never gates access — sensitive actions (checkout, posting) are gated
+// server-side. Dismissible for the session.
+// ────────────────────────────────────────────────────────────────
+export function renderVerifyBanner() {
+  const user = auth && auth.currentUser;
+  if (!user || user.emailVerified) return;
+  if (sessionStorage.getItem('verifyBannerDismissed') === '1') return;
+  if (document.getElementById('verify-email-banner')) return;
+
+  const bar = document.createElement('div');
+  bar.id = 'verify-email-banner';
+  bar.setAttribute('role', 'status');
+  bar.style.cssText = 'position:sticky;top:0;z-index:9999;display:flex;align-items:center;gap:12px;justify-content:center;flex-wrap:wrap;padding:10px 16px;background:#8a6d00;color:#fff;font-size:14px;';
+  bar.innerHTML =
+    '<span>Please verify your email to unlock purchases and posting.</span>'
+    + '<button type="button" id="verify-resend-btn" class="btn btn-ghost" style="color:#fff;border-color:#fff;padding:4px 10px;">Resend email</button>'
+    + '<span id="verify-resend-status" style="opacity:.9;"></span>'
+    + '<button type="button" id="verify-dismiss-btn" aria-label="Dismiss" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;line-height:1;">&times;</button>';
+  document.body.prepend(bar);
+
+  const status = bar.querySelector('#verify-resend-status');
+  bar.querySelector('#verify-resend-btn').addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    status.textContent = 'Sending…';
+    try {
+      await sendEmailVerification(auth.currentUser);
+      status.textContent = '✓ Sent — check your inbox.';
+    } catch (err) {
+      status.textContent = 'Could not send — try again shortly.';
+      e.target.disabled = false;
+    }
+  });
+  bar.querySelector('#verify-dismiss-btn').addEventListener('click', () => {
+    sessionStorage.setItem('verifyBannerDismissed', '1');
+    bar.remove();
+  });
+}
 
 // ────────────────────────────────────────────────────────────────
 // Default link set
@@ -105,7 +147,7 @@ function avatarHtml(profile, size = 28) {
   const name = (profile && (profile.displayName || profile.authorName)) || '';
   const src = profile && (profile.avatarUrl || profile.authorAvatar);
   const s = `width:${size}px; height:${size}px; font-size:${Math.round(size * 0.38)}px;`;
-  if (src) return `<div class="c-avatar" style="${s}"><img src="${src}" alt="" loading="lazy"></div>`;
+  if (src) return `<div class="c-avatar" style="${s}"><img src="${escapeHtml(src)}" alt="" loading="lazy"></div>`;
   return `<div class="c-avatar c-avatar-initials" style="${s}">${initials(name)}</div>`;
 }
 
@@ -464,6 +506,9 @@ export function renderTopbar({
 } = {}) {
   const chip = document.getElementById(mountId);
   if (!chip || !user) return;
+
+  // Nudge unverified users to verify (non-blocking; safe to call repeatedly).
+  try { renderVerifyBanner(); } catch (e) { /* non-critical */ }
 
   // Privileged destinations render as dedicated buttons, so drop them from the
   // regular chip list to avoid a duplicate when the default link set is in use.

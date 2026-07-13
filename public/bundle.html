@@ -4,12 +4,7 @@
   <meta charset="UTF-8">
   <!-- Google Analytics 4 -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag("js", new Date());
-    gtag("config", "G-RBH536HRZE");
-  </script>
+  <script src="/js/ga.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bundle Deal — Book + Course | The One Percent Nation</title>
   <meta name="description" content="Get I Can't: Is Not A Strategy + the 8-module companion course together. The book gives you the map. The course gives you the journey.">
@@ -718,16 +713,6 @@
   </div>
 </footer>
 
-<script>
-  // FAQ accordion
-  document.querySelectorAll('.faq-question').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const item = btn.parentElement;
-      const wasOpen = item.classList.contains('open');
-      document.querySelectorAll('.faq-item.open').forEach(el => el.classList.remove('open'));
-      if (!wasOpen) item.classList.add('open');
-    });
-  });
-</script>
+<script src="/js/page-bundle.js"></script>
 </body>
 </html>

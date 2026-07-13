@@ -11,6 +11,15 @@ service firebase.storage {
       );
     }
 
+    // Is the caller enrolled in course `slug`? Reads the user's own doc; the
+    // enrolledCourseSlugs array is server-written and frozen against client
+    // self-writes (see firestore.rules), so it is a trustworthy entitlement
+    // source. Gates reads of paid lesson media (videos + attachments).
+    function isEnrolledInCourse(slug) {
+      return request.auth != null
+             && slug in firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.get('enrolledCourseSlugs', []);
+    }
+
     // courses/{slug}/images — inline lesson images inserted via the course
     // builder's editor. Shown to members (and on public sales pages), so
     // reads are public like product-images.
@@ -22,18 +31,20 @@ service firebase.storage {
     }
 
     // courses/{slug}/attachments — downloadable lesson resources
-    // (PDFs, docs, slides, sheets, zips, audio, images).
+    // (PDFs, docs, slides, sheets, zips, audio, images). Paid content:
+    // readable only by course admins and users enrolled in the course.
     match /courses/{slug}/attachments/{fileName} {
-      allow read: if request.auth != null;
+      allow read: if isCourseAdmin() || isEnrolledInCourse(slug);
       allow write: if isCourseAdmin()
                    && request.resource.size < 25 * 1024 * 1024
                    && request.resource.contentType.matches('application/pdf|application/msword|application/vnd\\.openxmlformats-officedocument\\..*|application/vnd\\.ms-excel|application/vnd\\.ms-powerpoint|text/csv|text/plain|application/zip|application/x-zip-compressed|image/.*|audio/.*');
     }
 
     // courses/{slug}/videos — uploaded lesson videos played via a native
-    // <video> tag in the course player.
+    // <video> tag in the course player. Paid content: readable only by course
+    // admins and users enrolled in the course.
     match /courses/{slug}/videos/{fileName} {
-      allow read: if request.auth != null;
+      allow read: if isCourseAdmin() || isEnrolledInCourse(slug);
       allow write: if isCourseAdmin()
                    && request.resource.size < 500 * 1024 * 1024
                    && request.resource.contentType.matches('video/(mp4|webm)');
