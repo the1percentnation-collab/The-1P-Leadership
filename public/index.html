@@ -589,7 +589,7 @@
     .about-visual-main.about-video-frame {
       /* Content sits in the middle 3:4 region of the 9:16 source; this ratio
          lets object-fit: cover crop the baked-in top/bottom black bars. */
-      aspect-ratio: 3/4; max-width: 340px; margin: 0 auto;
+      aspect-ratio: 3/4; max-width: 460px; margin: 0 auto;
     }
     .about-video {
       width: 100%; height: 100%; object-fit: cover; object-position: center;
@@ -598,13 +598,16 @@
     }
 
     /* Centered stacked About layout: label + heading, then video, then copy. */
-    .about-stack { max-width: 760px; margin: 0 auto; text-align: center; }
+    .about-stack { max-width: 1080px; margin: 0 auto; text-align: center; }
     .about-stack .section-desc {
-      max-width: 640px; margin: 32px auto 0;
+      max-width: 760px; margin: 32px auto 0;
     }
     .about-stack .about-visual { margin-top: 40px; }
+    /* Value cards spread into an even 3-across row to fill the width. */
     .about-stack .about-values {
-      text-align: left; max-width: 640px; margin: 40px auto 0;
+      text-align: left; max-width: 100%; margin: 48px auto 0;
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 20px; align-items: stretch;
     }
 
     /* ============================================================
@@ -1499,7 +1502,7 @@
       .hero-card { display: none; }
       .about-grid { grid-template-columns: 1fr; gap: 48px; }
       .about-visual { display: block; }
-      .about-visual-main.about-video-frame { max-width: min(340px, 78vw); }
+      .about-visual-main.about-video-frame { max-width: min(460px, 80vw); }
       .founder-grid { grid-template-columns: 1fr; gap: 40px; }
       .founder-photo-frame { max-width: 380px; margin: 0 auto; }
       .founder-photo-badge { left: 12px; }
@@ -1520,6 +1523,7 @@
     }
     @media (max-width: 768px) {
       :root { --nav-h: 72px; }
+      .about-stack .about-values { grid-template-columns: 1fr; max-width: 480px; }
       .nav-links { display: none; }
       .btn-cta-nav { display: none; }
       .nav-hamburger { display: flex; }
@@ -1833,7 +1837,7 @@
       <div class="about-visual fade-up fade-up-delay-2">
         <div class="about-visual-main about-video-frame">
           <div class="about-visual-backdrop"></div>
-          <video class="about-video" poster="/assets/leadership-story-poster.jpg" preload="metadata" controls playsinline>
+          <video class="about-video" poster="/assets/leadership-story-poster.jpg" preload="metadata" controls playsinline muted>
             <source src="/assets/leadership-story.mp4" type="video/mp4">
             Your browser does not support video playback.
           </video>
@@ -2373,6 +2377,23 @@ const countObserver = new IntersectionObserver((entries) => {
   });
 }, { threshold: 0.5 });
 document.querySelectorAll('.count-up').forEach(el => countObserver.observe(el));
+
+// Auto-play the About video when scrolled into view (muted per browser autoplay policy).
+const aboutVideo = document.querySelector('.about-video');
+if (aboutVideo && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const aboutVideoObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        aboutVideo.muted = true;          // guarantee autoplay is allowed
+        const p = aboutVideo.play();
+        if (p) p.catch(() => {});         // ignore if the browser still blocks it
+      } else {
+        aboutVideo.pause();
+      }
+    });
+  }, { threshold: 0.5 });                 // play when ~half in view, pause on leave
+  aboutVideoObserver.observe(aboutVideo);
+}
 
 // ─── BONUS: MAGNETIC BUTTONS ─────────────────────────────────
 // Buttons subtly follow cursor, snap back on leave
