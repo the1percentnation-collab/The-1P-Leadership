@@ -1460,6 +1460,8 @@
       transition: width 0.8s 1.4s cubic-bezier(0.16,1,0.3,1);
     }
     .hero-title-line.revealed { width: 200px; }
+    /* Founder photo shown under the hero heading on mobile only (see 1024px media query). */
+    .hero-mobile-photo { display: none; }
 
     /* Floating background shapes */
     .hero-float-shape {
@@ -1500,6 +1502,15 @@
     @media (max-width: 1024px) {
       .hero-inner { grid-template-columns: 1fr; }
       .hero-card { display: none; }
+      .hero-mobile-photo {
+        display: block; margin: 20px 0 28px;
+        aspect-ratio: 16/10; border-radius: 12px;
+        overflow: hidden; border: 1px solid var(--border);
+      }
+      .hero-mobile-photo img {
+        width: 100%; height: 100%;
+        object-fit: cover; object-position: center 30%; display: block;
+      }
       .about-grid { grid-template-columns: 1fr; gap: 48px; }
       .about-visual { display: block; }
       .about-visual-main.about-video-frame { max-width: min(460px, 80vw); }
@@ -1616,6 +1627,9 @@
         PURPOSE.
       </h1>
       <div class="hero-title-line" id="hero-line"></div>
+      <div class="hero-mobile-photo">
+        <img src="/assets/founder-stage-banner.jpg" alt="Anthony Brown speaking on stage">
+      </div>
       <p class="hero-sub">
         We help individuals and organizations break limiting beliefs, realign with purpose, and build the discipline to become one percent better — every single day.
       </p>
