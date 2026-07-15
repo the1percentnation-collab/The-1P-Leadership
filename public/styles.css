@@ -4843,6 +4843,33 @@ body.academy-course #course-workspace {
   color: rgba(255, 255, 255, 0.65);
 }
 
+/* Founder photo variant of the hero shape */
+.courses-hero-shape--photo {
+  justify-content: flex-end;
+  padding: 0;
+}
+.courses-hero-shape--photo .courses-hero-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+}
+.courses-hero-shape--photo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10,10,10,0) 45%, rgba(10,10,10,0.85) 100%);
+  z-index: 1;
+}
+.courses-hero-shape--photo .courses-hero-caption {
+  z-index: 2;
+  margin: 0 0 22px 0;
+  align-self: center;
+  text-align: center;
+}
+
 /* Hero entrance — text slides from the left, visual fades from the right.
    Honors reduced-motion. */
 .courses-hero-text .academy-eyebrow,
