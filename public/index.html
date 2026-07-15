@@ -1520,6 +1520,8 @@
       .book-section { grid-template-columns: 1fr; }
       .book-section::before { display: none; }
       .book-visual { display: none; }
+      .book-section--soon .book-visual { display: flex; margin-top: 8px; }
+      .book-section--soon .book-visual img { max-width: 340px; }
       .courses-grid { grid-template-columns: repeat(2, 1fr); }
       .impact-grid { grid-template-columns: 1fr; }
       .impact-card:first-child { border-radius: 8px 8px 0 0; }
@@ -1943,8 +1945,17 @@
       </div>
     </div>
 
-    <div class="book-reveal fade-up">
-      <img src="/assets/work-less-gain-more.jpg" alt="How To Work Less &amp; Gain More — a new book by Anthony Brown">
+    <div class="book-section fade-up book-section--soon">
+      <div>
+        <div class="book-eyebrow"><span class="tag">Coming Soon</span></div>
+        <div class="book-title">WORK <span class="red">LESS</span><br>&amp; GAIN MORE</div>
+        <p class="book-desc">Anthony Brown's next release is a practical playbook for working smarter — not harder. Learn to build freedom through focus and create a life of real impact and income, without the endless grind.</p>
+        <a href="#shop" class="btn-primary btn-lg">Get Your Copy →</a>
+        <div class="book-guarantee">A New Book by Anthony Brown — Coming Soon.</div>
+      </div>
+      <div class="book-visual">
+        <img src="/assets/work-less-gain-more.jpg" alt="Work Less &amp; Gain More by Anthony Brown" style="width:100%; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+      </div>
     </div>
   </div>
 </section>
