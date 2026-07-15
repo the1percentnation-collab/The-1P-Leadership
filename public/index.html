@@ -1853,7 +1853,7 @@
       <div class="about-visual fade-up fade-up-delay-2">
         <div class="about-visual-main about-video-frame">
           <div class="about-visual-backdrop"></div>
-          <video class="about-video" poster="/assets/leadership-story-poster.jpg" preload="metadata" controls playsinline muted loop>
+          <video class="about-video" poster="/assets/leadership-story-poster.jpg" preload="metadata" controls playsinline muted loop autoplay>
             <source src="/assets/leadership-story.mp4" type="video/mp4">
             Your browser does not support video playback.
           </video>
@@ -2404,9 +2404,12 @@ const countObserver = new IntersectionObserver((entries) => {
 }, { threshold: 0.5 });
 document.querySelectorAll('.count-up').forEach(el => countObserver.observe(el));
 
-// Auto-play the About video when scrolled into view (muted per browser autoplay policy).
+// Auto-play the About video (muted) when scrolled into view — works on mobile too.
 const aboutVideo = document.querySelector('.about-video');
 if (aboutVideo && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  // Required for inline muted autoplay on iOS/Android.
+  aboutVideo.muted = true;
+  aboutVideo.setAttribute('playsinline', '');
   const aboutVideoObserver = new IntersectionObserver((entries) => {
     entries.forEach(e => {
       if (e.isIntersecting) {
@@ -2417,7 +2420,7 @@ if (aboutVideo && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
         aboutVideo.pause();
       }
     });
-  }, { threshold: 0.5 });                 // play when ~half in view, pause on leave
+  }, { threshold: 0.25 });                // trigger even for a tall portrait video on mobile
   aboutVideoObserver.observe(aboutVideo);
 }
 
