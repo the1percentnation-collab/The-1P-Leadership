@@ -596,6 +596,56 @@
       display: block; position: relative; z-index: 1;
       background: var(--charcoal);
     }
+
+    /* ============================================================
+       MEET THE FOUNDER
+    ============================================================ */
+    #founder { background: var(--black); }
+    .founder-grid {
+      display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 72px; align-items: center;
+    }
+    .founder-visual { position: relative; }
+    .founder-photo-frame {
+      position: relative; border-radius: 10px; overflow: hidden;
+      border: 1px solid var(--border); aspect-ratio: 4/5;
+      box-shadow: 0 30px 70px rgba(0,0,0,0.55);
+    }
+    .founder-photo-frame img {
+      width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block;
+    }
+    .founder-photo-frame::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(180deg, rgba(230,3,6,0) 60%, rgba(230,3,6,0.14) 100%);
+    }
+    .founder-photo-badge {
+      position: absolute; left: -14px; bottom: 28px; z-index: 2;
+      background: var(--red); color: #fff; padding: 12px 20px; border-radius: 6px;
+      font-family: var(--font-display); font-size: 20px; letter-spacing: 0.04em;
+      box-shadow: 0 12px 30px rgba(230,3,6,0.35);
+    }
+    .founder-photo-badge small {
+      display: block; font-family: var(--font-mono); font-size: 9px;
+      letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.85; margin-top: 2px;
+    }
+    .founder-name {
+      font-family: var(--font-display); font-size: clamp(40px, 4.5vw, 64px);
+      letter-spacing: 0.02em; line-height: 0.95; color: var(--white); margin: 14px 0 6px;
+    }
+    .founder-role {
+      font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.16em;
+      text-transform: uppercase; color: var(--red); margin-bottom: 24px;
+    }
+    .founder-bio p {
+      font-size: 17px; font-weight: 300; line-height: 1.75; color: var(--gray-400);
+      margin-bottom: 18px;
+    }
+    .founder-bio p .accent { color: var(--white); font-weight: 400; }
+    .founder-signoff {
+      font-family: var(--font-display); font-size: 26px; letter-spacing: 0.04em;
+      color: var(--white); margin: 8px 0 28px;
+    }
+    .founder-signoff .red { color: var(--red); }
+    .founder-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
     .about-values { margin-top: 40px; display: flex; flex-direction: column; gap: 16px; }
     .about-value {
       display: flex; align-items: flex-start; gap: 16px;
@@ -1435,6 +1485,9 @@
       .about-grid { grid-template-columns: 1fr; gap: 48px; }
       .about-visual { display: block; }
       .about-visual-main.about-video-frame { max-width: min(340px, 78vw); }
+      .founder-grid { grid-template-columns: 1fr; gap: 40px; }
+      .founder-photo-frame { max-width: 380px; margin: 0 auto; }
+      .founder-photo-badge { left: 12px; }
       .book-section { grid-template-columns: 1fr; }
       .book-section::before { display: none; }
       .book-visual { display: none; }
@@ -1489,6 +1542,7 @@
       <li><a href="#impact">Programs</a></li>
       <li><a href="#courses">Courses</a></li>
       <li><a href="#about">About</a></li>
+      <li><a href="#founder">Founder</a></li>
       <li><a href="/events">Events</a></li>
       <li><a href="#community">Community</a></li>
       <li><a href="#shop">Shop</a></li>
@@ -1509,6 +1563,7 @@
   <a href="#impact" onclick="closeMobileMenu()">Programs</a>
   <a href="#courses" onclick="closeMobileMenu()">Courses</a>
   <a href="#about" onclick="closeMobileMenu()">About</a>
+  <a href="#founder" onclick="closeMobileMenu()">Founder</a>
   <a href="/events" onclick="closeMobileMenu()">Events</a>
   <a href="#community" onclick="closeMobileMenu()">Community</a>
   <a href="#shop" onclick="closeMobileMenu()">Shop</a>
@@ -1797,6 +1852,37 @@
               <div class="about-value-desc">Through mindset, structure, and consistent action, we focus on ownership over dependency and progress over perfection.</div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     MEET THE FOUNDER
+============================================================ -->
+<section id="founder" class="section-pad">
+  <div class="container">
+    <div class="founder-grid">
+      <div class="founder-visual fade-up">
+        <div class="founder-photo-frame">
+          <img src="/assets/founder-portrait.jpg" alt="Anthony Brown, Founder of The One Percent Nation">
+        </div>
+        <div class="founder-photo-badge">Anthony Brown<small>Founder &amp; Author</small></div>
+      </div>
+      <div>
+        <div class="section-label fade-up"><span class="tag">Meet the Founder</span></div>
+        <div class="founder-name fade-up fade-up-delay-1">THE MAN BEHIND<br>THE <span class="red">MOVEMENT.</span></div>
+        <div class="founder-role fade-up fade-up-delay-1">Founder · Speaker · Coach · Author of "I Can't"</div>
+        <div class="founder-bio fade-up fade-up-delay-2">
+          <p>Anthony Brown built The One Percent Nation on a single conviction: <span class="accent">success isn't a finish line — it's a discipline you build one percent at a time.</span></p>
+          <p>As a speaker, coach, and author of <em>I Can't: Is Not A Strategy</em>, he's spent his career helping individuals and organizations break through limiting beliefs, realign with purpose, and turn intention into consistent action. His approach bridges mindset and execution — because who you are should match how you operate.</p>
+          <p>What began as a personal commitment to growth has become a movement: a community of people redefining what it means to win, and becoming one percent better every single day.</p>
+        </div>
+        <div class="founder-signoff fade-up fade-up-delay-3">Redefining success. <span class="red">One percent at a time.</span></div>
+        <div class="founder-actions fade-up fade-up-delay-3">
+          <a href="#shop" class="btn-primary">Read His Book →</a>
+          <a href="/webinar.html" class="btn-outline">Join a Live Session</a>
         </div>
       </div>
     </div>
