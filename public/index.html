@@ -310,6 +310,30 @@
       content: '';
       position: absolute; top: -1px; left: 0; right: 0; height: 2px;
       background: linear-gradient(90deg, transparent, var(--red), transparent);
+      z-index: 2;
+    }
+    .hero-card-photo {
+      position: relative; margin: -32px -32px 4px;
+      aspect-ratio: 16/10; overflow: hidden;
+    }
+    .hero-card-photo img {
+      width: 100%; height: 100%; object-fit: cover; object-position: center 30%;
+      display: block;
+    }
+    .hero-card-photo::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(180deg, rgba(18,18,18,0) 40%, rgba(18,18,18,0.92) 100%);
+    }
+    .hero-card-photo-label {
+      position: absolute; left: 24px; bottom: 16px; z-index: 1;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .hero-card-photo-label span {
+      font-family: var(--font-display); font-size: 24px; letter-spacing: 0.04em; color: var(--white);
+    }
+    .hero-card-photo-label small {
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--red);
     }
     .hero-stat { display: flex; flex-direction: column; gap: 4px; }
     .hero-stat-val {
@@ -1526,6 +1550,13 @@
     </div>
 
     <div class="hero-card">
+      <div class="hero-card-photo">
+        <img src="/assets/founder-stage-banner.jpg" alt="Anthony Brown speaking on stage">
+        <div class="hero-card-photo-label">
+          <span>Anthony Brown</span>
+          <small>Founder · The One Percent Nation</small>
+        </div>
+      </div>
       <div class="hero-stat">
         <div class="hero-stat-val" style="font-size:34px; letter-spacing:0.01em; line-height:1.15;">
           <span style="color:var(--red);">Redefining</span> the meaning of success
@@ -1857,6 +1888,7 @@
       </div>
 
       <div class="poster-footer">
+        <img src="/assets/founder-signing.jpg" alt="Anthony Brown at a book signing" style="display:block; width:100%; max-width:420px; margin:0 auto 34px; aspect-ratio:16/10; object-fit:cover; object-position:center 25%; border-radius:8px; border:1px solid rgba(226,168,40,0.5); box-shadow:0 14px 40px rgba(0,0,0,0.45);">
         <div class="poster-byline">A New Book by Anthony Brown</div>
         <div class="poster-sub2">Strategies. Mindset. Freedom.<br>It's time to level up.</div>
         <div class="poster-banner">Stay Tuned. Big Things Are Coming.</div>
@@ -1930,6 +1962,13 @@
           <div class="webinar-detail-item">Live framework breakdowns and case studies</div>
           <div class="webinar-detail-item">Community accountability check-ins</div>
           <div class="webinar-detail-item">Replay available for registered members</div>
+        </div>
+        <div style="margin-top: 28px; display: flex; align-items: center; gap: 14px;">
+          <img src="/assets/founder-headshot-square.jpg" alt="Anthony Brown" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border-red); flex-shrink: 0;">
+          <div>
+            <div style="font-family: var(--font-display); font-size: 18px; letter-spacing: 0.03em; color: var(--white);">Hosted by Anthony Brown</div>
+            <div style="font-size: 12px; font-weight: 300; color: var(--gray-400);">Founder, The One Percent Nation</div>
+          </div>
         </div>
         <div style="margin-top: 32px; display: flex; gap: 14px; flex-wrap: wrap;">
           <a href="/webinar.html" class="btn-primary">Reserve My Spot →</a>
