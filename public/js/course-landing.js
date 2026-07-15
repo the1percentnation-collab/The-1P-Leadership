@@ -20,8 +20,8 @@ const root = () => document.getElementById('cl-root');
 const INSTRUCTOR = {
   name: 'Anthony Brown',
   title: 'Founder, The One Percent Nation · Author of I Can\'t',
-  bio: 'Anthony teaches the 1% method: redefining success, realigning purpose, and releasing ' +
-    'potential through small, disciplined, measurable daily shifts. Every course in the Academy ' +
+  bio: 'Anthony teaches the 1% method: redefining success and realigning purpose ' +
+    'through small, disciplined, measurable daily shifts. Every course in the Academy ' +
     'follows the same structure — learn the principle, rewire it into your life the same day, ' +
     'and measure the change.'
 };
