@@ -597,6 +597,16 @@
       background: var(--charcoal);
     }
 
+    /* Centered stacked About layout: label + heading, then video, then copy. */
+    .about-stack { max-width: 760px; margin: 0 auto; text-align: center; }
+    .about-stack .section-desc {
+      max-width: 640px; margin: 32px auto 0;
+    }
+    .about-stack .about-visual { margin-top: 40px; }
+    .about-stack .about-values {
+      text-align: left; max-width: 640px; margin: 40px auto 0;
+    }
+
     /* ============================================================
        MEET THE FOUNDER
     ============================================================ */
@@ -1809,8 +1819,13 @@
 ============================================================ -->
 <section id="about" class="section-pad">
   <div class="container">
-    <div class="about-grid">
-      <div class="about-visual fade-up">
+    <div class="about-stack">
+      <div class="section-label fade-up"><span class="tag">Our Mission</span></div>
+      <div class="section-title fade-up fade-up-delay-1">
+        MORE THAN<br>A <span class="red">BRAND.</span><br>A <span class="outline">MOVEMENT.</span>
+      </div>
+
+      <div class="about-visual fade-up fade-up-delay-2">
         <div class="about-visual-main about-video-frame">
           <div class="about-visual-backdrop"></div>
           <video class="about-video" poster="/assets/leadership-story-poster.jpg" preload="metadata" controls playsinline>
@@ -1818,19 +1833,13 @@
             Your browser does not support video playback.
           </video>
         </div>
-
       </div>
 
-      <div>
-        <div class="section-label fade-up"><span class="tag">Our Mission</span></div>
-        <div class="section-title fade-up fade-up-delay-1">
-          MORE THAN<br>A <span class="red">BRAND.</span><br>A <span class="outline">MOVEMENT.</span>
-        </div>
-        <p class="section-desc fade-up fade-up-delay-2" style="margin-bottom: 0;">
-          The One Percent is a purpose-driven coaching and leadership development brand built to redefine success. We help individuals and organizations who look successful on paper but feel misaligned break free from limiting beliefs and outdated metrics of achievement. We don't offer motivation for the moment — we provide clarity that lasts, bridging mindset and execution so who you are aligns with how you operate. Our philosophy is simple: become one percent better every day.
-        </p>
+      <p class="section-desc fade-up fade-up-delay-3">
+        The One Percent is a purpose-driven coaching and leadership development brand built to redefine success. We help individuals and organizations who look successful on paper but feel misaligned break free from limiting beliefs and outdated metrics of achievement. We don't offer motivation for the moment — we provide clarity that lasts, bridging mindset and execution so who you are aligns with how you operate. Our philosophy is simple: become one percent better every day.
+      </p>
 
-        <div class="about-values fade-up fade-up-delay-3">
+      <div class="about-values fade-up fade-up-delay-3">
           <div class="about-value">
             <div class="about-value-icon">🎯</div>
             <div>
@@ -1853,7 +1862,6 @@
             </div>
           </div>
         </div>
-      </div>
     </div>
   </div>
 </section>
