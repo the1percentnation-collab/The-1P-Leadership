@@ -522,9 +522,26 @@ export function renderTopbar({
   if (ddBtn && adminBtns.length) {
     const MENU_ID = 'c-admin-dropdown-menu';
 
+    // Taps on the menu itself must NOT tear it down: on touch devices the
+    // document-level touchend fires before the browser synthesizes the click,
+    // and removing the tapped <a> at that point cancels the navigation — the
+    // menu links would silently do nothing on mobile.
+    const onOutside = (e) => {
+      const m = document.getElementById(MENU_ID);
+      if (!m) { unbindOutside(); return; }
+      if (m.contains(e.target) || ddBtn.contains(e.target)) return;
+      closeMenu();
+    };
+
+    const unbindOutside = () => {
+      document.removeEventListener('click', onOutside);
+      document.removeEventListener('touchend', onOutside);
+    };
+
     const closeMenu = () => {
       const m = document.getElementById(MENU_ID);
       if (m) m.remove();
+      unbindOutside();
     };
 
     const openMenu = () => {
@@ -541,8 +558,8 @@ export function renderTopbar({
       // Attach outside-click dismissal after this tick so the opening tap
       // doesn't immediately trigger it on mobile.
       setTimeout(() => {
-        document.addEventListener('click', closeMenu, { once: true });
-        document.addEventListener('touchend', closeMenu, { once: true, passive: true });
+        document.addEventListener('click', onOutside);
+        document.addEventListener('touchend', onOutside, { passive: true });
       }, 0);
     };
 
