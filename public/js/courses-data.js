@@ -110,7 +110,13 @@ export function priceInfo(course) {
 // `courses/{slug}/modules`.
 const CODE_MODULE_META = {
   '1p-clc': async () => (await import('./modules.js')).MODULES,
-  'icant': async () => (await import('./icant-course.js')).MODULES
+  'icant': async () => (await import('./icant-course.js')).MODULES,
+  // Book course: expose each chapter's `part` (e.g. "Chapter One") as the pillar
+  // label so the roadmap reads like a table of contents.
+  'icant-book': async () => {
+    const mods = (await import('./icant-book-course.js')).MODULES;
+    return mods.map((m) => ({ ...m, pillar: m.part }));
+  }
 };
 
 /**

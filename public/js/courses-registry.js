@@ -39,6 +39,89 @@ const METHOD_PARAGRAPH =
 
 export const COURSES = [
   {
+    slug: 'icant-book',
+    title: "I Can't: Read & Apply",
+    short: "I Can't (Book)",
+    subtitle: 'Read the book chapter by chapter — then apply it the same day.',
+    status: 'live',
+    eyebrow: 'The Book · 12 Chapters',
+    category: 'Mindset & Personal Growth',
+    price: 0,
+    priceLabel: 'Included',
+    priceNote: 'Read + apply the full book',
+    whatYoullLearn: [
+      'Read every part of the book — Introduction, all ten chapters, and the Conclusion — inside the platform.',
+      'Apply each chapter the same day with a Reflect + Do-the-Work exercise built right into the lesson.',
+      'See your limiting beliefs clearly, then challenge and reframe them with a repeatable method.',
+      'Understand the neuroscience of why beliefs stick — and how to rewire them on purpose.',
+      'Build the mindset, systems, resilience, and environment that make the change permanent.',
+      'Finish with an empowering-beliefs declaration and a first action you take within 48 hours.'
+    ],
+    requirements: [
+      'No prerequisites — the course meets you wherever you are starting.',
+      '15–20 minutes per chapter: read it here, then do the application while it is fresh.',
+      'A willingness to be honest on the page. Your answers save privately on your device.'
+    ],
+    includes: [
+      'The full book, chapter by chapter, readable in-app',
+      'A Read → Apply → Takeaways flow for every chapter',
+      'Application exercises that save automatically on your device',
+      'Progress tracking across all 12 chapters',
+      'Lifetime access on desktop and mobile'
+    ],
+    description: [
+      'This is the book itself, built to be read and worked. Each chapter of Anthony Brown\'s ' +
+      '<i>I Can\'t: Strategies To Overcoming Your Limiting Beliefs</i> becomes a lesson you read in the ' +
+      'platform, followed immediately by the application that turns the idea into a change in your life.',
+      'The method is simple and it is the whole point: read the chapter, then apply it the same day. ' +
+      'Knowledge that is not applied fades within weeks. Applied knowledge becomes who you are. Every ' +
+      'chapter ends with a Reflect prompt and a Do-the-Work exercise, plus the three takeaways to keep.',
+      'Move through it start to finish, or read alongside your own copy and use each Apply tab as your ' +
+      'workbook. Either way, you finish with your limiting beliefs named, challenged, and replaced — and ' +
+      'a declaration of the beliefs you now choose to live from.'
+    ],
+    curriculum: [
+      {
+        title: 'Introduction',
+        lessons: [
+          { t: 'The Power of Belief — read', d: '12 min' },
+          { t: 'Apply: name the lens you already see through', d: '10 min', kind: 'practice' }
+        ]
+      },
+      {
+        title: 'Part 1 — See the Beliefs (Chapters 1–3)',
+        lessons: [
+          { t: 'Ch 1 — Understanding Limiting Beliefs', d: '16 min' },
+          { t: 'Ch 2 — The Neuroscience of Belief', d: '15 min' },
+          { t: 'Ch 3 — Identify Your Limiting Beliefs', d: '14 min' },
+          { t: 'Apply after each chapter', d: '30 min', kind: 'practice' }
+        ]
+      },
+      {
+        title: 'Part 2 — Break & Rebuild (Chapters 4–7)',
+        lessons: [
+          { t: 'Ch 4 — Challenging and Reframing Beliefs', d: '16 min' },
+          { t: 'Ch 5 — The Power of Mindset Shifts', d: '13 min' },
+          { t: 'Ch 6 — Actionable Strategies for Change', d: '16 min' },
+          { t: 'Ch 7 — Building Resilience and Overcoming Setbacks', d: '14 min' }
+        ]
+      },
+      {
+        title: 'Part 3 — Become & Sustain (Chapters 8–10 + Conclusion)',
+        lessons: [
+          { t: 'Ch 8 — Embracing Empowering Beliefs', d: '14 min' },
+          { t: 'Ch 9 — Creating a Supportive Environment', d: '13 min' },
+          { t: 'Ch 10 — The Journey of Continuous Growth', d: '13 min' },
+          { t: 'Conclusion — Embracing Your Limitless Potential', d: '10 min' }
+        ]
+      }
+    ],
+    mount: async (opts) => {
+      const mod = await import('./icant-book-course.js');
+      if (mod && typeof mod.mount === 'function') await mod.mount(opts);
+    }
+  },
+  {
     slug: '1p-clc',
     title: '1P Certified Leader Coach',
     short: 'Leader Coach',
