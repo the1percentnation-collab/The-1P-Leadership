@@ -13,7 +13,7 @@
 
 import { loadCourses, getCourseBySlug, priceInfo, loadModulesMeta } from './courses-data.js';
 import { onAuthReady, currentUser } from './auth.js';
-import { renderTopbar } from './topbar.js';
+import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import { getRoleInfo } from './roles.js';
 import { firebaseReady, functions } from './firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
@@ -472,6 +472,10 @@ async function main() {
     }
     if (!(await ensureOnboarded(user))) return;
   }
+
+  // Header first — it carries the Admin/Owner menu and must survive a slow or
+  // failed load below.
+  renderTopbarEarly({ user: currentUser(), currentPage: null, links: [] });
 
   // Load courses + progress + enrollments before deciding what to render.
   try { await loadCourses(); } catch (e) {}

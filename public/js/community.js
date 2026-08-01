@@ -232,14 +232,27 @@ export async function getLatestPostTimestamp({ role = 'user', companyId = null }
   }
 }
 
+// The four seeded channels. This is a fallback/default list, NOT the set of
+// legal channels — members create more via `createChannelDoc`, and those live
+// at channels/{key}. Anything that validates a channel against this list will
+// silently reject every custom channel, which is exactly the bug that used to
+// drop posts into #general.
 export const CHANNEL_KEYS = ['general', 'wins', 'questions', 'announcements'];
+
+// A channel key is legal if it's well-formed — the same shape createChannelDoc
+// enforces when minting one. Whether the channel actually exists is settled by
+// the channels/{key} doc (and by the Firestore rules on post writes), not here.
+const CHANNEL_KEY_RE = /^[a-z0-9-]{2,32}$/;
+export function isValidChannelKey(key) {
+  return typeof key === 'string' && CHANNEL_KEY_RE.test(key);
+}
 
 export async function createPost({ text, imageFile, companyId = null, author, category = 'general', mentionedUids = [] }) {
   if (!firebaseReady) throw new Error('Firebase unavailable');
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
   if (!text || !text.trim()) throw new Error('Post text is required');
-  const cat = CHANNEL_KEYS.includes(category) ? category : 'general';
+  const cat = isValidChannelKey(category) ? category : 'general';
   const mentions = Array.isArray(mentionedUids)
     ? Array.from(new Set(mentionedUids.filter((u) => typeof u === 'string' && u))).slice(0, 10)
     : [];

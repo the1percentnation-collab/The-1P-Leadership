@@ -3833,12 +3833,36 @@ body.academy-hub {
   align-items: center;
   gap: 4px;
   flex: 1;
+  /* `safe` keeps the first tab reachable once the strip overflows — plain
+     `center` centres the overflow and makes the left end unscrollable. The
+     plain value stays as a fallback for engines that don't parse `safe`. */
   justify-content: center;
+  justify-content: safe center;
+  /* Let the tab strip shrink and scroll instead of shoving the user chip past
+     the right edge — an owner's chip (Admin menu, search, bell, avatar, name,
+     sign out) is wide enough to overflow the header at 1280px otherwise. */
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.academy-tabs::-webkit-scrollbar { display: none; }
+
+/* The chip is the last thing that should be sacrificed for space. */
+.academy-header-right { flex-shrink: 0; }
+
+/* On anything narrower than a wide desktop the spelled-out display name is the
+   cheapest thing to drop — the avatar already identifies the user, and the
+   ~130px it frees keeps the full tab strip visible next to an owner-sized chip
+   (which carries the Admin/Owner menu, search, bell, avatar and sign-out). */
+@media (max-width: 1400px) {
+  .academy-header-right .user-chip-email { display: none; }
 }
 
 .academy-tab {
   padding: 10px 16px;
   border-radius: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.02em;
@@ -4223,9 +4247,14 @@ body.academy-hub {
   .academy-header-right #btn-signout { padding: 6px 10px; font-size: 12px; }
   .academy-header-right .user-chip-link { font-size: 10px; padding: 4px 8px; }
   .academy-header-right .user-chip-admin { font-size: 10px; padding: 4px 10px; }
-  /* Row 2: tabs fill full width */
+  /* Row 2: tabs fill full width.
+     `flex-basis` — not just `width` — is what forces the wrap: the base rule sets
+     `flex: 1` (basis 0), and a flex item's base size wins over `width`, so the tabs
+     stayed on row 1 and squeezed the user chip (Admin/Owner menu, bell, sign-out)
+     down to a few pixels or off-screen entirely. */
   .academy-tabs {
     order: 3;
+    flex: 0 0 100%;
     width: 100%;
     overflow-x: auto;
     justify-content: flex-start;
@@ -4264,6 +4293,89 @@ body.academy-hub {
 
   /* Slightly smaller tabs so more fit before scrolling */
   .academy-tab { padding: 7px 10px; font-size: 11px; }
+}
+
+/* ── Dashboard: Invite & Earn ─────────────────────────────────────────── */
+.hub-referral { margin-bottom: 48px; }
+
+.referral-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.referral-lede {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--gray-light);
+  margin: 0;
+}
+.referral-lede b { color: var(--red); font-family: var(--font-mono); }
+
+.referral-link-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.referral-url {
+  flex: 1;
+  min-width: 0;
+  background: var(--charcoal);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--white);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 11px 12px;
+}
+.referral-url:focus { outline: none; border-color: var(--border-red); }
+
+.referral-link-row .btn { flex-shrink: 0; white-space: nowrap; }
+
+.referral-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 0;
+}
+.referral-stat { text-align: center; }
+.referral-stat-value {
+  font-family: var(--font-display, var(--font-sans));
+  font-weight: 600;
+  font-size: 24px;
+  color: var(--white);
+  line-height: 1;
+}
+.referral-stat-label {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+}
+
+.referral-note {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--gray-mid);
+}
+
+@media (max-width: 600px) {
+  .referral-card { padding: 18px 16px; gap: 14px; }
+  /* The link itself is unreadable at phone width and nobody types it by hand —
+     the Copy / Share buttons are the real controls, so give them the row. */
+  .referral-url { flex-basis: 100%; font-size: 11px; }
+  .referral-link-row .btn { flex: 1; }
+  .referral-stat-value { font-size: 20px; }
 }
 
 .academy-list {
