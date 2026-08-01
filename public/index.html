@@ -1533,7 +1533,8 @@
       .book-visual { display: none; }
       .book-section--soon .book-visual { display: flex; margin-top: 8px; }
       .book-section--soon .book-visual img { max-width: 340px; }
-      .book-visual--video { display: flex; margin-top: 24px; }
+      /* Stacked layout: lead with the trailer instead of burying it below the copy. */
+      .book-visual--video { display: flex; order: -1; margin-bottom: 32px; }
       .book-video-frame { max-width: min(320px, 70vw); margin: 0 auto; }
       .courses-grid { grid-template-columns: repeat(2, 1fr); }
       .impact-grid { grid-template-columns: 1fr; }
