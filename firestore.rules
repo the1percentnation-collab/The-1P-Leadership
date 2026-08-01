@@ -17,6 +17,17 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
 
+    // A post's `category` is a channel key. Members create channels at
+    // channels/{key}, so this can NOT be a fixed enum — hardcoding one silently
+    // rejected every post into a custom channel. Accept the four seeded keys
+    // unconditionally (their channel docs may not exist yet — the client falls
+    // back to a default list), plus any channel that really exists.
+    function isLegalChannel(data) {
+      return !('category' in data)
+        || data.category in ['general','wins','questions','announcements']
+        || exists(/databases/$(database)/documents/channels/$(data.category));
+    }
+
     // Is the caller an admin of company `cid`? We read the company doc and check adminUids.
     function isCompanyAdmin(cid) {
       return isSignedIn()
@@ -334,16 +345,13 @@ service cloud.firestore {
 
       // Create: authorUid must match auth.uid. Counters must start at 0. companyId must be
       // null (global) only if the caller is owner, otherwise it must match caller's own cid.
-      // Category (Phase 1 channels) must be one of the allowed enum values when present.
+      // Category (Phase 1 channels) must name a real channel when present — see isLegalChannel.
       // mentionedUids (Phase 3) must be a list of strings, capped at 10 to bound trigger fan-out.
       allow create: if isSignedIn()
         && request.resource.data.authorUid == request.auth.uid
         && request.resource.data.likeCount == 0
         && request.resource.data.commentCount == 0
-        && (
-          !('category' in request.resource.data)
-          || request.resource.data.category in ['general','wins','questions','announcements']
-        )
+        && isLegalChannel(request.resource.data)
         && (!('pinned' in request.resource.data) || request.resource.data.pinned == false)
         && (
           !('mentionedUids' in request.resource.data)
@@ -402,10 +410,7 @@ service cloud.firestore {
           && request.resource.data.commentCount == resource.data.commentCount
           && request.resource.data.authorUid == resource.data.authorUid
           && request.resource.data.get('pinned', false) == resource.data.get('pinned', false)
-          && (
-            !('category' in request.resource.data)
-            || request.resource.data.category in ['general','wins','questions','announcements']
-          )
+          && isLegalChannel(request.resource.data)
           && (
             !('mentionedUids' in request.resource.data)
             || (request.resource.data.mentionedUids is list

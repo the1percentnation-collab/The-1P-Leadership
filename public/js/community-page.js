@@ -9,7 +9,7 @@ import {
   listPosts, createPost, deletePost, toggleLike, hasLiked,
   listComments, addComment, deleteComment,
   getUserProfile, touchCommunityVisit,
-  listChannels, getPinnedPostForChannel, setPostPinned, createChannelDoc, CHANNEL_KEYS,
+  listChannels, getPinnedPostForChannel, setPostPinned, createChannelDoc, isValidChannelKey,
   getLeaderboard, getMyStats, levelFromPoints, levelProgress,
   subscribeToFeed, searchMembers, renderTextWithMentions,
   avatarHtml, fmtRelative, escapeHtml, linkify
@@ -17,9 +17,12 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
+// ?channel=<key> — accept any well-formed key, not just the four seeded ones,
+// or a link to a custom channel silently lands the reader in #general. main()
+// falls back to 'general' after listChannels() if the key doesn't resolve.
 function urlChannel() {
   const v = new URLSearchParams(location.search).get('channel');
-  return v && CHANNEL_KEYS.includes(v) ? v : null;
+  return v && isValidChannelKey(v) ? v : null;
 }
 
 const state = {
