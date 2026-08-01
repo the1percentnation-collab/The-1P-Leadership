@@ -23,6 +23,7 @@
 
 import { auth, db, functions, firebaseReady } from './firebase.js';
 import { signOut } from './auth.js';
+import { cachedRoleInfo } from './roles.js';
 import {
   collection, doc, query, where, orderBy, limit, onSnapshot, updateDoc
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -590,6 +591,22 @@ export function renderTopbar({
       try { activeTab.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (e) {}
     }
   });
+}
+
+/**
+ * First-paint topbar. Call this as soon as auth resolves, BEFORE any page data
+ * loads — the topbar carries the Admin/Owner menu, which on most pages is the
+ * only route into the consoles. Painting it last meant one slow or failed
+ * Firestore read left the header empty and the admin area unreachable.
+ *
+ * Role comes from the synchronous localStorage cache, so a returning admin gets
+ * the menu immediately. Pass `role: null` (the default for a first-ever load) and
+ * the menu simply appears when the page's own `renderTopbar` call lands with the
+ * authoritative role. Safe to call twice — `renderTopbar` is idempotent.
+ */
+export function renderTopbarEarly(opts = {}) {
+  const cached = cachedRoleInfo();
+  renderTopbar({ role: cached ? cached.role : null, ...opts });
 }
 
 /** Stop any active bell listener. Call from `beforeunload` or on signout. */

@@ -6,7 +6,7 @@ import { MODULES } from './modules.js';
 import { onAuthReady, currentUser } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { firebaseReady } from './firebase.js';
-import { renderTopbar } from './topbar.js';
+import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import { ensureOnboarded } from './onboarding-guard.js';
 import {
   getUserProfile,
@@ -335,7 +335,11 @@ async function main() {
     if (!(await ensureOnboarded(user))) return;
   }
 
-  await store.load();
+  // Paint the header before anything that touches the network. Everything below
+  // can be slow or fail; the Admin/Owner menu lives up here and must not go with it.
+  renderTopbarEarly({ user: currentUser(), currentPage: 'dashboard', links: [] });
+
+  try { await store.load(); } catch (e) { console.warn('[hub] store load failed', e); }
   try { await loadEnrollments(); } catch (e) {}
 
   let role = null;

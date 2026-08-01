@@ -10,7 +10,7 @@ import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { getUserProfile, escapeHtml, fmtRelative, uploadEventImage } from './community.js';
 import { STAGES } from './crm.js';
-import { renderTopbar } from './topbar.js';
+import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import {
   collection, doc, getDoc, getDocs, query, orderBy, where, limit,
   setDoc, deleteDoc, serverTimestamp
@@ -811,6 +811,10 @@ async function main() {
     renderList();
     return;
   }
+
+  // Header first — it carries the Admin/Owner menu and must survive a slow or
+  // failed load below.
+  renderTopbarEarly({ user: u, currentPage: null });
 
   const info = await getRoleInfo();
   const profile = (await getUserProfile(u.uid)) || {};

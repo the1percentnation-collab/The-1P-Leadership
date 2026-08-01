@@ -4,7 +4,7 @@ import { onAuthReady, currentUser } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { firebaseReady } from './firebase.js';
 import { getUserProfile } from './community.js';
-import { renderTopbar } from './topbar.js';
+import { renderTopbar, renderTopbarEarly } from './topbar.js';
 
 async function main() {
   if (firebaseReady) {
@@ -14,6 +14,10 @@ async function main() {
       return;
     }
   }
+
+  // Header first — it carries the Admin/Owner menu and must survive a slow or
+  // failed load below.
+  renderTopbarEarly({ user: currentUser(), currentPage: null, links: [] });
 
   let role = null;
   let profile = null;

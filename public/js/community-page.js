@@ -4,7 +4,7 @@ import { auth, firebaseReady } from './firebase.js';
 import { onAuthReady, createCommunityInvite } from './auth.js';
 import { ensureOnboarded } from './onboarding-guard.js';
 import { getRoleInfo } from './roles.js';
-import { renderTopbar, teardownTopbar } from './topbar.js';
+import { renderTopbar, renderTopbarEarly, teardownTopbar } from './topbar.js';
 import {
   listPosts, createPost, deletePost, toggleLike, hasLiked,
   listComments, addComment, deleteComment,
@@ -1396,6 +1396,10 @@ async function main() {
     return;
   }
   if (!(await ensureOnboarded(u))) return;
+
+  // Header first — it carries the Admin/Owner menu and must survive a slow or
+  // failed load below.
+  renderTopbarEarly({ user: u, currentPage: 'community' });
 
   const info = await getRoleInfo();
   state.role = info.role;

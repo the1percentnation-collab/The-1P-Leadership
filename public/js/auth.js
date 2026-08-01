@@ -3,6 +3,7 @@
 
 import { auth, db, functions, firebaseReady } from './firebase.js';
 import { startSessionGuard } from './session.js';
+import { clearRoleCache } from './roles.js';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -108,6 +109,8 @@ export async function resetPassword(email) {
 }
 
 export async function signOut() {
+  // Drop the cached role first — after sign-out there is no currentUser to key it by.
+  try { clearRoleCache(); } catch (e) {}
   return fbSignOut(auth);
 }
 
