@@ -34,6 +34,15 @@ const REFERRAL_POINTS = 10;
 // Secret: SendGrid API key. Webhook verification key is optional and read
 // lazily at runtime via the Secret Manager client — this avoids requiring
 // SENDGRID_WEBHOOK_KEY to exist at deploy time.
+//
+// NOTE: `defineSecret` is different — it is resolved by the CLI at DEPLOY time,
+// so every functions deploy calls secretmanager.googleapis.com. That API needs
+// billing enabled, which makes an active Blaze plan a hard prerequisite for
+// deploying at all, not just for running v2 functions. When billing lapsed in
+// June 2026 this was the exact failure: `403 ... requires billing to be
+// enabled` on SENDGRID_API_KEY, aborting the deploy. It used to take the
+// Firestore rules deploy down with it until the workflow was split — see
+// .github/workflows/firebase-deploy-backend.yml.
 const sendgridKey = defineSecret('SENDGRID_API_KEY');
 
 // Anthropic API key — read from runtime environment so deploys never block
