@@ -1,7 +1,7 @@
 // Community feed page — composer + paginated feed + comments + likes.
 
 import { auth, firebaseReady } from './firebase.js';
-import { onAuthReady, createCommunityInvite } from './auth.js';
+import { onAuthReady, createCommunityInvite, getMyReferralCode } from './auth.js';
 import { ensureOnboarded } from './onboarding-guard.js';
 import { getRoleInfo } from './roles.js';
 import { renderTopbar, renderTopbarEarly, teardownTopbar } from './topbar.js';
@@ -656,7 +656,6 @@ function renderGroupInfoCard() {
   const memberRows = state.leaderboard.slice(0, 8);
   const memberCount = state.leaderboard.length;
   const channelCount = state.channels.length;
-  const canInvite = state.role === 'owner' || state.role === 'admin';
 
   const avatarsHtml = memberRows.map((m) => `
     <a class="c-group-card-avatar" href="/profile.html?uid=${encodeURIComponent(m.uid)}"
@@ -691,36 +690,26 @@ function renderGroupInfoCard() {
         </div>
       </div>
       ${memberRows.length ? `<div class="c-group-card-avatars">${avatarsHtml}</div>` : ''}
-      ${canInvite
-        ? `<button class="btn btn-primary c-group-card-cta" id="c-group-card-invite">Invite members</button>`
-        : `<button class="btn btn-ghost c-group-card-cta" id="c-group-card-share">Share community</button>`}
+      <button class="btn btn-primary c-group-card-cta" id="c-group-card-invite">Invite members</button>
     </div>
   `;
 
   const inviteBtn = $('c-group-card-invite');
   if (inviteBtn) inviteBtn.addEventListener('click', () => openInviteModal());
 
-  const shareBtn = $('c-group-card-share');
-  if (shareBtn) shareBtn.addEventListener('click', async () => {
-    const url = location.origin + '/community.html';
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: 'The One Percent Academy', url });
-      } else if (navigator.clipboard) {
-        await navigator.clipboard.writeText(url);
-        shareBtn.textContent = 'Link copied ✓';
-        setTimeout(() => { shareBtn.textContent = 'Share community'; }, 1800);
-      }
-    } catch (e) { /* user cancelled or unsupported — no-op */ }
-  });
 }
 
-// ── Invite-link modal — owner / admin only. Calls createCommunityInvite
-// to mint a fresh server-side token, then renders the URL with a Copy
-// button. The modal is created on demand and removed on close.
+// ── Invite modal.
+//
+// Every member sees their own stable referral link and its running totals
+// (getMyReferralCode). Owners/admins additionally get the bulk-link generator
+// (createCommunityInvite), which mints a fresh multi-use token that is NOT
+// attributed to anyone — use it for campaigns, not for personal referrals.
+// The modal is created on demand and removed on close.
 function openInviteModal() {
   // Don't double-open.
   if (document.getElementById('c-invite-modal')) return;
+  const canBulk = state.role === 'owner' || state.role === 'admin';
 
   const overlay = document.createElement('div');
   overlay.className = 'c-modal-overlay';
@@ -729,9 +718,9 @@ function openInviteModal() {
     <div class="c-modal" role="dialog" aria-modal="true" aria-labelledby="c-invite-title">
       <button class="c-modal-close" id="c-invite-close" aria-label="Close">✕</button>
       <h2 id="c-invite-title" class="c-modal-title">Invite members</h2>
-      <p class="c-modal-sub">Generate a single-use-per-person link. Anyone with the link can sign up and join the community.</p>
+      <p class="c-modal-sub">Share your personal link. You earn points when someone joins through it and completes their profile.</p>
       <div class="c-modal-body" id="c-invite-body">
-        <button class="btn btn-primary" id="c-invite-generate">Generate invite link</button>
+        <div class="c-invite-meta">Loading your link…</div>
       </div>
     </div>
   `;
@@ -747,61 +736,102 @@ function openInviteModal() {
     }
   });
 
-  document.getElementById('c-invite-generate').addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    btn.textContent = 'Generating…';
+  function wireCopy(btnId, inputId, url) {
+    const btn = document.getElementById(btnId);
+    const input = document.getElementById(inputId);
+    if (!btn || !input) return;
+    btn.addEventListener('click', async () => {
+      try {
+        if (navigator.clipboard) await navigator.clipboard.writeText(url);
+        else { input.select(); document.execCommand('copy'); }
+        btn.textContent = 'Copied ✓';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
+      } catch (er) { input.select(); }
+    });
+  }
+
+  (async () => {
+    const body = document.getElementById('c-invite-body');
+    if (!body) return;
+
+    let info = null;
     try {
-      const result = await createCommunityInvite({});
-      const url = result.url;
-      const expires = result.expiresAt
-        ? new Date(result.expiresAt).toLocaleDateString()
-        : '';
-      const body = document.getElementById('c-invite-body');
-      body.innerHTML = `
-        <label class="c-invite-label">Your invite link</label>
-        <div class="c-invite-link-row">
-          <input id="c-invite-url" class="c-invite-url" type="text" readonly value="${escapeHtml(url)}">
-          <button class="btn btn-primary" id="c-invite-copy">Copy</button>
-        </div>
-        <div class="c-invite-meta">
-          ${expires ? `Expires ${escapeHtml(expires)}` : ''} · Up to ${result.usesAllowed || '—'} uses
-        </div>
-        <div class="c-invite-actions">
-          <button class="btn btn-ghost" id="c-invite-another">Generate another</button>
-        </div>
-      `;
-      const copyBtn = document.getElementById('c-invite-copy');
-      const urlInput = document.getElementById('c-invite-url');
-      urlInput.select();
-      copyBtn.addEventListener('click', async () => {
-        try {
-          if (navigator.clipboard) await navigator.clipboard.writeText(url);
-          else { urlInput.select(); document.execCommand('copy'); }
-          copyBtn.textContent = 'Copied ✓';
-          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1800);
-        } catch (er) { /* tolerated */ }
-      });
-      document.getElementById('c-invite-another').addEventListener('click', () => {
-        body.innerHTML = `<button class="btn btn-primary" id="c-invite-generate">Generate invite link</button>`;
-        body.querySelector('#c-invite-generate').addEventListener('click', (ev) => {
-          // Recurse — re-run the generator on the new button.
-          openInviteModal();
-          close();
-        });
-      });
+      info = await getMyReferralCode();
     } catch (err) {
-      const body = document.getElementById('c-invite-body');
-      body.innerHTML = `
-        <div class="auth-error">${escapeHtml(err.message || 'Could not generate invite.')}</div>
-        <button class="btn btn-ghost" id="c-invite-retry">Try again</button>
-      `;
-      body.querySelector('#c-invite-retry').addEventListener('click', () => {
-        openInviteModal();
-        close();
+      body.innerHTML = `<div class="auth-error">${escapeHtml(err.message || 'Could not load your invite link.')}</div>`;
+      return;
+    }
+
+    // Prefer the origin the member is browsing over the server's hardcoded
+    // APP_BASE_URL, so the shared link carries the domain they came in on.
+    const shareUrl = info.token
+      ? `${location.origin}/signup.html?invite=${encodeURIComponent(info.token)}`
+      : info.url;
+
+    const joined = Number(info.joined || 0);
+    const activated = Number(info.activated || 0);
+    body.innerHTML = `
+      <label class="c-invite-label">Your invite link</label>
+      <div class="c-invite-link-row">
+        <input id="c-invite-url" class="c-invite-url" type="text" readonly value="${escapeHtml(shareUrl)}">
+        <button class="btn btn-primary" id="c-invite-copy">Copy</button>
+      </div>
+      <div class="c-invite-meta">
+        ${joined} signed up · ${activated} completed profile · ${Number(info.pointsEarned || 0)} points earned
+      </div>
+      <div class="c-invite-meta">Worth ${Number(info.pointsPerReferral || 0)} points each, credited once they finish their profile.</div>
+      ${canBulk ? `
+        <div class="c-invite-actions">
+          <button class="btn btn-ghost" id="c-invite-bulk">Generate a bulk link →</button>
+        </div>
+      ` : ''}
+    `;
+
+    document.getElementById('c-invite-url').select();
+    wireCopy('c-invite-copy', 'c-invite-url', shareUrl);
+
+    const bulkBtn = document.getElementById('c-invite-bulk');
+    if (bulkBtn) {
+      bulkBtn.addEventListener('click', async () => {
+        bulkBtn.disabled = true;
+        bulkBtn.textContent = 'Generating…';
+        try {
+          const result = await createCommunityInvite({});
+          const expires = result.expiresAt
+            ? new Date(result.expiresAt).toLocaleDateString()
+            : '';
+          body.innerHTML = `
+            <label class="c-invite-label">Bulk invite link (not attributed to anyone)</label>
+            <div class="c-invite-link-row">
+              <input id="c-bulk-url" class="c-invite-url" type="text" readonly value="${escapeHtml(result.url)}">
+              <button class="btn btn-primary" id="c-bulk-copy">Copy</button>
+            </div>
+            <div class="c-invite-meta">
+              ${expires ? `Expires ${escapeHtml(expires)} · ` : ''}Up to ${result.usesAllowed || '—'} uses
+            </div>
+            <div class="c-invite-actions">
+              <button class="btn btn-ghost" id="c-invite-back">← Back to my link</button>
+            </div>
+          `;
+          document.getElementById('c-bulk-url').select();
+          wireCopy('c-bulk-copy', 'c-bulk-url', result.url);
+          document.getElementById('c-invite-back').addEventListener('click', () => {
+            close();
+            openInviteModal();
+          });
+        } catch (err) {
+          body.innerHTML = `
+            <div class="auth-error">${escapeHtml(err.message || 'Could not generate invite.')}</div>
+            <button class="btn btn-ghost" id="c-invite-retry">Try again</button>
+          `;
+          body.querySelector('#c-invite-retry').addEventListener('click', () => {
+            close();
+            openInviteModal();
+          });
+        }
       });
     }
-  });
+  })();
 }
 
 async function switchChannel(nextKey) {

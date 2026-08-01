@@ -132,6 +132,18 @@ export async function createCommunityInvite(opts = {}) {
   return res.data;
 }
 
+/**
+ * The signed-in member's own referral link + running totals.
+ * Returns { token, url, joined, activated, pointsEarned, pointsPerReferral }.
+ * The token is stable — the server mints it once and returns the same one
+ * forever, so a member's referrals never split across codes.
+ */
+export async function getMyReferralCode() {
+  const call = httpsCallable(functions, 'getMyReferralCode');
+  const res = await call({});
+  return res.data;
+}
+
 export async function bootstrapOwner() {
   const call = httpsCallable(functions, 'bootstrapOwner');
   const res = await call({});

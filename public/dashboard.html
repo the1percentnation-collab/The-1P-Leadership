@@ -100,6 +100,40 @@
       </div>
     </section>
 
+    <section id="hub-referral" class="hub-referral" hidden>
+      <div class="academy-section-head">
+        <h2>Invite &amp; Earn</h2>
+        <span class="academy-section-meta">Your referral link</span>
+      </div>
+      <div class="referral-card">
+        <p class="referral-lede">
+          Share this link with people you know. When someone joins through it and
+          completes their profile, you earn <b id="ref-per">—</b> points toward your
+          next level.
+        </p>
+        <div class="referral-link-row">
+          <input id="ref-url" class="referral-url" type="text" readonly aria-label="Your referral link" value="Loading…">
+          <button class="btn btn-primary" id="ref-copy" type="button">Copy</button>
+          <button class="btn btn-ghost" id="ref-share" type="button" hidden>Share</button>
+        </div>
+        <div class="referral-stats">
+          <div class="referral-stat">
+            <div class="referral-stat-value" id="ref-joined">—</div>
+            <div class="referral-stat-label">Signed up</div>
+          </div>
+          <div class="referral-stat">
+            <div class="referral-stat-value" id="ref-activated">—</div>
+            <div class="referral-stat-label">Completed profile</div>
+          </div>
+          <div class="referral-stat">
+            <div class="referral-stat-value" id="ref-points">—</div>
+            <div class="referral-stat-label">Points earned</div>
+          </div>
+        </div>
+        <div class="referral-note" id="ref-note"></div>
+      </div>
+    </section>
+
     <section class="academy-split">
       <div>
         <div class="academy-section-head">

@@ -3,7 +3,7 @@
 
 import { store } from './store.js';
 import { MODULES } from './modules.js';
-import { onAuthReady, currentUser } from './auth.js';
+import { onAuthReady, currentUser, getMyReferralCode } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { firebaseReady } from './firebase.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
@@ -325,6 +325,76 @@ async function renderCommunityList({ role, companyId }) {
   }
 }
 
+// ─── Invite & Earn ────────────────────────────────────────────────────────
+// The member's own referral link plus its running totals. Stays hidden until
+// the callable answers, so a failure here shows nothing rather than a broken
+// card — and it is never awaited by main().
+async function renderReferral() {
+  const sec = $('hub-referral');
+  if (!sec || !firebaseReady || !currentUser()) return;
+
+  let info;
+  try {
+    info = await getMyReferralCode();
+  } catch (e) {
+    console.warn('[hub] referral link unavailable', e);
+    return;
+  }
+  if (!info || !info.url) return;
+
+  // Build the link from the origin the member is actually on, so it carries
+  // whichever domain they're browsing rather than the server's hardcoded
+  // APP_BASE_URL. Falls back to the server's URL if the token is missing.
+  const shareUrl = info.token
+    ? `${location.origin}/signup.html?invite=${encodeURIComponent(info.token)}`
+    : info.url;
+
+  const per = Number(info.pointsPerReferral || 0);
+  const joined = Number(info.joined || 0);
+  const activated = Number(info.activated || 0);
+
+  $('ref-per').textContent = String(per);
+  $('ref-url').value = shareUrl;
+  $('ref-joined').textContent = String(joined);
+  $('ref-activated').textContent = String(activated);
+  $('ref-points').textContent = String(Number(info.pointsEarned || 0));
+
+  // Explain the gap between the two counts rather than leaving people to
+  // wonder why an invite they know landed hasn't scored yet.
+  const pending = Math.max(0, joined - activated);
+  $('ref-note').textContent = pending
+    ? `${pending} ${pending === 1 ? 'person has' : 'people have'} signed up but not finished their profile yet — points land once they do.`
+    : 'Points are awarded once someone you invited completes their profile.';
+
+  const urlInput = $('ref-url');
+  const copyBtn = $('ref-copy');
+  copyBtn.addEventListener('click', async () => {
+    try {
+      if (navigator.clipboard) await navigator.clipboard.writeText(shareUrl);
+      else { urlInput.select(); document.execCommand('copy'); }
+      copyBtn.textContent = 'Copied ✓';
+      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1800);
+    } catch (e) { urlInput.select(); }
+  });
+
+  // Native share sheet on phones — the primary way this link will actually move.
+  if (navigator.share) {
+    const shareBtn = $('ref-share');
+    shareBtn.hidden = false;
+    shareBtn.addEventListener('click', async () => {
+      try {
+        await navigator.share({
+          title: 'The One Percent Academy',
+          text: 'Join me in The One Percent Academy.',
+          url: shareUrl
+        });
+      } catch (e) { /* user dismissed the sheet */ }
+    });
+  }
+
+  sec.hidden = false;
+}
+
 async function main() {
   if (firebaseReady) {
     const user = await onAuthReady();
@@ -363,6 +433,7 @@ async function main() {
   renderEnrolledList();
   renderUserChip(currentUser(), role, { profile, hasNewCommunity });
   renderCommunityList({ role, companyId });
+  renderReferral(); // not awaited — the rest of the dashboard must not wait on it
 }
 
 main();

@@ -4295,6 +4295,89 @@ body.academy-hub {
   .academy-tab { padding: 7px 10px; font-size: 11px; }
 }
 
+/* ── Dashboard: Invite & Earn ─────────────────────────────────────────── */
+.hub-referral { margin-bottom: 48px; }
+
+.referral-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.referral-lede {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--gray-light);
+  margin: 0;
+}
+.referral-lede b { color: var(--red); font-family: var(--font-mono); }
+
+.referral-link-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.referral-url {
+  flex: 1;
+  min-width: 0;
+  background: var(--charcoal);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--white);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 11px 12px;
+}
+.referral-url:focus { outline: none; border-color: var(--border-red); }
+
+.referral-link-row .btn { flex-shrink: 0; white-space: nowrap; }
+
+.referral-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 0;
+}
+.referral-stat { text-align: center; }
+.referral-stat-value {
+  font-family: var(--font-display, var(--font-sans));
+  font-weight: 600;
+  font-size: 24px;
+  color: var(--white);
+  line-height: 1;
+}
+.referral-stat-label {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+}
+
+.referral-note {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--gray-mid);
+}
+
+@media (max-width: 600px) {
+  .referral-card { padding: 18px 16px; gap: 14px; }
+  /* The link itself is unreadable at phone width and nobody types it by hand —
+     the Copy / Share buttons are the real controls, so give them the row. */
+  .referral-url { flex-basis: 100%; font-size: 11px; }
+  .referral-link-row .btn { flex: 1; }
+  .referral-stat-value { font-size: 20px; }
+}
+
 .academy-list {
   background: var(--surface);
   border: 1px solid var(--border);

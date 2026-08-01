@@ -24,6 +24,13 @@ const FROM_NAME_DEFAULT = 'The One Percent Nation';
 const REPLY_TO = 'the1percentnation@gmail.com';
 const APP_BASE_URL = 'https://the-1p-leadership.web.app';
 
+// Member referral scoring. Deliberately modest against the level curve in the
+// Phase 2 block (level 5 = 400 points): at 10 points a referral is worth two
+// posts, so the leaderboard keeps measuring participation rather than contact
+// list size. Raise with care — this number is what decides whether the
+// community's top ranks are earned by showing up or by mass-inviting.
+const REFERRAL_POINTS = 10;
+
 // Secret: SendGrid API key. Webhook verification key is optional and read
 // lazily at runtime via the Secret Manager client — this avoids requiring
 // SENDGRID_WEBHOOK_KEY to exist at deploy time.
@@ -1437,6 +1444,18 @@ exports.submitOnboarding = onCall(async (request) => {
   }
   await userRef.set(profilePatch, { merge: true });
 
+  // 1b) First completion activates any referral that brought this member in.
+  // Points land here rather than at signup so a referrer is paid for members
+  // who actually show up, not for addresses that were typed into a form.
+  // Never allowed to block onboarding.
+  if (u.onboardingComplete !== true) {
+    try {
+      await creditReferralOnActivation(db, uid, u);
+    } catch (e) {
+      console.warn('[submitOnboarding] referral credit skipped:', e && e.message);
+    }
+  }
+
   // 2) Upsert into the CRM (best-effort).
   try {
     const companyId = await resolveAcademyCompanyId(db);
@@ -2373,6 +2392,7 @@ exports.createCommunityInvite = onCall(async (request) => {
 
   await db.collection('communityInvites').doc(token).set({
     token,
+    kind: 'admin',
     createdByUid: callerUid,
     createdByName: createdByName || 'Unknown',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -2421,29 +2441,178 @@ exports.acceptCommunityInvite = onCall(async (request) => {
     if (used >= allowed) {
       throw new HttpsError('resource-exhausted', 'Invite has no uses remaining.');
     }
+    // A member's own link must not credit themselves.
+    if (inv.createdByUid && inv.createdByUid === uid) {
+      throw new HttpsError('failed-precondition', 'You can\'t join with your own invite link.');
+    }
     const usedBy = Array.isArray(inv.usedBy) ? inv.usedBy : [];
     if (usedBy.includes(uid)) {
-      return { alreadyAccepted: true };
+      return { alreadyAccepted: true, inviterUid: inv.createdByUid || null };
     }
     tx.update(ref, {
       usesUsed: used + 1,
       usedBy: admin.firestore.FieldValue.arrayUnion(uid),
       lastAcceptedAt: admin.firestore.FieldValue.serverTimestamp()
     });
-    return { alreadyAccepted: false };
+    return { alreadyAccepted: false, inviterUid: inv.createdByUid || null };
   });
 
-  // Stamp the accepting user's doc with referral info so the inviter
-  // can be credited in future analytics. Best-effort.
+  // Stamp the accepting user's doc with referral info. `invitedByUid` is
+  // denormalized so the activation credit in submitOnboarding doesn't need a
+  // second lookup. Best-effort — the token alone is enough to recover from.
   try {
     await db.collection('users').doc(uid).set({
       invitedByToken: token,
+      invitedByUid: result.inviterUid || null,
       invitedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
   } catch (e) { /* tolerated */ }
 
-  return { ok: true, ...result };
+  // inviterUid stays server-side — the accepting user has no business knowing
+  // which account owns the link they followed.
+  const { inviterUid, ...clientResult } = result;
+  return { ok: true, ...clientResult };
 });
+
+// ────────────────────────────────────────────────────────────────
+// Member referral codes.
+//
+// Every member gets ONE stable invite token, minted on first request and
+// recorded at users/{uid}.referralToken so the same link comes back forever —
+// a fresh token per click would scatter one member's referrals across several
+// codes and break their score. The token is an ordinary communityInvites doc
+// tagged kind:'member', so /signup.html?invite=<token> and
+// acceptCommunityInvite work on it unchanged.
+//
+// Scoring is deliberately split from joining: the inviter earns
+// REFERRAL_POINTS when a referred member *activates* (finishes onboarding),
+// not when the account is created. Crediting at signup would pay out for
+// throwaway addresses, which is exactly how referral leaderboards get gamed.
+// ────────────────────────────────────────────────────────────────
+
+const MEMBER_INVITE_USES = 500;
+const MEMBER_INVITE_TTL_MS = 5 * 365 * 24 * 60 * 60 * 1000; // effectively no expiry
+
+/**
+ * getMyReferralCode() — any authenticated member.
+ * Returns { token, url, joined, activated, pointsEarned, pointsPerReferral },
+ * minting the caller's stable token on first call.
+ */
+exports.getMyReferralCode = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+  const invites = db.collection('communityInvites');
+
+  const userSnap = await userRef.get();
+  if (!userSnap.exists) {
+    throw new HttpsError('failed-precondition', 'Finish creating your account first.');
+  }
+  const u = userSnap.data() || {};
+
+  let token = (u.referralToken || '').toString().trim() || null;
+  let inviteSnap = token ? await invites.doc(token).get() : null;
+
+  if (!inviteSnap || !inviteSnap.exists) {
+    // Minting is the only expensive path, so it's the only one throttled —
+    // repeat panel loads on an existing code stay free.
+    await rateLimitCaller(db, request, { action: 'getMyReferralCode', max: 10, windowSec: 3600 });
+
+    let candidate = makeInviteToken();
+    for (let i = 0; i < 3; i++) {
+      const probe = await invites.doc(candidate).get();
+      if (!probe.exists) break;
+      candidate = makeInviteToken();
+    }
+
+    // Claim the token on the user doc transactionally so two concurrent calls
+    // can't hand the same member two different codes.
+    token = await db.runTransaction(async (tx) => {
+      const s = await tx.get(userRef);
+      const existing = s.exists ? ((s.data().referralToken || '').toString().trim() || null) : null;
+      if (existing) return existing;
+      tx.set(userRef, { referralToken: candidate }, { merge: true });
+      return candidate;
+    });
+
+    inviteSnap = await invites.doc(token).get();
+    if (!inviteSnap.exists) {
+      await invites.doc(token).set({
+        token,
+        kind: 'member',
+        createdByUid: uid,
+        createdByName: u.displayName || u.email || 'Member',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + MEMBER_INVITE_TTL_MS),
+        usesAllowed: MEMBER_INVITE_USES,
+        usesUsed: 0,
+        usedBy: [],
+        activatedCount: 0,
+        activatedBy: []
+      });
+      inviteSnap = await invites.doc(token).get();
+    }
+  }
+
+  const inv = inviteSnap.data() || {};
+  const activated = Number(inv.activatedCount || 0);
+  return {
+    ok: true,
+    token,
+    url: `${APP_BASE_URL}/signup.html?invite=${encodeURIComponent(token)}`,
+    joined: Number(inv.usesUsed || 0),
+    activated,
+    pointsEarned: activated * REFERRAL_POINTS,
+    pointsPerReferral: REFERRAL_POINTS
+  };
+});
+
+/**
+ * Credit the referrer once a member they invited finishes onboarding.
+ *
+ * Idempotent twice over — guarded by users/{uid}.referralCredited and by the
+ * invite doc's activatedBy array — so replaying it awards nothing. Returns the
+ * credited uid, or null when there was nothing to credit.
+ */
+async function creditReferralOnActivation(db, uid, userData) {
+  const u = userData || {};
+  if (u.referralCredited === true) return null;
+  const token = (u.invitedByToken || '').toString().trim();
+  if (!token) return null;
+
+  const inviteRef = db.collection('communityInvites').doc(token);
+  const userRef = db.collection('users').doc(uid);
+  const FV = admin.firestore.FieldValue;
+
+  const inviterUid = await db.runTransaction(async (tx) => {
+    const [invSnap, meSnap] = await Promise.all([tx.get(inviteRef), tx.get(userRef)]);
+    if (!invSnap.exists) return null;
+    if (meSnap.exists && meSnap.data().referralCredited === true) return null;
+
+    const inv = invSnap.data() || {};
+    const owner = inv.createdByUid || null;
+    if (!owner || owner === uid) return null; // no self-referral
+    const already = Array.isArray(inv.activatedBy) ? inv.activatedBy : [];
+    if (already.includes(uid)) return null;
+
+    tx.set(inviteRef, {
+      activatedCount: FV.increment(1),
+      activatedBy: FV.arrayUnion(uid),
+      lastActivatedAt: FV.serverTimestamp()
+    }, { merge: true });
+    tx.set(userRef, {
+      referralCredited: true,
+      referralCreditedAt: FV.serverTimestamp()
+    }, { merge: true });
+    return owner;
+  });
+
+  if (!inviterUid) return null;
+  await applyPointsDelta(db, inviterUid, REFERRAL_POINTS, { referralCount: 1 });
+  return inviterUid;
+}
 
 // ────────────────────────────────────────────────────────────────
 // Search (Stage 2 — topbar search overlay).
