@@ -1993,7 +1993,11 @@ async function notifyUser(db, recipientUid, notif, { typePrefKey } = {}) {
       fromAvatar: notif.fromAvatar || null,
       postId: notif.postId || null,
       commentId: notif.commentId || null,
+      // `category` is the channel key across the whole app — post notifications
+      // use it to deep-link, and channel-access notifications reuse it so the
+      // bell can offer Approve/Deny against the right channel.
       category: notif.category || null,
+      channelName: notif.channelName || null,
       preview: notif.preview || '',
       read: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -2054,9 +2058,20 @@ async function fanOutMentions(db, mentionedUids, ctx) {
 
 // Replace the Phase 2 onPostCreated to also fan out mention notifs, and
 // piggyback the activity timestamp on the user doc.
-exports.onPostCreated = onDocumentCreated(
-  { document: 'posts/{postId}' },
-  async (event) => {
+//
+// Each of the three community triggers is registered TWICE: once on the flat
+// `posts` collection (public channels) and once on `channels/{channelKey}/posts`
+// (private channels). Firestore triggers match a literal path, so without the
+// second registration a private-channel post would silently earn no points and
+// send no notifications. `channelKey` is null for the public path and is used to
+// resolve the parent post document.
+function postRefFor(db, channelKey, postId) {
+  return channelKey
+    ? db.collection('channels').doc(channelKey).collection('posts').doc(postId)
+    : db.collection('posts').doc(postId);
+}
+
+async function handlePostCreated(event, channelKey) {
     const snap = event.data;
     if (!snap) return;
     const post = snap.data() || {};
@@ -2086,13 +2101,19 @@ exports.onPostCreated = onDocumentCreated(
     } catch (err) {
       console.error('[onPostCreated] mention fan-out failed:', err && err.message);
     }
-  }
+}
+
+exports.onPostCreated = onDocumentCreated(
+  { document: 'posts/{postId}' },
+  (event) => handlePostCreated(event, null)
+);
+exports.onPrivatePostCreated = onDocumentCreated(
+  { document: 'channels/{channelKey}/posts/{postId}' },
+  (event) => handlePostCreated(event, event.params.channelKey)
 );
 
 // Replace the Phase 2 onCommentCreated to also fan out comment + mention notifs.
-exports.onCommentCreated = onDocumentCreated(
-  { document: 'posts/{postId}/comments/{commentId}' },
-  async (event) => {
+async function handleCommentCreated(event, channelKey) {
     const snap = event.data;
     if (!snap) return;
     const comment = snap.data() || {};
@@ -2111,7 +2132,7 @@ exports.onCommentCreated = onDocumentCreated(
     // Notify the post author (skip if commenter == author).
     let postData = null;
     try {
-      const postSnap = await db.collection('posts').doc(postId).get();
+      const postSnap = await postRefFor(db, channelKey, postId).get();
       if (postSnap.exists) postData = postSnap.data();
     } catch (e) { /* tolerated */ }
 
@@ -2158,14 +2179,20 @@ exports.onCommentCreated = onDocumentCreated(
     } catch (err) {
       console.error('[onCommentCreated] mention fan-out failed:', err && err.message);
     }
-  }
+}
+
+exports.onCommentCreated = onDocumentCreated(
+  { document: 'posts/{postId}/comments/{commentId}' },
+  (event) => handleCommentCreated(event, null)
+);
+exports.onPrivateCommentCreated = onDocumentCreated(
+  { document: 'channels/{channelKey}/posts/{postId}/comments/{commentId}' },
+  (event) => handleCommentCreated(event, event.params.channelKey)
 );
 
 // Replace the Phase 2 onLikeWritten to also write a like notif on like-add.
 // (Like-remove leaves the existing notif in place — typical social UX.)
-exports.onLikeWritten = onDocumentWritten(
-  { document: 'posts/{postId}/likes/{uid}' },
-  async (event) => {
+async function handleLikeWritten(event, channelKey) {
     const beforeExists = event.data && event.data.before && event.data.before.exists;
     const afterExists = event.data && event.data.after && event.data.after.exists;
     if (beforeExists === afterExists) return;
@@ -2180,7 +2207,7 @@ exports.onLikeWritten = onDocumentWritten(
     const db = admin.firestore();
     let post = null;
     try {
-      const postSnap = await db.collection('posts').doc(postId).get();
+      const postSnap = await postRefFor(db, channelKey, postId).get();
       if (postSnap.exists) post = { id: postSnap.id, ...postSnap.data() };
     } catch (err) {
       console.warn('[onLikeWritten] post fetch failed:', err && err.message);
@@ -2247,7 +2274,15 @@ exports.onLikeWritten = onDocumentWritten(
         }
       }
     }
-  }
+}
+
+exports.onLikeWritten = onDocumentWritten(
+  { document: 'posts/{postId}/likes/{uid}' },
+  (event) => handleLikeWritten(event, null)
+);
+exports.onPrivateLikeWritten = onDocumentWritten(
+  { document: 'channels/{channelKey}/posts/{postId}/likes/{uid}' },
+  (event) => handleLikeWritten(event, event.params.channelKey)
 );
 
 /**
@@ -2622,6 +2657,214 @@ async function creditReferralOnActivation(db, uid, userData) {
   await applyPointsDelta(db, inviterUid, REFERRAL_POINTS, { referralCount: 1 });
   return inviterUid;
 }
+
+// ════════════════════════════════════════════════════════════════
+// Private channels — membership and access requests.
+//
+// A channel has two independent flags:
+//   listed     — appears in everyone's sidebar
+//   visibility — 'private' means only memberUids (plus staff) read its posts
+//
+// Private-channel posts live at channels/{key}/posts/** so the rules can gate a
+// whole query on the path. Membership itself is written ONLY from here: the
+// channels/{key} doc is owner-only writable in rules, and the Admin SDK bypasses
+// that, which is what allows admins — not just the owner — to approve requests.
+// ════════════════════════════════════════════════════════════════
+
+/** Every owner/admin uid, for fan-out of request notifications. */
+async function staffUids(db) {
+  const out = new Set();
+  try {
+    const snap = await db.collection('users').where('role', 'in', ['owner', 'admin']).get();
+    snap.forEach((d) => out.add(d.id));
+  } catch (e) {
+    console.warn('[channels] staffUids lookup failed', e && e.message);
+  }
+  return Array.from(out);
+}
+
+/**
+ * backfillChannelDefaults() — owner only, safe to re-run.
+ *
+ * Writes `visibility: 'public'` and `listed: true` onto every channel doc that
+ * is missing them. This MUST run before the tightened channels/{key} list rule
+ * is relied upon: that rule matches `listed == true`, and Firestore's equality
+ * operators skip documents where the field is ABSENT — so without the backfill
+ * every pre-existing channel would drop out of the sidebar for non-staff.
+ */
+exports.backfillChannelDefaults = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const isOwnerClaim = request.auth.token && request.auth.token.role === 'owner';
+  if (!isOwnerClaim) throw new HttpsError('permission-denied', 'Owner only.');
+
+  const db = admin.firestore();
+  const snap = await db.collection('channels').get();
+  const batch = db.batch();
+  let patched = 0;
+  const touched = [];
+
+  snap.forEach((d) => {
+    const c = d.data() || {};
+    const patch = {};
+    if (typeof c.visibility !== 'string') patch.visibility = 'public';
+    if (typeof c.listed !== 'boolean') patch.listed = true;
+    if (!Array.isArray(c.memberUids)) patch.memberUids = [];
+    if (Object.keys(patch).length) {
+      batch.set(d.ref, patch, { merge: true });
+      patched += 1;
+      touched.push(d.id);
+    }
+  });
+
+  if (patched) await batch.commit();
+  return { ok: true, total: snap.size, patched, channels: touched };
+});
+
+/**
+ * requestChannelAccess({ channelKey }) — any authenticated member.
+ *
+ * Records a pending request and notifies staff. No-ops when the caller is
+ * already a member or already has a pending request, so a double tap is free.
+ */
+exports.requestChannelAccess = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const channelKey = String((request.data && request.data.channelKey) || '').trim();
+  if (!channelKey) throw new HttpsError('invalid-argument', 'channelKey is required.');
+
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'requestChannelAccess', max: 10, windowSec: 3600 });
+
+  const chanRef = db.collection('channels').doc(channelKey);
+  const chanSnap = await chanRef.get();
+  if (!chanSnap.exists) throw new HttpsError('not-found', 'Channel not found.');
+  const chan = chanSnap.data() || {};
+  if (chan.visibility !== 'private') {
+    throw new HttpsError('failed-precondition', 'That channel is already open to everyone.');
+  }
+  const members = Array.isArray(chan.memberUids) ? chan.memberUids : [];
+  if (members.includes(uid)) return { ok: true, alreadyMember: true };
+
+  const reqRef = chanRef.collection('requests').doc(uid);
+  const existing = await reqRef.get();
+  if (existing.exists && (existing.data() || {}).status === 'pending') {
+    return { ok: true, alreadyPending: true };
+  }
+
+  let displayName = (request.auth.token && request.auth.token.name) || null;
+  let avatarUrl = null;
+  try {
+    const meSnap = await db.collection('users').doc(uid).get();
+    if (meSnap.exists) {
+      const me = meSnap.data() || {};
+      displayName = me.displayName || displayName || me.email || 'Member';
+      avatarUrl = me.avatarUrl || null;
+    }
+  } catch (e) { /* tolerated — the request matters more than the label */ }
+
+  await reqRef.set({
+    uid,
+    displayName: displayName || 'Member',
+    avatarUrl,
+    status: 'pending',
+    channelKey,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  // Fan out to staff through the same inbox the topbar bell already renders.
+  const recipients = await staffUids(db);
+  await Promise.all(recipients.filter((r) => r !== uid).map((r) => notifyUser(db, r, {
+    id: `chanreq_${channelKey}_${uid}`,
+    type: 'channel_request',
+    fromUid: uid,
+    fromName: displayName || 'Member',
+    fromAvatar: avatarUrl,
+    category: channelKey,
+    channelName: chan.name || channelKey,
+    preview: `wants access to ${chan.name || channelKey}`
+  }).catch(() => null)));
+
+  return { ok: true, pending: true };
+});
+
+/**
+ * decideChannelAccess({ channelKey, uid, approve }) — owner/admin only.
+ * Approving adds the uid to memberUids; either way the requester is notified.
+ */
+exports.decideChannelAccess = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const channelKey = String((request.data && request.data.channelKey) || '').trim();
+  const targetUid = String((request.data && request.data.uid) || '').trim();
+  const approve = request.data && request.data.approve === true;
+  if (!channelKey || !targetUid) {
+    throw new HttpsError('invalid-argument', 'channelKey and uid are required.');
+  }
+
+  const chanRef = db.collection('channels').doc(channelKey);
+  const chanSnap = await chanRef.get();
+  if (!chanSnap.exists) throw new HttpsError('not-found', 'Channel not found.');
+  const chan = chanSnap.data() || {};
+  const deciderUid = request.auth.uid;
+  const FV = admin.firestore.FieldValue;
+
+  if (approve) {
+    await chanRef.set({
+      memberUids: FV.arrayUnion(targetUid),
+      updatedAt: FV.serverTimestamp()
+    }, { merge: true });
+  }
+  await chanRef.collection('requests').doc(targetUid).set({
+    status: approve ? 'approved' : 'denied',
+    decidedAt: FV.serverTimestamp(),
+    decidedBy: deciderUid
+  }, { merge: true });
+
+  await notifyUser(db, targetUid, {
+    id: `chandec_${channelKey}_${targetUid}_${approve ? 'a' : 'd'}`,
+    type: approve ? 'channel_access_granted' : 'channel_access_denied',
+    fromUid: deciderUid,
+    fromName: (request.auth.token && request.auth.token.name) || 'The team',
+    fromAvatar: null,
+    category: channelKey,
+    channelName: chan.name || channelKey,
+    preview: approve
+      ? `You now have access to ${chan.name || channelKey}`
+      : `Your request for ${chan.name || channelKey} was not approved`
+  }).catch(() => null);
+
+  return { ok: true, approved: approve };
+});
+
+/**
+ * removeChannelMember({ channelKey, uid }) — owner/admin only.
+ *
+ * Revokes access going forward. It does NOT retract anything the member already
+ * read, and their existing posts stay in the channel.
+ */
+exports.removeChannelMember = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const channelKey = String((request.data && request.data.channelKey) || '').trim();
+  const targetUid = String((request.data && request.data.uid) || '').trim();
+  if (!channelKey || !targetUid) {
+    throw new HttpsError('invalid-argument', 'channelKey and uid are required.');
+  }
+  const FV = admin.firestore.FieldValue;
+  const chanRef = db.collection('channels').doc(channelKey);
+  await chanRef.set({
+    memberUids: FV.arrayRemove(targetUid),
+    updatedAt: FV.serverTimestamp()
+  }, { merge: true });
+  // Clear any decided request so they can ask again later.
+  try { await chanRef.collection('requests').doc(targetUid).delete(); } catch (e) { /* tolerated */ }
+  return { ok: true };
+});
 
 // ────────────────────────────────────────────────────────────────
 // Search (Stage 2 — topbar search overlay).

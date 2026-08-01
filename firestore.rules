@@ -493,9 +493,142 @@ service cloud.firestore {
     // Doc id == channel key (e.g. 'general', 'wins'). Owner-only writes;
     // any signed-in user may read so the sidebar can render the list.
     // ────────────────────────────────────────────────────────────────
+    // A channel is private when visibility == 'private'. Membership lives in
+    // memberUids on the channel doc, so a single read of that doc gates both the
+    // channel and everything under it.
+    function channelDoc(key) {
+      return get(/databases/$(database)/documents/channels/$(key));
+    }
+    function isChannelMember(key) {
+      return isSignedIn() && (
+        isAnyAdmin()
+        || request.auth.uid in channelDoc(key).data.get('memberUids', [])
+      );
+    }
     match /channels/{key} {
-      allow read: if isSignedIn();
+      // Two independent axes:
+      //   listed     — does the channel appear in everyone's sidebar
+      //   visibility — can you read the posts inside it
+      // A listed+private channel is visible to all (they get "Request access");
+      // an unlisted one is invisible unless you're a member or staff.
+      //
+      // This is written against `resource`, so a `list` query is only permitted
+      // when the client constrains it — see listChannels(), which queries
+      // `listed == true` and `memberUids array-contains me` and merges. That
+      // depends on every channel doc carrying an explicit `listed` field, since
+      // `==` skips docs where the field is ABSENT; backfillChannelDefaults()
+      // writes it and MUST have run before these rules ship, or the sidebar
+      // goes empty for every non-staff member.
+      allow get, list: if isSignedIn() && (
+        isAnyAdmin()
+        || resource.data.listed == true
+        || request.auth.uid in resource.data.get('memberUids', [])
+      );
       allow create, update, delete: if isOwner();
+
+      // Access requests. Doc id IS the requesting uid, which makes one open
+      // request per person per channel structurally impossible to duplicate.
+      //
+      // Staff decide via the decideChannelAccess callable (Admin SDK), not from
+      // here — the channel doc itself is owner-only writable, so an admin
+      // approving from the browser would be denied. These rules exist so the
+      // requester can create/see their own row and staff can list the queue.
+      match /requests/{requestUid} {
+        allow get: if isSignedIn() && (request.auth.uid == requestUid || isAnyAdmin());
+        allow list: if isAnyAdmin();
+        allow create: if isSignedIn()
+          && request.auth.uid == requestUid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.uid == request.auth.uid;
+        // Deciding is staff-only: a requester must never approve themselves.
+        allow update, delete: if isAnyAdmin();
+      }
+
+      // Posts in a PRIVATE channel live here rather than in the top-level
+      // `posts` collection. That is the whole point of the subcollection: the
+      // channel key is in the path, so one membership check secures every
+      // read — including list queries, which per-document rules cannot protect.
+      // Public channels keep using /posts and are unaffected.
+      match /posts/{postId} {
+        allow get, list: if isChannelMember(key);
+
+        allow create: if isChannelMember(key)
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.likeCount == 0
+          && request.resource.data.commentCount == 0
+          && request.resource.data.category == key
+          && (!('pinned' in request.resource.data) || request.resource.data.pinned == false)
+          && (
+            !('mentionedUids' in request.resource.data)
+            || (request.resource.data.mentionedUids is list
+                && request.resource.data.mentionedUids.size() <= 10)
+          );
+
+        // Same shape as the public feed: authors edit their own content,
+        // any member may move a counter by ±1, staff may pin.
+        allow update: if isChannelMember(key) && (
+          (
+            // Like / comment counter toggle: content and authorship unchanged.
+            request.resource.data.authorUid == resource.data.authorUid
+            && request.resource.data.text == resource.data.text
+            && request.resource.data.imageUrl == resource.data.imageUrl
+            && request.resource.data.get('pinned', false) == resource.data.get('pinned', false)
+            && (
+              (request.resource.data.likeCount == resource.data.likeCount + 1
+               || request.resource.data.likeCount == resource.data.likeCount - 1
+               || request.resource.data.likeCount == resource.data.likeCount)
+              && (request.resource.data.commentCount == resource.data.commentCount + 1
+                  || request.resource.data.commentCount == resource.data.commentCount - 1
+                  || request.resource.data.commentCount == resource.data.commentCount)
+            )
+          )
+          || (
+            // Author editing their own post.
+            resource.data.authorUid == request.auth.uid
+            && request.resource.data.authorUid == resource.data.authorUid
+            && request.resource.data.likeCount == resource.data.likeCount
+            && request.resource.data.commentCount == resource.data.commentCount
+            && request.resource.data.get('pinned', false) == resource.data.get('pinned', false)
+            && request.resource.data.category == resource.data.category
+          )
+          || (
+            // Staff pinning: only `pinned` may move.
+            isAnyAdmin()
+            && request.resource.data.text == resource.data.text
+            && request.resource.data.imageUrl == resource.data.imageUrl
+            && request.resource.data.likeCount == resource.data.likeCount
+            && request.resource.data.commentCount == resource.data.commentCount
+            && request.resource.data.authorUid == resource.data.authorUid
+          )
+        );
+
+        allow delete: if isSignedIn() && (
+          resource.data.authorUid == request.auth.uid || isAnyAdmin()
+        );
+
+        match /comments/{commentId} {
+          allow read: if isChannelMember(key);
+          allow create: if isChannelMember(key)
+            && request.resource.data.authorUid == request.auth.uid
+            && (
+              !('mentionedUids' in request.resource.data)
+              || (request.resource.data.mentionedUids is list
+                  && request.resource.data.mentionedUids.size() <= 10)
+            );
+          allow update: if isChannelMember(key)
+            && resource.data.authorUid == request.auth.uid
+            && request.resource.data.authorUid == resource.data.authorUid;
+          allow delete: if isChannelMember(key) && (
+            resource.data.authorUid == request.auth.uid || isAnyAdmin()
+          );
+        }
+
+        match /likes/{likeUid} {
+          allow read: if isChannelMember(key);
+          allow create, delete: if isChannelMember(key) && request.auth.uid == likeUid;
+          allow update: if false;
+        }
+      }
     }
 
     // ────────────────────────────────────────────────────────────────
