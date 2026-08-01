@@ -2428,24 +2428,45 @@ document.querySelectorAll('.count-up').forEach(el => countObserver.observe(el));
 // view — works on mobile too.
 const inViewVideos = document.querySelectorAll('.about-video, .book-video');
 if (inViewVideos.length && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const tryPlay = (video) => {
+    video.muted = true;                   // guarantee autoplay is allowed
+    const p = video.play();
+    if (p) p.catch(() => {});             // ignore if the browser still blocks it
+  };
   const inViewVideoObserver = new IntersectionObserver((entries) => {
     entries.forEach(e => {
       const video = e.target;
       if (e.isIntersecting) {
-        video.muted = true;               // guarantee autoplay is allowed
-        const p = video.play();
-        if (p) p.catch(() => {});         // ignore if the browser still blocks it
+        video.dataset.inView = '1';
+        tryPlay(video);
       } else {
+        delete video.dataset.inView;
         video.pause();
       }
     });
-  }, { threshold: 0.25 });                // trigger even for a tall portrait video on mobile
+    // Start buffering just before the video scrolls in so it is playing, not
+    // sitting on the poster, by the time it is on screen.
+  }, { threshold: 0.01, rootMargin: '200px 0px' });
   inViewVideos.forEach(video => {
     // Required for inline muted autoplay on iOS/Android.
     video.muted = true;
     video.setAttribute('playsinline', '');
+    video.loop = true;
+    // Safari rejects play() while the file is still buffering, so retry once
+    // there is enough data to start.
+    video.addEventListener('canplay', () => {
+      if (video.dataset.inView && video.paused) tryPlay(video);
+    });
     inViewVideoObserver.observe(video);
   });
+  // iOS blocks autoplay outright in Low Power Mode. Take the visitor's first
+  // interaction as the gesture that unblocks it, then stop listening.
+  const retryOnGesture = () => {
+    inViewVideos.forEach(v => { if (v.dataset.inView && v.paused) tryPlay(v); });
+    ['touchstart', 'click'].forEach(evt => window.removeEventListener(evt, retryOnGesture));
+  };
+  ['touchstart', 'click'].forEach(evt =>
+    window.addEventListener(evt, retryOnGesture, { passive: true }));
 }
 
 // ─── BONUS: MAGNETIC BUTTONS ─────────────────────────────────
