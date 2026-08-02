@@ -759,7 +759,7 @@ function fillSalesForm(c) {
     else if (spec.kind === 'lines') el.value = Array.isArray(v) ? v.join('\n') : '';
     else el.value = Array.isArray(v) ? v.join('\n\n') : '';
   });
-  updateCoverPreview();
+  updateCoverPreview({ normalize: true });
 
   // "Reset to built-in" only makes sense where the code registry ships copy
   // for this course — resetting deletes the Firestore override so the seed wins.
@@ -776,16 +776,86 @@ function fillSalesForm(c) {
   S.suppress = false;
 }
 
-function updateCoverPreview() {
-  const url = $('s-cover').value.trim();
+// Share pages are the usual cause of a broken cover: people paste the page
+// they're looking at, not the image itself. Rewrite the two that have a
+// documented direct-file form; everything else is reported honestly below.
+function directImageUrl(raw) {
+  const url = String(raw || '').trim();
+  if (!url) return '';
+
+  // Drive's /uc?export=view endpoint answers hotlinked images with an HTML
+  // interstitial often enough to be useless here. /thumbnail returns real
+  // image bytes — but only while the file is shared "Anyone with the link".
+  const drive = url.match(
+    /^https?:\/\/(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|thumbnail\?[^#]*id=|uc\?[^#]*id=)([\w-]{10,})/);
+  if (drive) return `https://drive.google.com/thumbnail?id=${drive[1]}&sz=w1600`;
+
+  if (/^https?:\/\/(?:www\.)?dropbox\.com\//.test(url)) {
+    // Strip first, THEN decide the separator — stripping "?dl=0" can remove
+    // the only "?" in the URL, and appending "&raw=1" to that is malformed.
+    const stripped = url.replace(/[?&](?:dl|raw)=\d/g, '').replace(/[?&]$/, '');
+    return stripped + (stripped.includes('?') ? '&' : '?') + 'raw=1';
+  }
+  return url;
+}
+
+function coverStatus(msg, isError) {
+  const el = $('s-cover-status');
+  if (!el) return;
+  el.innerHTML = msg
+    ? `<span style="color:${isError ? '#ff7070' : 'var(--gray-light)'};">${escapeHtml(msg)}</span>`
+    : '';
+}
+
+// `normalize` is off while the owner is still typing — rewriting the field
+// mid-keystroke would fight them. Blur and upload turn it on.
+function updateCoverPreview({ normalize = false, okMsg = '' } = {}) {
+  const input = $('s-cover');
+  const url = normalize ? directImageUrl(input.value) : input.value.trim();
   const img = $('s-cover-preview');
-  if (url) {
-    img.src = url;
-    img.classList.add('on');
-    img.onerror = () => img.classList.remove('on');
-  } else {
+
+  if (!url) {
     img.classList.remove('on');
     img.removeAttribute('src');
+    coverStatus('');
+    return;
+  }
+
+  // A rewritten share link is written back so what's saved is what loads.
+  // Not while filling the form from Firestore — that isn't an owner edit.
+  if (url !== input.value.trim()) {
+    input.value = url;
+    if (!S.suppress) S.salesDirty.add('coverImage');
+  }
+
+  coverStatus('Loading image…');
+  img.onload = () => { img.classList.add('on'); coverStatus(okMsg); };
+  img.onerror = () => {
+    img.classList.remove('on');
+    coverStatus(/drive\.google\.com/.test(url)
+      ? 'Google Drive didn\'t serve that image. Check the file is shared "Anyone with the link" — and note Drive throttles hotlinked images, so covers can vanish later. Use Upload… instead.'
+      : 'That link didn\'t load as an image. It needs to point straight at the file (…/cover.jpg), not at a page showing it. Easiest fix: use Upload… instead.', true);
+  };
+  img.src = url;
+}
+
+async function onCoverFilePicked() {
+  const input = $('s-cover-file');
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file || !S.slug) return;
+  const btn = $('btn-cover-upload');
+  btn.disabled = true;
+  try {
+    coverStatus('Uploading… 0%');
+    const meta = await uploadCourseFile(S.slug, 'images', file, (pct) => coverStatus(`Uploading… ${pct}%`));
+    $('s-cover').value = meta.url;
+    S.salesDirty.add('coverImage');
+    updateCoverPreview({ normalize: true, okMsg: 'Uploaded — click Save to publish it.' });
+  } catch (e) {
+    coverStatus(e && e.message ? e.message : String(e), true);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -1063,6 +1133,9 @@ export function initBuilder(options = {}) {
       if (field === 'coverImage') updateCoverPreview();
     });
   });
+  $('btn-cover-upload').addEventListener('click', () => $('s-cover-file').click());
+  $('s-cover-file').addEventListener('change', onCoverFilePicked);
+  $('s-cover').addEventListener('blur', () => updateCoverPreview({ normalize: true }));
   $('btn-save-sales').addEventListener('click', saveSales);
   $('btn-sync-curriculum').addEventListener('click', syncCurriculumFromLessons);
   document.querySelectorAll('.mc-reset-field').forEach((btn) =>
