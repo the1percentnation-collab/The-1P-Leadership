@@ -536,10 +536,18 @@ service cloud.firestore {
       match /requests/{requestUid} {
         allow get: if isSignedIn() && (request.auth.uid == requestUid || isAnyAdmin());
         allow list: if isAnyAdmin();
+        // In practice requests are written by the requestChannelAccess callable
+        // (Admin SDK), which is where the real validation lives. This path is
+        // defence in depth, so it bounds the answers list too.
         allow create: if isSignedIn()
           && request.auth.uid == requestUid
           && request.resource.data.status == 'pending'
-          && request.resource.data.uid == request.auth.uid;
+          && request.resource.data.uid == request.auth.uid
+          && (
+            !('answers' in request.resource.data)
+            || (request.resource.data.answers is list
+                && request.resource.data.answers.size() <= 12)
+          );
         // Deciding is staff-only: a requester must never approve themselves.
         allow update, delete: if isAnyAdmin();
       }
