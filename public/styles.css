@@ -5786,13 +5786,15 @@ body.academy-course #course-workspace {
 
 .course-card:hover .course-card-cover-title { transform: scale(1.04); }
 
+/* Badges sit under the card title, not over the cover art. */
 .course-card-badges {
-  position: absolute;
-  top: 10px;
-  left: 10px;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  margin-top: -2px;
 }
+
+.course-card-badges:empty { display: none; }
 
 .course-badge {
   font-family: var(--font-mono);

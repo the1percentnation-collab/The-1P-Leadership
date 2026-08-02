@@ -137,11 +137,11 @@ function courseCardHtml(c, { action, statusBadge, saleBadge = '', soon = false }
     <article class="course-card${soon ? ' is-soon' : ''}"
              data-slug="${escapeHtml(c.slug)}" data-search="${escapeHtml(searchText)}">
       ${cover}
-        <div class="course-card-badges">${statusBadge}${saleBadge}</div>
       </div>
       <div class="course-card-body">
         <div class="course-card-category">${escapeHtml(c.category || fmt || 'Course')}</div>
         <h3 class="course-card-title">${escapeHtml(c.title)}</h3>
+        <div class="course-card-badges">${statusBadge}${saleBadge}</div>
         <p class="course-card-desc">${escapeHtml(c.subtitle || '')}</p>
         <div class="course-card-meta">
           <span>${escapeHtml(fmt || 'Self-paced')}</span>
