@@ -99,11 +99,11 @@ function courseCardHtml(c) {
   return `
     <div class="mc-card" data-slug="${slug}">
       <div class="mc-card-cover" data-open="${slug}" title="Open the course builder">
-        <span class="mc-pill is-${escapeHtml(cur)}">${escapeHtml(STATUS_LABELS[cur] || cur)}</span>
         ${cover}
       </div>
       <div class="mc-card-body">
         <div class="mc-card-title" data-open="${slug}">${escapeHtml(c.title)}</div>
+        <span class="mc-pill is-${escapeHtml(cur)} mc-card-status">${escapeHtml(STATUS_LABELS[cur] || cur)}</span>
         <div class="mc-card-slug">${slug}</div>
         <div class="mc-card-meta">
           ${price}
