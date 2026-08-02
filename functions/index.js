@@ -22,7 +22,13 @@ const OWNER_EMAIL = 'the1percentnation@gmail.com';
 const FROM_EMAIL = 'the1percentnation@gmail.com';
 const FROM_NAME_DEFAULT = 'The One Percent Nation';
 const REPLY_TO = 'the1percentnation@gmail.com';
-const APP_BASE_URL = 'https://the-1p-leadership.web.app';
+// The custom domain, not the raw Firebase one. This lands in outbound email —
+// company invites, notification deep links — where the .web.app host reads as a
+// different, untrustworthy site next to the One Percent Nation branding around
+// it. Both hosts serve the same app, so either works; only one looks right.
+// (Member referral links don't rely on this: the client builds those from
+// location.origin so they always carry whatever domain the member is on.)
+const APP_BASE_URL = 'https://the1pnation.com';
 
 // Member referral scoring. Deliberately modest against the level curve in the
 // Phase 2 block (level 5 = 400 points): at 10 points a referral is worth two
