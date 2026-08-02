@@ -7555,6 +7555,15 @@ body.academy-course #course-workspace {
   font-family: var(--font-mono);
   padding: 4px 0 8px;
 }
+.c-staff-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.c-staff-settings-actions .btn { padding: 5px 12px; font-size: 11px; }
+.c-staff-settings-actions .c-staff-empty { padding: 0; }
 
 /* Inline approve/deny inside a bell notification row. */
 .c-notif-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }

@@ -12,6 +12,7 @@ import {
   listChannels, getPinnedPostForChannel, setPostPinned, createChannelDoc, isValidChannelKey,
   isPrivateChannel, isListedChannel, canAccessChannel, channelMemberCount,
   requestChannelAccess, decideChannelAccess, removeChannelMember, accessFormFor,
+  setChannelPrivacy,
   listChannelRequests, myChannelRequest,
   getLeaderboard, getMyStats, levelFromPoints, levelProgress,
   subscribeToFeed, searchMembers, renderTextWithMentions,
@@ -214,10 +215,32 @@ async function renderStaffChannelPanel() {
   const root = $('channel-staff');
   if (!root) return;
   const ch = activeChannelMeta();
-  if (!isStaff() || !isPrivateChannel(ch)) { root.innerHTML = ''; return; }
+  // Renders for staff on ANY channel, not just private ones — the settings
+  // block below is the only way to gate a channel that already exists, so
+  // hiding it on public channels made that impossible.
+  if (!isStaff()) { root.innerHTML = ''; return; }
 
-  const requests = await listChannelRequests(ch.key).catch(() => []);
+  const priv = isPrivateChannel(ch);
+  const isOwnerRole = state.role === 'owner';
+  const requests = priv ? await listChannelRequests(ch.key).catch(() => []) : [];
   const members = Array.isArray(ch.memberUids) ? ch.memberUids : [];
+
+  // channels/{key} writes are owner-only in rules, so admins see state, not switches.
+  const settingsHtml = !isOwnerRole ? '' : `
+    <div class="c-staff-head">Channel privacy</div>
+    <label class="c-ch-private">
+      <input id="c-set-private" type="checkbox" ${priv ? 'checked' : ''}>
+      <span>Private &mdash; only members can read the posts</span>
+    </label>
+    <label class="c-ch-private c-ch-hidden-opt">
+      <input id="c-set-hidden" type="checkbox" ${priv && !isListedChannel(ch) ? 'checked' : ''} ${priv ? '' : 'disabled'}>
+      <span>Hide it entirely &mdash; leave off and everyone sees it with a Request access button</span>
+    </label>
+    <div class="c-staff-settings-actions">
+      <button class="btn btn-primary" id="c-set-save">Save privacy</button>
+      <span id="c-set-msg" class="c-staff-empty"></span>
+    </div>
+  `;
 
   // Answers render inline under the row. Collecting an application and then
   // hiding it behind a click would mean deciding without reading it.
@@ -245,12 +268,42 @@ async function renderStaffChannelPanel() {
 
   root.innerHTML = `
     <div class="c-staff-panel">
-      <div class="c-staff-head">Access requests${requests.length ? ` (${requests.length})` : ''}</div>
-      ${reqHtml}
-      <div class="c-staff-head">Members (${members.length})</div>
-      <div id="c-staff-members" class="c-staff-members"></div>
+      ${settingsHtml}
+      ${priv ? `
+        <div class="c-staff-head">Access requests${requests.length ? ` (${requests.length})` : ''}</div>
+        ${reqHtml}
+        <div class="c-staff-head">Members (${members.length})</div>
+        <div id="c-staff-members" class="c-staff-members"></div>
+      ` : ''}
     </div>
   `;
+
+  const privBox = $('c-set-private');
+  const hidBox = $('c-set-hidden');
+  if (privBox && hidBox) {
+    privBox.addEventListener('change', () => {
+      hidBox.disabled = !privBox.checked;
+      if (!privBox.checked) hidBox.checked = false;
+    });
+    $('c-set-save').addEventListener('click', async () => {
+      const btn = $('c-set-save');
+      const msg = $('c-set-msg');
+      btn.disabled = true; msg.textContent = 'Saving…';
+      try {
+        await setChannelPrivacy(ch.key, {
+          visibility: privBox.checked ? 'private' : 'public',
+          listed: !hidBox.checked
+        });
+        state.channels = await listChannels({ isAdmin: isStaff() });
+        msg.textContent = 'Saved.';
+        renderSidebar();
+        await renderStaffChannelPanel();
+      } catch (err) {
+        btn.disabled = false;
+        msg.textContent = err.message || 'Could not save.';
+      }
+    });
+  }
 
   root.querySelectorAll('.c-staff-approve, .c-staff-deny').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -1705,7 +1758,10 @@ async function main() {
   }
   const u = await onAuthReady();
   if (!u) {
-    location.replace('/login.html?next=' + encodeURIComponent('/community.html'));
+    // Keep the channel (and any other query) so a shared link to a specific
+    // channel survives the login round-trip instead of dumping the visitor
+    // in #general — which is exactly what a shared application link is.
+    location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
     return;
   }
   if (!(await ensureOnboarded(u))) return;
