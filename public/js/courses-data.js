@@ -114,10 +114,14 @@ const CODE_MODULE_META = {
 };
 
 /**
- * Returns [{ id, title, subtitle, pillar, duration, tagLabel }] for a course,
- * or [] when no module metadata is available.
+ * Returns [{ id, title, subtitle, pillar, duration, tagLabel, published }] for a
+ * course, or [] when no module metadata is available.
+ *
+ * Draft lessons (published === false) are omitted unless { includeDrafts: true },
+ * which owner/admin preview passes so the author can see the roadmap members
+ * will get once everything is published.
  */
-export async function loadModulesMeta(course) {
+export async function loadModulesMeta(course, { includeDrafts = false } = {}) {
   if (!course) return [];
   if (course.contentSource !== 'firestore' && CODE_MODULE_META[course.slug]) {
     try {
@@ -128,32 +132,40 @@ export async function loadModulesMeta(course) {
         subtitle: m.subtitle || '',
         pillar: m.pillar || m.chapterRef || '',
         duration: m.duration || '',
-        tagLabel: m.tagLabel || ''
+        tagLabel: m.tagLabel || '',
+        published: true
       }));
     } catch (e) {
       console.warn('[courses-data] code module meta failed', e);
       return [];
     }
   }
-  const docs = await loadModuleDocs(course.slug);
+  const docs = await loadModuleDocs(course.slug, { includeDrafts });
   return docs.map((m) => ({
     id: m.id,
     title: m.title || `Module ${m.id}`,
     subtitle: m.subtitle || '',
     pillar: m.pillar || '',
     duration: m.duration || '',
-    tagLabel: m.tagLabel || ''
+    tagLabel: m.tagLabel || '',
+    published: m.published !== false
   }));
 }
 
-/** Full module docs (including lesson html) from courses/{slug}/modules. */
-export async function loadModuleDocs(slug) {
+/**
+ * Full module docs (including lesson html) from courses/{slug}/modules.
+ * Draft lessons are filtered out here — one gate for every reader — so a
+ * half-written lesson can never reach a member. Owner/admin preview opts back
+ * in with { includeDrafts: true }.
+ */
+export async function loadModuleDocs(slug, { includeDrafts = false } = {}) {
   if (!firebaseReady || !slug) return [];
   try {
     const snap = await getDocs(collection(db, 'courses', slug, 'modules'));
-    return snap.docs
+    const docs = snap.docs
       .map((d) => ({ id: Number(d.id), ...d.data() }))
       .sort((a, b) => (a.sortOrder ?? a.id) - (b.sortOrder ?? b.id));
+    return includeDrafts ? docs : docs.filter((m) => m.published !== false);
   } catch (e) {
     console.warn('[courses-data] module docs load failed', e);
     return [];
