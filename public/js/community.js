@@ -643,9 +643,73 @@ export async function createChannelDoc({ key, name, emoji = '#', description = '
 // which is what lets admins approve at all.
 
 /** Ask staff for access to a listed private channel. */
-export async function requestChannelAccess(channelKey) {
+// ── Access-request forms ──────────────────────────────────────────────────
+//
+// Some private channels ask applicants a few questions before staff decide.
+// Keyed by channel key; a channel with no entry just gets a bare "Request
+// access" button.
+//
+// This list is the SINGLE definition. The server bounds what it stores (count
+// and length) but does not keep its own copy of the wording — a second copy
+// that drifts out of sync is the failure mode that put posts in the wrong
+// channel earlier, and the cost of getting it wrong here is worse: a stale
+// server-side label would misreport what an applicant was actually asked.
+// Each submitted answer carries the question text it was answering, so old
+// requests keep reading correctly even after this list is edited.
+const CHANNEL_ACCESS_FORMS = {
+  '1p-impact-team': [
+    {
+      id: 'why',
+      label: 'Why do you want to join the 1P Impact Team?',
+      type: 'textarea',
+      required: true,
+      placeholder: 'What draws you to this group?'
+    },
+    {
+      id: 'platform',
+      label: 'Where will you represent the brand?',
+      type: 'textarea',
+      required: true,
+      placeholder: 'Your platform and who follows you — social, podcast, church, workplace, team…'
+    },
+    {
+      id: 'handles',
+      label: 'Links or handles',
+      type: 'text',
+      required: false,
+      placeholder: '@yourhandle, yoursite.com'
+    },
+    {
+      id: 'working_on',
+      label: 'What are you working on right now?',
+      type: 'textarea',
+      required: false,
+      placeholder: 'A business, a habit, a comeback — whatever is taking your energy.'
+    },
+    {
+      id: 'commitment',
+      label: 'How much time can you commit each week?',
+      type: 'select',
+      required: true,
+      options: ['Under 1 hour', '1–3 hours', '3–5 hours', '5+ hours']
+    }
+  ]
+};
+
+/** Questions for a channel's access request, or null when it just needs a click. */
+export function accessFormFor(channelKey) {
+  const form = CHANNEL_ACCESS_FORMS[channelKey];
+  return Array.isArray(form) && form.length ? form : null;
+}
+
+/**
+ * Ask staff for access to a listed private channel.
+ * `answers` is [{ question, answer }] — the question TEXT travels with the
+ * answer so the record stays accurate if the form is reworded later.
+ */
+export async function requestChannelAccess(channelKey, answers = []) {
   const call = httpsCallable(functions, 'requestChannelAccess');
-  const res = await call({ channelKey });
+  const res = await call({ channelKey, answers });
   return res.data;
 }
 

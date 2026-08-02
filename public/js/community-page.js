@@ -11,7 +11,7 @@ import {
   getUserProfile, touchCommunityVisit,
   listChannels, getPinnedPostForChannel, setPostPinned, createChannelDoc, isValidChannelKey,
   isPrivateChannel, isListedChannel, canAccessChannel, channelMemberCount,
-  requestChannelAccess, decideChannelAccess, removeChannelMember,
+  requestChannelAccess, decideChannelAccess, removeChannelMember, accessFormFor,
   listChannelRequests, myChannelRequest,
   getLeaderboard, getMyStats, levelFromPoints, levelProgress,
   subscribeToFeed, searchMembers, renderTextWithMentions,
@@ -119,15 +119,13 @@ async function renderLockedChannel() {
       <div class="c-locked-badge">🔒 Private channel</div>
       ${ch.description ? `<p class="c-locked-desc">${escapeHtml(ch.description)}</p>` : ''}
       <div class="c-locked-count">${count} ${count === 1 ? 'member' : 'members'}</div>
-      <div class="c-locked-actions" id="c-locked-actions">
-        <button class="btn btn-primary" id="c-locked-request">Request access</button>
-      </div>
+      <div class="c-locked-actions" id="c-locked-actions"></div>
       <div class="c-locked-note">Only members can see what's posted here.</div>
     </div>
   `;
 
   const actions = $('c-locked-actions');
-  // A prior request means the button becomes a status, not a second submit.
+  // A prior request means a status line, not a second submit.
   const existing = await myChannelRequest(ch.key).catch(() => null);
   if (existing && existing.status === 'pending') {
     actions.innerHTML = `<div class="c-locked-pending">Request pending — you'll be notified when it's reviewed.</div>`;
@@ -138,20 +136,73 @@ async function renderLockedChannel() {
     return;
   }
 
-  const btn = $('c-locked-request');
-  if (btn) btn.addEventListener('click', async () => {
-    btn.disabled = true;
-    btn.textContent = 'Requesting…';
-    try {
-      await requestChannelAccess(ch.key);
-      actions.innerHTML = `<div class="c-locked-pending">Request sent — you'll be notified when it's reviewed.</div>`;
-    } catch (err) {
-      btn.disabled = false;
-      btn.textContent = 'Request access';
-      actions.insertAdjacentHTML('beforeend',
-        `<div class="c-err">${escapeHtml(err.message || 'Could not send request.')}</div>`);
+  // Channels that ask questions get a form; everything else gets one button.
+  const form = accessFormFor(ch.key);
+  if (!form) {
+    actions.innerHTML = `<button class="btn btn-primary" id="c-locked-request">Request access</button>`;
+    $('c-locked-request').addEventListener('click', () => submitAccessRequest(ch, [], actions));
+    return;
+  }
+
+  actions.innerHTML = `
+    <form class="c-apply" id="c-apply-form" novalidate>
+      <div class="c-apply-head">A few questions before you join</div>
+      ${form.map((q) => {
+        const req = q.required ? '<span class="c-apply-req">required</span>' : '';
+        const field = q.type === 'select'
+          ? `<select class="c-apply-input" id="q-${escapeHtml(q.id)}" data-q="${escapeHtml(q.id)}">
+               <option value="">Choose one…</option>
+               ${(q.options || []).map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}
+             </select>`
+          : q.type === 'textarea'
+            ? `<textarea class="c-apply-input" id="q-${escapeHtml(q.id)}" data-q="${escapeHtml(q.id)}" rows="3" maxlength="2000" placeholder="${escapeHtml(q.placeholder || '')}"></textarea>`
+            : `<input class="c-apply-input" id="q-${escapeHtml(q.id)}" data-q="${escapeHtml(q.id)}" type="text" maxlength="2000" placeholder="${escapeHtml(q.placeholder || '')}">`;
+        return `
+          <label class="c-apply-field">
+            <span class="c-apply-label">${escapeHtml(q.label)} ${req}</span>
+            ${field}
+          </label>`;
+      }).join('')}
+      <button class="btn btn-primary" type="submit" id="c-apply-submit">Send request</button>
+      <div class="c-err" id="c-apply-err" style="display:none;"></div>
+    </form>
+  `;
+
+  $('c-apply-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = $('c-apply-err');
+    errEl.style.display = 'none';
+
+    const answers = [];
+    for (const q of form) {
+      const el = document.getElementById(`q-${q.id}`);
+      const val = (el && el.value ? el.value : '').trim();
+      if (q.required && !val) {
+        errEl.textContent = `Please answer: ${q.label}`;
+        errEl.style.display = 'block';
+        if (el) el.focus();
+        return;
+      }
+      // Question text travels with the answer so the record stays accurate
+      // if this form is reworded later.
+      if (val) answers.push({ question: q.label, answer: val });
     }
+    submitAccessRequest(ch, answers, actions, errEl);
   });
+}
+
+async function submitAccessRequest(ch, answers, actions, errEl = null) {
+  const btn = document.getElementById('c-apply-submit') || document.getElementById('c-locked-request');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    await requestChannelAccess(ch.key, answers);
+    actions.innerHTML = `<div class="c-locked-pending">Request sent — you'll be notified when it's reviewed.</div>`;
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = answers.length ? 'Send request' : 'Request access'; }
+    const msg = escapeHtml(err.message || 'Could not send request.');
+    if (errEl) { errEl.innerHTML = msg; errEl.style.display = 'block'; }
+    else actions.insertAdjacentHTML('beforeend', `<div class="c-err">${msg}</div>`);
+  }
 }
 
 // ── Staff panel: pending requests + current members ───────────────────────
@@ -168,14 +219,29 @@ async function renderStaffChannelPanel() {
   const requests = await listChannelRequests(ch.key).catch(() => []);
   const members = Array.isArray(ch.memberUids) ? ch.memberUids : [];
 
-  const reqHtml = requests.length ? requests.map((r) => `
-    <div class="c-staff-row" data-req="${escapeHtml(r.uid)}">
-      ${avatarHtml({ avatarUrl: r.avatarUrl, displayName: r.displayName }, 28)}
-      <span class="c-staff-name">${escapeHtml(r.displayName || 'Member')}</span>
-      <button class="btn btn-primary c-staff-approve" data-uid="${escapeHtml(r.uid)}">Approve</button>
-      <button class="btn btn-ghost c-staff-deny" data-uid="${escapeHtml(r.uid)}">Deny</button>
-    </div>
-  `).join('') : `<div class="c-staff-empty">No pending requests.</div>`;
+  // Answers render inline under the row. Collecting an application and then
+  // hiding it behind a click would mean deciding without reading it.
+  const reqHtml = requests.length ? requests.map((r) => {
+    const answers = Array.isArray(r.answers) ? r.answers : [];
+    const answersHtml = answers.length ? `
+      <div class="c-apply-answers">
+        ${answers.map((a) => `
+          <div class="c-apply-answer">
+            <div class="c-apply-answer-q">${escapeHtml(a.question || '')}</div>
+            <div class="c-apply-answer-a">${escapeHtml(a.answer || '')}</div>
+          </div>`).join('')}
+      </div>` : '';
+    return `
+    <div class="c-staff-request" data-req="${escapeHtml(r.uid)}">
+      <div class="c-staff-row">
+        ${avatarHtml({ avatarUrl: r.avatarUrl, displayName: r.displayName }, 28)}
+        <span class="c-staff-name">${escapeHtml(r.displayName || 'Member')}</span>
+        <button class="btn btn-primary c-staff-approve" data-uid="${escapeHtml(r.uid)}">Approve</button>
+        <button class="btn btn-ghost c-staff-deny" data-uid="${escapeHtml(r.uid)}">Deny</button>
+      </div>
+      ${answersHtml}
+    </div>`;
+  }).join('') : `<div class="c-staff-empty">No pending requests.</div>`;
 
   root.innerHTML = `
     <div class="c-staff-panel">

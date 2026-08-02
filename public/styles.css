@@ -7582,6 +7582,93 @@ body.academy-course #course-workspace {
 }
 .c-notif-err { font-size: 10px; color: var(--red); align-self: center; }
 
+/* ── Channel access application form ──────────────────────────────────── */
+
+.c-apply {
+  text-align: left;
+  max-width: 460px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.c-apply-head {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+  text-align: center;
+}
+.c-apply-field { display: flex; flex-direction: column; gap: 6px; }
+.c-apply-label {
+  font-size: 13px;
+  color: var(--white);
+  line-height: 1.4;
+}
+.c-apply-req {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--red);
+  margin-left: 4px;
+}
+.c-apply-input {
+  background: var(--charcoal);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 10px 12px;
+  width: 100%;
+  resize: vertical;
+}
+.c-apply-input:focus { outline: none; border-color: var(--border-red); }
+.c-apply-input::placeholder { color: var(--gray-mid); }
+
+/* Applicant answers as shown to staff in the review panel. */
+.c-staff-request {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+}
+.c-staff-request:last-child { border-bottom: none; }
+.c-staff-request .c-staff-row { border-bottom: none; }
+.c-apply-answers {
+  margin: 4px 0 0 38px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.c-apply-answer-q {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+  margin-bottom: 3px;
+}
+.c-apply-answer-a {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--gray-light);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.c-notif-review {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--red);
+}
+
+@media (max-width: 600px) {
+  .c-apply-answers { margin-left: 0; }
+}
+
 /* ── Custom event date + time picker ────────────────────────────── */
 .c-dt-row { display: flex; gap: 8px; }
 .c-dt-wrap { position: relative; flex: 1 1 0; min-width: 0; }

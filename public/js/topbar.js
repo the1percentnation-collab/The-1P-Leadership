@@ -214,12 +214,20 @@ function renderNotifPopover() {
     // Access requests are actionable from the bell so staff can approve from a
     // phone without opening the community page. The buttons sit inside the <a>,
     // so their handlers must stopPropagation or the row navigates away.
-    const actions = n.type === 'channel_request' && n.category && n.fromUid
+    // When the channel asks applicants questions, DON'T offer a one-tap Approve
+    // here — the answers don't fit in a notification row, and approving an
+    // application you haven't read defeats the point of collecting one. Those
+    // link through to the channel's review panel instead.
+    const isRequest = n.type === 'channel_request' && n.category && n.fromUid;
+    const hasAnswers = isRequest && Number(n.answerCount || 0) > 0;
+    const actions = !isRequest ? '' : hasAnswers
       ? `<div class="c-notif-actions">
+           <span class="c-notif-review">Open the channel to read their answers →</span>
+         </div>`
+      : `<div class="c-notif-actions">
            <button class="c-notif-approve" data-approve="${escapeHtml(n.category)}" data-uid="${escapeHtml(n.fromUid)}" data-notif-id="${escapeHtml(n.id)}">Approve</button>
            <button class="c-notif-deny" data-deny="${escapeHtml(n.category)}" data-uid="${escapeHtml(n.fromUid)}" data-notif-id="${escapeHtml(n.id)}">Deny</button>
-         </div>`
-      : '';
+         </div>`;
     return `
     <a class="c-notif-row unread" data-notif="${escapeHtml(n.id)}" href="${escapeHtml(notifHref(n))}">
       <span class="c-notif-icon">${notifIcon(n.type)}</span>

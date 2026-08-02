@@ -2004,6 +2004,7 @@ async function notifyUser(db, recipientUid, notif, { typePrefKey } = {}) {
       // bell can offer Approve/Deny against the right channel.
       category: notif.category || null,
       channelName: notif.channelName || null,
+      answerCount: typeof notif.answerCount === 'number' ? notif.answerCount : null,
       preview: notif.preview || '',
       read: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -2769,12 +2770,30 @@ exports.requestChannelAccess = onCall(async (request) => {
     }
   } catch (e) { /* tolerated — the request matters more than the label */ }
 
+  // Application answers, when the channel asks for them. The client owns the
+  // question list (see CHANNEL_ACCESS_FORMS in public/js/community.js) and sends
+  // the question text alongside each answer, so a later rewording doesn't
+  // relabel what someone already submitted. This end only enforces bounds —
+  // count and length — so a crafted payload can't bloat the doc. The content is
+  // shown to staff and escaped on render; it grants nothing.
+  const rawAnswers = Array.isArray(request.data && request.data.answers)
+    ? request.data.answers
+    : [];
+  const answers = rawAnswers
+    .slice(0, 12)
+    .map((a) => ({
+      question: String((a && a.question) || '').trim().slice(0, 200),
+      answer: String((a && a.answer) || '').trim().slice(0, 2000)
+    }))
+    .filter((a) => a.question && a.answer);
+
   await reqRef.set({
     uid,
     displayName: displayName || 'Member',
     avatarUrl,
     status: 'pending',
     channelKey,
+    answers,
     createdAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
 
@@ -2788,7 +2807,10 @@ exports.requestChannelAccess = onCall(async (request) => {
     fromAvatar: avatarUrl,
     category: channelKey,
     channelName: chan.name || channelKey,
-    preview: `wants access to ${chan.name || channelKey}`
+    answerCount: answers.length,
+    preview: answers.length
+      ? `wants access to ${chan.name || channelKey} — ${answers.length} answer${answers.length === 1 ? '' : 's'} to review`
+      : `wants access to ${chan.name || channelKey}`
   }).catch(() => null)));
 
   return { ok: true, pending: true };
