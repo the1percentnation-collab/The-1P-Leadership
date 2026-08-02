@@ -696,6 +696,27 @@ const CHANNEL_ACCESS_FORMS = {
   ]
 };
 
+/**
+ * Change an existing channel's privacy. Owner only — `channels/{key}` writes are
+ * restricted to the owner in rules, so an admin calling this gets
+ * permission-denied. Without it a channel's privacy was fixed at creation and
+ * an existing public channel could never be gated.
+ *
+ * Turning a channel private does NOT hide what is already in it: existing posts
+ * stay in the public `posts` collection and remain readable. Only posts made
+ * after the switch go to the members-only subcollection.
+ */
+export async function setChannelPrivacy(channelKey, { visibility, listed }) {
+  if (!firebaseReady) throw new Error('Firebase unavailable');
+  if (!channelKey) throw new Error('Channel is required.');
+  const isPrivate = visibility === 'private';
+  await setDoc(doc(db, 'channels', channelKey), {
+    visibility: isPrivate ? 'private' : 'public',
+    listed: isPrivate ? !!listed : true,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
 /** Questions for a channel's access request, or null when it just needs a click. */
 export function accessFormFor(channelKey) {
   const form = CHANNEL_ACCESS_FORMS[channelKey];
