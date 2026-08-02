@@ -56,6 +56,19 @@
         </div>
 
         <div class="card">
+          <h2>Backfill channel defaults</h2>
+          <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+            One-time, safe to re-run. Stamps <code>visibility</code> and <code>listed</code> onto
+            every channel that predates private channels. Until this runs, members who aren't
+            owner/admin won't see custom channels in the community sidebar &mdash; the sidebar query
+            matches <code>listed == true</code>, and Firestore skips documents where the field is
+            missing.
+          </p>
+          <button class="btn btn-primary" id="btn-backfill-channels">Run channel backfill</button>
+          <div id="backfill-result" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="card">
           <h2>Create a company</h2>
           <form class="inline-form" id="create-form">
             <div class="field">
