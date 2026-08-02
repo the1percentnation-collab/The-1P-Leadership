@@ -783,8 +783,12 @@ function directImageUrl(raw) {
   const url = String(raw || '').trim();
   if (!url) return '';
 
-  const drive = url.match(/^https?:\/\/(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|uc\?[^#]*id=)([\w-]{10,})/);
-  if (drive) return `https://drive.google.com/uc?export=view&id=${drive[1]}`;
+  // Drive's /uc?export=view endpoint answers hotlinked images with an HTML
+  // interstitial often enough to be useless here. /thumbnail returns real
+  // image bytes — but only while the file is shared "Anyone with the link".
+  const drive = url.match(
+    /^https?:\/\/(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|thumbnail\?[^#]*id=|uc\?[^#]*id=)([\w-]{10,})/);
+  if (drive) return `https://drive.google.com/thumbnail?id=${drive[1]}&sz=w1600`;
 
   if (/^https?:\/\/(?:www\.)?dropbox\.com\//.test(url)) {
     // Strip first, THEN decide the separator — stripping "?dl=0" can remove
@@ -828,7 +832,9 @@ function updateCoverPreview({ normalize = false, okMsg = '' } = {}) {
   img.onload = () => { img.classList.add('on'); coverStatus(okMsg); };
   img.onerror = () => {
     img.classList.remove('on');
-    coverStatus('That link didn\'t load as an image. It needs to point straight at the file (…/cover.jpg), not at a page showing it. Easiest fix: use Upload… instead.', true);
+    coverStatus(/drive\.google\.com/.test(url)
+      ? 'Google Drive didn\'t serve that image. Check the file is shared "Anyone with the link" — and note Drive throttles hotlinked images, so covers can vanish later. Use Upload… instead.'
+      : 'That link didn\'t load as an image. It needs to point straight at the file (…/cover.jpg), not at a page showing it. Easiest fix: use Upload… instead.', true);
   };
   img.src = url;
 }
