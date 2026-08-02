@@ -46,8 +46,14 @@ function urlParam(name) {
 }
 
 function courseSlug() { return urlParam('course'); }
+// null = no module requested → roadmap view. The raw value has to be checked
+// BEFORE coercing: Number(null) is 0, which is a valid module id, so coercing
+// first made every ?course=X land straight in the player at module 0 and the
+// roadmap never rendered at all.
 function moduleParam() {
-  const n = Number(urlParam('module'));
+  const raw = urlParam('module');
+  if (raw == null || raw.trim() === '') return null;
+  const n = Number(raw);
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
@@ -291,6 +297,9 @@ function renderAvailableCourses() {
 
 // ─── Roadmap ─────────────────────────────────────────────────────────────
 
+const DRAFT_CHIP = '<span style="display:inline-block; margin-left:8px; padding:1px 7px; ' +
+  'border-radius:999px; background:#b91c1c; color:#fff; font-size:10px; letter-spacing:1px;">DRAFT</span>';
+
 function roadmapHtml(course, { modules, completedSet, currentId }) {
   const completedCount = completedSet.size;
   const pct = modules.length ? Math.round((completedCount / modules.length) * 100) : 0;
@@ -302,12 +311,15 @@ function roadmapHtml(course, { modules, completedSet, currentId }) {
     const state = done ? 'is-done' : (isCurrent ? 'is-current' : 'is-todo');
     const marker = done ? '✓' : String(m.id).padStart(2, '0');
     const cta = done ? 'Review' : (isCurrent ? 'Continue →' : 'Open →');
+    // `published` is only ever false when the caller asked for drafts (preview).
+    const draftChip = m.published === false ? DRAFT_CHIP : '';
+    const pillarLine = [m.pillar, m.duration].filter(Boolean).map(escapeHtml).join(' · ');
     return `
       <a class="roadmap-step ${state}" href="${href}">
         <div class="roadmap-step-marker">${marker}</div>
         <div class="roadmap-step-body">
-          <div class="roadmap-step-pillar">${escapeHtml(m.pillar)} · ${escapeHtml(m.duration)}</div>
-          <div class="roadmap-step-title">${escapeHtml(m.title)}</div>
+          <div class="roadmap-step-pillar">${pillarLine}</div>
+          <div class="roadmap-step-title">${escapeHtml(m.title)}${draftChip}</div>
           <div class="roadmap-step-sub">${escapeHtml(m.subtitle)}</div>
         </div>
         <div class="roadmap-step-cta">${escapeHtml(cta)}</div>
@@ -364,12 +376,12 @@ function roadmapHtml(course, { modules, completedSet, currentId }) {
   `;
 }
 
-async function renderRoadmap(course) {
+async function renderRoadmap(course, { preview = false } = {}) {
   const slot = $('workspace-roadmap');
   if (!slot) return;
   slot.innerHTML = '<div class="roadmap-container"><p style="color:var(--gray-mid);">Loading roadmap…</p></div>';
 
-  const modules = await loadModulesMeta(course);
+  const modules = await loadModulesMeta(course, { includeDrafts: preview });
 
   // Progress: the shared store backs 1P-CLC; Firestore-rendered courses keep
   // their own namespaced progress docs (see course-renderer.js).
@@ -387,13 +399,16 @@ async function renderRoadmap(course) {
   }
 
   if (modules.length === 0) {
+    const emptyNote = preview
+      ? 'No lessons yet — add one in the course builder and it will show up here, published or not.'
+      : 'Course content is being prepared. Check back soon.';
     slot.innerHTML = `
       <div class="roadmap-container">
         <header class="roadmap-hero">
           <div class="academy-eyebrow">${escapeHtml(course.eyebrow || 'Course')}</div>
           <h1>${escapeHtml(course.title)}</h1>
           <p>${escapeHtml(course.subtitle || '')}</p>
-          <p style="color:var(--gray-mid);">Course content is being prepared. Check back soon.</p>
+          <p style="color:var(--gray-mid);">${escapeHtml(emptyNote)}</p>
         </header>
       </div>
     `;
@@ -450,6 +465,7 @@ function renderPreviewBanner(course) {
     'padding:8px 16px; font-size:13px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;';
   banner.innerHTML =
     `<span>👁 Preview mode (owner) — members see this course as <b>${escapeHtml(course.status || '—')}</b>. ` +
+    `Draft lessons are shown here (marked <b>DRAFT</b>) but stay hidden from members until you publish them. ` +
     `This banner is only visible to you.</span>${editLink}` +
     `<a href="#" id="exit-preview" style="color:#fff; text-decoration:underline; margin-left:auto;">Exit preview</a>`;
   main.prepend(banner);
@@ -532,15 +548,15 @@ async function main() {
         await course.mount({ startAt: moduleId });
       } else {
         // Courses authored in /manage-courses.html render via the generic
-        // Firestore-backed renderer.
+        // Firestore-backed renderer. In preview the owner sees drafts too.
         const { mountFirestoreCourse } = await import('./course-renderer.js');
-        await mountFirestoreCourse(course, { startAt: moduleId });
+        await mountFirestoreCourse(course, { startAt: moduleId, includeDrafts: preview });
       }
     } catch (e) { console.warn('[courses-page] mount failed', e); }
   } else {
     // Roadmap view — default landing for an enrolled course.
     renderSidebar(course.slug);
-    await renderRoadmap(course);
+    await renderRoadmap(course, { preview });
     showRoadmap();
   }
 

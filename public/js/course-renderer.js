@@ -195,14 +195,18 @@ function summaryTabHtml(m) {
 
 // ─── Mount ────────────────────────────────────────────────────────────────
 
-export async function mountFirestoreCourse(course, { startAt } = {}) {
+export async function mountFirestoreCourse(course, { startAt, includeDrafts = false } = {}) {
   const container = document.getElementById('workspace-player');
-  // Draft lessons (published === false) exist only in the builder.
-  const modules = (await loadModuleDocs(course.slug)).filter((m) => m.published !== false);
+  // Draft lessons (published === false) are hidden from members by
+  // loadModuleDocs. Owner/admin preview passes includeDrafts so the author can
+  // see work-in-progress lessons exactly as members eventually will.
+  const modules = await loadModuleDocs(course.slug, { includeDrafts });
 
   if (modules.length === 0) {
     if (container) {
-      container.innerHTML = '<p style="color:var(--gray-mid); padding:24px;">Course content is being prepared. Check back soon.</p>';
+      container.innerHTML = includeDrafts
+        ? '<p style="color:var(--gray-mid); padding:24px;">No lessons yet — add one in the course builder and it will show up here, published or not.</p>'
+        : '<p style="color:var(--gray-mid); padding:24px;">Course content is being prepared. Check back soon.</p>';
     }
     return;
   }
@@ -240,14 +244,19 @@ export async function mountFirestoreCourse(course, { startAt } = {}) {
   mountCoursePlayer({
     container,
     courseTitle: String(course.short || course.title || '').toUpperCase(),
-    modules: modules.map((m) => ({
-      id: m.id,
-      title: m.title || `Module ${m.id}`,
-      subtitle: m.subtitle || '',
-      eyebrow: m.pillar || '',
-      duration: m.duration || '',
-      meta: [m.duration, m.tagLabel || m.pillar].filter(Boolean).join(' · ')
-    })),
+    modules: modules.map((m) => {
+      // In preview, a draft is labelled everywhere it appears so the owner is
+      // never left guessing which lessons members can actually reach.
+      const draft = includeDrafts && m.published === false;
+      return {
+        id: m.id,
+        title: m.title || `Module ${m.id}`,
+        subtitle: m.subtitle || '',
+        eyebrow: [m.pillar, draft ? 'Draft — not visible to members' : ''].filter(Boolean).join(' · '),
+        duration: m.duration || '',
+        meta: [m.duration, m.tagLabel || m.pillar, draft ? 'DRAFT' : ''].filter(Boolean).join(' · ')
+      };
+    }),
     tabs,
     progress: {
       isComplete: (id) => completed.has(id),
