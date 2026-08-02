@@ -1759,14 +1759,20 @@ gmp-place-autocomplete,
 }
 
 .mc-card {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
-  overflow: hidden;
+  /* No overflow:hidden here — the ⋯ menu opens below the actions row, i.e.
+     past the card's bottom edge, and clipping the card swallowed it whole.
+     The cover clips its own image instead (see .mc-card-cover). */
   display: flex;
   flex-direction: column;
   transition: border-color 0.15s, transform 0.15s;
 }
+
+/* An open ⋯ menu must paint over the cards that follow it in the grid. */
+.mc-card:has(.kebab.open) { z-index: 5; }
 
 .mc-card:hover { border-color: rgba(230,3,6,0.4); transform: translateY(-2px); }
 
@@ -1776,6 +1782,8 @@ gmp-place-autocomplete,
   background: linear-gradient(135deg, #1A0000 0%, #0D0D0D 100%);
   cursor: pointer;
   overflow: hidden;
+  /* 13px = the card's 14px radius less its 1px border. */
+  border-radius: 13px 13px 0 0;
 }
 
 .mc-card-cover img {
