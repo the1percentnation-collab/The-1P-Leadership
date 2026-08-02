@@ -708,14 +708,23 @@ function renderChannelHeader() {
   ` : '';
 
   root.innerHTML = `
-    <div class="c-channel-title">
-      <span class="c-channel-title-emoji">${escapeHtml(ch.emoji || '#')}</span>
-      <span class="c-channel-title-name">${escapeHtml(ch.name)}</span>
+    <div class="c-channel-titlebar">
+      <div class="c-channel-title">
+        <span class="c-channel-title-emoji">${escapeHtml(ch.emoji || '#')}</span>
+        <span class="c-channel-title-name">${escapeHtml(ch.name)}</span>
+      </div>
+      <button class="btn btn-ghost c-channel-invite" id="c-channel-invite">Invite</button>
     </div>
     ${ch.description ? `<div class="c-channel-desc">${escapeHtml(ch.description)}</div>` : ''}
     ${tagsHtml}
     ${pinnedHtml}
   `;
+
+  // The group card in the right rail also opens this modal, but that rail is
+  // display:none below 1180px — which hid the ONLY route to invite links on
+  // every laptop and phone. The channel header renders at every width.
+  const inviteBtn = $('c-channel-invite');
+  if (inviteBtn) inviteBtn.addEventListener('click', () => openInviteModal());
 }
 
 function renderLeaderboard() {
