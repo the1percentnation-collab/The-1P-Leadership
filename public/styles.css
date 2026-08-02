@@ -7087,6 +7087,23 @@ body.academy-course #course-workspace {
   .c-rightrail { display: none; }
 }
 
+/* Channel header title row — keeps the Invite button opposite the title.
+   This button exists because the right rail (which holds the group card's
+   own Invite CTA) is display:none below 1180px, so on a laptop or phone the
+   header is the only place an invite link can be reached from. */
+.c-channel-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.c-channel-titlebar .c-channel-title { flex: 1; min-width: 0; }
+.c-channel-invite {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 /* ───────────────────────────────────────────────────────────────────────
    Group info card — community identity block at the top of the right
    rail. Banner with monogram, name + private-community line, brief
