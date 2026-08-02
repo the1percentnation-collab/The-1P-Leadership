@@ -1,13 +1,14 @@
 // Owner console: create companies, assign admins, list all companies, set seat counts.
 // Requires role == 'owner' (either custom claim or users/{uid}.role == 'owner').
 
-import { db, firebaseReady } from './firebase.js';
+import { db, functions, firebaseReady } from './firebase.js';
 import { onAuthReady, bootstrapOwner } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { renderTopbar } from './topbar.js';
 import {
   collection, doc, getDoc, getDocs, query, where, setDoc, serverTimestamp, limit
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -114,6 +115,19 @@ async function main() {
       setTimeout(() => location.reload(), 900);
     } catch (err) {
       $('bootstrap-result').innerHTML = `<div class="auth-error">${err.message || err}</div>`;
+    }
+  });
+
+  $('btn-backfill-channels').addEventListener('click', async () => {
+    const out = $('backfill-result');
+    out.innerHTML = '<div style="color:var(--gray-light); font-size:12px;">Running…</div>';
+    try {
+      const call = httpsCallable(functions, 'backfillChannelDefaults');
+      const res = (await call({})).data || {};
+      const names = (res.channels || []).join(', ');
+      out.innerHTML = `<div class="auth-ok">Checked ${res.total || 0} channel(s); updated ${res.patched || 0}${names ? ` — ${names}` : ''}.</div>`;
+    } catch (err) {
+      out.innerHTML = `<div class="auth-error">${err.message || err}</div>`;
     }
   });
 
