@@ -77,9 +77,12 @@ function courseCardHtml(c) {
   const cur = c.status || 'coming-soon';
   const p = priceInfo(c);
 
+  // The text mark is always rendered and the image sits on top of it, so a
+  // cover URL that 404s degrades to the mark rather than a broken-image icon.
+  const mark = `<div class="mc-card-cover-mark">${escapeHtml(c.short || c.title || c.slug)}</div>`;
   const cover = c.coverImage
-    ? `<img src="${escapeHtml(c.coverImage)}" alt="" loading="lazy">`
-    : `<div class="mc-card-cover-mark">${escapeHtml(c.short || c.title || c.slug)}</div>`;
+    ? `${mark}<img src="${escapeHtml(c.coverImage)}" alt="" loading="lazy" onerror="this.remove()">`
+    : mark;
 
   const price = p.label
     ? `<span class="mc-card-price">${p.onSale ? `<s>${escapeHtml(p.originalLabel)}</s>` : ''}${escapeHtml(p.label)}</span>`

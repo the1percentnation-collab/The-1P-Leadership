@@ -118,8 +118,12 @@ function courseCardHtml(c, { action, statusBadge, saleBadge = '', soon = false }
   const p = priceInfo(c);
   // eyebrow is "Format · N Modules" — split it into the meta row.
   const [fmt, mods] = String(c.eyebrow || '').split('·').map((s) => s.trim());
-  const cover = c.image
-    ? `<div class="course-card-cover has-image" style="background-image:url('${escapeHtml(c.image)}')">`
+  // `coverImage` is what the course builder's Sales tab writes; `image` is the
+  // older Firestore-only field. Honour both so a cover set in the builder
+  // actually reaches the member-facing library card.
+  const coverSrc = c.image || c.coverImage;
+  const cover = coverSrc
+    ? `<div class="course-card-cover has-image" style="background-image:url('${escapeHtml(coverSrc)}')">`
     : `<div class="course-card-cover"><span class="course-card-cover-title">${escapeHtml(c.short || c.title)}</span>`;
   const price = p.label ? `
     <div class="course-card-price">

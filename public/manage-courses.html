@@ -217,9 +217,18 @@
 
               <div class="inline-form" style="flex-wrap:wrap;">
                 <div class="field"><label for="s-category">Category</label><input id="s-category" type="text" placeholder="Mindset & Personal Growth"></div>
-                <div class="field"><label for="s-cover">Cover image URL</label><input id="s-cover" type="text" placeholder="https://…/cover.jpg"></div>
+                <div class="field" style="flex:1 1 100%;">
+                  <label for="s-cover">Cover image</label>
+                  <div style="display:flex; gap:8px; align-items:center;">
+                    <input id="s-cover" type="text" placeholder="https://…/cover.jpg" style="flex:1;">
+                    <button class="btn btn-ghost" type="button" id="btn-cover-upload" style="font-size:12px; white-space:nowrap;">Upload…</button>
+                    <input type="file" id="s-cover-file" accept="image/*" style="display:none;">
+                  </div>
+                  <div class="mc-field-note">Upload a file, or paste a <b>direct</b> image link — one that ends in .jpg / .png / .webp. A Google Drive, Dropbox, or Canva share page won't load as an image.</div>
+                </div>
               </div>
               <img class="mc-cover-preview" id="s-cover-preview" alt="Cover preview">
+              <div id="s-cover-status" style="font-size:12px; color:var(--gray-light); margin-top:6px;"></div>
 
               <div class="field" style="margin-top:16px;">
                 <label for="s-learn">What you'll learn — one per line<button class="mc-reset-field" type="button" data-reset="whatYoullLearn" style="display:none;">reset to built-in</button></label>
