@@ -10,6 +10,9 @@ import {
   listComments, addComment, deleteComment,
   getUserProfile, touchCommunityVisit,
   listChannels, getPinnedPostForChannel, setPostPinned, createChannelDoc, isValidChannelKey,
+  isPrivateChannel, isListedChannel, canAccessChannel, channelMemberCount,
+  requestChannelAccess, decideChannelAccess, removeChannelMember,
+  listChannelRequests, myChannelRequest,
   getLeaderboard, getMyStats, levelFromPoints, levelProgress,
   subscribeToFeed, searchMembers, renderTextWithMentions,
   avatarHtml, fmtRelative, escapeHtml, linkify
@@ -23,6 +26,27 @@ const $ = (id) => document.getElementById(id);
 function urlChannel() {
   const v = new URLSearchParams(location.search).get('channel');
   return v && isValidChannelKey(v) ? v : null;
+}
+
+// The active channel's key when it is PRIVATE, else null. Every post helper in
+// community.js takes this and uses it to pick the collection: private channels
+// read and write channels/{key}/posts, public ones the flat `posts`.
+function activePrivateChannel(key = null) {
+  const k = key || state.activeChannel;
+  const ch = state.channels.find((c) => c.key === k);
+  return isPrivateChannel(ch) ? k : null;
+}
+
+function isStaff() {
+  return state.role === 'owner' || state.role === 'admin';
+}
+
+/** May the signed-in user read the active channel's posts? */
+function canOpenActiveChannel(key = null) {
+  const k = key || state.activeChannel;
+  const ch = state.channels.find((c) => c.key === k);
+  const uid = state.me && state.me.uid;
+  return canAccessChannel(ch, uid, isStaff());
 }
 
 const state = {
@@ -72,6 +96,146 @@ function handleHashScroll() {
     if (++tries < 12) setTimeout(tick, 200);
   }
   tick();
+}
+
+// ── Locked channel view ───────────────────────────────────────────────────
+//
+// Shown instead of the composer + feed when the active channel is private and
+// the viewer isn't a member. Deliberately renders only metadata the channel doc
+// already exposes — name, description, member COUNT — and never touches the
+// posts subcollection, which the rules would refuse anyway.
+async function renderLockedChannel() {
+  const ch = activeChannelMeta();
+  const composer = $('composer');
+  const feed = $('feed');
+  if (feed) feed.innerHTML = '';
+  if (!composer) return;
+
+  const count = channelMemberCount(ch);
+  composer.innerHTML = `
+    <div class="c-locked">
+      <div class="c-locked-emoji">${escapeHtml(ch.emoji || '🔒')}</div>
+      <h2 class="c-locked-title">${escapeHtml(ch.name)}</h2>
+      <div class="c-locked-badge">🔒 Private channel</div>
+      ${ch.description ? `<p class="c-locked-desc">${escapeHtml(ch.description)}</p>` : ''}
+      <div class="c-locked-count">${count} ${count === 1 ? 'member' : 'members'}</div>
+      <div class="c-locked-actions" id="c-locked-actions">
+        <button class="btn btn-primary" id="c-locked-request">Request access</button>
+      </div>
+      <div class="c-locked-note">Only members can see what's posted here.</div>
+    </div>
+  `;
+
+  const actions = $('c-locked-actions');
+  // A prior request means the button becomes a status, not a second submit.
+  const existing = await myChannelRequest(ch.key).catch(() => null);
+  if (existing && existing.status === 'pending') {
+    actions.innerHTML = `<div class="c-locked-pending">Request pending — you'll be notified when it's reviewed.</div>`;
+    return;
+  }
+  if (existing && existing.status === 'denied') {
+    actions.innerHTML = `<div class="c-locked-pending">Your previous request wasn't approved.</div>`;
+    return;
+  }
+
+  const btn = $('c-locked-request');
+  if (btn) btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Requesting…';
+    try {
+      await requestChannelAccess(ch.key);
+      actions.innerHTML = `<div class="c-locked-pending">Request sent — you'll be notified when it's reviewed.</div>`;
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Request access';
+      actions.insertAdjacentHTML('beforeend',
+        `<div class="c-err">${escapeHtml(err.message || 'Could not send request.')}</div>`);
+    }
+  });
+}
+
+// ── Staff panel: pending requests + current members ───────────────────────
+//
+// Rendered under the channel header for owner/admin on a private channel. The
+// bell handles one-off approvals; this is for reviewing a queue and for pruning
+// members, which the notification flow has no place for.
+async function renderStaffChannelPanel() {
+  const root = $('channel-staff');
+  if (!root) return;
+  const ch = activeChannelMeta();
+  if (!isStaff() || !isPrivateChannel(ch)) { root.innerHTML = ''; return; }
+
+  const requests = await listChannelRequests(ch.key).catch(() => []);
+  const members = Array.isArray(ch.memberUids) ? ch.memberUids : [];
+
+  const reqHtml = requests.length ? requests.map((r) => `
+    <div class="c-staff-row" data-req="${escapeHtml(r.uid)}">
+      ${avatarHtml({ avatarUrl: r.avatarUrl, displayName: r.displayName }, 28)}
+      <span class="c-staff-name">${escapeHtml(r.displayName || 'Member')}</span>
+      <button class="btn btn-primary c-staff-approve" data-uid="${escapeHtml(r.uid)}">Approve</button>
+      <button class="btn btn-ghost c-staff-deny" data-uid="${escapeHtml(r.uid)}">Deny</button>
+    </div>
+  `).join('') : `<div class="c-staff-empty">No pending requests.</div>`;
+
+  root.innerHTML = `
+    <div class="c-staff-panel">
+      <div class="c-staff-head">Access requests${requests.length ? ` (${requests.length})` : ''}</div>
+      ${reqHtml}
+      <div class="c-staff-head">Members (${members.length})</div>
+      <div id="c-staff-members" class="c-staff-members"></div>
+    </div>
+  `;
+
+  root.querySelectorAll('.c-staff-approve, .c-staff-deny').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const approve = btn.classList.contains('c-staff-approve');
+      const uid = btn.dataset.uid;
+      btn.disabled = true;
+      try {
+        await decideChannelAccess({ channelKey: ch.key, uid, approve });
+        // Refresh the channel cache so memberUids (and the count) are current.
+        state.channels = await listChannels({ isAdmin: isStaff() });
+        await renderStaffChannelPanel();
+      } catch (err) {
+        btn.disabled = false;
+        alert(err.message || 'Could not update that request.');
+      }
+    });
+  });
+
+  // Member rows resolve names lazily — memberUids is just uids.
+  const memRoot = $('c-staff-members');
+  if (memRoot) {
+    if (!members.length) {
+      memRoot.innerHTML = `<div class="c-staff-empty">No members yet.</div>`;
+    } else {
+      const profiles = await Promise.all(members.map((u) => getUserProfile(u).catch(() => null)));
+      memRoot.innerHTML = profiles.map((prof, i) => {
+        const uid = members[i];
+        const name = (prof && prof.displayName) || (prof && prof.email) || 'Member';
+        return `
+          <div class="c-staff-row">
+            ${avatarHtml({ avatarUrl: prof && prof.avatarUrl, displayName: name }, 24)}
+            <span class="c-staff-name">${escapeHtml(name)}</span>
+            <button class="btn btn-ghost c-staff-remove" data-uid="${escapeHtml(uid)}">Remove</button>
+          </div>`;
+      }).join('');
+      memRoot.querySelectorAll('.c-staff-remove').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Remove this member? They keep anything they already read.')) return;
+          btn.disabled = true;
+          try {
+            await removeChannelMember(ch.key, btn.dataset.uid);
+            state.channels = await listChannels({ isAdmin: isStaff() });
+            await renderStaffChannelPanel();
+          } catch (err) {
+            btn.disabled = false;
+            alert(err.message || 'Could not remove that member.');
+          }
+        });
+      });
+    }
+  }
 }
 
 function renderComposer() {
@@ -266,6 +430,7 @@ function renderSidebar() {
        data-channel="${escapeHtml(c.key)}">
       <span class="c-channel-emoji">${escapeHtml(c.emoji || '#')}</span>
       <span class="c-channel-name">${escapeHtml(c.name)}</span>
+      ${isPrivateChannel(c) ? '<span class="c-channel-lock" title="Private channel">🔒</span>' : ''}
     </a>
   `).join('');
   // Owner-only "+ Add channel" footer. Rules also enforce owner-only writes,
@@ -318,6 +483,15 @@ function openAddChannelModal() {
 
         <div class="c-ch-keyhint">URL: <span id="c-ch-keyhint-val">/community.html?channel=…</span></div>
 
+        <label class="c-ch-private">
+          <input id="c-ch-private" type="checkbox">
+          <span>Private channel &mdash; only members can read the posts</span>
+        </label>
+        <label class="c-ch-private c-ch-hidden-opt">
+          <input id="c-ch-hidden" type="checkbox" disabled>
+          <span>Hide it entirely &mdash; leave off and everyone sees the channel with a Request access button</span>
+        </label>
+
         <div class="c-invite-actions">
           <button class="btn btn-primary" id="c-ch-create">Create channel</button>
           <button class="btn btn-ghost" id="c-ch-cancel">Cancel</button>
@@ -341,6 +515,15 @@ function openAddChannelModal() {
       ? `/community.html?channel=${slug}`
       : '/community.html?channel=…';
   });
+  // "Hide it entirely" is meaningless for a public channel — keep it disabled
+  // (and cleared) unless Private is checked.
+  const privateBox = document.getElementById('c-ch-private');
+  const hiddenBox = document.getElementById('c-ch-hidden');
+  privateBox.addEventListener('change', () => {
+    hiddenBox.disabled = !privateBox.checked;
+    if (!privateBox.checked) hiddenBox.checked = false;
+  });
+
   setTimeout(() => nameInput.focus(), 0);
 
   document.getElementById('c-ch-create').addEventListener('click', async () => {
@@ -354,9 +537,14 @@ function openAddChannelModal() {
     btn.disabled = true;
     btn.textContent = 'Creating…';
     try {
-      const created = await createChannelDoc({ name, emoji, description });
+      const isPrivate = document.getElementById('c-ch-private').checked;
+      const visibility = isPrivate ? 'private' : 'public';
+      // Hidden only means anything for a private channel; a public one is
+      // always listed (createChannelDoc enforces this too).
+      const listed = !(isPrivate && document.getElementById('c-ch-hidden').checked);
+      const created = await createChannelDoc({ name, emoji, description, visibility, listed });
       // Refresh the channels cache + repaint sidebar and chips.
-      state.channels = await listChannels();
+      state.channels = await listChannels({ isAdmin: isStaff() });
       renderSidebar();
       renderChannelChips();
       close();
@@ -852,16 +1040,30 @@ async function switchChannel(nextKey) {
     history.replaceState(null, '', next.toString());
   } catch (e) {}
   renderSidebar();
+
+  // Tear down any pending-posts toast before either branch repaints.
+  const toast = document.getElementById('c-new-posts-toast');
+  if (toast) toast.remove();
+
+  // Private channel the viewer isn't in: show the locked panel and DO NOT
+  // subscribe. The rules would reject the listener anyway; not opening it keeps
+  // a permission-denied out of the console and off the bill.
+  if (!canOpenActiveChannel(nextKey)) {
+    if (state.feedUnsub) { try { state.feedUnsub(); } catch (e) {} state.feedUnsub = null; }
+    state.pinnedPost = null;
+    renderChannelHeader();
+    await renderLockedChannel();
+    return;
+  }
+
   renderComposer();
   // Refresh pinned post for new channel and re-render header.
-  state.pinnedPost = await getPinnedPostForChannel(nextKey).catch(() => null);
+  state.pinnedPost = await getPinnedPostForChannel(nextKey, activePrivateChannel(nextKey)).catch(() => null);
   renderChannelHeader();
   // Re-subscribe to the new channel; the snapshot listener will paint the
   // initial 20 posts when it lands.
   subscribeToActiveChannel();
-  // Tear down any pending-posts toast.
-  const t = document.getElementById('c-new-posts-toast');
-  if (t) t.remove();
+  renderStaffChannelPanel();
 }
 
 async function submitPost() {
@@ -894,7 +1096,8 @@ async function submitPost() {
       companyId: scopeCompanyId,
       author: state.me,
       category: chosenCategory,
-      mentionedUids
+      mentionedUids,
+      privateChannel: activePrivateChannel(chosenCategory)
     });
     $('composer-text').value = '';
     $('composer-file').value = '';
@@ -945,7 +1148,8 @@ function subscribeToActiveChannel() {
     category: state.activeChannel,
     role: state.role,
     companyId: state.companyId,
-    pageSize: 20
+    pageSize: 20,
+    privateChannel: activePrivateChannel()
   }, ({ posts, changes }) => onFeedSnapshot(posts, changes));
 }
 
@@ -966,7 +1170,7 @@ async function onFeedSnapshot(nextPosts, changes) {
     state.livePostIds = new Set(nextPosts.map((p) => p.id));
     // Hydrate liked state once; later changes are surgical.
     await Promise.all(nextPosts.map(async (p) => {
-      const liked = await hasLiked(p.id).catch(() => false);
+      const liked = await hasLiked(p.id, activePrivateChannel()).catch(() => false);
       if (liked) state.likedIds.add(p.id);
     }));
     renderFeed();
@@ -1069,7 +1273,8 @@ async function loadMore(reset = false) {
       after: state.lastDoc,
       role: state.role,
       companyId: state.companyId,
-      category: state.activeChannel
+      category: state.activeChannel,
+      privateChannel: activePrivateChannel()
     });
     // Merge into existing array, dedup by id.
     const have = new Set(state.posts.map((p) => p.id));
@@ -1078,7 +1283,7 @@ async function loadMore(reset = false) {
     state.lastDoc = lastDoc;
     state.done = done;
     await Promise.all(fresh.map(async (p) => {
-      const liked = await hasLiked(p.id);
+      const liked = await hasLiked(p.id, activePrivateChannel());
       if (liked) state.likedIds.add(p.id);
     }));
     renderFeed();
@@ -1270,7 +1475,7 @@ async function handlePin(p) {
   const next = !p.pinned;
   const channelKey = p.category || state.activeChannel || 'general';
   try {
-    await setPostPinned(p.id, next, channelKey);
+    await setPostPinned(p.id, next, channelKey, activePrivateChannel(channelKey));
     p.pinned = next;
     // Update the channel pinned-banner in place if we're viewing the same channel.
     if (channelKey === state.activeChannel) {
@@ -1304,7 +1509,7 @@ async function handleLike(p) {
     p.likeCount = prevCount + 1;
   }
   try {
-    await toggleLike(p.id);
+    await toggleLike(p.id, activePrivateChannel());
   } catch (e) {
     // Revert on error.
     if (wasLiked) {
@@ -1325,7 +1530,7 @@ async function handleLike(p) {
 async function handleDelete(p) {
   if (!confirm('Delete this post? This cannot be undone.')) return;
   try {
-    await deletePost(p.id);
+    await deletePost(p.id, activePrivateChannel());
     state.posts = state.posts.filter((x) => x.id !== p.id);
     renderFeed();
   } catch (e) {
@@ -1345,7 +1550,7 @@ function toggleComments(p) {
 async function loadCommentsInto(p) {
   const root = document.getElementById(`c-comments-${p.id}`);
   if (!root) return;
-  const comments = await listComments(p.id);
+  const comments = await listComments(p.id, activePrivateChannel());
   root.innerHTML = `
     <div class="c-comments-list">
       ${comments.length ? comments.map((c) => commentHtml(c, p)).join('') : '<div class="c-no-comments">No comments yet.</div>'}
@@ -1365,7 +1570,7 @@ async function loadCommentsInto(p) {
     submit.disabled = true;
     try {
       const mentionedUids = collectMentionedUidsFromText(text);
-      await addComment(p.id, { text, author: state.me, mentionedUids });
+      await addComment(p.id, { text, author: state.me, mentionedUids, privateChannel: activePrivateChannel() });
       // Update counter in memory + DOM.
       p.commentCount = (p.commentCount || 0) + 1;
       const cc = document.querySelector(`[data-comment-count="${p.id}"]`);
@@ -1388,7 +1593,7 @@ async function loadCommentsInto(p) {
     b.addEventListener('click', async () => {
       if (!confirm('Delete this comment?')) return;
       try {
-        await deleteComment(p.id, b.dataset.commentDel);
+        await deleteComment(p.id, b.dataset.commentDel, activePrivateChannel());
         p.commentCount = Math.max(0, (p.commentCount || 1) - 1);
         const cc = document.querySelector(`[data-comment-count="${p.id}"]`);
         if (cc) cc.textContent = p.commentCount;
@@ -1449,7 +1654,7 @@ async function main() {
   };
 
   // Load channels (Phase 1) before rendering so the sidebar + composer have data.
-  state.channels = await listChannels();
+  state.channels = await listChannels({ isAdmin: isStaff() });
   if (!state.channels.find((c) => c.key === state.activeChannel)) {
     state.activeChannel = 'general';
   }
@@ -1466,20 +1671,28 @@ async function main() {
                            // refreshLeaderboard() refines it once stats land.
   renderTabs();
   renderSidebar();
-  renderComposer();
   renderGroupInfoCard();   // initial paint; refreshLeaderboard() repaints
                            // once the leaderboard rows arrive.
-
-  // Pinned post for the active channel (best-effort; skipped silently if missing).
-  state.pinnedPost = await getPinnedPostForChannel(state.activeChannel).catch(() => null);
-  renderChannelHeader();
 
   // Phase 2 — kick off leaderboard hydration in parallel with the feed so it
   // doesn't block initial paint. Re-render once it lands.
   refreshLeaderboard().catch(() => {});
 
-  // Phase 3 — replace the polling feed with a bounded realtime listener.
-  subscribeToActiveChannel();
+  // Landing straight on a private channel you're not in (deep link, stale tab)
+  // must take the same path as switching into one: locked panel, no listener.
+  if (!canOpenActiveChannel()) {
+    renderChannelHeader();
+    await renderLockedChannel();
+  } else {
+    renderComposer();
+    // Pinned post for the active channel (best-effort; skipped if missing).
+    state.pinnedPost = await getPinnedPostForChannel(state.activeChannel, activePrivateChannel()).catch(() => null);
+    renderChannelHeader();
+    renderStaffChannelPanel();
+
+    // Phase 3 — replace the polling feed with a bounded realtime listener.
+    subscribeToActiveChannel();
+  }
 
   // Notification deep-link: handle existing #post-X on initial load and any
   // hashchange that follows (e.g. clicking another notif from the bell while

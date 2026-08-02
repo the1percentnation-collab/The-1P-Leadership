@@ -7395,6 +7395,142 @@ body.academy-course #course-workspace {
 }
 .c-ch-input:focus { outline: none; border-color: rgba(204,27,27,0.5); }
 
+/* ── Private channels ─────────────────────────────────────────────────── */
+
+.c-ch-private {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--gray-light);
+  cursor: pointer;
+}
+.c-ch-private input { margin-top: 2px; flex-shrink: 0; }
+.c-ch-hidden-opt { margin-top: 6px; padding-left: 22px; }
+.c-ch-private input:disabled + span { opacity: 0.45; }
+
+.c-channel-lock { margin-left: auto; font-size: 11px; opacity: 0.75; }
+
+/* Locked channel panel — replaces composer + feed for non-members. */
+.c-locked {
+  text-align: center;
+  padding: 40px 24px;
+}
+.c-locked-emoji { font-size: 40px; line-height: 1; }
+.c-locked-title {
+  margin: 12px 0 8px;
+  font-family: var(--font-display, var(--font-sans));
+  font-size: 26px;
+  color: var(--white);
+}
+.c-locked-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+.c-locked-desc {
+  max-width: 460px;
+  margin: 14px auto 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--gray-light);
+}
+.c-locked-count {
+  margin-top: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--gray-mid);
+}
+.c-locked-actions { margin-top: 20px; }
+.c-locked-pending {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--gray-light);
+}
+.c-locked-note {
+  margin-top: 18px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--gray-mid);
+}
+
+/* Staff panel — pending requests + member roster. */
+.c-staff-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.c-staff-head {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+  margin: 10px 0 8px;
+}
+.c-staff-head:first-child { margin-top: 0; }
+.c-staff-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.c-staff-row:last-child { border-bottom: none; }
+.c-staff-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--white);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.c-staff-row .btn { padding: 4px 10px; font-size: 11px; flex-shrink: 0; }
+.c-staff-empty {
+  font-size: 12px;
+  color: var(--gray-mid);
+  font-family: var(--font-mono);
+  padding: 4px 0 8px;
+}
+
+/* Inline approve/deny inside a bell notification row. */
+.c-notif-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.c-notif-actions button {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--charcoal);
+  color: var(--white);
+}
+.c-notif-approve { background: var(--red); border-color: var(--red); }
+.c-notif-actions button:disabled { opacity: 0.5; cursor: default; }
+.c-notif-decided {
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+}
+.c-notif-err { font-size: 10px; color: var(--red); align-self: center; }
+
 /* ── Custom event date + time picker ────────────────────────────── */
 .c-dt-row { display: flex; gap: 8px; }
 .c-dt-wrap { position: relative; flex: 1 1 0; min-width: 0; }

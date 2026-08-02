@@ -142,7 +142,14 @@ function notifIcon(type) {
   if (type === 'like') return '❤️';
   if (type === 'comment') return '💬';
   if (type === 'mention') return '@';
+  if (type === 'channel_request') return '🔑';
+  if (type === 'channel_access_granted') return '🔓';
+  if (type === 'channel_access_denied') return '🔒';
   return '🔔';
+}
+
+function channelLabel(n) {
+  return escapeHtml(n.channelName || n.category || 'a channel');
 }
 
 function notifLine(n) {
@@ -150,10 +157,21 @@ function notifLine(n) {
   if (n.type === 'like') return `${who} liked your post`;
   if (n.type === 'comment') return `${who} commented on your post`;
   if (n.type === 'mention') return `${who} mentioned you`;
+  if (n.type === 'channel_request') return `${who} requested access to ${channelLabel(n)}`;
+  if (n.type === 'channel_access_granted') return `You now have access to ${channelLabel(n)}`;
+  if (n.type === 'channel_access_denied') return `Your request for ${channelLabel(n)} wasn't approved`;
   return `${who} did something`;
 }
 
+/** Channel-access notifications carry no postId — link to the channel itself. */
+function isChannelNotif(n) {
+  return !!n && typeof n.type === 'string' && n.type.startsWith('channel_');
+}
+
 function notifHref(n) {
+  if (isChannelNotif(n) && n.category) {
+    return `/community.html?channel=${encodeURIComponent(n.category)}`;
+  }
   if (!n || !n.postId) return '/community.html';
   const channel = n.category || 'general';
   return `/community.html?channel=${encodeURIComponent(channel)}#post-${encodeURIComponent(n.postId)}`;
@@ -192,7 +210,17 @@ function renderNotifPopover() {
       <button class="c-notif-mark-all" id="notif-mark-all" ${rows.length ? '' : 'disabled'}>Mark all read</button>
     </div>
   `;
-  const bodyHtml = rows.length ? rows.map((n) => `
+  const bodyHtml = rows.length ? rows.map((n) => {
+    // Access requests are actionable from the bell so staff can approve from a
+    // phone without opening the community page. The buttons sit inside the <a>,
+    // so their handlers must stopPropagation or the row navigates away.
+    const actions = n.type === 'channel_request' && n.category && n.fromUid
+      ? `<div class="c-notif-actions">
+           <button class="c-notif-approve" data-approve="${escapeHtml(n.category)}" data-uid="${escapeHtml(n.fromUid)}" data-notif-id="${escapeHtml(n.id)}">Approve</button>
+           <button class="c-notif-deny" data-deny="${escapeHtml(n.category)}" data-uid="${escapeHtml(n.fromUid)}" data-notif-id="${escapeHtml(n.id)}">Deny</button>
+         </div>`
+      : '';
+    return `
     <a class="c-notif-row unread" data-notif="${escapeHtml(n.id)}" href="${escapeHtml(notifHref(n))}">
       <span class="c-notif-icon">${notifIcon(n.type)}</span>
       ${avatarHtml({ avatarUrl: n.fromAvatar, displayName: n.fromName }, 28)}
@@ -200,9 +228,10 @@ function renderNotifPopover() {
         <div class="c-notif-line">${notifLine(n)}</div>
         ${n.preview ? `<div class="c-notif-preview">${escapeHtml(n.preview)}</div>` : ''}
         <div class="c-notif-time">${fmtRelative(n.createdAt)}</div>
+        ${actions}
       </div>
-    </a>
-  `).join('') : `<div class="c-notif-empty">You're all caught up.</div>`;
+    </a>`;
+  }).join('') : `<div class="c-notif-empty">You're all caught up.</div>`;
   pop.innerHTML = headerHtml + `<div class="c-notif-list">${bodyHtml}</div>`;
 
   pop.querySelectorAll('.c-notif-row').forEach((a) => {
@@ -214,6 +243,35 @@ function renderNotifPopover() {
       pop.hidden = true;
       // The default <a href> navigates to /community.html?channel=…#post-…
       // which community-page.js handles via its hashchange + initial-hash code.
+    });
+  });
+
+  pop.querySelectorAll('[data-approve], [data-deny]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      // Keep the row from navigating and the popover from closing.
+      e.preventDefault();
+      e.stopPropagation();
+      const approve = btn.hasAttribute('data-approve');
+      const channelKey = btn.getAttribute(approve ? 'data-approve' : 'data-deny');
+      const uid = btn.dataset.uid;
+      const row = btn.closest('.c-notif-body');
+      btn.disabled = true;
+      try {
+        const call = httpsCallable(functions, 'decideChannelAccess');
+        await call({ channelKey, uid, approve });
+        if (row) {
+          row.querySelector('.c-notif-actions').outerHTML =
+            `<div class="c-notif-decided">${approve ? 'Approved ✓' : 'Denied'}</div>`;
+        }
+        try { await markNotifReadById(btn.dataset.notifId); } catch (er) {}
+      } catch (err) {
+        btn.disabled = false;
+        if (row) {
+          const holder = row.querySelector('.c-notif-actions');
+          if (holder) holder.insertAdjacentHTML('beforeend',
+            `<span class="c-notif-err">${escapeHtml(err.message || 'Failed')}</span>`);
+        }
+      }
     });
   });
 

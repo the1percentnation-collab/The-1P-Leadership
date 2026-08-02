@@ -110,11 +110,30 @@ export async function uploadEventImage(eventId, file) {
 // are treated as 'general' client-side: when category === 'general' we run a
 // SECOND pass without the where('category') clause and merge, dropping any
 // post that has a non-general category set. This keeps the rollout zero-write.
-export async function listPosts({ pageSize = 20, after = null, role = 'user', companyId = null, category = null } = {}) {
+export async function listPosts({ pageSize = 20, after = null, role = 'user', companyId = null, category = null, privateChannel = null } = {}) {
   if (!firebaseReady) return { posts: [], lastDoc: null, done: true };
   const results = [];
   let lastDoc = null;
   const includeLegacyAsGeneral = category === 'general';
+
+  // Private channel: one flat query on the channel's own subcollection.
+  // No company scoping (membership already decided who is here, and the rules
+  // enforce it) and no legacy merge — private channels postdate the legacy
+  // category-less posts entirely.
+  if (privateChannel) {
+    try {
+      const parts = [postsCol(privateChannel), orderBy('createdAt', 'desc')];
+      if (after) parts.push(startAfter(after));
+      parts.push(limit(pageSize));
+      const snap = await getDocs(query(...parts));
+      snap.forEach((d) => results.push({ id: d.id, ...d.data(), _snap: d }));
+      const last = snap.empty ? null : snap.docs[snap.docs.length - 1];
+      return { posts: results, lastDoc: last, done: snap.size < pageSize };
+    } catch (e) {
+      console.warn('[community] listPosts (private) failed', e);
+      return { posts: [], lastDoc: null, done: true };
+    }
+  }
 
   function applyCategoryClause(parts) {
     if (category) parts.push(where('category', '==', category));
@@ -247,7 +266,30 @@ export function isValidChannelKey(key) {
   return typeof key === 'string' && CHANNEL_KEY_RE.test(key);
 }
 
-export async function createPost({ text, imageFile, companyId = null, author, category = 'general', mentionedUids = [] }) {
+// ── Where a post lives ────────────────────────────────────────────────────
+//
+// Public channels: the flat top-level `posts` collection, as always.
+// Private channels: `channels/{key}/posts`. The channel key has to be in the
+// PATH — that is what lets one membership check in the rules secure a whole
+// list query. A membership field on the document could not: Firestore evaluates
+// list rules against the query, not per returned document.
+//
+// Callers pass `privateChannel` = the channel key for a private channel, or
+// null/undefined for a public one. Every post helper below takes it.
+
+export function postsCol(privateChannel) {
+  return privateChannel
+    ? collection(db, 'channels', privateChannel, 'posts')
+    : collection(db, 'posts');
+}
+
+export function postDocRef(privateChannel, postId) {
+  return privateChannel
+    ? doc(db, 'channels', privateChannel, 'posts', postId)
+    : doc(db, 'posts', postId);
+}
+
+export async function createPost({ text, imageFile, companyId = null, author, category = 'general', mentionedUids = [], privateChannel = null }) {
   if (!firebaseReady) throw new Error('Firebase unavailable');
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
@@ -258,7 +300,7 @@ export async function createPost({ text, imageFile, companyId = null, author, ca
     : [];
 
   // Create post doc first (we need postId for the storage path).
-  const docRef = await addDoc(collection(db, 'posts'), {
+  const docRef = await addDoc(postsCol(privateChannel), {
     authorUid: user.uid,
     authorName: author.displayName || user.displayName || user.email || 'Unknown',
     authorAvatar: author.avatarUrl || null,
@@ -287,17 +329,17 @@ export async function createPost({ text, imageFile, companyId = null, author, ca
   return docRef.id;
 }
 
-export async function deletePost(postId) {
+export async function deletePost(postId, privateChannel = null) {
   if (!firebaseReady) throw new Error('Firebase unavailable');
-  await deleteDoc(doc(db, 'posts', postId));
+  await deleteDoc(postDocRef(privateChannel, postId));
 }
 
 // Like toggle using a transaction: writes/removes likes/{uid} + ±1 likeCount.
-export async function toggleLike(postId) {
+export async function toggleLike(postId, privateChannel = null) {
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
-  const postRef = doc(db, 'posts', postId);
-  const likeRef = doc(db, 'posts', postId, 'likes', user.uid);
+  const postRef = postDocRef(privateChannel, postId);
+  const likeRef = doc(postRef, 'likes', user.uid);
   return await runTransaction(db, async (tx) => {
     const likeSnap = await tx.get(likeRef);
     const postSnap = await tx.get(postRef);
@@ -314,11 +356,11 @@ export async function toggleLike(postId) {
   });
 }
 
-export async function hasLiked(postId) {
+export async function hasLiked(postId, privateChannel = null) {
   const user = auth.currentUser;
   if (!user) return false;
   try {
-    const snap = await getDoc(doc(db, 'posts', postId, 'likes', user.uid));
+    const snap = await getDoc(doc(postDocRef(privateChannel, postId), 'likes', user.uid));
     return snap.exists();
   } catch (e) { return false; }
 }
@@ -326,11 +368,11 @@ export async function hasLiked(postId) {
 // ────────────────────────────────────────────────────────────────
 // Comments (flat — one level only)
 // ────────────────────────────────────────────────────────────────
-export async function listComments(postId) {
+export async function listComments(postId, privateChannel = null) {
   if (!firebaseReady) return [];
   try {
     const snap = await getDocs(query(
-      collection(db, 'posts', postId, 'comments'),
+      collection(postDocRef(privateChannel, postId), 'comments'),
       orderBy('createdAt', 'asc')
     ));
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -340,12 +382,12 @@ export async function listComments(postId) {
   }
 }
 
-export async function addComment(postId, { text, author, mentionedUids = [] }) {
+export async function addComment(postId, { text, author, mentionedUids = [], privateChannel = null }) {
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
   if (!text || !text.trim()) throw new Error('Comment required');
-  const postRef = doc(db, 'posts', postId);
-  const commentsCol = collection(db, 'posts', postId, 'comments');
+  const postRef = postDocRef(privateChannel, postId);
+  const commentsCol = collection(postRef, 'comments');
   const mentions = Array.isArray(mentionedUids)
     ? Array.from(new Set(mentionedUids.filter((u) => typeof u === 'string' && u))).slice(0, 10)
     : [];
@@ -368,9 +410,9 @@ export async function addComment(postId, { text, author, mentionedUids = [] }) {
   });
 }
 
-export async function deleteComment(postId, commentId) {
-  const postRef = doc(db, 'posts', postId);
-  const commentRef = doc(db, 'posts', postId, 'comments', commentId);
+export async function deleteComment(postId, commentId, privateChannel = null) {
+  const postRef = postDocRef(privateChannel, postId);
+  const commentRef = doc(postRef, 'comments', commentId);
   return await runTransaction(db, async (tx) => {
     const cSnap = await tx.get(commentRef);
     if (!cSnap.exists()) return;
@@ -394,15 +436,83 @@ const DEFAULT_CHANNELS = [
   { key: 'announcements', name: 'Announcements', emoji: '📣', order: 3, description: 'Important updates from the team.' }
 ];
 
-export async function listChannels() {
+/** True when a channel record is private (member-gated). */
+export function isPrivateChannel(channel) {
+  return !!channel && channel.visibility === 'private';
+}
+
+/**
+ * Does this channel appear in everyone's sidebar?
+ *
+ * ABSENT MEANS LISTED. Every channel that predates this feature has no `listed`
+ * field, and treating those as hidden would make the whole sidebar vanish. The
+ * backfill writes the field explicitly; this default is the second line of
+ * defence in case a doc is ever missed.
+ */
+export function isListedChannel(channel) {
+  return !channel || channel.listed !== false;
+}
+
+/** Is `uid` allowed to READ this channel's posts? Public channels are open. */
+export function canAccessChannel(channel, uid, isAdmin = false) {
+  if (!isPrivateChannel(channel)) return true;
+  if (isAdmin) return true;
+  const members = Array.isArray(channel.memberUids) ? channel.memberUids : [];
+  return !!uid && members.includes(uid);
+}
+
+/** Member count for the locked view. Private channels only. */
+export function channelMemberCount(channel) {
+  return Array.isArray(channel && channel.memberUids) ? channel.memberUids.length : 0;
+}
+
+/**
+ * Channels the caller may see.
+ *
+ * Two axes, deliberately independent:
+ *   listed   — does it show up in the sidebar at all
+ *   private  — can you read the posts inside it
+ * A listed+private channel is visible to everyone and shows "Request access";
+ * an unlisted one is invisible unless you're a member (or staff).
+ *
+ * Staff read the collection in one query. Everyone else runs TWO constrained
+ * queries, because the matching `allow list` rule is written against `resource`
+ * and Firestore only permits list queries it can statically prove safe:
+ *   1. listed == true          → the public sidebar
+ *   2. memberUids contains me  → unlisted channels I belong to
+ * They are merged and deduped (a listed channel I'm a member of hits both).
+ *
+ * This only works because every channel doc carries an explicit `listed` field —
+ * `==` skips documents where the field is ABSENT. See backfillChannelDefaults.
+ */
+export async function listChannels({ isAdmin = false } = {}) {
   if (!firebaseReady) return DEFAULT_CHANNELS.slice();
+  const uid = auth && auth.currentUser ? auth.currentUser.uid : null;
+
+  async function fetchDocs() {
+    if (isAdmin) {
+      const snap = await getDocs(query(collection(db, 'channels'), orderBy('order', 'asc')));
+      return snap.docs;
+    }
+    // Each query is tolerated independently — a rules denial or a missing index
+    // on one must not blank the sidebar produced by the other.
+    const queries = [getDocs(query(collection(db, 'channels'), where('listed', '==', true)))];
+    if (uid) {
+      queries.push(getDocs(query(collection(db, 'channels'), where('memberUids', 'array-contains', uid))));
+    }
+    const snaps = await Promise.all(queries.map((p) => p.catch((e) => {
+      console.warn('[community] listChannels partial query failed', e);
+      return null;
+    })));
+    return snaps.filter(Boolean).flatMap((s) => s.docs);
+  }
+
   try {
-    const snap = await getDocs(query(collection(db, 'channels'), orderBy('order', 'asc')));
-    if (snap.empty) return DEFAULT_CHANNELS.slice();
-    const remote = snap.docs.map((d) => ({ key: d.id, ...d.data() }));
-    // Merge: remote overrides defaults; missing defaults are appended so the
-    // sidebar always shows the four core channels even if seeding is partial.
-    const byKey = new Map(remote.map((c) => [c.key, c]));
+    const docs = await fetchDocs();
+    if (!docs.length) return DEFAULT_CHANNELS.slice();
+    // Keyed map doubles as the dedupe for the two-query path.
+    const byKey = new Map(docs.map((d) => [d.id, { key: d.id, ...d.data() }]));
+    // The four core channels render even if their docs were never seeded.
     DEFAULT_CHANNELS.forEach((d) => { if (!byKey.has(d.key)) byKey.set(d.key, d); });
     return Array.from(byKey.values()).sort((a, b) => (a.order || 0) - (b.order || 0));
   } catch (e) {
@@ -411,13 +521,13 @@ export async function listChannels() {
   }
 }
 
-export async function getPinnedPostForChannel(channelKey) {
+export async function getPinnedPostForChannel(channelKey, privateChannel = null) {
   if (!firebaseReady || !channelKey) return null;
   try {
     const cSnap = await getDoc(doc(db, 'channels', channelKey));
     const pid = cSnap.exists() ? cSnap.data().pinnedPostId : null;
     if (!pid) return null;
-    const pSnap = await getDoc(doc(db, 'posts', pid));
+    const pSnap = await getDoc(postDocRef(privateChannel, pid));
     if (!pSnap.exists()) return null;
     return { id: pSnap.id, ...pSnap.data() };
   } catch (e) {
@@ -428,9 +538,9 @@ export async function getPinnedPostForChannel(channelKey) {
 // Owner / company-admin pin toggle — updates the post's `pinned` flag and
 // mirrors the post id onto the channel doc so the sidebar can show one
 // pinned post per channel without a query.
-export async function setPostPinned(postId, pinned, channelKey) {
+export async function setPostPinned(postId, pinned, channelKey, privateChannel = null) {
   if (!firebaseReady) throw new Error('Firebase unavailable');
-  await updateDoc(doc(db, 'posts', postId), { pinned: !!pinned });
+  await updateDoc(postDocRef(privateChannel, postId), { pinned: !!pinned });
   if (channelKey) {
     try {
       await setDoc(doc(db, 'channels', channelKey), {
@@ -469,7 +579,7 @@ export function slugifyChannelKey(name) {
  * Throws on validation failure or rule denial. The key is auto-derived
  * from the name unless an explicit `key` is passed.
  */
-export async function createChannelDoc({ key, name, emoji = '#', description = '', order = null } = {}) {
+export async function createChannelDoc({ key, name, emoji = '#', description = '', order = null, visibility = 'public', listed = true } = {}) {
   if (!firebaseReady) throw new Error('Firebase unavailable');
   const cleanName = String(name || '').trim();
   if (cleanName.length < 2 || cleanName.length > 40) {
@@ -500,6 +610,9 @@ export async function createChannelDoc({ key, name, emoji = '#', description = '
     }
   }
 
+  const isPrivate = visibility === 'private';
+  const creatorUid = auth && auth.currentUser ? auth.currentUser.uid : null;
+
   const data = {
     key: finalKey,
     name: cleanName,
@@ -507,11 +620,79 @@ export async function createChannelDoc({ key, name, emoji = '#', description = '
     description: String(description || '').slice(0, 200),
     order: Number(nextOrder),
     scope: 'global',
+    visibility: isPrivate ? 'private' : 'public',
+    // Always written explicitly — listChannels() queries `listed == true`, and
+    // Firestore's == skips docs where the field is absent. A public channel is
+    // always listed; hiding only makes sense for a private one.
+    listed: isPrivate ? !!listed : true,
+    // Seed the creator as a member so a private channel is never created with
+    // nobody able to open it. Staff pass the membership check regardless.
+    memberUids: isPrivate && creatorUid ? [creatorUid] : [],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
   await setDoc(doc(db, 'channels', finalKey), data);
   return { ...data, key: finalKey };
+}
+
+// ── Channel access requests ───────────────────────────────────────────────
+//
+// All of these go through callables rather than direct writes. Firestore rules
+// permit `channels/{key}` writes to the OWNER only, so an admin approving a
+// request from the browser would be denied — the callable uses the Admin SDK,
+// which is what lets admins approve at all.
+
+/** Ask staff for access to a listed private channel. */
+export async function requestChannelAccess(channelKey) {
+  const call = httpsCallable(functions, 'requestChannelAccess');
+  const res = await call({ channelKey });
+  return res.data;
+}
+
+/**
+ * Approve or deny a pending request. Owner/admin only (enforced server-side).
+ * Approving adds the uid to memberUids.
+ *
+ * This controls ACCESS ONLY. Removing someone stops them reading anything
+ * further; it does not retract what they already saw.
+ */
+export async function decideChannelAccess({ channelKey, uid, approve }) {
+  const call = httpsCallable(functions, 'decideChannelAccess');
+  const res = await call({ channelKey, uid, approve: !!approve });
+  return res.data;
+}
+
+/** Remove an existing member from a private channel. Owner/admin only. */
+export async function removeChannelMember(channelKey, uid) {
+  const call = httpsCallable(functions, 'removeChannelMember');
+  const res = await call({ channelKey, uid });
+  return res.data;
+}
+
+/** Pending + decided requests for a channel. Staff only per rules. */
+export async function listChannelRequests(channelKey) {
+  if (!firebaseReady || !channelKey) return [];
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'channels', channelKey, 'requests'),
+      where('status', '==', 'pending')
+    ));
+    return snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+  } catch (e) {
+    console.warn('[community] listChannelRequests failed', e);
+    return [];
+  }
+}
+
+/** The caller's own request on a channel, if any. */
+export async function myChannelRequest(channelKey) {
+  if (!firebaseReady || !channelKey) return null;
+  const user = auth && auth.currentUser;
+  if (!user) return null;
+  try {
+    const snap = await getDoc(doc(db, 'channels', channelKey, 'requests', user.uid));
+    return snap.exists() ? { uid: snap.id, ...snap.data() } : null;
+  } catch (e) { return null; }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -707,7 +888,7 @@ export function linkify(text) {
  * (company posts + global posts) and merge in JS — same OR-emulation
  * pattern listPosts uses for one-shot fetches.
  */
-export function subscribeToFeed({ category = null, role = 'user', companyId = null, pageSize = 20 } = {}, onChange) {
+export function subscribeToFeed({ category = null, role = 'user', companyId = null, pageSize = 20, privateChannel = null } = {}, onChange) {
   if (!firebaseReady) {
     if (typeof onChange === 'function') onChange({ posts: [], changes: [] });
     return () => {};
@@ -770,7 +951,11 @@ export function subscribeToFeed({ category = null, role = 'user', companyId = nu
     unsubs.push(u);
   }
 
-  if (role === 'owner') {
+  if (privateChannel) {
+    // One listener on the channel's own subcollection. Membership already
+    // decided who is here, so there is no company/global split to merge.
+    watch(buildQuery(postsCol(privateChannel)), 'private');
+  } else if (role === 'owner') {
     watch(buildQuery(collection(db, 'posts')), 'all');
   } else if (companyId) {
     watch(buildQuery(query(collection(db, 'posts'), where('companyId', '==', companyId))), 'company');
