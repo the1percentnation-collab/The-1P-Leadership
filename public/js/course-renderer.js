@@ -195,7 +195,7 @@ function summaryTabHtml(m) {
 
 // ─── Mount ────────────────────────────────────────────────────────────────
 
-export async function mountFirestoreCourse(course, { startAt, includeDrafts = false } = {}) {
+export async function mountFirestoreCourse(course, { startAt, includeDrafts = false, certificateHref = null } = {}) {
   const container = document.getElementById('workspace-player');
   // Draft lessons (published === false) are hidden from members by
   // loadModuleDocs. Owner/admin preview passes includeDrafts so the author can
@@ -262,6 +262,10 @@ export async function mountFirestoreCourse(course, { startAt, includeDrafts = fa
       isComplete: (id) => completed.has(id),
       markComplete: (id) => markComplete(course.slug, id, completed)
     },
+    // Drafts are only ever in `modules` during owner preview; finishing a
+    // draft-padded module list isn't the same course members will complete, so
+    // preview never offers the certificate.
+    certificateHref: includeDrafts ? null : certificateHref,
     startAt
   });
 }

@@ -131,6 +131,15 @@ service cloud.firestore {
         allow read, write: if isOwner() || isSelf(uid);
       }
 
+      // users/{uid}/certificates/{courseSlug} — the record of a completed
+      // course, written by /certificate.html the first time the member opens
+      // their certificate. It freezes the issue date; the certificate itself is
+      // still gated on progress at render time, and progress lives in the
+      // equally self-writable /progress docs above, so this grants nothing new.
+      match /certificates/{courseSlug} {
+        allow read, write: if isOwner() || isSelf(uid);
+      }
+
       // users/{uid}/stats/{statId} (Phase 2 leaderboard) — server-only writes.
       // Reads are permitted to any signed-in user so client-side leaderboard
       // panels can hydrate level badges via the getLeaderboard callable's

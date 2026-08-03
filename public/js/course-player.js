@@ -14,8 +14,12 @@
 //     moduleHeaderHtml?,    // (mod) → extra html under the module title (e.g. ALIGN bar)
 //     sidebarFooterHtml?,   // () → html pinned at the bottom of the sidebar
 //     labels?,              // { complete, completeLast, completed, completedLast }
+//     certificateHref?,     // when every module is done, the last module shows a
+//                           // completion panel and the footer CTA links here
 //     startAt               // module id to open first
 //   })
+
+import { courseCompleteHtml } from './certificate.js';
 
 export function escPlayer(str) {
   return String(str)
@@ -105,6 +109,18 @@ export function mountCoursePlayer(config) {
       ? (isLast ? labels.completedLast : labels.completed)
       : (isLast ? labels.completeLast : labels.complete);
 
+    // The course is only "finished" once every module is done — not just the
+    // last one — so someone who skipped module 3 doesn't get a certificate for
+    // reaching the end.
+    const allDone = modules.length > 0 && completedCount() === modules.length;
+    const showCert = allDone && isLast && !!config.certificateHref;
+    const certPanel = showCert ? courseCompleteHtml({ href: config.certificateHref }) : '';
+    // Reaching the end with the course finished: the dead "✓ Course Complete"
+    // button becomes the way to the certificate.
+    const footCta = showCert
+      ? `<a class="cp-btn cp-btn-primary" href="${esc(config.certificateHref)}">Get your certificate →</a>`
+      : `<button class="cp-btn ${isDone ? 'cp-btn-done' : 'cp-btn-primary'}" id="cp-complete" ${isDone && isLast ? 'disabled' : ''}>${esc(completeLabel)}</button>`;
+
     return `
       <div class="cp-module">
         <div class="cp-module-head">
@@ -120,10 +136,11 @@ export function mountCoursePlayer(config) {
           ${tabs.length > 1 ? `<div class="cp-tabs">${tabBtns}</div>` : ''}
         </div>
         <div class="cp-tab-content" id="cp-tab-content">${content}</div>
+        ${certPanel}
         <div class="cp-footbar">
           <button class="cp-btn cp-btn-ghost" id="cp-prev" ${i === 0 ? 'disabled' : ''}>← Previous</button>
           <div class="cp-footbar-pos">Module ${i + 1} of ${modules.length}</div>
-          <button class="cp-btn ${isDone ? 'cp-btn-done' : 'cp-btn-primary'}" id="cp-complete" ${isDone && isLast ? 'disabled' : ''}>${esc(completeLabel)}</button>
+          ${footCta}
         </div>
       </div>`;
   }
