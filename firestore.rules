@@ -192,6 +192,15 @@ service cloud.firestore {
         allow read: if isOwner() || isSelf(uid);
         allow write: if false;
       }
+
+      // users/{uid}/bookUnlocks/{courseSlug} — the member took the book path,
+      // so the course is priced at its book rate. Written ONLY by the
+      // unlockBookPrice Cloud Function (Admin SDK): this doc decides what they
+      // are charged, so a client that could write it could set its own price.
+      match /bookUnlocks/{courseSlug} {
+        allow read: if isOwner() || isSelf(uid);
+        allow write: if false;
+      }
     }
 
     // companies/{companyId}

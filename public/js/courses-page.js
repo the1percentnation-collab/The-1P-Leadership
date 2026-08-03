@@ -22,6 +22,7 @@ import { store } from './store.js';
 import { loadEnrollments, enrollInCourse, isEnrolled, enrolledCourses, availableCourses } from './enrollments.js';
 import { getRefCode } from './referral.js';
 import { certificateHref, courseCompleteHtml } from './certificate.js';
+import { loadBookUnlocks, isBookUnlocked, bookOfferHtml, bindBookOffer } from './book-offer.js';
 import { loadCourseCompletion } from './course-progress.js';
 import { ensureOnboarded } from './onboarding-guard.js';
 import { db } from './firebase.js';
@@ -117,7 +118,7 @@ function renderSidebar(activeSlug) {
 // title over a dark/red gradient); a Firestore `image` field replaces it
 // with real cover art without a deploy.
 function courseCardHtml(c, { action, statusBadge, saleBadge = '', soon = false } = {}) {
-  const p = priceInfo(c);
+  const p = priceInfo(c, { bookUnlocked: isBookUnlocked(c.slug) });
   // eyebrow is "Format · N Modules" — split it into the meta row.
   const [fmt, mods] = String(c.eyebrow || '').split('·').map((s) => s.trim());
   // `coverImage` is what the course builder's Sales tab writes; `image` is the
@@ -133,6 +134,8 @@ function courseCardHtml(c, { action, statusBadge, saleBadge = '', soon = false }
       <span>${escapeHtml(p.label)}</span>
     </div>` : '<div class="course-card-price"></div>';
   const priceNote = c.priceNote ? `<div class="course-card-note">${escapeHtml(c.priceNote)}</div>` : '';
+  // The book path, when this course offers one. Compact on a card.
+  const bookHtml = soon || p.isFree ? '' : bookOfferHtml(c, { compact: true });
   const searchText = [c.title, c.short, c.category, c.subtitle, c.eyebrow]
     .filter(Boolean).join(' ').toLowerCase();
   return `
@@ -154,6 +157,7 @@ function courseCardHtml(c, { action, statusBadge, saleBadge = '', soon = false }
         ${price}
         ${action}
         ${priceNote}
+        ${bookHtml}
       </div>
     </article>
   `;
@@ -239,6 +243,10 @@ function renderAvailableCourses() {
     }
   });
 
+  // Book path — re-render the library so the card, its price and its enroll
+  // button all pick up the new rate together.
+  bindBookOffer(slot, { onUnlocked: () => renderAvailableCourses() });
+
   // Card click (anywhere except a button/link) opens the course detail page.
   slot.querySelectorAll('.course-card').forEach((card) => {
     card.style.cursor = 'pointer';
@@ -252,7 +260,7 @@ function renderAvailableCourses() {
     btn.addEventListener('click', async (e) => {
       const slug = btn.dataset.slug;
       const course = getCourseBySlug(slug);
-      const p = course ? priceInfo(course) : { isFree: true };
+      const p = course ? priceInfo(course, { bookUnlocked: isBookUnlocked(slug) }) : { isFree: true };
       btn.disabled = true;
       btn.textContent = p.isFree ? 'Enrolling…' : 'Opening secure checkout…';
       try {
@@ -514,6 +522,7 @@ async function main() {
   try { await store.load(); } catch (e) {}
   try { await loadEnrollments(); } catch (e) {}
   try { await loadCourseInterests(); } catch (e) {}
+  try { await loadBookUnlocks(); } catch (e) {}
 
   // Owner/admin content preview: a session-scoped flag lets owner/admins view
   // any course (any status, even unenrolled) exactly as members will. Turned on

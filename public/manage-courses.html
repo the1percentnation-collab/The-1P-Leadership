@@ -281,6 +281,23 @@
                 </div>
               </div>
               <div class="field" style="margin-top:12px;"><label for="p-pricenote">Price note (shown under the price)</label><input id="p-pricenote" type="text" placeholder="Full course · lifetime access"></div>
+
+              <h4 style="margin:24px 0 6px; font-size:14px;">The book path</h4>
+              <p style="font-size:13px; color:var(--gray-light); margin:0 0 14px;">
+                Route buyers through the book: they click to the book's listing and the course
+                drops to the book price. Both fields are required — with either one missing,
+                everyone just pays the regular price. The book price must be lower than the
+                regular price.
+                <br><strong>Note:</strong> clicking the link is what unlocks the discount. Nothing
+                checks whether they actually bought the book (no bookseller offers that), so don't
+                write copy promising a verified purchase.
+              </p>
+              <div class="inline-form" style="flex-wrap:wrap;">
+                <div class="field" style="max-width:150px;"><label for="p-bookprice">Book price ($)</label><input id="p-bookprice" type="number" min="0" step="0.01" placeholder="optional"></div>
+                <div class="field" style="min-width:260px; flex:1;"><label for="p-bookurl">Book link</label><input id="p-bookurl" type="url" placeholder="https://a.co/d/..."></div>
+                <div class="field" style="min-width:200px; flex:1;"><label for="p-booklabel">Book name (shown in the offer)</label><input id="p-booklabel" type="text" placeholder="I Can't (paperback, $19.99)"></div>
+              </div>
+
               <div style="display:flex; gap:10px; margin-top:16px;">
                 <button class="btn btn-primary" type="button" id="btn-save-pricing">Save pricing</button>
               </div>

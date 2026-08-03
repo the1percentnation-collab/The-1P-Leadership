@@ -931,6 +931,9 @@ function fillPricingForm(c) {
   $('p-interval').disabled = mode !== 'subscription';
   $('p-interval').value = (c && c.pricing && c.pricing.interval) || 'month';
   $('p-pricenote').value = c ? (c.priceNote || '') : '';
+  $('p-bookprice').value = c && typeof c.bookPrice === 'number' ? c.bookPrice : '';
+  $('p-bookurl').value = c ? (c.bookUrl || '') : '';
+  $('p-booklabel').value = c ? (c.bookLabel || '') : '';
   $('pricing-result').innerHTML = '';
   S.suppress = false;
 }
@@ -945,10 +948,26 @@ async function savePricing() {
     if (salePrice != null && price != null && salePrice >= price) {
       throw new Error('Sale price must be lower than the regular price.');
     }
+    // The book path. Both halves or neither — a book price with no link (or a
+    // link with no price) would show an offer the server refuses to honour.
+    const bookPrice = $('p-bookprice').value === '' ? null : Number($('p-bookprice').value);
+    const bookUrl = $('p-bookurl').value.trim() || null;
+    if (bookPrice != null && (!Number.isFinite(bookPrice) || bookPrice <= 0)) {
+      throw new Error('Enter a valid book price.');
+    }
+    if (bookPrice != null && bookUrl == null) throw new Error('Add the book link, or clear the book price.');
+    if (bookUrl != null && bookPrice == null) throw new Error('Add the book price, or clear the book link.');
+    if (bookPrice != null && price != null && bookPrice >= price) {
+      throw new Error('Book price must be lower than the regular price.');
+    }
+
     const mode = $('p-mode').value;
     await setDoc(doc(db, 'courses', S.slug), {
       price,
       salePrice,
+      bookPrice,
+      bookUrl,
+      bookLabel: $('p-booklabel').value.trim() || null,
       // Clear the seeded display label so it always derives from `price`.
       priceLabel: null,
       priceNote: $('p-pricenote').value.trim() || null,

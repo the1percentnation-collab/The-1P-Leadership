@@ -13,6 +13,7 @@ import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { escapeHtml, getUserProfile } from './community.js';
 import { renderTopbar } from './topbar.js';
 import { loadEnrollments, isEnrolled, enrollInCourse } from './enrollments.js';
+import { loadBookUnlocks, isBookUnlocked, bookOfferHtml, bindBookOffer } from './book-offer.js';
 import { getRefCode } from './referral.js';
 
 const root = () => document.getElementById('cl-root');
@@ -261,7 +262,7 @@ function moreCoursesHtml(course) {
 // ─── Purchase card ────────────────────────────────────────────────────────
 
 function purchaseCardHtml(course, { enrolled }) {
-  const p = priceInfo(course);
+  const p = priceInfo(course, { bookUnlocked: isBookUnlocked(course.slug) });
   const isBundle = course.status === 'bundle' || !!course.bundleHref;
   const live = course.status === 'live';
 
@@ -282,6 +283,7 @@ function purchaseCardHtml(course, { enrolled }) {
       ${p.onSale ? `<s class="cl-price-was">${escapeHtml(p.originalLabel)}</s>` : ''}
     </div>
     ${course.priceNote ? `<div class="cl-price-note">${escapeHtml(course.priceNote)}</div>` : ''}
+    ${p.isFree ? '' : bookOfferHtml(course)}
     ${!live && !isBundle ? `<div class="cl-soon-note">Coming soon — enrollment isn't open yet.</div>` : ''}`;
 
   return `
@@ -367,7 +369,7 @@ function bindEnroll(course) {
   if (!btn) return;
   btn.addEventListener('click', async () => {
     if (firebaseReady && !currentUser()) { requireLoginRedirect(); return; }
-    const p = priceInfo(course);
+    const p = priceInfo(course, { bookUnlocked: isBookUnlocked(course.slug) });
     btn.disabled = true;
     btn.textContent = p.isFree ? 'Enrolling…' : 'Opening secure checkout…';
     try {
@@ -439,6 +441,7 @@ async function main() {
   // (getCourses falls back to the seed data automatically).
   try { await withTimeout(loadCourses(), 5000); } catch (e) {}
   try { if (user) await withTimeout(loadEnrollments(), 4000); } catch (e) {}
+  try { if (user) await withTimeout(loadBookUnlocks(), 4000); } catch (e) {}
 
   const slug = new URLSearchParams(location.search).get('course');
   const course = getCourseBySlug(slug, { includeInactive: false });
@@ -474,6 +477,17 @@ async function main() {
   bindShare(course);
   bindEnroll(course);
   bindNotify(course);
+  // Re-render just the buy card so the price and CTA move together.
+  bindBookOffer(document.getElementById('cl-buy'), {
+    onUnlocked: () => {
+      const card = document.getElementById('cl-buy');
+      if (!card) return;
+      card.outerHTML = purchaseCardHtml(course, { enrolled });
+      bindEnroll(course);
+      bindNotify(course);
+      bindBookOffer(document.getElementById('cl-buy'));
+    }
+  });
 
   // Header user chip (no duplicate nav links — the tabs handle navigation).
   try {

@@ -75,32 +75,69 @@ function fmtMoney(n) {
 }
 
 /**
- * Resolves what to show (and what to charge) for a course:
- *   { label, originalLabel, onSale, amount, isFree, isSubscription, intervalSuffix }
- * `amount` is the effective price in dollars (sale price when on sale).
+ * Does this course route buyers through the book? Mirrors the server guard in
+ * `bookPriceDollars` (functions/index.js) exactly — both a book URL and a book
+ * price below list, or there is no offer. Keep the two in step: the server is
+ * what charges, this is only what we show.
  */
-export function priceInfo(course) {
+export function bookOffer(course) {
+  if (!course) return null;
+  const base = typeof course.price === 'number' ? course.price : null;
+  const price = typeof course.bookPrice === 'number' && course.bookPrice > 0
+    ? course.bookPrice : null;
+  const url = typeof course.bookUrl === 'string' ? course.bookUrl.trim() : '';
+  if (!url || price == null || base == null || price >= base) return null;
+  return {
+    price,
+    url,
+    label: course.bookLabel || 'the book',
+    priceLabel: fmtMoney(price)
+  };
+}
+
+/**
+ * Resolves what to show (and what to charge) for a course:
+ *   { label, originalLabel, onSale, amount, isFree, isSubscription,
+ *     intervalSuffix, book, bookUnlocked }
+ * `amount` is the effective price in dollars (sale price when on sale, or the
+ * book price once the member has taken the book path).
+ *
+ * Pass { bookUnlocked: true } when the member has unlocked the book price —
+ * see isBookUnlocked() in book-offer.js.
+ */
+export function priceInfo(course, { bookUnlocked = false } = {}) {
   const base = typeof course.price === 'number' ? course.price : null;
   const sale = typeof course.salePrice === 'number' && course.salePrice >= 0
     ? course.salePrice : null;
   const onSale = sale != null && base != null && sale < base;
-  const amount = onSale ? sale : base;
 
   const isSubscription = !!(course.pricing && course.pricing.mode === 'subscription');
   const interval = isSubscription ? (course.pricing.interval || 'month') : null;
   const intervalSuffix = interval ? (interval === 'year' ? '/yr' : '/mo') : '';
 
   const baseLabel = course.priceLabel || (base != null ? fmtMoney(base) + intervalSuffix : '');
-  const label = onSale ? fmtMoney(sale) + intervalSuffix : baseLabel;
+
+  // Same rule the server applies: the book path can only ever lower the price,
+  // so a live sale that beats it still wins.
+  const book = bookOffer(course);
+  const normal = onSale ? sale : base;
+  const useBook = !!(book && bookUnlocked && (normal == null || book.price < normal));
+  const amount = useBook ? book.price : normal;
+
+  const label = useBook
+    ? fmtMoney(book.price) + intervalSuffix
+    : (onSale ? fmtMoney(sale) + intervalSuffix : baseLabel);
 
   return {
     label,
-    originalLabel: onSale ? baseLabel : null,
+    originalLabel: useBook ? baseLabel : (onSale ? baseLabel : null),
     onSale,
     amount,
     isFree: amount === 0,
     isSubscription,
-    intervalSuffix
+    intervalSuffix,
+    book,
+    bookUnlocked: useBook
   };
 }
 

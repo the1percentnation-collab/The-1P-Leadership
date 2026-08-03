@@ -9815,3 +9815,93 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
     print-color-adjust: exact;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   The book path — the second route to a course, shown wherever it is sold.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.book-offer {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-red);
+  border-radius: 12px;
+  background:
+    radial-gradient(120% 160% at 0% 0%, rgba(230, 3, 6, 0.12), transparent 62%),
+    var(--black-2);
+  text-align: left;
+}
+
+.book-offer.is-compact { margin-top: 12px; padding: 12px 14px; }
+
+.book-offer-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.book-offer-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+.book-offer-price {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1;
+  color: var(--white);
+}
+
+.book-offer-copy {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--gray-light);
+  margin-bottom: 12px;
+}
+
+.book-offer-copy strong { color: var(--white); }
+
+.book-offer-btn {
+  display: block;
+  width: 100%;
+  padding: 11px 18px;
+  border: 1px solid var(--red);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--white);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.book-offer-btn:hover { background: var(--red); color: #fff; }
+.book-offer-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* Once taken, the block collapses to a confirmation line. */
+.book-offer.is-unlocked {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+}
+
+.book-offer-check {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  font-size: 12px;
+}
+
+.book-offer-text { font-size: 13px; line-height: 1.4; color: var(--gray-light); }
+.book-offer-text strong { color: var(--white); }

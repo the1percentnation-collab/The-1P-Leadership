@@ -190,9 +190,15 @@ export const COURSES = [
     status: 'coming-soon',
     eyebrow: 'Self-paced · 8 Modules',
     category: 'Mindset & Personal Growth',
-    price: 197,
-    priceLabel: '$197',
+    price: 79,
+    priceLabel: '$79',
     priceNote: 'Full course · lifetime access',
+    // The book path: buyers who go via the book pay $59, so book + course
+    // ($78.99) costs a penny less than the course alone. Seeds only — Manage
+    // Courses overrides all three from Firestore without a deploy.
+    bookPrice: 59,
+    bookUrl: 'https://a.co/d/0fSUaomu',
+    bookLabel: 'the book on Amazon ($19.99)',
     whatYoullLearn: [
       'Measure your belief baseline before module one — and retake it at the end to see exactly what changed.',
       'Understand the neuroscience of why your brain defends the beliefs that limit you.',

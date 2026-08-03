@@ -3027,6 +3027,88 @@ function effectivePriceDollars(course) {
   return base;
 }
 
+// ─── The book path ────────────────────────────────────────────────────────
+// A course can route buyers through the book first: click to the book's Amazon
+// listing and the course drops to `bookPrice`. Amazon gives authors no way to
+// verify an order, so the click IS the trigger — see unlockBookPrice, and keep
+// the marketing copy honest about it.
+
+/**
+ * The book price, or null when this course doesn't offer that path. Honoured
+ * only when the course carries BOTH a book URL and a book price below list, so
+ * a half-filled config in Manage Courses can never produce a nonsense charge.
+ */
+function bookPriceDollars(course) {
+  const base = typeof course.price === 'number' ? course.price : null;
+  const book = typeof course.bookPrice === 'number' && course.bookPrice > 0 ? course.bookPrice : null;
+  const url = typeof course.bookUrl === 'string' ? course.bookUrl.trim() : '';
+  if (!url || book == null || base == null || book >= base) return null;
+  return book;
+}
+
+async function hasBookUnlock(db, uid, slug) {
+  try {
+    const snap = await db.collection('users').doc(uid).collection('bookUnlocks').doc(slug).get();
+    return snap.exists;
+  } catch (e) {
+    console.warn('[bookUnlock] lookup failed:', e && e.message);
+    return false;
+  }
+}
+
+/**
+ * What this particular buyer pays. Takes the lower of the book price and the
+ * normal sale/list resolution, so unlocking the book path can never cost a
+ * member more than not unlocking it (e.g. a $49 sale beats a $59 book price).
+ */
+async function priceForBuyerDollars(db, uid, slug, course) {
+  const normal = effectivePriceDollars(course);
+  const book = bookPriceDollars(course);
+  if (book == null) return normal;
+  if (!(await hasBookUnlock(db, uid, slug))) return normal;
+  return normal == null ? book : Math.min(normal, book);
+}
+
+// unlockBookPrice({ slug }) — the member clicked through to buy the book, which
+// drops the course to its book price. Returns the Amazon URL read from the
+// course doc, so the browser opens a link we control rather than one it sent.
+//
+// Deliberately not a purchase check: nothing here verifies an order, because
+// nothing can. The unlock is the click.
+exports.unlockBookPrice = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const slug = String((request.data && request.data.slug) || '').trim().slice(0, 80);
+  if (!slug) throw new HttpsError('invalid-argument', 'A course slug is required.');
+
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'unlockBookPrice', max: 10, windowSec: 600 });
+
+  const courseSnap = await db.collection('courses').doc(slug).get();
+  if (!courseSnap.exists) throw new HttpsError('not-found', 'Unknown course.');
+  const course = courseSnap.data();
+  const book = bookPriceDollars(course);
+  if (book == null) {
+    throw new HttpsError('failed-precondition', 'This course doesn\'t offer the book price.');
+  }
+
+  // Status is NOT checked here on purpose: the offer is worth showing on a
+  // coming-soon sales page, and checkout enforces `live` on its own. Unlocking
+  // early just means the price is already right when enrollment opens.
+  const ref = db.collection('users').doc(uid).collection('bookUnlocks').doc(slug);
+  const existing = await ref.get();
+  if (!existing.exists) {
+    await ref.set({
+      slug,
+      price: book,
+      source: 'amazon-click',
+      unlockedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  return { ok: true, slug, price: book, url: String(course.bookUrl).trim() };
+});
+
 // enrollFree — server-side enrollment for free (or legacy) courses. All
 // client enrollment goes through here; firestore rules freeze
 // enrolledCourseSlugs on self-writes.
@@ -3098,7 +3180,10 @@ exports.createCheckoutSession = onCall(async (request) => {
     throw new HttpsError('already-exists', 'You\'re already enrolled in this course.');
   }
 
-  const dollars = effectivePriceDollars(course);
+  // The single place the charge is decided. The client sends only a slug, so
+  // the book price can't be claimed by editing the page — it is granted by
+  // unlockBookPrice and read back from Firestore here.
+  const dollars = await priceForBuyerDollars(db, uid, slug, course);
   if (dollars == null || dollars <= 0) {
     throw new HttpsError('failed-precondition', 'This course is free — use enrollFree.');
   }
