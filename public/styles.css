@@ -9486,24 +9486,6 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
 }
 
-/* Light sheet, brand red. */
-.cert-sheet.is-crimson {
-  --cert-bg: #FFFFFF;
-  --cert-face: #FFFDFC;
-  --cert-ink: #111111;
-  --cert-body: #3A3A3A;
-  --cert-muted: #6A6A6A;
-  --cert-accent: #E60306;
-  --cert-name: #E60306;
-  --cert-wedge: #E60306;
-  --cert-line: rgba(230, 3, 6, 0.85);
-  --cert-rule: rgba(230, 3, 6, 0.5);
-  --cert-dot: rgba(230, 3, 6, 0.42);
-  --cert-watermark: rgba(230, 3, 6, 0.045);
-  --cert-sigline: rgba(0, 0, 0, 0.5);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
-}
-
 /* The two solid corner wedges. */
 .cert-sheet::before,
 .cert-sheet::after {

@@ -31,8 +31,7 @@ export function certificateHref(slug) {
 
 export const CERT_STYLES = [
   { id: 'midnight', label: 'Midnight', sheet: '#0A0A0A', accent: '#E60306' },
-  { id: 'classic',  label: 'Classic',  sheet: '#FFFFFF', accent: '#111111' },
-  { id: 'crimson',  label: 'Crimson',  sheet: '#FFFFFF', accent: '#E60306' }
+  { id: 'classic',  label: 'Classic',  sheet: '#FFFFFF', accent: '#111111' }
 ];
 
 export const DEFAULT_CERT_STYLE = CERT_STYLES[0].id;
