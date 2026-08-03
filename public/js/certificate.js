@@ -15,12 +15,46 @@ function esc(str) {
 }
 
 export const CERT_SIGNER = {
-  name: 'Anthony Brown Sr.',
+  name: 'Anthony Brown',
   title: 'Founder, The One Percent Nation'
 };
 
 export function certificateHref(slug) {
   return `/certificate.html?course=${encodeURIComponent(slug)}`;
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────
+// Members pick which one they want to keep. The id becomes an `is-<id>` class
+// on the sheet; the palette itself lives in CSS custom properties, so adding a
+// style here plus a block in styles.css is the whole job. `sheet` and `accent`
+// are only for the picker's swatch.
+
+export const CERT_STYLES = [
+  { id: 'midnight', label: 'Midnight', sheet: '#0A0A0A', accent: '#E60306' },
+  { id: 'classic',  label: 'Classic',  sheet: '#FFFFFF', accent: '#111111' },
+  { id: 'crimson',  label: 'Crimson',  sheet: '#FFFFFF', accent: '#E60306' }
+];
+
+export const DEFAULT_CERT_STYLE = CERT_STYLES[0].id;
+
+/** Falls back to the default for anything unrecognised (old or hand-edited values). */
+export function normalizeCertStyle(id) {
+  return CERT_STYLES.some((s) => s.id === id) ? id : DEFAULT_CERT_STYLE;
+}
+
+export function certStylePickerHtml(activeId) {
+  const active = normalizeCertStyle(activeId);
+  const buttons = CERT_STYLES.map((s) => `
+    <button type="button" class="cert-style" data-style="${esc(s.id)}"
+            aria-pressed="${s.id === active ? 'true' : 'false'}">
+      <span class="cert-style-swatch" style="--sw-a:${esc(s.sheet)};--sw-b:${esc(s.accent)}"></span>
+      ${esc(s.label)}
+    </button>`).join('');
+  return `
+    <div class="cert-styles cert-noprint" role="group" aria-label="Certificate style">
+      <span class="cert-styles-lbl">Style</span>
+      ${buttons}
+    </div>`;
 }
 
 // FNV-1a — small, stable, and dependency-free. Not a security primitive; it
@@ -48,52 +82,96 @@ export function formatCertDate(date) {
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
+// The standing paragraph under the course name — the award's wording, the same
+// on every certificate the Academy issues.
+const CERT_BODY = 'and demonstrated dedication to intentional growth, disciplined execution, ' +
+  'and continuous improvement through The One Percent Nation. Your commitment reflects ' +
+  'the mindset of becoming one percent better every day.';
+
+const CERT_TAGLINE = ['Redefining success.', 'Realigning purpose.', 'Releasing potential.'];
+
+const ICON_CALENDAR =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">' +
+  '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>' +
+  '<path d="M7 14h2M11 14h2M15 14h2M7 17h2M11 17h2M15 17h2" stroke-linecap="round"/></svg>';
+
+const ICON_SHIELD =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">' +
+  '<path d="M12 2.5 4 6v6c0 5 3.4 8.4 8 9.5 4.6-1.1 8-4.5 8-9.5V6l-8-3.5Z"/>' +
+  '<path d="m12 8.6 1.1 2.2 2.4.35-1.75 1.7.41 2.4L12 14.1l-2.16 1.15.41-2.4-1.75-1.7 2.4-.35L12 8.6Z" fill="currentColor" stroke="none"/></svg>';
+
 /**
- * The certificate itself. Deliberately light-on-dark-page: the sheet prints
- * on paper, so it carries its own white background and dark type rather than
- * inheriting the site's dark theme.
+ * The certificate itself — one self-contained block, so the page and any later
+ * share or email surface all render the identical award.
+ *
+ * Everything inside scales off the sheet's own width (container query units),
+ * which keeps the proportions of the design intact on a phone, on a desktop,
+ * and on paper.
  */
 export function certificateSheetHtml({
   name,
   courseTitle,
-  courseSubtitle = '',
   dateLabel,
   certNumber,
-  signer = CERT_SIGNER
+  signer = CERT_SIGNER,
+  style = DEFAULT_CERT_STYLE
 } = {}) {
   return `
-    <div class="cert-sheet" id="cert-sheet">
-      <div class="cert-inner">
-        <div class="cert-head">
-          <div class="cert-monogram">1P</div>
-          <div class="cert-org">The One Percent Academy</div>
+    <div class="cert-sheet is-${esc(normalizeCertStyle(style))}" id="cert-sheet">
+      <div class="cert-frame">
+        <div class="cert-face">
+          <div class="cert-grid" aria-hidden="true"></div>
+          <div class="cert-watermark" aria-hidden="true">1P</div>
+          <div class="cert-hatch cert-hatch-tr" aria-hidden="true"></div>
+          <div class="cert-hatch cert-hatch-bl" aria-hidden="true"></div>
+
+          <div class="cert-inner">
+            <div class="cert-brand">
+              <div class="cert-brand-mark">1P</div>
+              <div class="cert-brand-name">The One Percent</div>
+              <div class="cert-brand-sub">Nation</div>
+            </div>
+
+            <div class="cert-ruled">This certifies that</div>
+
+            <div class="cert-title">Certificate</div>
+            <div class="cert-ruled is-red">of Completion</div>
+
+            <div class="cert-name">${esc(name || 'Member')}</div>
+
+            <div class="cert-lead">has successfully completed</div>
+            <div class="cert-course">${esc(courseTitle || 'The Course')}</div>
+
+            <p class="cert-body">${esc(CERT_BODY)}</p>
+
+            <div class="cert-foot">
+              <div class="cert-foot-col">
+                <div class="cert-foot-icon">${ICON_CALENDAR}</div>
+                <div class="cert-foot-val">${esc(dateLabel || '')}</div>
+                <div class="cert-foot-lbl">Completion date</div>
+              </div>
+              <div class="cert-foot-col">
+                <div class="cert-foot-icon">${ICON_SHIELD}</div>
+                <div class="cert-foot-val is-mono">${esc(certNumber || '')}</div>
+                <div class="cert-foot-lbl">Certificate ID</div>
+              </div>
+              <div class="cert-foot-col">
+                <div class="cert-foot-sig">${esc(signer.name)}</div>
+                <div class="cert-foot-lbl is-red">${esc(signer.name)}</div>
+                <div class="cert-foot-lbl">${esc(signer.title)}</div>
+              </div>
+              <div class="cert-foot-col">
+                <div class="cert-foot-sig is-monogram">AB</div>
+                <div class="cert-foot-lbl is-red">The One Percent Nation</div>
+                <div class="cert-foot-lbl">The 1% Standard</div>
+              </div>
+            </div>
+
+            <div class="cert-tagline">
+              ${CERT_TAGLINE.map((t) => `<span>${esc(t)}</span>`).join('')}
+            </div>
+          </div>
         </div>
-
-        <div class="cert-kicker">Certificate of Completion</div>
-
-        <p class="cert-lead">This is to certify that</p>
-        <div class="cert-name">${esc(name || 'Member')}</div>
-
-        <p class="cert-lead">has successfully completed every module of</p>
-        <div class="cert-course">${esc(courseTitle || 'The Course')}</div>
-        ${courseSubtitle ? `<p class="cert-course-sub">${esc(courseSubtitle)}</p>` : ''}
-
-        <div class="cert-foot">
-          <div class="cert-foot-col">
-            <div class="cert-foot-val">${esc(dateLabel || '')}</div>
-            <div class="cert-foot-lbl">Date completed</div>
-          </div>
-          <div class="cert-seal">
-            <span class="cert-seal-num">1%</span>
-            <span class="cert-seal-txt">Better · Every · Day</span>
-          </div>
-          <div class="cert-foot-col">
-            <div class="cert-foot-val cert-sign">${esc(signer.name)}</div>
-            <div class="cert-foot-lbl">${esc(signer.title)}</div>
-          </div>
-        </div>
-
-        <div class="cert-id">Certificate No. ${esc(certNumber || '')}</div>
       </div>
     </div>`;
 }

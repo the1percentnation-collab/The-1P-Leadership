@@ -14,10 +14,15 @@
   <title>Certificate | The One Percent Academy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3">
+  <!-- Great Vibes is the signature face on the certificate; it is not used
+       anywhere else on the site, so it loads only here. -->
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Great+Vibes&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
-<body class="academy-course">
+<!-- Ordinary scrolling document, same override the other standalone pages use.
+     The global `body` is a full-height flex shell; left alone it would size the
+     certificate off the viewport height instead of its own width. -->
+<body style="display:block; height:auto; overflow:auto;">
 
 <header class="academy-header cert-noprint">
   <div class="academy-header-inner">
@@ -44,6 +49,6 @@
   </div>
 </main>
 
-<script type="module" src="js/certificate-page.js?v=1"></script>
+<script type="module" src="js/certificate-page.js?v=2"></script>
 </body>
 </html>

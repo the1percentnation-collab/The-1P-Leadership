@@ -9381,183 +9381,442 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
   flex-wrap: wrap;
 }
 
-/* ── The sheet ─────────────────────────────────────────────────────────────
-   Light on purpose: this ends up on paper, so it carries its own white
-   background and dark type instead of inheriting the dark theme. */
+/* ── Style picker ──────────────────────────────────────────────────────── */
 
-.cert-sheet {
-  position: relative;
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 14px;
-  background: linear-gradient(135deg, var(--red) 0%, #7a0104 55%, #2b0102 100%);
-  border-radius: 8px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+.cert-styles {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 22px;
 }
 
-.cert-inner {
-  background: #FFFDF9;
-  color: #1A1A1A;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  padding: 52px 56px 40px;
-  text-align: center;
+.cert-styles-lbl {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+  margin-right: 4px;
 }
 
-.cert-head { margin-bottom: 26px; }
-
-.cert-monogram {
-  display: inline-grid;
-  place-items: center;
-  width: 58px;
-  height: 58px;
-  border-radius: 50%;
-  background: var(--red);
-  color: #fff;
-  font-family: var(--font-display);
-  font-size: 28px;
-  letter-spacing: 0.04em;
-  margin-bottom: 10px;
-}
-
-.cert-org {
+.cert-style {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 14px 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--black-2);
+  color: var(--gray-light);
   font-family: var(--font-mono);
   font-size: 11px;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #4A4A4A;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
 
-.cert-kicker {
+.cert-style:hover { border-color: var(--border-red); color: var(--white); }
+
+.cert-style[aria-pressed="true"] {
+  border-color: var(--red);
+  color: var(--white);
+}
+
+.cert-style-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  /* Two halves: the sheet colour and its accent. */
+  background: linear-gradient(135deg, var(--sw-a) 0 50%, var(--sw-b) 50% 100%);
+}
+
+/* ── The sheet ─────────────────────────────────────────────────────────────
+   The award, rendered from the approved design. Every measurement is in cqw
+   (a percentage of the sheet's own width) with a px fallback for browsers
+   without container queries, so the proportions survive a phone, a desktop
+   and a sheet of paper without a second layout.
+
+   Colour is entirely in the custom properties below, so a style variant is a
+   palette swap on the sheet element and nothing else. */
+
+.cert-sheet {
+  --cert-bg: #070707;
+  --cert-face: #0A0A0A;
+  --cert-ink: #FFFFFF;
+  --cert-body: rgba(255, 255, 255, 0.82);
+  --cert-muted: #A0A0A0;
+  --cert-accent: #E60306;
+  --cert-name: #E60306;
+  --cert-wedge: #E60306;
+  --cert-line: rgba(230, 3, 6, 0.75);
+  --cert-rule: rgba(230, 3, 6, 0.55);
+  --cert-dot: rgba(230, 3, 6, 0.5);
+  --cert-watermark: rgba(255, 255, 255, 0.028);
+  --cert-sigline: rgba(255, 255, 255, 0.5);
+
+  container-type: inline-size;
+  position: relative;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 2.4%;
+  background: var(--cert-bg);
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+/* Monochrome, light. */
+.cert-sheet.is-classic {
+  --cert-bg: #FFFFFF;
+  --cert-face: #FFFFFF;
+  --cert-ink: #111111;
+  --cert-body: #333333;
+  --cert-muted: #555555;
+  --cert-accent: #111111;
+  --cert-name: #111111;
+  --cert-wedge: #111111;
+  --cert-line: rgba(0, 0, 0, 0.85);
+  --cert-rule: rgba(0, 0, 0, 0.45);
+  --cert-dot: rgba(0, 0, 0, 0.32);
+  --cert-watermark: rgba(0, 0, 0, 0.035);
+  --cert-sigline: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+/* Light sheet, brand red. */
+.cert-sheet.is-crimson {
+  --cert-bg: #FFFFFF;
+  --cert-face: #FFFDFC;
+  --cert-ink: #111111;
+  --cert-body: #3A3A3A;
+  --cert-muted: #6A6A6A;
+  --cert-accent: #E60306;
+  --cert-name: #E60306;
+  --cert-wedge: #E60306;
+  --cert-line: rgba(230, 3, 6, 0.85);
+  --cert-rule: rgba(230, 3, 6, 0.5);
+  --cert-dot: rgba(230, 3, 6, 0.42);
+  --cert-watermark: rgba(230, 3, 6, 0.045);
+  --cert-sigline: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+/* The two solid corner wedges. */
+.cert-sheet::before,
+.cert-sheet::after {
+  content: '';
+  position: absolute;
+  width: 8.5%;
+  aspect-ratio: 1;
+  background: var(--cert-wedge);
+}
+.cert-sheet::before { top: 0; left: 0; clip-path: polygon(0 0, 100% 0, 0 100%); z-index: 2; }
+.cert-sheet::after { right: 0; bottom: 0; clip-path: polygon(100% 0, 100% 100%, 0 100%); z-index: 2; }
+
+/* Frame + face draw a chamfered hairline outline: the frame is the line, the
+   face sits 1px inside it. A border alone can't turn a corner diagonally. */
+.cert-frame {
+  position: relative;
+  z-index: 1;
+  padding: 1px;
+  background: var(--cert-line);
+  clip-path: polygon(0 0, calc(100% - 34px) 0, 100% 34px, 100% 100%, 34px 100%, 0 calc(100% - 34px));
+  clip-path: polygon(0 0, calc(100% - 3.4cqw) 0, 100% 3.4cqw, 100% 100%, 3.4cqw 100%, 0 calc(100% - 3.4cqw));
+}
+
+.cert-face {
+  position: relative;
+  /* The spacer and the content share one grid cell, so the row is the taller of
+     the two: the design's 3:2 shape is a floor, and an unusually long course
+     title makes the sheet taller instead of spilling out of the frame.
+     (aspect-ratio can't do this — it pins the height and lets content overflow.) */
+  display: grid;
+  background: var(--cert-face);
+  overflow: hidden;
+  clip-path: polygon(0 0, calc(100% - 33px) 0, 100% 33px, 100% 100%, 33px 100%, 0 calc(100% - 33px));
+  clip-path: polygon(0 0, calc(100% - 3.3cqw) 0, 100% 3.3cqw, 100% 100%, 3.3cqw 100%, 0 calc(100% - 3.3cqw));
+}
+
+.cert-face::before {
+  content: '';
+  grid-area: 1 / 1;
+  padding-top: 64.9%;
+}
+
+/* Dot field, fading out across the left third. */
+.cert-grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--cert-dot) 0.9px, transparent 0.9px);
+  background-size: 13px 13px;
+  -webkit-mask-image: linear-gradient(100deg, #000 0%, transparent 42%);
+  mask-image: linear-gradient(100deg, #000 0%, transparent 42%);
+  opacity: 0.55;
+}
+
+.cert-watermark {
+  position: absolute;
+  top: 50%;
+  left: 62%;
+  transform: translate(-50%, -50%);
   font-family: var(--font-display);
-  font-size: 34px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--red);
-  margin-bottom: 30px;
+  font-size: 300px;
+  font-size: 34cqw;
+  line-height: 0.8;
+  letter-spacing: 0.02em;
+  color: var(--cert-watermark);
+  pointer-events: none;
 }
 
-.cert-lead {
-  font-size: 13px;
+.cert-hatch {
+  position: absolute;
+  width: 100px;
+  width: 9.5cqw;
+  height: 12px;
+  height: 1.15cqw;
+  background: repeating-linear-gradient(114deg,
+    var(--cert-accent) 0 2px, transparent 2px 7px);
+}
+.cert-hatch-tr { top: 2.6cqw; right: 3.2cqw; }
+.cert-hatch-bl { bottom: 2.6cqw; left: 3.2cqw; }
+
+/* ── Content ──────────────────────────────────────────────────────────── */
+
+.cert-inner {
+  position: relative;
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 3.2cqw 6cqw 2.6cqw;
+}
+
+.cert-brand { margin-bottom: 1.5cqw; }
+
+.cert-brand-mark {
+  font-family: var(--font-display);
+  font-size: 58px;
+  font-size: 5.4cqw;
+  line-height: 0.9;
   letter-spacing: 0.02em;
-  color: #5A5A5A;
-  margin-bottom: 8px;
+  color: var(--cert-ink);
+}
+
+.cert-brand-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-size: 1.15cqw;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cert-ink);
+  margin-top: 0.5cqw;
+}
+
+.cert-brand-sub {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-size: 1.15cqw;
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--cert-accent);
+}
+
+/* Small caps line flanked by rules, per the design. */
+.cert-ruled {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.6cqw;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-size: 1.15cqw;
+  letter-spacing: 0.36em;
+  text-transform: uppercase;
+  color: var(--cert-ink);
+}
+
+.cert-ruled::before,
+.cert-ruled::after {
+  content: '';
+  height: 1px;
+  width: 9cqw;
+  background: var(--cert-accent);
+}
+
+.cert-ruled.is-red {
+  color: var(--cert-accent);
+  font-size: 19px;
+  font-size: 1.8cqw;
+  letter-spacing: 0.3em;
+}
+
+.cert-title {
+  font-family: var(--font-display);
+  font-size: 92px;
+  font-size: 8.7cqw;
+  line-height: 0.92;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--cert-ink);
+  margin: 0.9cqw 0 0.4cqw;
 }
 
 .cert-name {
   font-family: var(--font-display);
-  font-size: 52px;
-  line-height: 1.1;
+  font-size: 50px;
+  font-size: 4.8cqw;
+  line-height: 1.05;
   letter-spacing: 0.02em;
-  color: #111;
-  padding-bottom: 12px;
-  margin: 0 auto 22px;
-  max-width: 80%;
-  border-bottom: 2px solid rgba(0, 0, 0, 0.16);
+  text-transform: uppercase;
+  color: var(--cert-name);
+  padding-bottom: 0.7cqw;
+  margin: 1.8cqw auto 1.1cqw;
+  max-width: 82%;
+  border-bottom: 1px solid var(--cert-line);
+}
+
+.cert-lead {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-size: 1.05cqw;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--cert-muted);
 }
 
 .cert-course {
   font-family: var(--font-display);
-  font-size: 30px;
-  line-height: 1.15;
+  font-size: 32px;
+  font-size: 3.1cqw;
+  line-height: 1.08;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: #111;
-  margin-bottom: 6px;
+  color: var(--cert-ink);
+  margin: 0.6cqw auto 0.7cqw;
+  max-width: 86%;
 }
 
-.cert-course-sub {
+.cert-body {
   font-size: 13px;
-  font-style: italic;
-  color: #5A5A5A;
-  max-width: 620px;
-  margin: 0 auto;
+  font-size: 1.25cqw;
+  line-height: 1.55;
+  color: var(--cert-body);
+  max-width: 62%;
 }
+
+/* ── Footer ───────────────────────────────────────────────────────────── */
 
 .cert-foot {
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  margin-top: 44px;
+  justify-content: center;
+  width: 100%;
+  margin-top: 2.1cqw;
+  padding-top: 1.7cqw;
+  border-top: 1px solid var(--cert-rule);
 }
 
-.cert-foot-col { flex: 1; min-width: 0; }
+.cert-foot-col {
+  flex: 1;
+  min-width: 0;
+  padding: 0 1cqw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4cqw;
+}
+
+.cert-foot-col + .cert-foot-col { border-left: 1px solid var(--cert-rule); }
+
+.cert-foot-icon {
+  width: 26px;
+  width: 2.5cqw;
+  color: var(--cert-accent);
+  margin-bottom: 0.2cqw;
+}
+.cert-foot-icon svg { width: 100%; height: auto; display: block; }
 
 .cert-foot-val {
-  font-size: 15px;
-  color: #111;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.35);
+  font-size: 14px;
+  font-size: 1.35cqw;
+  color: var(--cert-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 
-.cert-sign { font-family: var(--font-display); font-size: 24px; letter-spacing: 0.02em; }
+.cert-foot-val.is-mono { font-family: var(--font-mono); letter-spacing: 0.06em; }
+
+/* The signatures. Great Vibes is loaded on /certificate.html; the cursive
+   fallback keeps them reading as a signature if it never arrives. */
+.cert-foot-sig {
+  font-family: 'Great Vibes', 'Snell Roundhand', 'Apple Chancery', cursive;
+  font-size: 30px;
+  font-size: 2.9cqw;
+  line-height: 1.1;
+  color: var(--cert-ink);
+  white-space: nowrap;
+  padding-bottom: 0.5cqw;
+  margin-bottom: 0.4cqw;
+  border-bottom: 1px solid var(--cert-sigline);
+  width: 100%;
+}
+
+.cert-foot-sig.is-monogram { font-size: 38px; font-size: 3.6cqw; letter-spacing: 0.02em; }
 
 .cert-foot-lbl {
-  margin-top: 7px;
   font-family: var(--font-mono);
   font-size: 9px;
-  letter-spacing: 0.16em;
+  font-size: 0.88cqw;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
-  color: #6A6A6A;
+  color: var(--cert-muted);
+  line-height: 1.45;
 }
 
-.cert-seal {
-  flex-shrink: 0;
-  width: 112px;
-  height: 112px;
-  border-radius: 50%;
-  border: 2px solid var(--red);
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 3px;
-  color: var(--red);
-}
+.cert-foot-lbl.is-red { color: var(--cert-accent); font-weight: 700; letter-spacing: 0.1em; }
 
-.cert-seal-num { font-family: var(--font-display); font-size: 32px; line-height: 1; }
-
-.cert-seal-txt {
+.cert-tagline {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.8cqw;
+  margin-top: 1.7cqw;
   font-family: var(--font-mono);
-  font-size: 7px;
-  letter-spacing: 0.1em;
+  font-size: 11px;
+  font-size: 1.05cqw;
+  letter-spacing: 0.26em;
   text-transform: uppercase;
-  /* One line inside the circle — wrapped, it reads as three stacked words. */
-  white-space: nowrap;
+  color: var(--cert-ink);
 }
 
-.cert-id {
-  margin-top: 30px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #8A8A8A;
-}
+.cert-tagline span + span { padding-left: 1.8cqw; border-left: 1px solid var(--cert-rule); }
 
 @media (max-width: 720px) {
-  .cert-page { padding: 28px 14px 60px; }
-  .cert-inner { padding: 32px 22px 28px; }
-  .cert-kicker { font-size: 24px; }
-  .cert-name { font-size: 34px; max-width: 100%; }
-  .cert-course { font-size: 22px; }
-  .cert-foot { flex-direction: column; align-items: stretch; gap: 26px; }
-  .cert-seal { margin: 0 auto; order: -1; }
+  .cert-page { padding: 24px 12px 60px; }
 }
 
 /* ── Print ─────────────────────────────────────────────────────────────────
    Landscape, sheet only. Everything else on the page is chrome. */
 
 @media print {
-  @page { size: landscape; margin: 0.4in; }
+  @page { size: landscape; margin: 0.35in; }
 
   body { background: #fff !important; }
 
   .cert-noprint,
   .academy-header,
   .cert-actions,
+  .cert-styles,
   .cert-note,
   #chatbot-root,
   .consent-banner { display: none !important; }
@@ -9566,15 +9825,11 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 
   .cert-sheet {
     max-width: none;
+    width: 100%;
     box-shadow: none;
-    border-radius: 0;
-    padding: 8px;
-    /* Keep the red border and seal on paper — browsers drop backgrounds by
-       default, which would print an unbranded white rectangle. */
+    /* The dark styles are mostly background: without this browsers drop every
+       fill and print an empty rectangle. */
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-
-  .cert-inner { padding: 34px 40px 28px; }
-  .cert-name { font-size: 44px; }
 }

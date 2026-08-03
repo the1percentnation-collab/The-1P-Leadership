@@ -18,7 +18,8 @@ import { getUserProfile, escapeHtml } from './community.js';
 import { loadEnrollments, isEnrolled } from './enrollments.js';
 import { loadCourseCompletion } from './course-progress.js';
 import {
-  certificateSheetHtml, certificateNumber, formatCertDate, CERT_SIGNER
+  certificateSheetHtml, certificateNumber, formatCertDate, CERT_SIGNER,
+  certStylePickerHtml, normalizeCertStyle, DEFAULT_CERT_STYLE, CERT_STYLES
 } from './certificate.js';
 
 const $ = (id) => document.getElementById(id);
@@ -53,28 +54,51 @@ function memberName(profile, user) {
 
 /**
  * Reads the stored certificate record, writing it on first view. Returns the
- * date to print. Failure is non-fatal — the certificate still renders, dated
- * today, rather than blocking on a write.
+ * date to print and the style the member last chose. Failure is non-fatal —
+ * the certificate still renders, dated today, rather than blocking on a write.
  */
-async function issuedDate(uid, course, name, certNumber) {
-  if (!firebaseReady || !uid) return new Date();
+async function certRecord(uid, course, name, certNumber) {
+  const fallback = { date: new Date(), style: lsStyle() };
+  if (!firebaseReady || !uid) return fallback;
   const ref = doc(db, 'users', uid, 'certificates', course.slug);
   try {
     const snap = await getDoc(ref);
-    if (snap.exists() && snap.data().issuedAt && typeof snap.data().issuedAt.toDate === 'function') {
-      return snap.data().issuedAt.toDate();
+    if (snap.exists()) {
+      const data = snap.data() || {};
+      const issued = data.issuedAt && typeof data.issuedAt.toDate === 'function'
+        ? data.issuedAt.toDate()
+        : new Date();
+      // A style saved on the record wins over this browser's copy — the choice
+      // should follow the member to whichever device they print from.
+      return { date: issued, style: data.style ? normalizeCertStyle(data.style) : lsStyle() };
     }
     await setDoc(ref, {
       courseSlug: course.slug,
       courseTitle: course.title || course.slug,
       certNumber,
       name,
+      style: fallback.style,
       issuedAt: serverTimestamp()
     }, { merge: true });
   } catch (e) {
     console.warn('[certificate] issue record failed', e);
   }
-  return new Date();
+  return fallback;
+}
+
+const LS_STYLE_KEY = '1p_cert_style';
+
+function lsStyle() {
+  try { return normalizeCertStyle(localStorage.getItem(LS_STYLE_KEY)); }
+  catch (e) { return DEFAULT_CERT_STYLE; }
+}
+
+/** Persist the pick. Local first so it survives a signed-out reload, then remote. */
+function saveStyle(uid, slug, style) {
+  try { localStorage.setItem(LS_STYLE_KEY, style); } catch (e) {}
+  if (!firebaseReady || !uid) return;
+  setDoc(doc(db, 'users', uid, 'certificates', slug), { style }, { merge: true })
+    .catch((e) => console.warn('[certificate] style save failed', e));
 }
 
 function actionsHtml(course) {
@@ -143,17 +167,18 @@ async function main() {
       try { if (uid) profile = await getUserProfile(uid); } catch (e) {}
       const name = memberName(profile, currentUser());
       const certNumber = certificateNumber(uid, course.slug);
-      const date = await issuedDate(uid, course, name, certNumber);
+      const { date, style } = await certRecord(uid, course, name, certNumber);
 
       panel(
         certificateSheetHtml({
           name,
           courseTitle: course.title,
-          courseSubtitle: course.subtitle || '',
           dateLabel: formatCertDate(date),
           certNumber,
-          signer: CERT_SIGNER
+          signer: CERT_SIGNER,
+          style
         }) +
+        certStylePickerHtml(style) +
         actionsHtml(course) +
         `<p class="cert-note cert-noprint">The name above comes from your profile —
           <a href="/profile.html">update it there</a> if it should read differently.</p>`
@@ -161,6 +186,21 @@ async function main() {
 
       const printBtn = $('cert-print');
       if (printBtn) printBtn.addEventListener('click', () => window.print());
+
+      // Style switching is a class swap on the sheet — no re-render, so the
+      // certificate never flickers while someone compares the options.
+      const sheet = $('cert-sheet');
+      const styleBtns = document.querySelectorAll('.cert-style');
+      styleBtns.forEach((btn) => btn.addEventListener('click', () => {
+        const picked = normalizeCertStyle(btn.dataset.style);
+        if (sheet) {
+          CERT_STYLES.forEach((s) => sheet.classList.remove(`is-${s.id}`));
+          sheet.classList.add(`is-${picked}`);
+        }
+        styleBtns.forEach((b) => b.setAttribute('aria-pressed',
+          b.dataset.style === picked ? 'true' : 'false'));
+        saveStyle(uid, course.slug, picked);
+      }));
     }
   }
 
