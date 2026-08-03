@@ -11,7 +11,7 @@
 // Access gating: if X isn't in the user's enrollments, the welcome view
 // is shown with a message. Nothing auto-opens; the user always chooses.
 
-import { loadCourses, getCourseBySlug, priceInfo, loadModulesMeta } from './courses-data.js';
+import { loadCourses, getCourseBySlug, priceInfo } from './courses-data.js';
 import { onAuthReady, currentUser } from './auth.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import { getRoleInfo } from './roles.js';
@@ -21,6 +21,8 @@ import { getUserProfile, avatarHtml, escapeHtml } from './community.js';
 import { store } from './store.js';
 import { loadEnrollments, enrollInCourse, isEnrolled, enrolledCourses, availableCourses } from './enrollments.js';
 import { getRefCode } from './referral.js';
+import { certificateHref, courseCompleteHtml } from './certificate.js';
+import { loadCourseCompletion } from './course-progress.js';
 import { ensureOnboarded } from './onboarding-guard.js';
 import { db } from './firebase.js';
 import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -304,9 +306,12 @@ function renderAvailableCourses() {
 const DRAFT_CHIP = '<span style="display:inline-block; margin-left:8px; padding:1px 7px; ' +
   'border-radius:999px; background:#b91c1c; color:#fff; font-size:10px; letter-spacing:1px;">DRAFT</span>';
 
-function roadmapHtml(course, { modules, completedSet, currentId }) {
-  const completedCount = completedSet.size;
+function roadmapHtml(course, { modules, completedSet, currentId, certHref = null }) {
+  // Count against the modules this course actually has today — progress docs
+  // left behind by a deleted lesson must not round anyone up to 100%.
+  const completedCount = modules.filter((m) => completedSet.has(m.id)).length;
   const pct = modules.length ? Math.round((completedCount / modules.length) * 100) : 0;
+  const isComplete = modules.length > 0 && completedCount === modules.length;
 
   const stepsHtml = modules.map((m) => {
     const done = completedSet.has(m.id);
@@ -335,7 +340,10 @@ function roadmapHtml(course, { modules, completedSet, currentId }) {
     for (let i = 0; i < modules.length; i++) {
       if (!completedSet.has(modules[i].id)) return modules[i].id;
     }
-    return modules.length - 1;
+    // Nothing left to do — "Review course" opens the last module. This has to
+    // be its id, not its index: module ids start at 1 in Firestore-authored
+    // courses, so an index sent everyone one lesson short of the end.
+    return modules.length ? modules[modules.length - 1].id : 0;
   })();
 
   const primaryCtaText = completedCount === 0
@@ -365,9 +373,12 @@ function roadmapHtml(course, { modules, completedSet, currentId }) {
         </div>
 
         <div class="roadmap-hero-cta">
-          <a class="btn btn-primary" href="/courses.html?course=${encodeURIComponent(course.slug)}&module=${nextId}">${escapeHtml(primaryCtaText)}</a>
+          <a class="btn ${isComplete && certHref ? 'btn-ghost' : 'btn-primary'}" href="/courses.html?course=${encodeURIComponent(course.slug)}&module=${nextId}">${escapeHtml(primaryCtaText)}</a>
+          ${isComplete && certHref ? `<a class="btn btn-primary" href="${escapeHtml(certHref)}">Get your certificate →</a>` : ''}
         </div>
       </header>
+
+      ${isComplete && certHref ? courseCompleteHtml({ href: certHref, courseTitle: course.title, compact: true }) : ''}
 
       <section class="roadmap-steps">
         <div class="academy-section-head">
@@ -385,21 +396,15 @@ async function renderRoadmap(course, { preview = false } = {}) {
   if (!slot) return;
   slot.innerHTML = '<div class="roadmap-container"><p style="color:var(--gray-mid);">Loading roadmap…</p></div>';
 
-  const modules = await loadModulesMeta(course, { includeDrafts: preview });
+  // Modules + progress in one call — course-progress.js knows where each kind
+  // of course keeps its completion state.
+  const { modules, completed: completedSet } = await loadCourseCompletion(course, { includeDrafts: preview });
 
-  // Progress: the shared store backs 1P-CLC; Firestore-rendered courses keep
-  // their own namespaced progress docs (see course-renderer.js).
-  let completedSet = new Set();
   let currentId = 0;
-  if (course.contentSource === 'firestore') {
-    try {
-      const { loadCourseProgress } = await import('./course-renderer.js');
-      completedSet = await loadCourseProgress(course.slug);
-    } catch (e) {}
-    currentId = modules.length ? modules[0].id : 0;
-  } else if (course.slug === '1p-clc') {
-    completedSet = store.completed || new Set();
+  if (course.slug === '1p-clc') {
     currentId = typeof store.currentModule === 'number' ? store.currentModule : 0;
+  } else {
+    currentId = modules.length ? modules[0].id : 0;
   }
 
   if (modules.length === 0) {
@@ -419,7 +424,14 @@ async function renderRoadmap(course, { preview = false } = {}) {
     return;
   }
 
-  slot.innerHTML = roadmapHtml(course, { modules, completedSet, currentId });
+  slot.innerHTML = roadmapHtml(course, {
+    modules,
+    completedSet,
+    currentId,
+    // Preview pads the roadmap with drafts, so the finished-course state there
+    // wouldn't be the one members reach — no certificate offered.
+    certHref: preview || course.certificate === false ? null : certificateHref(course.slug)
+  });
 }
 
 // ─── Workspace swap ───────────────────────────────────────────────────────
@@ -548,13 +560,20 @@ async function main() {
       // A course migrated to the editor (contentSource === 'firestore') always
       // renders via the generic Firestore-backed renderer, even if a code
       // `mount` still exists in the registry — the database is the source of truth.
+      // One decision, both render paths: a course opts out of certificates with
+      // `certificate: false` on its Firestore doc.
+      const certHref = course.certificate === false ? null : certificateHref(course.slug);
       if (course.contentSource !== 'firestore' && typeof course.mount === 'function') {
-        await course.mount({ startAt: moduleId });
+        await course.mount({ startAt: moduleId, certificateHref: certHref });
       } else {
         // Courses authored in /manage-courses.html render via the generic
         // Firestore-backed renderer. In preview the owner sees drafts too.
         const { mountFirestoreCourse } = await import('./course-renderer.js');
-        await mountFirestoreCourse(course, { startAt: moduleId, includeDrafts: preview });
+        await mountFirestoreCourse(course, {
+          startAt: moduleId,
+          includeDrafts: preview,
+          certificateHref: certHref
+        });
       }
     } catch (e) { console.warn('[courses-page] mount failed', e); }
   } else {

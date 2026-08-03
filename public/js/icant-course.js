@@ -542,7 +542,7 @@ const byId = (id) => MODULES.find((m) => m.id === id);
 
 let _loaded = false;
 
-export async function mount({ startAt } = {}) {
+export async function mount({ startAt, certificateHref = null } = {}) {
   if (!_loaded) {
     loadState();
     _loaded = true;
@@ -583,6 +583,7 @@ export async function mount({ startAt } = {}) {
         persistState();
       }
     },
+    certificateHref,
     startAt: typeof startAt === 'number' ? startAt : undefined
   });
 }

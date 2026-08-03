@@ -9265,3 +9265,316 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 .cl-back:hover { color: var(--white); }
 .cl-back:hover .cl-back-arrow { color: var(--white); }
 .cl-back:hover .cl-back-arrow { transform: translateX(-3px); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Certificate of completion
+   Two surfaces: the "you finished" panel inside the player / roadmap, and the
+   printable sheet on /certificate.html.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Course-complete panel ─────────────────────────────────────────────── */
+
+.course-done {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 28px 0 0;
+  padding: 22px 24px;
+  border: 1px solid var(--border-red);
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 160% at 0% 0%, rgba(230, 3, 6, 0.16), transparent 60%),
+    var(--black-2);
+}
+
+.course-done.is-compact { margin: 0 0 28px; }
+
+.course-done-mark {
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  font-size: 20px;
+}
+
+.course-done-text { flex: 1; min-width: 220px; }
+
+.course-done-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--red);
+  margin-bottom: 6px;
+}
+
+.course-done-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 24px;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--white);
+  margin-bottom: 4px;
+}
+
+.course-done-sub { color: var(--gray-light); font-size: 13px; line-height: 1.5; }
+
+.course-done-btn {
+  flex-shrink: 0;
+  display: inline-block;
+  padding: 12px 22px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.course-done-btn:hover { background: var(--red-dark); transform: translateY(-1px); }
+
+/* ── Certificate page ──────────────────────────────────────────────────── */
+
+.cert-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+}
+
+.cert-loading, .cert-note { color: var(--gray-light); font-size: 13px; }
+.cert-note { margin-top: 16px; text-align: center; }
+.cert-note a { color: var(--red); }
+
+.cert-message {
+  max-width: 620px;
+  margin: 40px auto;
+  padding: 36px 32px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--black-2);
+}
+
+.cert-message h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 32px;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.cert-message p { color: var(--gray-light); font-size: 14px; line-height: 1.6; }
+.cert-message-actions { margin-top: 24px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+.cert-actions {
+  margin-top: 26px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ── The sheet ─────────────────────────────────────────────────────────────
+   Light on purpose: this ends up on paper, so it carries its own white
+   background and dark type instead of inheriting the dark theme. */
+
+.cert-sheet {
+  position: relative;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 14px;
+  background: linear-gradient(135deg, var(--red) 0%, #7a0104 55%, #2b0102 100%);
+  border-radius: 8px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.cert-inner {
+  background: #FFFDF9;
+  color: #1A1A1A;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  padding: 52px 56px 40px;
+  text-align: center;
+}
+
+.cert-head { margin-bottom: 26px; }
+
+.cert-monogram {
+  display: inline-grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 28px;
+  letter-spacing: 0.04em;
+  margin-bottom: 10px;
+}
+
+.cert-org {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #4A4A4A;
+}
+
+.cert-kicker {
+  font-family: var(--font-display);
+  font-size: 34px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--red);
+  margin-bottom: 30px;
+}
+
+.cert-lead {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: #5A5A5A;
+  margin-bottom: 8px;
+}
+
+.cert-name {
+  font-family: var(--font-display);
+  font-size: 52px;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  color: #111;
+  padding-bottom: 12px;
+  margin: 0 auto 22px;
+  max-width: 80%;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.16);
+}
+
+.cert-course {
+  font-family: var(--font-display);
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #111;
+  margin-bottom: 6px;
+}
+
+.cert-course-sub {
+  font-size: 13px;
+  font-style: italic;
+  color: #5A5A5A;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.cert-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 44px;
+}
+
+.cert-foot-col { flex: 1; min-width: 0; }
+
+.cert-foot-val {
+  font-size: 15px;
+  color: #111;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cert-sign { font-family: var(--font-display); font-size: 24px; letter-spacing: 0.02em; }
+
+.cert-foot-lbl {
+  margin-top: 7px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #6A6A6A;
+}
+
+.cert-seal {
+  flex-shrink: 0;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  border: 2px solid var(--red);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
+  color: var(--red);
+}
+
+.cert-seal-num { font-family: var(--font-display); font-size: 32px; line-height: 1; }
+
+.cert-seal-txt {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  /* One line inside the circle — wrapped, it reads as three stacked words. */
+  white-space: nowrap;
+}
+
+.cert-id {
+  margin-top: 30px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8A8A8A;
+}
+
+@media (max-width: 720px) {
+  .cert-page { padding: 28px 14px 60px; }
+  .cert-inner { padding: 32px 22px 28px; }
+  .cert-kicker { font-size: 24px; }
+  .cert-name { font-size: 34px; max-width: 100%; }
+  .cert-course { font-size: 22px; }
+  .cert-foot { flex-direction: column; align-items: stretch; gap: 26px; }
+  .cert-seal { margin: 0 auto; order: -1; }
+}
+
+/* ── Print ─────────────────────────────────────────────────────────────────
+   Landscape, sheet only. Everything else on the page is chrome. */
+
+@media print {
+  @page { size: landscape; margin: 0.4in; }
+
+  body { background: #fff !important; }
+
+  .cert-noprint,
+  .academy-header,
+  .cert-actions,
+  .cert-note,
+  #chatbot-root,
+  .consent-banner { display: none !important; }
+
+  .cert-page { padding: 0; max-width: none; }
+
+  .cert-sheet {
+    max-width: none;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 8px;
+    /* Keep the red border and seal on paper — browsers drop backgrounds by
+       default, which would print an unbranded white rectangle. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .cert-inner { padding: 34px 40px 28px; }
+  .cert-name { font-size: 44px; }
+}

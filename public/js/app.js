@@ -15,7 +15,7 @@ function bindNotes(root) {
   });
 }
 
-export async function mount({ startAt } = {}) {
+export async function mount({ startAt, certificateHref = null } = {}) {
   // Auth check — courses-page.js also does this, but guard for direct entry.
   if (firebaseReady) {
     const user = await onAuthReady();
@@ -62,6 +62,7 @@ export async function mount({ startAt } = {}) {
       completeLast: 'Submit for Certification →',
       completedLast: '✓ Certification Submitted'
     },
+    certificateHref,
     startAt: requested
   });
 }
