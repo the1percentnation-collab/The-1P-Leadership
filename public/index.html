@@ -723,15 +723,15 @@
     .book-visual {
       display: flex; align-items: center; justify-content: center;
     }
-    /* Book trailers — portrait sources, shown full-frame in the visual column. */
+    /* Book trailers — portrait sources, shown full-frame in the visual column.
+       One ratio for both so the two blocks match; the 9:16 clip centre-crops
+       into it without losing the cover, title or author line. */
     .book-video-frame {
-      width: 100%; aspect-ratio: 9/16; border-radius: 12px;
+      width: 100%; aspect-ratio: 3/4; border-radius: 12px;
       background: #000; border: 1px solid var(--border);
       overflow: hidden; position: relative;
       box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(230,3,6,0.08);
     }
-    /* Must follow the base rule — same specificity, so source order decides. */
-    .book-video-frame--3-4 { aspect-ratio: 3/4; }
     .book-video {
       width: 100%; height: 100%; object-fit: cover; object-position: center;
       display: block; background: #000;
@@ -1974,7 +1974,7 @@
         <div class="book-guarantee">A New Book by Anthony Brown — Coming Soon.</div>
       </div>
       <div class="book-visual book-visual--video">
-        <div class="book-video-frame book-video-frame--3-4">
+        <div class="book-video-frame">
           <video class="book-video" poster="/assets/work-less-gain-more-poster.jpg" preload="metadata" controls playsinline muted loop autoplay
                  aria-label="Teaser for How to Work Less &amp; Gain More by Anthony Brown">
             <source src="/assets/work-less-gain-more.mp4" type="video/mp4">
