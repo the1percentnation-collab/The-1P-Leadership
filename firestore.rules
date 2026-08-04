@@ -28,6 +28,23 @@ service cloud.firestore {
         || exists(/databases/$(database)/documents/channels/$(data.category));
     }
 
+    // Has the caller bought (or been granted) course `slug`?
+    //
+    // `enrolledCourseSlugs` is the single source of truth for course access.
+    // It is frozen against self-writes in the users/{uid} rules below, so only
+    // the Admin SDK (enrollFree callable + the Stripe webhook) can add to it —
+    // which is what makes this safe to gate paid content on. Cancelling a
+    // subscription arrayRemoves the slug, so access is revoked here too.
+    //
+    // Deliberately written against `request.auth` and the path variable only —
+    // no `resource` — so it is provable for `list` queries as well as `get`.
+    function isEnrolledIn(slug) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && slug in get(/databases/$(database)/documents/users/$(request.auth.uid))
+             .data.get('enrolledCourseSlugs', []);
+    }
+
     // Is the caller an admin of company `cid`? We read the company doc and check adminUids.
     function isCompanyAdmin(cid) {
       return isSignedIn()
@@ -676,8 +693,21 @@ service cloud.firestore {
         && request.resource.data.get('stripe', {}) == resource.data.get('stripe', {});
       allow delete: if isOwner();
 
+      // Lesson documents. These hold the actual paid content — `html`,
+      // `videoUrl`, `videoFile`, `workbook`, `attachments` — so they are NOT
+      // public. They used to be `allow read: if true`, which meant anyone with
+      // the (public) web API key could read a paid course end to end; the
+      // enrollment check in courses-page.js is browser-side only and stops
+      // nobody. Now the database enforces it.
+      //
+      // This does not touch the marketing surface: the public sales page
+      // renders its "Course content" outline from the `curriculum` array on
+      // the parent course doc (see curriculumHtml in course-landing.js, and
+      // syncCurriculumFromLessons in course-builder.js, which copies lesson
+      // titles and durations into it), and that doc stays world-readable
+      // above. Only the lesson bodies moved behind the paywall.
       match /modules/{moduleId} {
-        allow read: if true;
+        allow read: if isAnyAdmin() || isEnrolledIn(slug);
         allow create, update, delete: if isAnyAdmin();
       }
     }
