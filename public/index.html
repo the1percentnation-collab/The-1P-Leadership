@@ -1780,7 +1780,11 @@
 <!-- ============================================================
      COURSES
 ============================================================ -->
-<section id="courses" class="section-pad">
+<!-- Hidden until /js/home-courses.js confirms there is at least one course to
+     advertise (status 'live' + the owner's "On main site" switch). Starting
+     hidden rather than filled means an unpublished course can never flash up
+     before the script filters it out, and a Firestore outage fails closed. -->
+<section id="courses" class="section-pad" hidden>
   <div class="container-wide">
     <div class="courses-header">
       <div>
@@ -1793,72 +1797,11 @@
       </div>
     </div>
 
-    <!-- Rendered from the live catalog by /js/home-courses.js — it shows every
-         course the owner has switched "On main site" in /manage-courses.html.
-         The cards below are a static fallback so the section is never empty if
-         Firestore is slow or unreachable; the script replaces them wholesale.
-         Keep them in step with the first entries of js/courses-registry.js. -->
-    <div class="courses-grid stagger-list" id="home-courses-grid">
-      <div class="course-card fade-up">
-        <div class="course-thumb">
-          <div class="course-thumb-bg"></div>
-          <div class="course-thumb-num">1P</div>
-          <div class="course-thumb-badge">Coming Soon</div>
-        </div>
-        <div class="course-body">
-          <div class="course-cat">Leadership &amp; Coaching</div>
-          <div class="course-title">1P CERTIFIED LEADER COACH</div>
-          <p class="course-desc">Mindset, structure, and disciplined progress — one percent at a time.</p>
-          <div class="course-meta">
-            <div>
-              <div class="course-detail"><strong>Certification</strong></div>
-              <div class="course-detail" style="margin-top:4px;"><strong>7</strong> Modules</div>
-            </div>
-            <a href="/course.html?course=1p-clc" class="course-arrow">→</a>
-          </div>
-        </div>
-      </div>
-
-      <div class="course-card fade-up fade-up-delay-1">
-        <div class="course-thumb">
-          <div class="course-thumb-bg" style="background: linear-gradient(135deg, #0a0a0a 0%, #001a1a 100%);"></div>
-          <div class="course-thumb-num">BD</div>
-          <div class="course-thumb-badge">Coming Soon</div>
-        </div>
-        <div class="course-body">
-          <div class="course-cat">Mindset &amp; Personal Growth</div>
-          <div class="course-title">THE COMPLETE I CAN'T EXPERIENCE</div>
-          <p class="course-desc">Book + Course together. The book gives you the map. The course gives you the journey.</p>
-          <div class="course-meta">
-            <div>
-              <div class="course-detail"><strong>Best Value</strong></div>
-              <div class="course-detail" style="margin-top:4px;"><strong>Book + 8 Modules</strong></div>
-            </div>
-            <a href="/course.html?course=bundle-icant" class="course-arrow">→</a>
-          </div>
-        </div>
-      </div>
-
-      <div class="course-card fade-up fade-up-delay-2">
-        <div class="course-thumb">
-          <div class="course-thumb-bg" style="background: linear-gradient(135deg, #0a0a0a 0%, #1a0a00 100%);"></div>
-          <div class="course-thumb-num">IC</div>
-          <div class="course-thumb-badge">Coming Soon</div>
-        </div>
-        <div class="course-body">
-          <div class="course-cat">Mindset &amp; Personal Growth</div>
-          <div class="course-title">I CAN'T: THE COURSE</div>
-          <p class="course-desc">Break the beliefs that have been running your life — and build the ones that set you free.</p>
-          <div class="course-meta">
-            <div>
-              <div class="course-detail"><strong>Self-paced</strong></div>
-              <div class="course-detail" style="margin-top:4px;"><strong>8</strong> Modules</div>
-            </div>
-            <a href="/course.html?course=icant" class="course-arrow">→</a>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- Filled by /js/home-courses.js from the live catalog: courses whose
+         status is 'live' and whose "On main site" switch is on. Intentionally
+         empty in the source — hardcoded cards here previously went stale and
+         would now risk advertising an unpublished course. -->
+    <div class="courses-grid stagger-list" id="home-courses-grid"></div>
   </div>
 </section>
 

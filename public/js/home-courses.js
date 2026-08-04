@@ -100,10 +100,11 @@ function metaLines(course) {
   }).join('');
 }
 
+// Only live courses reach this point, so the badge is about what the card is
+// rather than whether it's available — a bundle gets called out as the value
+// pick, everything else is simply buyable.
 function badgeLabel(course) {
-  if (course.status === 'live') return 'Enroll Now';
-  if (course.status === 'bundle') return 'Best Value';
-  return 'Coming Soon';
+  return course.bundleHref ? 'Best Value' : 'Enroll Now';
 }
 
 function cardHtml(course, i) {
@@ -144,35 +145,60 @@ function cardHtml(course, i) {
       </div>`;
 }
 
+// Nothing publishable to show. Hide the section outright rather than leaving
+// an empty grid or a heading with no content under it.
+//
+// The in-page links that point at #courses have to go with it, or the nav
+// item and the hero button become dead clicks. "Courses" links are hidden;
+// the hero's generic "Start Your Journey" CTA is repointed at the Programs
+// section, which is the nearest equivalent, rather than disappearing — it's
+// the primary call to action on the page.
+function hideCoursesSection(section) {
+  section.hidden = true;
+
+  document.querySelectorAll('a[href="#courses"]').forEach((a) => {
+    if (a.closest('.hero-actions')) {
+      a.setAttribute('href', '#impact');
+      return;
+    }
+    // Hide the whole <li> in the desktop nav so the list doesn't keep its gap.
+    (a.closest('li') || a).style.display = 'none';
+  });
+}
+
 export async function init() {
   const grid = document.getElementById(GRID_ID);
-  if (!grid) return;
+  const section = document.getElementById('courses');
+  if (!grid || !section) return;
 
   try {
     await loadCourses();
   } catch (e) {
-    // Leave the static fallback markup in place rather than blanking the
-    // section — a homepage with slightly stale cards beats an empty one.
-    console.warn('[home-courses] catalog load failed; keeping static cards', e);
+    // Fail closed: we can't tell which courses are published, and showing an
+    // unpublished one on the marketing site is worse than showing none.
+    console.warn('[home-courses] catalog load failed; hiding the section', e);
+    hideCoursesSection(section);
     return;
   }
 
-  // getCourses() already drops status:'inactive'. `showOnSite` is a
-  // default-true opt-out (absent or true = shown), so the courses that
-  // existed before the switch was added stay visible with no backfill.
-  const courses = getCourses().filter((c) => c.showOnSite !== false);
+  // Only genuinely published courses are advertised. `status` is the publish
+  // state set from the builder's Publish menu — 'live' means members can
+  // actually enroll and take it; 'coming-soon' and 'inactive' are not public.
+  // `showOnSite` is the owner's per-course override on top of that, a
+  // default-true opt-out so existing courses needed no backfill.
+  const courses = getCourses().filter(
+    (c) => c.status === 'live' && c.showOnSite !== false
+  );
 
-  // Nothing to show — keep the fallback rather than rendering an empty grid.
-  if (!courses.length) return;
+  if (!courses.length) {
+    hideCoursesSection(section);
+    return;
+  }
 
   grid.innerHTML = courses.map(cardHtml).join('');
+  section.hidden = false;
 
   // Re-hook the animations for the cards we just injected (see header note).
   if (typeof window.__1pObserveFades === 'function') window.__1pObserveFades(grid);
   if (typeof window.__1pAttachTilt === 'function') window.__1pAttachTilt(grid);
-
-  // If the stagger container was already revealed while the fallback cards
-  // were showing, the new children inherit .visible from the parent and appear
-  // immediately. If it hasn't scrolled into view yet, the original observer
-  // still handles it.
 }
