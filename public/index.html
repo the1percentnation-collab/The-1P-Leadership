@@ -723,13 +723,15 @@
     .book-visual {
       display: flex; align-items: center; justify-content: center;
     }
-    /* Book trailer — 9:16 source, shown full-frame in the visual column. */
+    /* Book trailers — portrait sources, shown full-frame in the visual column. */
     .book-video-frame {
       width: 100%; aspect-ratio: 9/16; border-radius: 12px;
       background: #000; border: 1px solid var(--border);
       overflow: hidden; position: relative;
       box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(230,3,6,0.08);
     }
+    /* Must follow the base rule — same specificity, so source order decides. */
+    .book-video-frame--3-4 { aspect-ratio: 3/4; }
     .book-video {
       width: 100%; height: 100%; object-fit: cover; object-position: center;
       display: block; background: #000;
@@ -1531,8 +1533,6 @@
       .book-section { grid-template-columns: 1fr; }
       .book-section::before { display: none; }
       .book-visual { display: none; }
-      .book-section--soon .book-visual { display: flex; margin-top: 8px; }
-      .book-section--soon .book-visual img { max-width: 340px; }
       /* Stacked layout: lead with the trailer instead of burying it below the copy. */
       .book-visual--video { display: flex; order: -1; margin-bottom: 32px; }
       .book-video-frame { max-width: min(320px, 70vw); margin: 0 auto; }
@@ -1973,8 +1973,14 @@
         <a href="#shop" class="btn-primary btn-lg">Get Your Copy →</a>
         <div class="book-guarantee">A New Book by Anthony Brown — Coming Soon.</div>
       </div>
-      <div class="book-visual">
-        <img src="/assets/work-less-gain-more.jpg" alt="Work Less &amp; Gain More by Anthony Brown" style="width:100%; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+      <div class="book-visual book-visual--video">
+        <div class="book-video-frame book-video-frame--3-4">
+          <video class="book-video" poster="/assets/work-less-gain-more-poster.jpg" preload="metadata" controls playsinline muted loop autoplay
+                 aria-label="Teaser for How to Work Less &amp; Gain More by Anthony Brown">
+            <source src="/assets/work-less-gain-more.mp4" type="video/mp4">
+            Your browser does not support video playback.
+          </video>
+        </div>
       </div>
     </div>
   </div>
