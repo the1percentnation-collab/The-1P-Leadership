@@ -973,6 +973,10 @@ function fillSettingsForm(c) {
   $('f-sort').value = c && typeof c.sortOrder === 'number' ? c.sortOrder : '';
   const contentVal = (c && c.contentSource !== 'firestore' && CODE_CONTENT_SLUGS.has(c.slug)) ? 'code' : 'firestore';
   $('f-content').value = contentVal;
+  // Default-true opt-out, same convention as `published` on lessons.
+  const onSite = !c || c.showOnSite !== false;
+  $('f-onsite').checked = onSite;
+  $('f-onsite-label').textContent = onSite ? 'On main site' : 'Hidden from main site';
   $('settings-result').innerHTML = '';
   S.suppress = false;
 }
@@ -996,6 +1000,7 @@ async function saveSettings() {
       eyebrow: $('f-eyebrow').value.trim() || null,
       sortOrder: Number($('f-sort').value) || 0,
       contentSource: source,
+      showOnSite: $('f-onsite').checked,
       updatedAt: serverTimestamp(),
       updatedBy: _userEmail
     }, { merge: true });
@@ -1108,6 +1113,13 @@ export function initBuilder(options = {}) {
   $('m-published').addEventListener('change', () => {
     $('m-published-label').textContent = $('m-published').checked ? 'Published' : 'Draft';
     markDirty();
+  });
+
+  // Settings tab: keep the site-visibility label in step with the switch.
+  // Not part of markDirty() — that tracks the lesson form, and this lives on
+  // the Settings card behind its own Save button.
+  $('f-onsite').addEventListener('change', () => {
+    $('f-onsite-label').textContent = $('f-onsite').checked ? 'On main site' : 'Hidden from main site';
   });
 
   // Ctrl/Cmd+S saves the open lesson while the builder is visible

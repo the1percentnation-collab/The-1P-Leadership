@@ -113,6 +113,11 @@ function courseCardHtml(c) {
       </div>
       <div class="mc-card-actions">
         ${statusSel}
+        <label class="mc-switch" title="Show this course in the Courses section of the public homepage">
+          <input type="checkbox" data-onsite="${slug}"${c.showOnSite !== false ? ' checked' : ''}>
+          <span class="mc-switch-track"></span>
+          <span>On main site</span>
+        </label>
         <button class="btn btn-primary" data-open="${slug}" style="font-size:12px; padding:7px 14px;">Edit</button>
         <button class="btn btn-ghost" data-preview="${slug}" style="font-size:12px; padding:7px 12px;">Preview</button>
         <span style="flex:1;"></span>
@@ -147,6 +152,8 @@ function renderDashboard() {
     b.addEventListener('click', () => deleteCourse(b.dataset.delCourse)));
   grid.querySelectorAll('[data-status]').forEach((sel) =>
     sel.addEventListener('change', () => setCourseStatus(sel.dataset.status, sel.value)));
+  grid.querySelectorAll('[data-onsite]').forEach((cb) =>
+    cb.addEventListener('change', () => setCourseOnSite(cb.dataset.onsite, cb.checked, cb)));
   grid.querySelectorAll('[data-kebab-toggle]').forEach((b) =>
     b.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -194,6 +201,35 @@ async function setCourseStatus(slug, status) {
     await refreshCourses();
   } catch (e) {
     alert(`Could not update status: ${e && e.message ? e.message : e}`);
+  }
+}
+
+// Quick "show on the public homepage" flip from a dashboard card.
+//
+// Deliberately separate from `status`: 'inactive' hides a course everywhere
+// (including the member library), whereas this only controls whether the
+// course is advertised on the marketing site. A course can be live for
+// members while staying off the public homepage, and vice versa.
+//
+// The field is a default-true opt-out (`showOnSite !== false`), matching the
+// `published` / `certificate` convention used elsewhere, so the courses that
+// already exist stay visible without a backfill.
+//
+// No full re-render here — the switch is its own indicator and rebuilding the
+// grid mid-click makes the toggle feel like it bounced. We still force-reload
+// the merged cache so the builder's Settings tab agrees with the dashboard.
+async function setCourseOnSite(slug, on, cb) {
+  if (!slug) return;
+  try {
+    await setDoc(doc(db, 'courses', slug), {
+      showOnSite: on,
+      updatedAt: serverTimestamp(),
+      updatedBy: _userEmail
+    }, { merge: true });
+    await loadCourses({ force: true });
+  } catch (e) {
+    if (cb) cb.checked = !on; // put the switch back where it was
+    alert(`Could not update site visibility: ${e && e.message ? e.message : e}`);
   }
 }
 
@@ -262,6 +298,7 @@ function openNewCourseModal() {
         slug,
         title,
         status: 'coming-soon',
+        showOnSite: true,
         contentSource: 'firestore',
         moduleCount: 0,
         priceLabel: null,

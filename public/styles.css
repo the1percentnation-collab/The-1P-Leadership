@@ -1865,6 +1865,10 @@ gmp-place-autocomplete,
 .mc-card-actions {
   display: flex;
   align-items: center;
+  /* Wraps because the cards are only ~300px wide at the grid's minmax floor,
+     and the row carries a status select, the "On main site" switch, Edit,
+     Preview and the kebab. Without this the controls squash into each other. */
+  flex-wrap: wrap;
   gap: 8px;
   padding: 10px 16px 14px;
   border-top: 1px solid var(--border);

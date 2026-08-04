@@ -533,6 +533,10 @@
     .course-title {
       font-family: var(--font-display); font-size: 24px; letter-spacing: 0.04em;
       line-height: 1.1; color: var(--white); margin-bottom: 10px;
+      /* Titles used to be hand-typed in caps here; they now come from the
+         course catalog in title case. Bebas Neue only has caps glyphs, so this
+         is normally invisible — it matters when the webfont fails to load. */
+      text-transform: uppercase;
     }
     .course-desc {
       font-size: 14px; font-weight: 300; line-height: 1.6;
@@ -1789,23 +1793,28 @@
       </div>
     </div>
 
-    <div class="courses-grid stagger-list">
+    <!-- Rendered from the live catalog by /js/home-courses.js — it shows every
+         course the owner has switched "On main site" in /manage-courses.html.
+         The cards below are a static fallback so the section is never empty if
+         Firestore is slow or unreachable; the script replaces them wholesale.
+         Keep them in step with the first entries of js/courses-registry.js. -->
+    <div class="courses-grid stagger-list" id="home-courses-grid">
       <div class="course-card fade-up">
         <div class="course-thumb">
           <div class="course-thumb-bg"></div>
           <div class="course-thumb-num">1P</div>
-          <div class="course-thumb-badge">Flagship</div>
+          <div class="course-thumb-badge">Coming Soon</div>
         </div>
         <div class="course-body">
-          <div class="course-cat">Certified Leadership Core</div>
-          <div class="course-title">1P CLC PROGRAM</div>
-          <p class="course-desc">The foundational certification. Master the mindset frameworks, leadership principles, and execution systems that define the One Percent standard.</p>
+          <div class="course-cat">Leadership &amp; Coaching</div>
+          <div class="course-title">1P CERTIFIED LEADER COACH</div>
+          <p class="course-desc">Mindset, structure, and disciplined progress — one percent at a time.</p>
           <div class="course-meta">
             <div>
-              <div class="course-detail"><strong>12</strong> Modules</div>
-              <div class="course-detail" style="margin-top:4px;"><strong>Self-paced</strong> + Live Sessions</div>
+              <div class="course-detail"><strong>Certification</strong></div>
+              <div class="course-detail" style="margin-top:4px;"><strong>7</strong> Modules</div>
             </div>
-            <a href="/login.html" class="course-arrow">→</a>
+            <a href="/course.html?course=1p-clc" class="course-arrow">→</a>
           </div>
         </div>
       </div>
@@ -1813,19 +1822,19 @@
       <div class="course-card fade-up fade-up-delay-1">
         <div class="course-thumb">
           <div class="course-thumb-bg" style="background: linear-gradient(135deg, #0a0a0a 0%, #001a1a 100%);"></div>
-          <div class="course-thumb-num">MS</div>
-          <div class="course-thumb-badge">Core</div>
+          <div class="course-thumb-num">BD</div>
+          <div class="course-thumb-badge">Coming Soon</div>
         </div>
         <div class="course-body">
-          <div class="course-cat">Mindset &amp; Beliefs</div>
-          <div class="course-title">MINDSET SHIFT</div>
-          <p class="course-desc">Identify and dismantle the limiting beliefs keeping you stuck. Rewire your internal narrative and build the mental foundation for sustained growth.</p>
+          <div class="course-cat">Mindset &amp; Personal Growth</div>
+          <div class="course-title">THE COMPLETE I CAN'T EXPERIENCE</div>
+          <p class="course-desc">Book + Course together. The book gives you the map. The course gives you the journey.</p>
           <div class="course-meta">
             <div>
-              <div class="course-detail"><strong>8</strong> Modules</div>
-              <div class="course-detail" style="margin-top:4px;"><strong>Self-paced</strong></div>
+              <div class="course-detail"><strong>Best Value</strong></div>
+              <div class="course-detail" style="margin-top:4px;"><strong>Book + 8 Modules</strong></div>
             </div>
-            <a href="/login.html" class="course-arrow">→</a>
+            <a href="/course.html?course=bundle-icant" class="course-arrow">→</a>
           </div>
         </div>
       </div>
@@ -1833,19 +1842,19 @@
       <div class="course-card fade-up fade-up-delay-2">
         <div class="course-thumb">
           <div class="course-thumb-bg" style="background: linear-gradient(135deg, #0a0a0a 0%, #1a0a00 100%);"></div>
-          <div class="course-thumb-num">LA</div>
-          <div class="course-thumb-badge">Advanced</div>
+          <div class="course-thumb-num">IC</div>
+          <div class="course-thumb-badge">Coming Soon</div>
         </div>
         <div class="course-body">
-          <div class="course-cat">Leadership</div>
-          <div class="course-title">LEADERSHIP ASCENSION</div>
-          <p class="course-desc">Advanced leadership frameworks for emerging and established leaders. Build accountability cultures, lead under pressure, and multiply your impact.</p>
+          <div class="course-cat">Mindset &amp; Personal Growth</div>
+          <div class="course-title">I CAN'T: THE COURSE</div>
+          <p class="course-desc">Break the beliefs that have been running your life — and build the ones that set you free.</p>
           <div class="course-meta">
             <div>
-              <div class="course-detail"><strong>10</strong> Modules</div>
-              <div class="course-detail" style="margin-top:4px;"><strong>Cohort-based</strong></div>
+              <div class="course-detail"><strong>Self-paced</strong></div>
+              <div class="course-detail" style="margin-top:4px;"><strong>8</strong> Modules</div>
             </div>
-            <a href="/login.html" class="course-arrow">→</a>
+            <a href="/course.html?course=icant" class="course-arrow">→</a>
           </div>
         </div>
       </div>
@@ -2380,6 +2389,14 @@ const fadeObserver = new IntersectionObserver((entries) => {
 }, { threshold: 0.08, rootMargin: '0px 0px -48px 0px' });
 document.querySelectorAll(fadeSelectors).forEach(el => fadeObserver.observe(el));
 
+// Elements injected after this script runs (see /js/home-courses.js, which
+// rebuilds the Courses grid from the live catalog) are never picked up by the
+// querySelectorAll above. Without re-observing them they keep .fade-up's
+// opacity:0 forever and the section renders blank, so expose a re-hook.
+window.__1pObserveFades = (root) => {
+  (root || document).querySelectorAll(fadeSelectors).forEach(el => fadeObserver.observe(el));
+};
+
 // ─── 4. STAGGERED LIST REVEAL ────────────────────────────────
 const staggerObserver = new IntersectionObserver((entries) => {
   entries.forEach(e => {
@@ -2495,20 +2512,27 @@ document.querySelectorAll('.btn-primary, .btn-cta-nav').forEach(btn => {
 
 // ─── BONUS: HOVER CARD 3D TILT ───────────────────────────────
 // Applied to impact-cards and course-cards
-document.querySelectorAll('.impact-card, .course-card').forEach(card => {
-  card.classList.add('tilt-card');
-  card.addEventListener('mousemove', (e) => {
-    const rect = card.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width  - 0.5;
-    const y = (e.clientY - rect.top)  / rect.height - 0.5;
-    card.style.transform = `perspective(900px) rotateX(${-y*5}deg) rotateY(${x*5}deg) scale(1.01)`;
-    card.style.transition = 'transform 0.1s ease-out';
+function attachTilt(root) {
+  (root || document).querySelectorAll('.impact-card, .course-card').forEach(card => {
+    if (card.classList.contains('tilt-card')) return; // already wired
+    card.classList.add('tilt-card');
+    card.addEventListener('mousemove', (e) => {
+      const rect = card.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width  - 0.5;
+      const y = (e.clientY - rect.top)  / rect.height - 0.5;
+      card.style.transform = `perspective(900px) rotateX(${-y*5}deg) rotateY(${x*5}deg) scale(1.01)`;
+      card.style.transition = 'transform 0.1s ease-out';
+    });
+    card.addEventListener('mouseleave', () => {
+      card.style.transform = '';
+      card.style.transition = 'transform 0.5s cubic-bezier(0.16,1,0.3,1)';
+    });
   });
-  card.addEventListener('mouseleave', () => {
-    card.style.transform = '';
-    card.style.transition = 'transform 0.5s cubic-bezier(0.16,1,0.3,1)';
-  });
-});
+}
+attachTilt();
+// Same reason as __1pObserveFades — dynamically rendered course cards need
+// the tilt handlers attached after they land in the DOM.
+window.__1pAttachTilt = attachTilt;
 
 // ─── 3. PAGE TRANSITION OVERLAY ──────────────────────────────
 // Red sweep on internal link clicks
@@ -2833,6 +2857,10 @@ function submitNewsletter() {
 <script type="module">
   import { init as initChatbot } from './js/chatbot.js';
   initChatbot();
+</script>
+<script type="module">
+  import { init as initHomeCourses } from './js/home-courses.js';
+  initHomeCourses();
 </script>
 <script src="/js/consent-banner.js" defer></script>
 </body>
