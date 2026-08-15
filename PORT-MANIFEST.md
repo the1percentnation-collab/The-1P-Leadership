@@ -49,7 +49,7 @@ Every instruction later in this document refers to these tokens.
 | `{{BRAND_SHORT}}` | **KB** | `1P` / `1PN` / `OPN` | monograms, CSS prefix, storage keys |
 | `{{DOMAIN}}` | **kaileybrown.com** | `the1pnation.com` | 32 files |
 | `{{FIREBASE_PROJECT_ID}}` | **kailey-brown** | `the-1p-leadership` | 10 files |
-| `{{OWNER_EMAIL}}` | ⚠️ **TBD** — see below | `the1percentnation@gmail.com` | 5 files |
+| `{{OWNER_EMAIL}}` | **kailey@kaileybrown.com** | `the1percentnation@gmail.com` | 5 files |
 | `{{GA4_ID}}` | *create a new GA4 property* | `G-RBH536HRZE` | 36 files |
 | `{{CI_SECRET_NAME}}` | **`FIREBASE_SERVICE_ACCOUNT_KAILEY_BROWN`** | `FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP` | 3 workflows |
 | `{{ACCENT}}` | **`#C8102E`** | `#E60306` | 4 token blocks, SVG, email HTML |
@@ -65,12 +65,20 @@ Every instruction later in this document refers to these tokens.
 
 *Reach counts are file counts in the source repo, excluding this manifest.*
 
-> ⚠️ **`{{OWNER_EMAIL}}` is the one value still outstanding.** It is not
-> cosmetic — it is the hard gate that grants owner rights (§8.3), and it is
-> also the From/Reply-To on every system email. Pick it before Phase 0, and
-> prefer a domain address (`hello@kaileybrown.com`) over a personal Gmail:
-> SendGrid sender verification on your own domain gives far better
-> deliverability, and the address is visible on every outbound email.
+> ⚠️ **`kailey@kaileybrown.com` is not just a config value.** It is the hard
+> gate that grants owner rights (§8.3) — `bootstrapOwner` will only ever
+> promote an account whose email matches it exactly — and it is the
+> From/Reply-To on every system email. Three consequences:
+>
+> 1. It must be **byte-identical** in `functions/index.js:19` and
+>    `public/js/auth.js:22`. A mismatch fails with `permission-denied` at the
+>    one step you cannot skip.
+> 2. The mailbox must **exist and be reachable before Phase 6**, because you
+>    sign up with it to claim ownership.
+> 3. It must be **verified in SendGrid as a sender** (§7) before any email
+>    sends. Verify the whole `kaileybrown.com` domain rather than the single
+>    address — domain authentication with SPF/DKIM is what keeps invites and
+>    password resets out of spam, and you'll want it for campaigns anyway.
 
 Seven more values **cannot be guessed** — copy them out of the new Firebase
 project's console (Project settings → General → Your apps → SDK setup) into
@@ -778,9 +786,15 @@ a time.
 
 ### Per-service setup
 
-- **SendGrid** — create an API key with Mail Send. Verify `{{OWNER_EMAIL}}` as a
-  sender (email will silently fail otherwise). Add the Event Webhook pointing at
-  the deployed `sendgridEventWebhook` URL and enable signature verification.
+- **SendGrid** — create an API key with Mail Send. **Authenticate the
+  `kaileybrown.com` domain** (Settings → Sender Authentication → Domain
+  Authentication) rather than verifying the single address: it adds the
+  SPF/DKIM records that keep invites, password resets and campaigns out of
+  spam, and it lets you send as any `@kaileybrown.com` address later without
+  re-verifying. Single-sender verification of `{{OWNER_EMAIL}}` works for
+  testing but will hurt deliverability at campaign volume. Email fails
+  silently if neither is done. Then add the Event Webhook pointing at the
+  deployed `sendgridEventWebhook` URL and enable signature verification.
 - **Stripe** — create products and prices matching your catalog. Add a webhook
   endpoint pointing at `stripeWebhook` and copy the signing secret. Coupons are
   synced from the app via `syncCoupon`.
