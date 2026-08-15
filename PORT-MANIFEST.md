@@ -4,6 +4,11 @@ This document is a complete, self-contained recipe for standing up everything in
 `The-1P-Leadership` as a new repository for a different brand, **with all
 functionality intact**.
 
+**Target brand: Kailey Brown — `kaileybrown.com`.** Minimal black and white
+with subtle pops of red; Audrey for display. Concrete values are in §1; the
+document stays token-based (`{{BRAND_NAME}}`, `{{DOMAIN}}`, …) below that, so
+it remains reusable for a future brand.
+
 It is a *port manifest*, not an architecture essay: it tells you which files to
 copy, which to edit, which to gut and refill, and — critically — which
 invariants will silently break the app if you "clean them up" on the way past.
@@ -32,33 +37,42 @@ functions, an 859-line Firestore ruleset, Storage rules, 19 composite indexes,
 
 ## 1. Brand Config
 
-Fill this table in first. Every instruction later in this document refers to
-these tokens. Filling the table *is* the rebrand.
+Target brand: **Kailey Brown** — `kaileybrown.com`. Minimal black and white
+with subtle pops of red.
 
-| Token | Your value | Replaces (current) | Reach |
+Every instruction later in this document refers to these tokens.
+
+| Token | Value | Replaces (current) | Reach |
 |---|---|---|---|
-| `{{BRAND_NAME}}` | | `The One Percent Nation` | 51 files |
-| `{{BRAND_ACADEMY}}` | | `The One Percent Academy` | portal `<title>`s, AI prompts |
-| `{{BRAND_SHORT}}` | | `1P` / `1PN` / `OPN` | monograms, CSS prefix, storage keys |
-| `{{DOMAIN}}` | | `the1pnation.com` | 32 files |
-| `{{FIREBASE_PROJECT_ID}}` | | `the-1p-leadership` | 10 files |
-| `{{OWNER_EMAIL}}` | | `the1percentnation@gmail.com` | 5 files |
-| `{{GA4_ID}}` | | `G-RBH536HRZE` | 36 files |
-| `{{CI_SECRET_NAME}}` | | `FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP` | 3 workflows |
-| `{{ACCENT}}` | | `#E60306` | 4 token blocks, SVG, email HTML |
-| `{{ACCENT_DARK}}` | | `#B30205` | token blocks |
-| `{{FONT_DISPLAY}}` | | `Bebas Neue` | every page `<head>` + 4 `:root` blocks |
-| `{{FONT_BODY}}` | | `Outfit` | same |
-| `{{FONT_MONO}}` | | `Space Mono` | same |
-| `{{CERT_SIGNER_NAME}}` | | `Anthony Brown` | `public/js/certificate.js:18` |
-| `{{CERT_SIGNER_TITLE}}` | | `Founder, The One Percent Nation` | `public/js/certificate.js:19` |
-| `{{CERT_PREFIX}}` | | `1P-` | `public/js/certificate.js:76` |
-| `{{INSTRUCTOR_*}}` | | name / title / bio | `public/js/course-landing.js:20–24` |
-| `{{FLAGSHIP_SLUG}}` | | `1p-clc` | Firestore doc IDs — see §6 |
+| `{{BRAND_NAME}}` | **Kailey Brown** | `The One Percent Nation` | 51 files |
+| `{{BRAND_ACADEMY}}` | **Kailey Brown Academy** | `The One Percent Academy` | portal `<title>`s, AI prompts |
+| `{{BRAND_SHORT}}` | **KB** | `1P` / `1PN` / `OPN` | monograms, CSS prefix, storage keys |
+| `{{DOMAIN}}` | **kaileybrown.com** | `the1pnation.com` | 32 files |
+| `{{FIREBASE_PROJECT_ID}}` | **kailey-brown** | `the-1p-leadership` | 10 files |
+| `{{OWNER_EMAIL}}` | ⚠️ **TBD** — see below | `the1percentnation@gmail.com` | 5 files |
+| `{{GA4_ID}}` | *create a new GA4 property* | `G-RBH536HRZE` | 36 files |
+| `{{CI_SECRET_NAME}}` | **`FIREBASE_SERVICE_ACCOUNT_KAILEY_BROWN`** | `FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP` | 3 workflows |
+| `{{ACCENT}}` | **`#C8102E`** | `#E60306` | 4 token blocks, SVG, email HTML |
+| `{{ACCENT_DARK}}` | **`#9E0C24`** | `#B30205` | token blocks |
+| `{{FONT_DISPLAY}}` | **Audrey** (self-hosted — see §1.1) | `Bebas Neue` | every page `<head>` + 4 `:root` blocks |
+| `{{FONT_BODY}}` | **Jost** (Google Fonts) | `Outfit` | same |
+| `{{FONT_MONO}}` | **Space Mono** (unchanged) | `Space Mono` | same |
+| `{{CERT_SIGNER_NAME}}` | **Kailey Brown** | `Anthony Brown` | `public/js/certificate.js:18` |
+| `{{CERT_SIGNER_TITLE}}` | **Founder, Kailey Brown** | `Founder, The One Percent Nation` | `public/js/certificate.js:19` |
+| `{{CERT_PREFIX}}` | **`KB-`** | `1P-` | `public/js/certificate.js:76` |
+| `{{INSTRUCTOR_*}}` | Kailey Brown + title + bio | Anthony Brown | `public/js/course-landing.js:20–24` |
+| `{{FLAGSHIP_SLUG}}` | *your first course slug* | `1p-clc` | Firestore doc IDs — see §6 |
 
 *Reach counts are file counts in the source repo, excluding this manifest.*
 
-Six more values **cannot be guessed** — copy them out of the new Firebase
+> ⚠️ **`{{OWNER_EMAIL}}` is the one value still outstanding.** It is not
+> cosmetic — it is the hard gate that grants owner rights (§8.3), and it is
+> also the From/Reply-To on every system email. Pick it before Phase 0, and
+> prefer a domain address (`hello@kaileybrown.com`) over a personal Gmail:
+> SendGrid sender verification on your own domain gives far better
+> deliverability, and the address is visible on every outbound email.
+
+Seven more values **cannot be guessed** — copy them out of the new Firebase
 project's console (Project settings → General → Your apps → SDK setup) into
 `public/js/firebase.js`:
 
@@ -68,6 +82,82 @@ project's console (Project settings → General → Your apps → SDK setup) int
 > These are public by design. Firebase web API keys are not secrets — all
 > security in this app comes from Firestore/Storage rules and callable-side
 > auth checks. Do not try to hide them.
+
+### 1.1 Fonts — Audrey is not a Google Font
+
+This changes the mechanics, so handle it deliberately.
+
+Every page in the source loads its typefaces with a single Google Fonts
+`<link>`. **Audrey is not on Google Fonts**, so that mechanism cannot serve it.
+Neither is Caviar Dreams (the "cookies" sample). You have two options:
+
+**Self-host Audrey (recommended for the display face).**
+1. License it for web use. The free downloads floating around are
+   personal-use-only; a commercial site needs a real webfont license. Check
+   the foundry's terms before you ship.
+2. Convert to `.woff2`, put the files in `public/assets/fonts/`.
+3. Add an `@font-face` block to `public/styles.css` — and to the inline
+   `<style>` block of each self-contained page (§5.3 lists them).
+4. Hosting already serves fonts with `Cache-Control: public, max-age=604800`
+   (`firebase.json` covers `woff|woff2|ttf|eot`), so no config change needed.
+
+```css
+@font-face {
+  font-family: 'Audrey';
+  src: url('/assets/fonts/audrey.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;   /* text stays visible while the font loads */
+}
+```
+
+**Use Audrey for display only.** Audrey is a wide, light, generously-tracked
+display face — beautiful for the wordmark, headings and the certificate,
+genuinely hard to read at 13px in a dense CRM table. Pair it with a geometric
+Google Font for body and UI. `Jost` is the closest free match to the samples
+you sent; `Questrial` and `Poiret One` are the other two worth auditioning.
+That gives you:
+
+```css
+--font-display: 'Audrey', 'Jost', Georgia, serif;   /* wordmark, headings, certificate */
+--font-body:    'Jost', system-ui, sans-serif;       /* everything else */
+--font-mono:    'Space Mono', ui-monospace, monospace;
+```
+
+The `'Jost'` fallback inside `--font-display` matters: if the Audrey license or
+files ever fall out, the site degrades to a near-match instead of Georgia.
+
+### 1.2 Palette — minimal light, red used sparingly
+
+The source is a **dark** theme (black surfaces, white text, loud red). Your
+brand is the inverse: white paper, charcoal ink, red as punctuation. Read
+§5.3 before you start — this is the largest single piece of work in the port,
+and it is not a token swap.
+
+```css
+:root {
+  /* paper + ink */
+  --paper:        #FFFFFF;
+  --surface:      #FAFAFA;   /* cards, raised panels */
+  --surface-2:    #F2F1EF;   /* warm off-white, matches the wordmark lockup */
+  --ink:          #3C3C3C;   /* body text — the grey in your logo samples */
+  --ink-strong:   #1A1A1A;   /* headings */
+  --ink-muted:    #8A8A8A;   /* captions, meta, placeholders */
+  --border:       rgba(0, 0, 0, 0.10);
+
+  /* the pop */
+  --red:          #C8102E;
+  --red-dark:     #9E0C24;
+  --red-tint:     rgba(200, 16, 46, 0.08);   /* hover washes, selected rows */
+  --border-red:   rgba(200, 16, 46, 0.28);
+}
+```
+
+**Discipline for "subtle pops":** red carries meaning, not decoration. Reserve
+it for the primary action on a screen (one per view), active nav state, the
+logo mark, and genuine destructive/error states. Everything else is ink on
+paper. The moment red appears on secondary buttons and section headers, the
+minimalism is gone — which is exactly what the source does today, so expect to
+*remove* red as you port, not just recolor it.
 
 ---
 
@@ -375,36 +465,89 @@ grep -rl "G-RBH536HRZE" public/          # expect ~36 files
 grep -rn "the-1p-leadership" --exclude-dir=.git .
 ```
 
-### 5.3 Design tokens — they live in **four** places
+### 5.3 Design tokens and the dark → light inversion
 
-This is the easiest thing to half-do. All four must move together:
+**Budget real time for this step. It is the largest piece of work in the port.**
+
+The source is a dark theme. Kailey Brown is a light one. That is not a token
+swap, because the stylesheet does not go through tokens consistently. In
+`public/styles.css` alone:
+
+| Literal | Count |
+|---|---|
+| `rgba(255,255,255,…)` — white at some opacity, i.e. "light on dark" | 55 |
+| `#fff` / `#ffffff` hardcoded | 45 |
+| Hardcoded near-black hexes (`#0xxxxx`, `#1xxxxx`) | 44 |
+| `rgba(0,0,0,…)` — shadows and scrims tuned for a dark ground | 30 |
+
+That's ~174 color values that bypass `:root` entirely, plus **11 pages carrying
+their own inline `<style>` block** — `index.html` (2,816 lines),
+`goal-planning.html` (1,010), `webinar.html` (1,004), `bundle.html` (733),
+`book.html` (535), `book-bonus.html` (472), `chatbot-kb.html` (409),
+`bug-reports.html` (305), `login.html` (282), `privacy.html` (187),
+`terms.html` (159).
+
+**Recommended sequence:**
+
+1. **Consolidate first, invert second.** Before changing a single color, pull
+   the four `:root` blocks into one `public/assets/tokens.css` and `@import`
+   it everywhere. Doing this first means you invert *once*, in one file,
+   instead of four times — and it permanently fixes the source's weakest
+   point. This is the one place I'd depart from copy-as-is.
+2. **Rename tokens by role, not appearance.** `--black` and `--white` become
+   lies the moment you invert. Move to `--paper` / `--ink` / `--surface` /
+   `--border` as in §1.2. Mechanical, but it prevents a class of bug where a
+   later contributor "fixes" `--black: #FFFFFF` back to black.
+3. **Sweep the literals.** `rgba(255,255,255,0.08)` borders become
+   `rgba(0,0,0,0.08)`; white text becomes ink; dark-ground shadows need
+   re-tuning (shadows on white want to be softer and tighter than shadows on
+   black, not just inverted).
+4. **Do the app shell before the marketing pages.** `styles.css` covers all 28
+   app pages at once. The marketing pages are being rewritten in Phase 3
+   anyway (§6.4), so don't invert markup you're about to delete.
+5. **Re-check contrast.** The source's `--gray-400: #A0A0A0` reads fine as
+   muted text on `#080808`. On white it fails WCAG AA. Use `--ink-muted:
+   #8A8A8A` or darker for anything at body size.
+
+**The four token blocks** (all must move together, or one file after step 1):
 
 1. `public/styles.css:1–28` — the canonical `:root` block
-2. `public/index.html:32–56` — a duplicate `:root` (index is fully self-contained)
-3. `public/styles.css:9451–9489` — the certificate palettes (`--cert-*`, two themes)
-4. `public/goal-planning.html` and `public/webinar.html` — each carries its own full `:root`
+2. `public/index.html:32–56` — a duplicate `:root` (index is self-contained)
+3. `public/styles.css:9451–9489` — the certificate palettes (`--cert-*`). Two
+   themes are defined at `public/js/certificate.js:33–34`: **Midnight**
+   (`sheet: #0A0A0A`, `accent: #E60306`) and **Classic** (`sheet: #FFFFFF`,
+   `accent: #111111`). **Classic is already on-brand for Kailey Brown** — make
+   it the default and change only its accent to `#C8102E`. Certificates get
+   printed, so a white sheet is the right default regardless; Midnight burns a
+   page of toner. Consider dropping Midnight entirely.
+4. `public/goal-planning.html` and `public/webinar.html` — each has its own
+   full `:root`
 
-Plus these non-token color/font sites:
+**Non-token color and font sites:**
 
-- The Google Fonts `<link>` in **every** page `<head>`
+- The Google Fonts `<link>` in **every** page `<head>` — and the new
+  `@font-face` block for Audrey (§1.1), which must go everywhere `:root` does
 - `{{ACCENT}}` hardcoded inside `public/assets/academy-logo.svg`
-- `#CC1B1B` in the `functions/index.js` invite email
-- CRM stage colors — `public/js/crm.js:16–23` and `:373–380`
+- `#CC1B1B` in the `functions/index.js` invite email (emails are light-ground
+  already, so this one is a straight swap to `#C8102E`)
+- CRM stage colors — `public/js/crm.js:16–23` and `:373–380`. These are
+  categorical (new / contacted / qualified / negotiating / customer / lost),
+  so keep them chromatically distinct rather than forcing them to brand red;
+  just lighten them for a white ground.
 - Google Maps web-component styling — `public/styles.css:1266–1271`
 
-The token set to map:
+**Token mapping:**
 
 ```css
---red / --red-dark / --red-light / --red-glow      → {{ACCENT}} family
---black / --black-2 / --charcoal / --surface / --surface-2
---border / --border-red / --white / --off-white / --gray-400 / --gray-600
---font-display / --font-body / --font-mono          → {{FONT_*}}
---nav-h / --ease-out / --ease-in                    → structural, keep
+--red / --red-dark / --red-light / --red-glow   → --red / --red-dark / --red-tint / --border-red
+--black / --black-2 / --charcoal                → --paper / --surface / --surface-2
+--surface / --surface-2                         → --surface-2 / --border
+--white / --off-white                           → --ink-strong / --ink
+--gray-400 / --gray-600                         → --ink-muted (re-check contrast)
+--border / --border-red                         → rgba(0,0,0,0.10) / rgba(200,16,46,0.28)
+--font-display / --font-body / --font-mono      → Audrey / Jost / Space Mono
+--nav-h / --ease-out / --ease-in                → structural, keep as-is
 ```
-
-> **Recommended first improvement (after the port works):** consolidate all four
-> token blocks into a single `tokens.css` imported everywhere. The duplication
-> is the source's weakest point and it will bite you on the second rebrand.
 
 ### 5.4 Visible brand strings
 
@@ -428,11 +571,18 @@ The token set to map:
 
 Cosmetic, but leaving them makes the new brand look like a fork:
 
-- **localStorage keys**: `1p_ref`, `1p_ref_clicked` (`referral.js:11–12`),
-  `1p_clc_state`, `1p_note_` (`store.js:24–25`),
-  `1p-book-bonus-submitted` (`book-bonus.html`)
-- **CSS/DOM prefix**: `opn-` throughout `chatbot.js` and its style block
-- **Functions package name**: `the-1p-leadership-functions`
+| Current | New | Where |
+|---|---|---|
+| `1p_ref`, `1p_ref_clicked` | `kb_ref`, `kb_ref_clicked` | `referral.js:11–12` |
+| `1p_clc_state` | `kb_course_state` | `store.js:24` |
+| `1p_note_` | `kb_note_` | `store.js:25` |
+| `1p-book-bonus-submitted` | *(page is being replaced)* | `book-bonus.html` |
+| `opn-` CSS/DOM prefix | `kb-` | throughout `chatbot.js` + its style block |
+| `the-1p-leadership-functions` | `kailey-brown-functions` | `functions/package.json` |
+
+> Changing a localStorage key orphans whatever is stored under the old one. On
+> a fresh install that's nothing, so rename freely now. Doing it later logs
+> people out of their locally-cached progress.
 
 ### 5.6 Favicons — regenerate, don't swap
 
@@ -568,6 +718,14 @@ references, but do one or the other completely.
 |---|---|---|
 | `academy-logo.png` | Portal logo | 25 HTML pages + `crm-shell.js:62` |
 | `academy-logo.svg` | Text SVG, fill `{{ACCENT}}` | |
+
+> **Logo note for a light theme.** `academy-logo.png` is currently drawn for a
+> dark sidebar. Once you invert (§5.3) it needs a dark-ink version, not the
+> same file. Export the Kailey Brown wordmark set in Audrey as SVG rather than
+> PNG — it's a text mark, so SVG stays crisp at every size, scales to retina
+> for free, and lets you set the fill from `{{ACCENT}}` or `--ink` in CSS
+> instead of shipping two raster files. Keep a PNG only for the favicon and
+> OG image, which need raster.
 | `founder-portrait.jpg`, `founder-headshot-square.jpg`, `founder-stage-banner.jpg`, `founder-teaching.jpg` | Founder photography | `index.html` |
 | `leadership-story.mp4` (7.0 MB) + `leadership-story-poster.jpg` | About video | `index.html` |
 | `i-cant-book.mp4` (4.3 MB) + `i-cant-book-poster.jpg`, `i-cant-promo.png` | Book trailer | `index.html`, `bundle.html` |
