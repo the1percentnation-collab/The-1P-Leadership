@@ -45,6 +45,39 @@ service cloud.firestore {
              .data.get('enrolledCourseSlugs', []);
     }
 
+    // ── Drip release (The Rewrite Method) ──────────────────────────────
+    //
+    // A member's drip anchor lives at users/{uid}/courseState/{slug}.enrolledAt
+    // and is written ONLY by the Admin SDK (the startCourseDrip callable). That
+    // is what makes it safe to gate content on here: a self-writable anchor
+    // could be backdated to open all six weeks on day one.
+    //
+    // The module document id IS the week number AND the offset in weeks, so the
+    // unlock date is computable from the path alone — no read of the content
+    // doc is needed to decide whether the caller may read it.
+    function courseStatePath(slug) {
+      return /databases/$(database)/documents/users/$(request.auth.uid)/courseState/$(slug);
+    }
+    function hasCourseState(slug) {
+      return isSignedIn() && exists(courseStatePath(slug));
+    }
+    function dripAnchor(slug) {
+      return get(courseStatePath(slug)).data.get('enrolledAt', null);
+    }
+    // The bonus module (99) is event-driven, not date-driven: it opens once the
+    // Week 6 review step has been answered. Either answer opens it — the review
+    // ask is an ask, not a paywall, so `reviewChoice` merely has to be set.
+    function bonusUnlocked(slug) {
+      return get(courseStatePath(slug)).data.get('reviewChoice', null) != null;
+    }
+    function isModuleUnlocked(slug, moduleId) {
+      return hasCourseState(slug)
+        && (moduleId == '99'
+              ? bonusUnlocked(slug)
+              : (dripAnchor(slug) != null
+                 && request.time >= dripAnchor(slug) + duration.value(int(moduleId) * 7, 'd')));
+    }
+
     // Is the caller an admin of company `cid`? We read the company doc and check adminUids.
     function isCompanyAdmin(cid) {
       return isSignedIn()
@@ -199,6 +232,29 @@ service cloud.firestore {
       // course waitlists they've joined, written by the registerCourseInterest
       // Cloud Function (Admin SDK). Self/owner read; server-only writes.
       match /courseInterests/{slug} {
+        allow read: if isOwner() || isSelf(uid);
+        allow write: if false;
+      }
+
+      // users/{uid}/courseState/{courseSlug} — per-course drip + check-in state
+      // for drip-released courses (The Rewrite Method). Holds the drip anchor
+      // `enrolledAt`, the weekly check-in answers, the Week 6 review choice, and
+      // the Rewriter flag.
+      //
+      // Server-written only, for two separate reasons:
+      //   1. `enrolledAt` decides which week's content the rules above will hand
+      //      out. If the member could write it, they could backdate it and read
+      //      every week immediately.
+      //   2. `isRewriter` / `completedAt` are claims about finishing the course.
+      //
+      // Writes go through the startCourseDrip / submitCourseCheckin /
+      // setCourseReviewChoice callables, which re-verify entitlement (and, for
+      // check-ins, the unlock date) with the Admin SDK.
+      //
+      // Check-in answers are personal disclosures — childhood beliefs, family
+      // history. They are readable by self and owner and by nobody else, and
+      // they are never mirrored into a shared collection.
+      match /courseState/{courseSlug} {
         allow read: if isOwner() || isSelf(uid);
         allow write: if false;
       }
@@ -709,6 +765,21 @@ service cloud.firestore {
       match /modules/{moduleId} {
         allow read: if isAnyAdmin() || isEnrolledIn(slug);
         allow create, update, delete: if isAnyAdmin();
+
+        // The paid payload of a drip-released week: video provider ids and the
+        // worksheet download URL. THIS is the drip's security boundary — the
+        // lock states drawn in the course player are cosmetic, and the module
+        // doc above (titles, runtimes, check-in questions) is deliberately
+        // readable for every week so the path forward stays visible.
+        //
+        // Requires entitlement AND that the member's drip has reached this
+        // week. A member on week 2 asking for week 5's videos gets a permission
+        // denial, not a "coming soon" they can work around.
+        match /content/{docId} {
+          allow read: if isAnyAdmin()
+            || (isEnrolledIn(slug) && isModuleUnlocked(slug, moduleId));
+          allow create, update, delete: if isAnyAdmin();
+        }
       }
     }
 

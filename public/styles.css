@@ -6286,6 +6286,14 @@ body.academy-course #course-workspace {
 
 .roadmap-step.is-done .roadmap-step-cta { color: var(--gray-light); }
 
+/* Drip-released weeks that haven't opened yet. Dimmed and un-hoverable, but
+   never hidden — the visible path forward is part of the product. The step is
+   still a link: opening it shows the week's contents and its unlock date. */
+.roadmap-step.is-locked { opacity: 0.55; }
+.roadmap-step.is-locked:hover { border-color: var(--border); transform: none; }
+.roadmap-step.is-locked .roadmap-step-marker { color: var(--gray-light); font-size: 15px; }
+.roadmap-step.is-locked .roadmap-step-cta { color: var(--gray-light); }
+
 @media (max-width: 900px) {
   .workspace-welcome { padding: 40px 22px 0; }
   .courses-cta { margin-top: 64px; padding: 56px 22px; }
@@ -9818,4 +9826,70 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+}
+
+/* ─── The Rewrite Method sales page (/rewrite-method) ──────────────────────
+   Only the sections that live outside the shared course-landing component:
+   the pitch block above it, the six moves, and the drip FAQ below it. The
+   purchase card, curriculum, and instructor blocks are the same .cl-* system
+   every other course renders through. */
+
+.rw-pitch {
+  border-bottom: 1px solid var(--border);
+  background:
+    radial-gradient(1200px 400px at 50% -120px, var(--red-glow), transparent 70%),
+    var(--black);
+  padding: 88px 20px 72px;
+}
+.rw-pitch-inner { max-width: 780px; margin: 0 auto; text-align: center; }
+.rw-eyebrow {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--gray-light); margin-bottom: 22px;
+}
+.rw-h1 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(38px, 7vw, 68px); line-height: 1.02; letter-spacing: 1px;
+  color: var(--white); margin: 0 0 22px;
+}
+.rw-lede {
+  font-size: clamp(15px, 2vw, 18px); line-height: 1.75;
+  color: var(--white-dim); max-width: 640px; margin: 0 auto 26px;
+}
+.rw-subline {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(20px, 3.2vw, 28px); letter-spacing: 2px;
+  color: var(--red); margin: 0 0 32px;
+}
+.rw-cta {
+  display: inline-block; padding: 14px 30px; border-radius: 8px;
+  background: var(--red); color: var(--white);
+  font-size: 14px; font-weight: 600; letter-spacing: 0.5px; text-decoration: none;
+  transition: opacity 0.2s;
+}
+.rw-cta:hover { opacity: 0.85; }
+
+.rw-moves { padding: 64px 20px; border-bottom: 1px solid var(--border); }
+.rw-moves-inner { max-width: 900px; margin: 0 auto; }
+.rw-move-list {
+  list-style: none; margin: 24px 0 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;
+}
+.rw-move-list li {
+  display: flex; gap: 16px; align-items: flex-start;
+  padding: 20px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--black-2);
+}
+.rw-move-list li > span {
+  font-family: 'Bebas Neue', sans-serif; font-size: 30px; line-height: 1;
+  color: var(--red); flex-shrink: 0;
+}
+.rw-move-list b { display: block; color: var(--white); font-size: 15px; margin-bottom: 6px; }
+.rw-move-list p { margin: 0; color: var(--gray-light); font-size: 13px; line-height: 1.6; }
+
+.rw-faq { padding: 24px 20px 88px; }
+.rw-faq-inner { max-width: 780px; margin: 0 auto; }
+.rw-faq .cl-sec p {
+  margin: 0; padding: 4px 18px 18px;
+  color: var(--white-dim); font-size: 14px; line-height: 1.75;
 }

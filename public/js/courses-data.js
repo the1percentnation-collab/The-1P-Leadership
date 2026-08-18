@@ -110,7 +110,8 @@ export function priceInfo(course) {
 // `courses/{slug}/modules`.
 const CODE_MODULE_META = {
   '1p-clc': async () => (await import('./modules.js')).MODULES,
-  'icant': async () => (await import('./icant-course.js')).MODULES
+  'icant': async () => (await import('./icant-course.js')).MODULES,
+  'rewrite-method': async () => (await import('./rewrite-course-data.js')).MODULES
 };
 
 /**

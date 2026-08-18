@@ -276,12 +276,34 @@ function purchaseCardHtml(course, { enrolled }) {
     cta = `<button class="cl-cta" id="cl-notify">Notify me when enrollment opens</button>`;
   }
 
+  // A second price on the same course doc (course + signed book). The buyer
+  // picks; the amount is still read server-side from the course doc.
+  const bundleOptionHtml = (!enrolled && live && typeof course.bundlePrice === 'number') ? `
+    <fieldset class="cl-buy-options" style="border:0; padding:0; margin:0 0 14px; display:flex; flex-direction:column; gap:8px;">
+      <legend style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0);">Choose what to buy</legend>
+      <label style="display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid #2A2A2A; border-radius:8px; cursor:pointer;">
+        <input type="radio" name="cl-buy-option" value="course" checked style="margin-top:3px;">
+        <span>
+          <span style="display:block; color:#fff; font-size:13px; font-weight:600;">Course only — ${escapeHtml(p.label || '')}</span>
+          <span style="display:block; color:#999; font-size:12px;">Six weeks, released one at a time.</span>
+        </span>
+      </label>
+      <label style="display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid #E60306; border-radius:8px; cursor:pointer;">
+        <input type="radio" name="cl-buy-option" value="bundle" style="margin-top:3px;">
+        <span>
+          <span style="display:block; color:#fff; font-size:13px; font-weight:600;">${escapeHtml(course.bundleLabel || 'Course + signed book')} — $${escapeHtml(String(course.bundlePrice))}</span>
+          <span style="display:block; color:#999; font-size:12px;">${escapeHtml(course.bundleNote || 'Signed book shipped to you.')}</span>
+        </span>
+      </label>
+    </fieldset>` : '';
+
   const priceHtml = enrolled ? '' : `
     <div class="cl-price">
       <span class="cl-price-now">${escapeHtml(p.label || '')}</span>
       ${p.onSale ? `<s class="cl-price-was">${escapeHtml(p.originalLabel)}</s>` : ''}
     </div>
     ${course.priceNote ? `<div class="cl-price-note">${escapeHtml(course.priceNote)}</div>` : ''}
+    ${bundleOptionHtml}
     ${!live && !isBundle ? `<div class="cl-soon-note">Coming soon — enrollment isn't open yet.</div>` : ''}`;
 
   return `
@@ -340,7 +362,7 @@ function bindShare(course) {
   const btn = document.getElementById('cl-share');
   if (!btn) return;
   btn.addEventListener('click', async () => {
-    const url = location.origin + '/course.html?course=' + encodeURIComponent(course.slug);
+    const url = location.origin + (course.salesHref || '/course.html?course=' + encodeURIComponent(course.slug));
     try {
       if (navigator.share) {
         await navigator.share({ title: course.title, url });
@@ -351,6 +373,15 @@ function bindShare(course) {
       }
     } catch (e) { /* user dismissed */ }
   });
+}
+
+// The book's QR page hands out a discount code as ?code=. Carried into
+// checkout so the buyer never retypes it; the code itself is validated
+// server-side, and an unknown one just falls back to the code box on Stripe's
+// page rather than blocking the purchase.
+function promoCode() {
+  const raw = new URLSearchParams(location.search).get('code');
+  return raw ? raw.trim().slice(0, 60) : null;
 }
 
 function ctaMsg(text) {
@@ -375,8 +406,11 @@ function bindEnroll(course) {
         await enrollInCourse(course.slug);
         location.assign(`/courses.html?course=${encodeURIComponent(course.slug)}`);
       } else {
+        const picked = document.querySelector('input[name="cl-buy-option"]:checked');
         const res = await httpsCallable(functions, 'createCheckoutSession')({
           slug: course.slug,
+          bundle: picked ? picked.value === 'bundle' : undefined,
+          promoCode: promoCode() || undefined,
           refCode: getRefCode() || undefined
         });
         const url = res && res.data && res.data.url;
@@ -440,7 +474,10 @@ async function main() {
   try { await withTimeout(loadCourses(), 5000); } catch (e) {}
   try { if (user) await withTimeout(loadEnrollments(), 4000); } catch (e) {}
 
-  const slug = new URLSearchParams(location.search).get('course');
+  // A course can be addressed two ways: the shared /course.html?course=slug,
+  // or a dedicated marketing page (e.g. /rewrite-method) that pins its slug on
+  // window before loading this module.
+  const slug = new URLSearchParams(location.search).get('course') || window.__COURSE_SLUG__ || null;
   const course = getCourseBySlug(slug, { includeInactive: false });
 
   if (!course) {

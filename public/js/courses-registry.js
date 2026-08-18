@@ -126,6 +126,139 @@ export const COURSES = [
     }
   },
   {
+    slug: 'rewrite-method',
+    title: 'The Rewrite Method',
+    short: 'Rewrite Method',
+    subtitle: 'Six weeks to take back the pen.',
+    status: 'coming-soon',
+    eyebrow: 'Drip-released · 6 Weeks + Bonus',
+    category: 'Mindset & Personal Growth',
+    price: 197,
+    priceLabel: '$197',
+    priceNote: 'Six weeks, released one at a time',
+    // Course + signed copy of I CAN'T. Read server-side by
+    // createCheckoutSession when the buyer picks the bundle; the price never
+    // comes from the client.
+    bundlePrice: 209,
+    bundleLabel: 'Course + signed copy of I CAN\'T',
+    bundleNote: 'Signed book shipped to you. Shipping address collected at checkout.',
+    // The drip contract, in one place. The module id IS the week number and IS
+    // the offset: week N opens at enrolledAt + N * intervalDays. Mirrored in
+    // firestore.rules and functions/index.js — change all three or none.
+    drip: { anchor: 'enrolledAt', intervalDays: 7, weeks: 7, bonusModuleId: 99 },
+    // Completion here is the Rewriter state, not a certificate.
+    certificate: false,
+    salesHref: '/rewrite-method',
+    whatYoullLearn: [
+      'Find the sentence you were handed — and say it in one line without softening it.',
+      'Trace the handwriting: catch the old line firing before you think, with a seven-day log.',
+      'Put the sentence on trial and separate what happened to you from what it made you believe.',
+      'Write the new line and build the system that keeps it true when motivation is gone.',
+      'Protect the Manuscript: evict and replace, cast the daily vote, and plan the comeback before you need it.',
+      'Audit the five people, the rooms, and the inputs that decide whether the rewrite holds.'
+    ],
+    requirements: [
+      'No prerequisites. The course stands on its own, and reads better alongside the book I CAN\'T.',
+      'One week at a time — the material releases weekly and cannot be rushed ahead.',
+      'A willingness to write things down honestly. Every week ends with a private check-in.'
+    ],
+    includes: [
+      'Six weeks of video, released one week at a time',
+      'The Manuscript — the full course workbook',
+      'A worksheet for every week',
+      'A private weekly check-in, visible only to you',
+      'Bonus module: The Relapse Protocol',
+      'Community access alongside other Rewriters',
+      'Lifetime access on desktop and mobile'
+    ],
+    description: [
+      'You\'ve been living a story someone else wrote. The Rewrite Method is the six-week program ' +
+      'that walks you through finding the sentence you were handed, putting it on trial, and writing ' +
+      'the new line — with the system that keeps it true. Companion to the book <i>I CAN\'T</i> by Anthony Brown Sr.',
+      'The course releases one week at a time, on purpose. The rewrite happens at the speed of reps, ' +
+      'not the speed of reading — and a six-week program you can binge in an afternoon is a six-week ' +
+      'program that changes nothing. Each week gives you the videos, the worksheet, and one check-in ' +
+      'that asks you to put the work on the page before you move on.',
+      'Six moves: Find the Sentence → Trace the Handwriting → Challenge the Draft → Write the New Line ' +
+      '→ Protect the Manuscript → Keep Writing. Finish the sixth and you unlock The Relapse Protocol, ' +
+      'because the old sentence comes back and you should already know what to run when it does.',
+      'People who finish are called Rewriters. Not for watching the videos — for holding the pen.'
+    ],
+    curriculum: [
+      {
+        title: 'Week 0 — Pick Up the Pen',
+        lessons: [
+          { t: "Why Reading Alone Doesn't Rewrite Anything", d: '6 min' },
+          { t: 'Open Your Manuscript', d: '6 min' },
+          { t: 'Check-in: your commitment line', d: '5 min', kind: 'practice' }
+        ]
+      },
+      {
+        title: 'Week 1 — Find the Sentence',
+        lessons: [
+          { t: 'Drag It Into the Light', d: '9 min' },
+          { t: 'The Shrink List', d: '8 min' },
+          { t: 'Lock Your Sentence', d: '6 min' },
+          { t: 'Check-in: your sentence, in one line', d: '5 min', kind: 'practice' }
+        ]
+      },
+      {
+        title: 'Week 2 — Trace the Handwriting',
+        lessons: [
+          { t: 'Why It Fires Before You Think', d: '7 min' },
+          { t: 'The Two-Column Log, Demonstrated', d: '8 min' },
+          { t: 'Check-in: the seven-day count', d: '5 min', kind: 'practice' }
+        ]
+      },
+      {
+        title: 'Week 3 — Challenge the Draft',
+        lessons: [
+          { t: 'Put the Sentence on Trial', d: '8 min' },
+          { t: 'Your Two Minds', d: '7 min' },
+          { t: 'The Three-Second Window', d: '6 min' },
+          { t: 'Check-in: your new expectation line', d: '5 min', kind: 'practice' }
+        ]
+      },
+      {
+        title: 'Week 4 — Write the New Line: The System',
+        lessons: [
+          { t: 'Understanding Is Not Change', d: '8 min' },
+          { t: 'Shrink It, Anchor It, Mark It', d: '10 min' },
+          { t: 'Convert the Hours You Already Live', d: '7 min' },
+          { t: 'Check-in: photograph your mark', d: '5 min', kind: 'practice' }
+        ]
+      },
+      {
+        title: 'Week 5 — Write the New Line: Protect the Manuscript',
+        lessons: [
+          { t: 'Evict and Replace', d: '8 min' },
+          { t: 'The Daily Vote', d: '6 min' },
+          { t: 'The Old Author Will Try to Take the Pen Back', d: '7 min' },
+          { t: 'Check-in: your new line and your daily vote', d: '5 min', kind: 'practice' }
+        ]
+      },
+      {
+        title: 'Week 6 — Keep Writing',
+        lessons: [
+          { t: 'The Five and the Rooms', d: '8 min' },
+          { t: 'Inputs and the Portable Environment', d: '6 min' },
+          { t: 'There Is No Final Draft', d: '7 min' },
+          { t: 'Check-in: what changed in six weeks', d: '5 min', kind: 'practice' }
+        ]
+      },
+      {
+        title: 'Bonus — The Relapse Protocol',
+        lessons: [
+          { t: 'When the Old Sentence Comes Back', d: '9 min' }
+        ]
+      }
+    ],
+    mount: async (opts) => {
+      const mod = await import('./rewrite-course.js');
+      if (mod && typeof mod.mount === 'function') await mod.mount(opts);
+    }
+  },
+  {
     slug: 'bundle-icant',
     title: 'The Complete I Can\'t Experience',
     short: 'Bundle Deal',

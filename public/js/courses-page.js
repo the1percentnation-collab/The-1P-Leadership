@@ -306,7 +306,7 @@ function renderAvailableCourses() {
 const DRAFT_CHIP = '<span style="display:inline-block; margin-left:8px; padding:1px 7px; ' +
   'border-radius:999px; background:#b91c1c; color:#fff; font-size:10px; letter-spacing:1px;">DRAFT</span>';
 
-function roadmapHtml(course, { modules, completedSet, currentId, certHref = null }) {
+function roadmapHtml(course, { modules, completedSet, currentId, certHref = null, locks = null }) {
   // Count against the modules this course actually has today — progress docs
   // left behind by a deleted lesson must not round anyone up to 100%.
   const completedCount = modules.filter((m) => completedSet.has(m.id)).length;
@@ -315,11 +315,16 @@ function roadmapHtml(course, { modules, completedSet, currentId, certHref = null
 
   const stepsHtml = modules.map((m) => {
     const done = completedSet.has(m.id);
-    const isCurrent = m.id === currentId && !done;
+    // Drip-released courses (The Rewrite Method): a week that hasn't opened yet
+    // still shows its title and what's in it, with the date it unlocks. Hiding
+    // it would remove the visible path forward, which is part of the product.
+    const lock = locks ? locks.get(m.id) : null;
+    const isLocked = !!(lock && lock.locked);
+    const isCurrent = m.id === currentId && !done && !isLocked;
     const href = `/courses.html?course=${encodeURIComponent(course.slug)}&module=${m.id}`;
-    const state = done ? 'is-done' : (isCurrent ? 'is-current' : 'is-todo');
-    const marker = done ? '✓' : String(m.id).padStart(2, '0');
-    const cta = done ? 'Review' : (isCurrent ? 'Continue →' : 'Open →');
+    const state = done ? 'is-done' : (isLocked ? 'is-locked' : (isCurrent ? 'is-current' : 'is-todo'));
+    const marker = done ? '✓' : (isLocked ? '🔒' : String(m.id).padStart(2, '0'));
+    const cta = isLocked ? escapeHtml(lock.label) : (done ? 'Review' : (isCurrent ? 'Continue →' : 'Open →'));
     // `published` is only ever false when the caller asked for drafts (preview).
     const draftChip = m.published === false ? DRAFT_CHIP : '';
     const pillarLine = [m.pillar, m.duration].filter(Boolean).map(escapeHtml).join(' · ');
@@ -424,10 +429,27 @@ async function renderRoadmap(course, { preview = false } = {}) {
     return;
   }
 
+  // Drip lock states come from the course's own state layer — the roadmap
+  // shouldn't have to know how any one course schedules itself.
+  let locks = null;
+  if (course.drip && course.slug === 'rewrite-method') {
+    try {
+      const rw = await import('./rewrite-method.js');
+      await rw.loadRewriteState();
+      locks = new Map(modules.map((m) => [m.id, {
+        locked: !rw.isUnlocked(m.id),
+        label: rw.unlockLabel(m.id)
+      }]));
+      const firstOpen = modules.find((m) => rw.isUnlocked(m.id) && !completedSet.has(m.id));
+      if (firstOpen) currentId = firstOpen.id;
+    } catch (e) { console.warn('[courses-page] drip locks unavailable', e); }
+  }
+
   slot.innerHTML = roadmapHtml(course, {
     modules,
     completedSet,
     currentId,
+    locks,
     // Preview pads the roadmap with drafts, so the finished-course state there
     // wouldn't be the one members reach — no certificate offered.
     certHref: preview || course.certificate === false ? null : certificateHref(course.slug)

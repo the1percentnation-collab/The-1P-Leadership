@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Rewrite Method | The One Percent Academy</title>
+  <meta name="description" content="Six weeks to take back the pen. The companion program to the book I CAN'T by Anthony Brown Sr.">
+  <meta property="og:title" content="The Rewrite Method — Six weeks to take back the pen.">
+  <meta property="og:description" content="Find the sentence you were handed, put it on trial, and write the new line — with the system that keeps it true.">
+  <meta property="og:type" content="website">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="display:block; height:auto; overflow:auto; background:var(--black);">
+
+<header class="academy-header">
+  <div class="academy-header-inner">
+    <a class="academy-brand" href="/dashboard.html" aria-label="The One Percent Academy">
+      <img src="/assets/academy-logo.png" alt="" class="academy-brand-mark">
+    </a>
+    <a class="back-to-main" href="https://the1pnation.com">← Main Site</a>
+    <nav class="academy-tabs">
+      <a class="academy-tab" href="/dashboard.html">Dashboard</a>
+      <a class="academy-tab active" href="/courses.html">Courses</a>
+      <a class="academy-tab" href="/community.html">Community</a>
+      <a class="academy-tab" href="/resources.html">Resources</a>
+      <a class="academy-tab" href="/profile.html">Profile</a>
+    </nav>
+    <div class="academy-header-right">
+      <div class="user-chip" id="user-chip"></div>
+    </div>
+  </div>
+</header>
+
+<!--
+  The Rewrite Method's own address. Firebase Hosting rewrites unknown paths to
+  /index.html, so a marketing link like /rewrite-method has to be a real file —
+  it can't be a router path. The page below renders through the same landing
+  component every course uses (course-landing.js); the only thing this file
+  adds is the pinned slug, the six moves, and the FAQ that is specific to a
+  drip-released course.
+
+  ?code= is read by course-landing.js and carried into Stripe Checkout.
+-->
+<script>window.__COURSE_SLUG__ = 'rewrite-method';</script>
+
+<section class="rw-pitch">
+  <div class="rw-pitch-inner">
+    <div class="rw-eyebrow">Companion to the book <i>I CAN'T</i> by Anthony Brown Sr.</div>
+    <h1 class="rw-h1">You've been living a story someone else wrote.</h1>
+    <p class="rw-lede">
+      The Rewrite Method is the six-week program that walks you through finding the
+      sentence you were handed, putting it on trial, and writing the new line — with
+      the system that keeps it true.
+    </p>
+    <p class="rw-subline">Six weeks to take back the pen.</p>
+    <a class="rw-cta" href="#cl-buy">See what's included ↓</a>
+  </div>
+</section>
+
+<section class="rw-moves">
+  <div class="rw-moves-inner">
+    <div class="academy-eyebrow">The six moves</div>
+    <ol class="rw-move-list">
+      <li><span>01</span><div><b>Find the Sentence</b><p>Drag the line you were handed into the light and say it in one line.</p></div></li>
+      <li><span>02</span><div><b>Trace the Handwriting</b><p>Catch the old line firing before you think, seven days running.</p></div></li>
+      <li><span>03</span><div><b>Challenge the Draft</b><p>Put the sentence on trial and look at the evidence honestly.</p></div></li>
+      <li><span>04</span><div><b>Write the New Line</b><p>Shrink it, anchor it, mark it. Understanding is not change.</p></div></li>
+      <li><span>05</span><div><b>Protect the Manuscript</b><p>Evict and replace, cast the daily vote, plan the comeback early.</p></div></li>
+      <li><span>06</span><div><b>Keep Writing</b><p>Audit the five people, the rooms, and the inputs. There is no final draft.</p></div></li>
+    </ol>
+  </div>
+</section>
+
+<main id="cl-root">
+  <div class="cl-loading">Loading course…</div>
+</main>
+
+<section class="rw-faq">
+  <div class="rw-faq-inner">
+    <h2 class="cl-h2">Questions</h2>
+    <details class="cl-sec" open>
+      <summary><span class="cl-sec-chev">›</span><span class="cl-sec-title">Why can't I watch it all at once?</span></summary>
+      <p>Because a six-week program you can finish in an afternoon changes nothing. A new week opens every seven days from the day you start. The rewrite happens at the speed of reps, not the speed of reading.</p>
+    </details>
+    <details class="cl-sec">
+      <summary><span class="cl-sec-chev">›</span><span class="cl-sec-title">When does the clock start?</span></summary>
+      <p>The first time you open the course, not the moment you pay. Buy it as a gift, or start in January. Nothing burns while it sits.</p>
+    </details>
+    <details class="cl-sec">
+      <summary><span class="cl-sec-chev">›</span><span class="cl-sec-title">Do I need to have read the book?</span></summary>
+      <p>No. The course stands on its own. It reads better alongside <i>I CAN'T</i>, which is why the bundle exists.</p>
+    </details>
+    <details class="cl-sec">
+      <summary><span class="cl-sec-chev">›</span><span class="cl-sec-title">Who sees my check-ins?</span></summary>
+      <p>You. Each week ends with a private check-in stored under your own account. It is never posted to the community and never visible to other members.</p>
+    </details>
+    <details class="cl-sec">
+      <summary><span class="cl-sec-chev">›</span><span class="cl-sec-title">What happens after week six?</span></summary>
+      <p>You unlock The Relapse Protocol, the bonus module for when the old sentence comes back. It will. You should already know what to run.</p>
+    </details>
+  </div>
+</section>
+
+<script type="module" src="js/course-landing.js"></script>
+</body>
+</html>

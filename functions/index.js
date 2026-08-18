@@ -3098,7 +3098,12 @@ exports.createCheckoutSession = onCall(async (request) => {
     throw new HttpsError('already-exists', 'You\'re already enrolled in this course.');
   }
 
-  const dollars = effectivePriceDollars(course);
+  // Bundle option (The Rewrite Method: course + signed book). The client sends
+  // a flag, never an amount — the second price lives on the course doc next to
+  // the first one, and is read here.
+  const wantsBundle = !!(request.data && request.data.bundle)
+    && typeof course.bundlePrice === 'number' && course.bundlePrice > 0;
+  const dollars = wantsBundle ? course.bundlePrice : effectivePriceDollars(course);
   if (dollars == null || dollars <= 0) {
     throw new HttpsError('failed-precondition', 'This course is free — use enrollFree.');
   }
@@ -3128,6 +3133,7 @@ exports.createCheckoutSession = onCall(async (request) => {
   }
 
   const metadata = { courseSlug: slug, uid };
+  if (wantsBundle) metadata.bundle = 'true';
   if (refCode) {
     metadata.refCode = refCode;
     metadata.refPercent = String(refPercent);
@@ -3136,14 +3142,38 @@ exports.createCheckoutSession = onCall(async (request) => {
   const priceData = {
     currency: 'usd',
     unit_amount: Math.round(dollars * 100),
-    product_data: { name: course.title || slug }
+    product_data: {
+      name: wantsBundle
+        ? `${course.title || slug} — ${course.bundleLabel || 'with signed book'}`
+        : (course.title || slug)
+    }
   };
   if (isSubscription) priceData.recurring = { interval };
+
+  // A promotion code carried in on the link (the book's QR page hands out a
+  // $50-off code for The Rewrite Method). Resolved server-side so a made-up
+  // code can't discount anything, and applied as a discount so the buyer
+  // doesn't have to retype it. Stripe rejects `discounts` and
+  // `allow_promotion_codes` together, so an unresolvable code simply falls
+  // back to the normal "enter a code at checkout" box rather than failing the
+  // purchase.
+  let discounts = null;
+  const promoCode = String((request.data && request.data.promoCode) || '').trim();
+  if (promoCode) {
+    try {
+      const found = await stripe.promotionCodes.list({ code: promoCode, active: true, limit: 1 });
+      if (found.data.length) discounts = [{ promotion_code: found.data[0].id }];
+    } catch (e) {
+      console.warn('[createCheckoutSession] promo lookup failed:', e && e.message);
+    }
+  }
 
   const session = await stripe.checkout.sessions.create({
     mode: isSubscription ? 'subscription' : 'payment',
     line_items: [{ price_data: priceData, quantity: 1 }],
-    allow_promotion_codes: true,
+    ...(discounts ? { discounts } : { allow_promotion_codes: true }),
+    // The signed book has to be posted somewhere.
+    ...(wantsBundle ? { shipping_address_collection: { allowed_countries: ['US', 'CA'] } } : {}),
     customer_email: (request.auth.token && request.auth.token.email) || undefined,
     client_reference_id: uid,
     metadata,
@@ -3155,12 +3185,14 @@ exports.createCheckoutSession = onCall(async (request) => {
   return { ok: true, url: session.url };
 });
 
-// stripeWebhook — enrolls buyers after checkout and revokes subscription
-// access on cancellation. Configure the endpoint in the Stripe dashboard to
-// send: checkout.session.completed, customer.subscription.deleted,
-// invoice.payment_failed.
+// stripeWebhook — enrolls buyers after checkout and revokes access on refund
+// or subscription cancellation. Configure the endpoint in the Stripe dashboard
+// to send: checkout.session.completed, charge.refunded,
+// customer.subscription.deleted, invoice.payment_failed.
 exports.stripeWebhook = onRequest(
-  { cors: false, invoker: 'public' },
+  // secrets: the webhook now sends the purchase confirmation and the
+  // ship-the-book notice, so it needs the SendGrid key at runtime.
+  { cors: false, invoker: 'public', secrets: [sendgridKey] },
   async (req, res) => {
     const stripe = getStripe();
     const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
@@ -3199,15 +3231,50 @@ exports.stripeWebhook = onRequest(
           await db.collection('users').doc(uid).set({
             enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(courseSlug)
           }, { merge: true });
+          const isBundle = !!(session.metadata && session.metadata.bundle === 'true');
+          const shipping = (session.shipping_details && session.shipping_details.address)
+            ? {
+                name: session.shipping_details.name || null,
+                ...session.shipping_details.address
+              }
+            : null;
           await db.collection('users').doc(uid).collection('purchases').doc(session.id).set({
             courseSlug,
             amount: (session.amount_total || 0) / 100,
             mode: session.mode,
+            bundle: isBundle,
+            // Only stored for bundles — there is nothing to ship otherwise.
+            shippingAddress: isBundle ? shipping : null,
+            paymentIntentId: session.payment_intent || null,
             stripeCustomerId: session.customer || null,
             subscriptionId: session.subscription || null,
             status: session.mode === 'subscription' ? 'active' : 'paid',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
+
+          // rewrite_purchased — the buyer's confirmation. Deliberately does NOT
+          // start the drip: the clock starts when they open the course.
+          if (courseSlug === REWRITE_SLUG) {
+            await sendRewriteEmail(db, uid, {
+              event: 'rewrite_purchased',
+              subject: "You bought the pen back.",
+              heading: 'The Rewrite Method is yours',
+              lines: [
+                'Six weeks to take back the pen. Week 0 opens the moment you open the course, not a day sooner, so start when you are ready to start.',
+                isBundle
+                  ? 'Your signed copy of I CAN\'T is being packed. It ships separately from your course access, which is live right now.'
+                  : 'Everything is waiting in the portal: the videos, The Manuscript, and the first check-in.'
+              ],
+              ctaLabel: 'Open the course →'
+            });
+          }
+
+          // A bundle means a physical book has to leave a shelf. Tell the owner.
+          if (isBundle) {
+            try {
+              await notifyBundleShipment(db, { uid, courseSlug, session, shipping });
+            } catch (e) { console.warn('[stripeWebhook] bundle notice failed:', e && e.message); }
+          }
           if (session.mode === 'subscription' && session.subscription) {
             // Index for cancellation handling.
             await db.collection('stripeSubscriptions').doc(String(session.subscription)).set({
@@ -3299,6 +3366,39 @@ exports.stripeWebhook = onRequest(
         } else {
           console.warn('[stripeWebhook] session missing uid/courseSlug metadata', session.id);
         }
+      } else if (event.type === 'charge.refunded') {
+        // Refund revokes access. Entitlement is the enrolledCourseSlugs array,
+        // so removing the slug is the whole revocation — every rules check and
+        // every callable reads that one array.
+        const charge = event.data.object;
+        const pi = charge.payment_intent;
+        let uid = null;
+        let courseSlug = null;
+        let sessionId = null;
+        if (pi) {
+          try {
+            const sessions = await stripe.checkout.sessions.list({ payment_intent: pi, limit: 1 });
+            const sess = sessions.data[0];
+            if (sess) {
+              sessionId = sess.id;
+              uid = (sess.metadata && sess.metadata.uid) || sess.client_reference_id || null;
+              courseSlug = (sess.metadata && sess.metadata.courseSlug) || null;
+            }
+          } catch (e) { console.warn('[stripeWebhook] refund session lookup failed:', e && e.message); }
+        }
+        if (uid && courseSlug) {
+          await db.collection('users').doc(uid).set({
+            enrolledCourseSlugs: admin.firestore.FieldValue.arrayRemove(courseSlug)
+          }, { merge: true });
+          if (sessionId) {
+            await db.collection('users').doc(uid).collection('purchases').doc(sessionId).set({
+              status: 'refunded',
+              refundedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+          }
+        } else {
+          console.warn('[stripeWebhook] refund could not be matched to an enrollment', charge.id);
+        }
       } else if (event.type === 'customer.subscription.deleted') {
         const sub = event.data.object;
         const idx = await db.collection('stripeSubscriptions').doc(String(sub.id)).get();
@@ -3335,6 +3435,559 @@ exports.stripeWebhook = onRequest(
       // Non-2xx so Stripe retries.
       res.status(500).send('handler error');
     }
+  }
+);
+
+// ────────────────────────────────────────────────────────────────────────
+// Drip-released courses (The Rewrite Method)
+//
+// Everything a member's drip state contains lives at
+// users/{uid}/courseState/{slug} and is written ONLY from here. The client
+// cannot touch it (firestore.rules denies the write outright) because
+// `enrolledAt` decides which weeks the rules will hand content out for — a
+// self-writable anchor could be backdated to open all six weeks on day one.
+//
+// The unlock rule is duplicated in three places on purpose: firestore.rules
+// (the boundary), this file (the writes), and public/js/rewrite-method.js (the
+// UI). Module id N unlocks at enrolledAt + N * DRIP_INTERVAL_DAYS. Change one,
+// change all three.
+// ────────────────────────────────────────────────────────────────────────
+
+const DRIP_INTERVAL_DAYS = 7;
+const BONUS_MODULE_ID = 99;
+// Week 6 is the last graded week; submitting its check-in is what makes a Rewriter.
+const FINAL_WEEK_ID = 6;
+const REWRITE_SLUG = 'rewrite-method';
+const REWRITE_BOOK_URL = 'https://a.co/d/0fSUaomu';
+
+function courseStateRef(db, uid, slug) {
+  return db.collection('users').doc(uid).collection('courseState').doc(slug);
+}
+
+async function assertEntitled(db, uid, slug) {
+  const snap = await db.collection('users').doc(uid).get();
+  const slugs = (snap.exists && snap.data().enrolledCourseSlugs) || [];
+  if (!slugs.includes(slug)) {
+    throw new HttpsError('permission-denied', 'You don\'t have access to this course.');
+  }
+  return snap;
+}
+
+/** Week `order` opens this many ms after the anchor. */
+function unlockMillis(anchorMillis, order) {
+  return anchorMillis + Number(order) * DRIP_INTERVAL_DAYS * 24 * 3600 * 1000;
+}
+
+// The one source of truth for "may this member open this week right now",
+// used by submitCourseCheckin. Mirrors isModuleUnlocked() in firestore.rules.
+function moduleUnlocked(state, order, nowMillis) {
+  if (Number(order) === BONUS_MODULE_ID) return !!state.reviewChoice;
+  const anchor = state.enrolledAt && state.enrolledAt.toMillis
+    ? state.enrolledAt.toMillis() : null;
+  if (anchor == null) return false;
+  return nowMillis >= unlockMillis(anchor, order);
+}
+
+// Course structure the server needs to validate a check-in. Read from the
+// seeded module docs so copy and field changes ship as data, not deploys.
+async function loadDripModule(db, slug, weekSlug) {
+  const snap = await db.collection('courses').doc(slug).collection('modules')
+    .where('slug', '==', weekSlug).limit(1).get();
+  if (snap.empty) return null;
+  return { id: Number(snap.docs[0].id), ...snap.docs[0].data() };
+}
+
+function rewriteEmail(heading, lines, ctaHref, ctaLabel) {
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;">
+    <div style="font-size:11px;letter-spacing:2px;color:#E60306;font-weight:bold;">THE REWRITE METHOD</div>
+    <h2 style="color:#0A0A0A;margin:8px 0 14px;">${heading}</h2>
+    ${lines.map((l) => `<p style="font-size:15px;color:#222;line-height:1.6;margin:8px 0;">${l}</p>`).join('')}
+    ${ctaHref ? `<p style="margin:22px 0;"><a href="${ctaHref}" style="background:#E60306;color:#fff;padding:12px 22px;border-radius:6px;text-decoration:none;font-weight:bold;">${ctaLabel}</a></p>` : ''}
+    <p style="font-size:13px;color:#888;margin-top:22px;">Six weeks to take back the pen.<br>— The One Percent Nation</p>
+  </div>`;
+}
+
+const COURSE_HREF = `${APP_BASE_URL}/courses.html?course=${REWRITE_SLUG}`;
+
+// Best-effort: a failed email never fails the write that triggered it. The
+// member's progress is the product; the email is the nudge.
+async function sendRewriteEmail(db, uid, { event, subject, heading, lines, ctaLabel = 'Open the course →' }) {
+  try {
+    const email = await emailForUid(db, uid);
+    if (!email) return;
+    sgMail.setApiKey(sendgridKey.value());
+    await sgMail.send({
+      to: email,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      subject,
+      html: rewriteEmail(heading, lines, COURSE_HREF, ctaLabel),
+      text: `${heading}\n\n${lines.join('\n\n').replace(/<[^>]+>/g, '')}\n\n${COURSE_HREF}`,
+      customArgs: { event }
+    });
+  } catch (e) {
+    console.warn(`[rewrite] ${event} email failed:`, e && e.message);
+  }
+}
+
+// startCourseDrip — sets the drip anchor the FIRST time the buyer opens the
+// course, never at purchase. A gift bought in March and opened in June
+// shouldn't have burned three months of drip days. Idempotent: once
+// `enrolledAt` exists it is never moved, so re-opening the course (or two tabs
+// racing on load) can't reset anyone's schedule.
+exports.startCourseDrip = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const slug = String((request.data && request.data.slug) || '').trim();
+  if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
+
+  const db = admin.firestore();
+  await assertEntitled(db, uid, slug);
+
+  const ref = courseStateRef(db, uid, slug);
+  const started = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.exists && snap.data().enrolledAt) return false;
+    tx.set(ref, {
+      courseSlug: slug,
+      enrolledAt: admin.firestore.FieldValue.serverTimestamp(),
+      checkins: snap.exists ? (snap.data().checkins || {}) : {},
+      reviewChoice: snap.exists ? (snap.data().reviewChoice || null) : null,
+      completedAt: null,
+      isRewriter: false
+    }, { merge: true });
+    return true;
+  });
+
+  if (started && slug === REWRITE_SLUG) {
+    await sendRewriteEmail(db, uid, {
+      event: 'rewrite_enrolled',
+      subject: 'Week 0 is open. Pick up the pen.',
+      heading: 'Your six weeks start now',
+      lines: [
+        'This is where the reading stops and the writing starts. One week at a time. Never miss twice.',
+        'Week 0 is open: two short videos and The Manuscript, the workbook you will write in for the next six weeks.',
+        'A new week opens every seven days. That is on purpose — the rewrite happens at the speed of reps, not the speed of reading.'
+      ]
+    });
+  }
+
+  const fresh = await ref.get();
+  const anchor = fresh.exists && fresh.data().enrolledAt ? fresh.data().enrolledAt : null;
+  return { ok: true, started, enrolledAt: anchor && anchor.toMillis ? anchor.toMillis() : null };
+});
+
+// submitCourseCheckin — writes one week's check-in under the member's own
+// courseState doc. Re-verifies entitlement AND the unlock date server-side:
+// the UI lock is cosmetic, and a member could otherwise post week 6's check-in
+// on day one and unlock the bonus module a month and a half early.
+exports.submitCourseCheckin = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const slug = String((request.data && request.data.slug) || '').trim();
+  const week = String((request.data && request.data.week) || '').trim();
+  const data = (request.data && request.data.data) || {};
+  if (!slug || !week) throw new HttpsError('invalid-argument', 'slug and week are required.');
+  if (typeof data !== 'object' || Array.isArray(data)) {
+    throw new HttpsError('invalid-argument', 'data must be an object.');
+  }
+
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'submitCourseCheckin', max: 30, windowSec: 600 });
+  await assertEntitled(db, uid, slug);
+
+  const mod = await loadDripModule(db, slug, week);
+  if (!mod || !mod.checkin) throw new HttpsError('not-found', 'That week has no check-in.');
+
+  const ref = courseStateRef(db, uid, slug);
+  const stateSnap = await ref.get();
+  const state = stateSnap.exists ? stateSnap.data() : {};
+  if (!moduleUnlocked(state, mod.id, Date.now())) {
+    throw new HttpsError('failed-precondition', 'That week hasn\'t opened yet.');
+  }
+
+  // Only the fields the module actually defines are stored, and only in the
+  // types it declared. Check-ins hold personal disclosures — this doc is not a
+  // place to let a client write arbitrary shapes.
+  const fields = Array.isArray(mod.checkin.fields) ? mod.checkin.fields : [];
+  const clean = {};
+  for (const f of fields) {
+    const raw = data[f.key];
+    if (raw == null || raw === '') {
+      if (f.required) throw new HttpsError('invalid-argument', `${f.label || f.key} is required.`);
+      continue;
+    }
+    if (f.type === 'number') {
+      const n = Number(raw);
+      if (!Number.isFinite(n)) throw new HttpsError('invalid-argument', `${f.label || f.key} must be a number.`);
+      clean[f.key] = n;
+    } else if (f.type === 'file') {
+      const url = String(raw);
+      // Must be a Storage URL under this member's own check-in folder.
+      if (!/^https:\/\/firebasestorage\.googleapis\.com\//.test(url)
+          || !url.includes(encodeURIComponent(`users/${uid}/checkins/`))) {
+        throw new HttpsError('invalid-argument', 'Upload the photo through the course page.');
+      }
+      clean[f.key] = url;
+    } else {
+      clean[f.key] = String(raw).slice(0, f.maxLength || 4000);
+    }
+  }
+
+  const isFinalWeek = mod.id === FINAL_WEEK_ID;
+  const update = {
+    courseSlug: slug,
+    [`checkins.${week}`]: {
+      submittedAt: admin.firestore.Timestamp.now(),
+      data: clean
+    }
+  };
+  if (isFinalWeek) {
+    update.completedAt = admin.firestore.FieldValue.serverTimestamp();
+    update.isRewriter = true;
+  }
+  await ref.set({ courseSlug: slug }, { merge: true });
+  await ref.update(update);
+
+  if (slug === REWRITE_SLUG) {
+    if (isFinalWeek) {
+      // rewrite_completed + rewrite_review_prompt go out together — the email
+      // mirrors the in-app review step rather than replacing it.
+      await sendRewriteEmail(db, uid, {
+        event: 'rewrite_completed',
+        subject: "You're a Rewriter.",
+        heading: 'Six weeks. New line. Your pen.',
+        lines: [
+          "You're a Rewriter now. The work doesn't end on the last page — it's just getting started.",
+          'The Relapse Protocol is waiting in the course. Run it when the old sentence comes back, because it will.',
+          `If the book earned it, an honest Amazon review is the highest-leverage two minutes you can give another reader standing where you stood. <a href="${REWRITE_BOOK_URL}" style="color:#E60306;">Leave a review →</a>`
+        ],
+        ctaLabel: 'Open the bonus module →'
+      });
+    } else {
+      await sendRewriteEmail(db, uid, {
+        event: `rewrite_checkin_${week}`,
+        subject: `${mod.title || week}: check-in logged`,
+        heading: 'On the page. On to the next.',
+        lines: [
+          `Your ${mod.title || week} check-in is saved. Nobody else in the portal can read it.`,
+          'The next week opens seven days after the last one. Until then, run the reps.'
+        ]
+      });
+    }
+  }
+
+  const fresh = await ref.get();
+  return { ok: true, isRewriter: !!(fresh.data() || {}).isRewriter };
+});
+
+// setCourseReviewChoice — the Week 6 review step. EITHER answer unlocks the
+// bonus module: the ask is an ask, not a paywall. Gating the bonus on the
+// review itself would be buying reviews, which is both against Amazon's terms
+// and against the point.
+exports.setCourseReviewChoice = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const slug = String((request.data && request.data.slug) || '').trim();
+  const choice = String((request.data && request.data.choice) || '').trim();
+  if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
+  if (!['left_review', 'opted_out'].includes(choice)) {
+    throw new HttpsError('invalid-argument', 'Unknown review choice.');
+  }
+
+  const db = admin.firestore();
+  await assertEntitled(db, uid, slug);
+
+  const ref = courseStateRef(db, uid, slug);
+  const snap = await ref.get();
+  const state = snap.exists ? snap.data() : {};
+  if (!state.checkins || !state.checkins['week-6']) {
+    throw new HttpsError('failed-precondition', 'Finish the Week 6 check-in first.');
+  }
+  await ref.set({ reviewChoice: choice, reviewChoiceAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  return { ok: true, choice };
+});
+
+// seedRewriteMethod — writes the course doc, the eight module docs, and their
+// (empty) content docs. Admin only, idempotent, and safe to re-run: module
+// structure is overwritten, but `content/main` is merged so provider ids and
+// worksheet URLs added later are never clobbered by a re-seed.
+//
+// Video provider ids and worksheet URLs live in content/main and NOWHERE else —
+// not in the module doc, not in the shipped JavaScript. That subcollection is
+// the one the drip rules gate.
+exports.seedRewriteMethod = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admins only.');
+  }
+
+  const modules = REWRITE_MODULE_SEED;
+  const batch = db.batch();
+  const courseRef = db.collection('courses').doc(REWRITE_SLUG);
+
+  batch.set(courseRef, {
+    slug: REWRITE_SLUG,
+    title: 'The Rewrite Method',
+    subtitle: 'Six weeks to take back the pen.',
+    eyebrow: 'Drip-released · 6 Weeks + Bonus',
+    category: 'Mindset & Personal Growth',
+    // Ships dark. Nothing is publicly listed until the videos are uploaded.
+    status: 'coming-soon',
+    price: 197,
+    priceLabel: '$197',
+    priceNote: 'Six weeks, released one at a time',
+    bundlePrice: 209,
+    bundleLabel: 'Course + signed copy of I CAN\'T',
+    certificate: false,
+    drip: { anchor: 'enrolledAt', intervalDays: DRIP_INTERVAL_DAYS, weeks: 7, bonusModuleId: BONUS_MODULE_ID },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  modules.forEach((m) => {
+    const modRef = courseRef.collection('modules').doc(String(m.id));
+    batch.set(modRef, {
+      order: m.id,
+      slug: m.slug,
+      title: m.title,
+      subtitle: m.subtitle,
+      duration: m.duration,
+      videoCount: m.videos.length,
+      unlockOffsetDays: m.id === BONUS_MODULE_ID ? null : m.id * DRIP_INTERVAL_DAYS,
+      worksheetLabel: m.worksheetLabel || null,
+      checkin: m.checkin || null,
+      published: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    // Merged, never overwritten: a re-seed must not wipe the provider ids and
+    // worksheet URLs that were added after the structure shipped.
+    batch.set(modRef.collection('content').doc('main'), {
+      videos: m.videos.map((v) => ({
+        id: v.id, title: v.title, runtime: v.runtime,
+        provider: null, providerId: null, url: null
+      })),
+      worksheet: m.worksheetLabel
+        ? { label: m.worksheetLabel, storagePath: null, url: null }
+        : null
+    }, { merge: true });
+  });
+
+  await batch.commit();
+  return { ok: true, slug: REWRITE_SLUG, modules: modules.length };
+});
+
+// The seed's structural half. Kept next to the seeder rather than imported
+// from the front-end file, because Cloud Functions and the browser bundle do
+// not share a module graph in this project. If you change the weeks, change
+// public/js/rewrite-course-data.js to match.
+const REWRITE_MODULE_SEED = [
+  {
+    id: 0, slug: 'week-0', title: 'Pick Up the Pen',
+    subtitle: 'Why reading the book was never going to be enough', duration: '12 min',
+    worksheetLabel: 'The Manuscript (full workbook)',
+    videos: [
+      { id: 'v0-1', title: "Why Reading Alone Doesn't Rewrite Anything", runtime: '5–7 min' },
+      { id: 'v0-2', title: 'Open Your Manuscript', runtime: '5–7 min' }
+    ],
+    checkin: {
+      prompt: 'Before anything unlocks, put your commitment on the page. You are the only one who will read it, and you are the only one it has to convince.',
+      fields: [{ key: 'commitmentLine', label: 'What are you here to rewrite, and what are you committing to for the next six weeks?', type: 'textarea', required: true }]
+    }
+  },
+  {
+    id: 1, slug: 'week-1', title: 'Find the Sentence',
+    subtitle: 'Drag the line you were handed into the light', duration: '22 min',
+    worksheetLabel: 'Week 1 — Find the Sentence',
+    videos: [
+      { id: 'v1-1', title: 'Drag It Into the Light', runtime: '8–10 min' },
+      { id: 'v1-2', title: 'The Shrink List', runtime: '7–9 min' },
+      { id: 'v1-3', title: 'Lock Your Sentence', runtime: '5–6 min' }
+    ],
+    checkin: {
+      prompt: 'One line. Not a paragraph, not a story. The sentence itself.',
+      fields: [{ key: 'theSentence', label: 'Your sentence, in one line', type: 'text', required: true, maxLength: 200, note: 'Private to you.' }]
+    }
+  },
+  {
+    id: 2, slug: 'week-2', title: 'Trace the Handwriting',
+    subtitle: 'See the line fire before you think', duration: '16 min',
+    worksheetLabel: 'Week 2 — Seven-Day Log',
+    videos: [
+      { id: 'v2-1', title: 'Why It Fires Before You Think', runtime: '6–8 min' },
+      { id: 'v2-2', title: 'The Two-Column Log, Demonstrated', runtime: '7–9 min' }
+    ],
+    checkin: {
+      prompt: 'Count first, explain second. The number is the data.',
+      fields: [
+        { key: 'oldRoadCount', label: 'How many times did the old line fire this week?', type: 'number', required: true, min: 0, max: 999 },
+        { key: 'noticed', label: 'What did you notice about when it fires?', type: 'textarea', required: false }
+      ]
+    }
+  },
+  {
+    id: 3, slug: 'week-3', title: 'Challenge the Draft',
+    subtitle: 'Put the sentence on trial', duration: '20 min',
+    worksheetLabel: 'Week 3 — To Me or For Me',
+    videos: [
+      { id: 'v3-1', title: 'Put the Sentence on Trial', runtime: '7–9 min' },
+      { id: 'v3-2', title: 'Your Two Minds', runtime: '6–8 min' },
+      { id: 'v3-3', title: 'The Three-Second Window', runtime: '5–7 min' }
+    ],
+    checkin: {
+      prompt: 'The old line told you what you are. Write what replaces it.',
+      fields: [{ key: 'newExpectation', label: 'Your new expectation line: I am ______', type: 'text', required: true, maxLength: 200 }]
+    }
+  },
+  {
+    id: 4, slug: 'week-4', title: 'Write the New Line: The System',
+    subtitle: 'Understanding is not change', duration: '26 min',
+    worksheetLabel: 'Week 4 — The One Move',
+    videos: [
+      { id: 'v4-1', title: 'Understanding Is Not Change', runtime: '7–9 min' },
+      { id: 'v4-2', title: 'Shrink It, Anchor It, Mark It', runtime: '9–11 min' },
+      { id: 'v4-3', title: 'Convert the Hours You Already Live', runtime: '6–8 min' }
+    ],
+    checkin: {
+      prompt: 'Show the mark. A calendar, a tracker, a wall — whatever you will actually look at.',
+      fields: [{ key: 'markPhoto', label: 'A photo of your mark: the calendar, the tracker, the wall', type: 'file', required: true, accept: 'image/*', note: 'Stored privately under your account. Only you and Anthony can open it.' }]
+    }
+  },
+  {
+    id: 5, slug: 'week-5', title: 'Write the New Line: Protect the Manuscript',
+    subtitle: 'The old author will try to take the pen back', duration: '20 min',
+    worksheetLabel: 'Week 5 — New Line + Comeback Plan',
+    videos: [
+      { id: 'v5-1', title: 'Evict and Replace', runtime: '7–9 min' },
+      { id: 'v5-2', title: 'The Daily Vote', runtime: '5–7 min' },
+      { id: 'v5-3', title: 'The Old Author Will Try to Take the Pen Back', runtime: '6–8 min' }
+    ],
+    checkin: {
+      prompt: 'The line you are writing, and the vote you cast for it every day.',
+      fields: [
+        { key: 'newLine', label: 'Your new line', type: 'text', required: true, maxLength: 200 },
+        { key: 'dailyVote', label: 'The daily vote you cast for it', type: 'text', required: true, maxLength: 200 }
+      ]
+    }
+  },
+  {
+    id: 6, slug: 'week-6', title: 'Keep Writing',
+    subtitle: 'There is no final draft', duration: '20 min',
+    worksheetLabel: 'Week 6 — Environment Audit',
+    videos: [
+      { id: 'v6-1', title: 'The Five and the Rooms', runtime: '7–9 min' },
+      { id: 'v6-2', title: 'Inputs and the Portable Environment', runtime: '5–7 min' },
+      { id: 'v6-3', title: 'There Is No Final Draft', runtime: '6–8 min' }
+    ],
+    checkin: {
+      prompt: 'Last one. Then the pen is yours.',
+      fields: [
+        { key: 'growersLine', label: 'The line you are taking forward', type: 'text', required: true, maxLength: 200 },
+        { key: 'milestone', label: 'What changed in six weeks?', type: 'textarea', required: false }
+      ]
+    }
+  },
+  {
+    id: BONUS_MODULE_ID, slug: 'relapse-protocol', title: 'Bonus: The Relapse Protocol',
+    subtitle: 'When the old sentence comes back', duration: '9 min',
+    worksheetLabel: null,
+    videos: [{ id: 'vR-1', title: 'When the Old Sentence Comes Back', runtime: '8–10 min' }],
+    checkin: null
+  }
+];
+
+// A bundle buyer is owed a signed book. Nothing in the portal ships anything,
+// so the shipping address goes to the owner's inbox where a human can act on it.
+async function notifyBundleShipment(db, { uid, courseSlug, session, shipping }) {
+  const email = await emailForUid(db, uid);
+  sgMail.setApiKey(sendgridKey.value());
+  const addr = shipping
+    ? [shipping.name, shipping.line1, shipping.line2, `${shipping.city || ''} ${shipping.state || ''} ${shipping.postal_code || ''}`.trim(), shipping.country]
+        .filter(Boolean).join('<br>')
+    : 'No address captured — follow up with the buyer.';
+  await sgMail.send({
+    to: OWNER_EMAIL,
+    from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+    replyTo: REPLY_TO,
+    subject: `Signed book to ship — ${courseSlug}`,
+    html: reminderHtml('Bundle purchase — book to ship', [
+      `Buyer: ${email || uid}`,
+      `Course: ${courseSlug}`,
+      `Paid: $${((session.amount_total || 0) / 100).toFixed(2)}`,
+      `<strong>Ship to:</strong><br>${addr}`
+    ]),
+    text: `Bundle purchase for ${courseSlug}. Buyer ${email || uid}. Ship to: ${JSON.stringify(shipping)}`
+  });
+}
+
+// rewriteDripEmails — the weekly "your next week just opened" nudge, plus the
+// Day 3 of Week 2 midweek nudge. Runs daily and marks what it sent on the
+// member's courseState doc so a member is never emailed twice for one week.
+//
+// NOTE: NOT exported, for the same reason as the other scheduled jobs in this
+// file — the CI deploy service account lacks Cloud Scheduler Admin
+// (cloudscheduler.jobs.update), so exporting an onSchedule function fails the
+// deploy. Grant that role, then rename this to `exports.rewriteDripEmails`.
+// Until then the drip still works end to end: unlocking is date math, not a
+// cron job. Only the emails wait.
+const _disabled_rewriteDripEmails = onSchedule(
+  { schedule: 'every 24 hours', secrets: [sendgridKey] },
+  async () => {
+    const db = admin.firestore();
+    const now = Date.now();
+    const DAY = 24 * 3600 * 1000;
+
+    let snap;
+    try {
+      snap = await db.collectionGroup('courseState')
+        .where('courseSlug', '==', REWRITE_SLUG)
+        .limit(500).get();
+    } catch (e) {
+      console.warn('[rewriteDripEmails] query failed (index?):', e && e.message);
+      return;
+    }
+
+    let sent = 0;
+    for (const d of snap.docs) {
+      const st = d.data();
+      const anchor = st.enrolledAt && st.enrolledAt.toMillis ? st.enrolledAt.toMillis() : null;
+      if (!anchor || st.isRewriter) continue;
+      const uid = d.ref.parent.parent.id;
+      const notified = st.dripNotified || {};
+      const daysIn = Math.floor((now - anchor) / DAY);
+
+      // Which week has opened most recently, capped at the last one.
+      const week = Math.min(6, Math.floor(daysIn / DRIP_INTERVAL_DAYS));
+      if (week >= 1 && !notified[`week-${week}`]) {
+        await sendRewriteEmail(db, uid, {
+          event: 'rewrite_week_unlocked',
+          subject: `Week ${week} is open.`,
+          heading: `Week ${week} is open`,
+          lines: [
+            'Your next week just unlocked. Videos, worksheet, and one check-in.',
+            'The rewrite happens at the speed of reps, not the speed of reading.'
+          ]
+        });
+        await d.ref.set({ dripNotified: { [`week-${week}`]: true } }, { merge: true });
+        sent++;
+      }
+
+      // Day 3 of Week 2 — the one nudge that asks for a number back.
+      if (daysIn >= 17 && daysIn <= 20 && !notified.midweek2) {
+        await sendRewriteEmail(db, uid, {
+          event: 'rewrite_midweek_nudge',
+          subject: 'How many times has the old line fired?',
+          heading: 'Reply with a number',
+          lines: [
+            'How many times has the old line fired this week? Reply to this email with a number. That is the whole assignment.',
+            'Counting it is what makes it visible. Visible is what makes it changeable.'
+          ]
+        });
+        await d.ref.set({ dripNotified: { midweek2: true } }, { merge: true });
+        sent++;
+      }
+    }
+    console.log(`[rewriteDripEmails] scanned ${snap.size}, emailed ${sent}`);
   }
 );
 

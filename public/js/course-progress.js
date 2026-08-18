@@ -5,6 +5,9 @@
 //   contentSource === 'firestore' → users/{uid}/progress/{slug}__m{id}  (course-renderer.js)
 //   1p-clc                        → users/{uid}/progress/{id}           (store.js)
 //   icant                         → localStorage 'icant-course-v1'      (icant-course.js)
+//   rewrite-method                → users/{uid}/courseState/rewrite-method.checkins
+//                                   (rewrite-method.js — a week is done when its
+//                                    check-in is in, not when it's watched)
 // Anything that only needs "is this finished, and how far in are they" — the
 // roadmap, the certificate — should not have to know which. That is this module.
 
@@ -18,6 +21,28 @@ function icantCompleted() {
     const raw = JSON.parse(localStorage.getItem(ICANT_KEY) || '{}');
     const done = raw.completed || {};
     return new Set(Object.keys(done).filter((k) => done[k]).map(Number));
+  } catch (e) {
+    return new Set();
+  }
+}
+
+// The Rewrite Method measures completion by check-in, not by "mark complete":
+// watching the week isn't the work. The bonus module counts once the Week 6
+// review step is answered either way.
+async function rewriteCompleted() {
+  try {
+    const rw = await import('./rewrite-method.js');
+    const state = await rw.loadRewriteState();
+    const { MODULES, BONUS_ID } = await import('./rewrite-course-data.js');
+    const done = new Set();
+    MODULES.forEach((m) => {
+      if (m.id === BONUS_ID) {
+        if (rw.isBonusUnlocked(state)) done.add(m.id);
+      } else if (state.checkins[m.slug]) {
+        done.add(m.id);
+      }
+    });
+    return done;
   } catch (e) {
     return new Set();
   }
@@ -53,6 +78,8 @@ export async function loadCourseCompletion(course, { includeDrafts = false } = {
     completed = new Set(store.completed || []);
   } else if (course.slug === 'icant') {
     completed = icantCompleted();
+  } else if (course.slug === 'rewrite-method') {
+    completed = await rewriteCompleted();
   } else {
     completed = await firestoreCompleted(course.slug);
   }
