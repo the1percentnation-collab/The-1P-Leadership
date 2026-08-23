@@ -299,8 +299,17 @@ function purchaseCardHtml(course, { enrolled }) {
           <li>Self-paced · lifetime access</li>
           <li>Works on desktop and mobile</li>
         </ul>
+        ${live && !priceInfo(course).isFree ? `
+        <div class="cl-promo" id="cl-promo">
+          <button type="button" class="cl-promo-toggle" id="cl-promo-toggle">Have a promo code?</button>
+          <div class="cl-promo-row" id="cl-promo-row" hidden>
+            <input type="text" id="cl-promo-input" class="cl-promo-input" placeholder="PROMO CODE"
+                   autocomplete="off" autocapitalize="characters" spellcheck="false">
+            <button type="button" class="cl-promo-apply" id="cl-promo-apply">Apply</button>
+          </div>
+          <div class="cl-promo-msg" id="cl-promo-msg"></div>
+        </div>` : ''}
         <div class="cl-buy-links">
-          <span class="cl-coupon" title="Coupon codes are redeemed on the secure checkout page.">Have a coupon? Apply it at checkout</span>
           <button type="button" class="cl-share" id="cl-share" aria-label="Share this course">Share ↗</button>
         </div>
       </div>
@@ -362,6 +371,72 @@ function requireLoginRedirect() {
   location.assign('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
 }
 
+// The promo code the buyer has applied (validated server-side first). Passed
+// into createCheckoutSession, which re-validates and prices it in — this
+// variable is a convenience, never the authority.
+let appliedPromo = null;
+
+function bindPromo(course) {
+  const toggle = document.getElementById('cl-promo-toggle');
+  const row = document.getElementById('cl-promo-row');
+  const input = document.getElementById('cl-promo-input');
+  const apply = document.getElementById('cl-promo-apply');
+  const msg = document.getElementById('cl-promo-msg');
+  if (!toggle || !row || !input || !apply) return;
+
+  toggle.addEventListener('click', () => {
+    row.hidden = !row.hidden;
+    if (!row.hidden) input.focus();
+  });
+  const applyCode = async () => {
+    const code = input.value.trim().toUpperCase();
+    if (!code) return;
+    if (firebaseReady && !currentUser()) { requireLoginRedirect(); return; }
+    apply.disabled = true;
+    apply.textContent = '…';
+    msg.textContent = '';
+    msg.classList.remove('is-error', 'is-ok');
+    try {
+      const res = await httpsCallable(functions, 'validateCoupon')({
+        code, kind: 'course', id: course.slug
+      });
+      const d = res && res.data;
+      appliedPromo = d.code;
+      msg.classList.add('is-ok');
+      msg.textContent = d.isFree
+        ? `${d.code} applied — this enrollment is fully covered.`
+        : `${d.code} applied — ${fmtMoney(d.discountedPrice)} instead of ${fmtMoney(d.originalPrice)}.`;
+      const enrollBtn = document.getElementById('cl-enroll');
+      if (enrollBtn) enrollBtn.textContent = d.isFree ? 'Claim your seat' : 'Enroll now';
+    } catch (err) {
+      appliedPromo = null;
+      msg.classList.add('is-error');
+      msg.textContent = err.message || 'That code could not be applied.';
+    } finally {
+      apply.disabled = false;
+      apply.textContent = 'Apply';
+    }
+  };
+  apply.addEventListener('click', applyCode);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyCode(); });
+
+  // Promo links: /course.html?course=x&promo=CODE pre-applies the code, so
+  // Anthony can hand out one URL instead of a code to type.
+  const fromUrl = new URLSearchParams(location.search).get('promo');
+  if (fromUrl && firebaseReady && currentUser()) {
+    input.value = fromUrl.trim().toUpperCase();
+    row.hidden = false;
+    applyCode();
+  } else if (fromUrl) {
+    input.value = fromUrl.trim().toUpperCase();
+    row.hidden = false;
+  }
+}
+
+function fmtMoney(n) {
+  return '$' + (Number.isInteger(n) ? n : n.toFixed(2));
+}
+
 function bindEnroll(course) {
   const btn = document.getElementById('cl-enroll');
   if (!btn) return;
@@ -377,9 +452,16 @@ function bindEnroll(course) {
       } else {
         const res = await httpsCallable(functions, 'createCheckoutSession')({
           slug: course.slug,
-          refCode: getRefCode() || undefined
+          refCode: getRefCode() || undefined,
+          couponCode: appliedPromo || undefined
         });
-        const url = res && res.data && res.data.url;
+        const data = res && res.data;
+        if (data && data.enrolled) {
+          // 100% promo code: enrolled server-side, no payment page.
+          location.assign(`/courses.html?course=${encodeURIComponent(course.slug)}`);
+          return;
+        }
+        const url = data && data.url;
         if (!url) throw new Error('Checkout could not be started.');
         location.assign(url);
       }
@@ -473,6 +555,7 @@ async function main() {
   bindDescription();
   bindShare(course);
   bindEnroll(course);
+  bindPromo(course);
   bindNotify(course);
 
   // Header user chip (no duplicate nav links — the tabs handle navigation).

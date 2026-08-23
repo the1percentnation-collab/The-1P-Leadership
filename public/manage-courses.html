@@ -336,23 +336,41 @@
         <!-- ─── Coupons ────────────────────────────────────────────────── -->
         <div id="coupons-view" style="display:none;">
           <div class="card" id="coupons-card">
-            <h2>Coupon codes</h2>
+            <h2>Promo codes</h2>
             <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
-              Coupon codes are redeemed on the secure checkout page. After creating one, click
-              <b>Sync to Stripe</b> so it becomes redeemable (requires Stripe to be configured).
-              For a simple sale shown directly on the site, use the course's <b>Sale price</b> instead.
+              Codes work the moment you create them — buyers apply them on the course page and
+              checkout charges the discounted amount. A <b>Free (comp)</b> code enrolls the person
+              instantly with no payment page. Scope a code to specific items so it can't be used
+              anywhere else. Turning a code off stops it immediately.
+              For a simple sale shown on the site itself, use the course's <b>Sale price</b> instead.
             </p>
             <form class="inline-form" id="coupon-form" style="flex-wrap:wrap;">
-              <div class="field" style="max-width:160px;"><label for="cp-code">Code</label><input id="cp-code" type="text" required placeholder="WELCOME20"></div>
-              <div class="field" style="max-width:130px;"><label for="cp-percent">% off</label><input id="cp-percent" type="number" min="1" max="100" placeholder="20"></div>
-              <div class="field" style="max-width:130px;"><label for="cp-amount">or $ off</label><input id="cp-amount" type="number" min="1" step="0.01"></div>
+              <div class="field" style="max-width:160px;"><label for="cp-code">Code</label><input id="cp-code" type="text" required placeholder="MATRIX50"></div>
+              <div class="field" style="max-width:150px;"><label for="cp-type">Type</label>
+                <select id="cp-type">
+                  <option value="percent">Percent off</option>
+                  <option value="comp">Free (comp)</option>
+                </select>
+              </div>
+              <div class="field" style="max-width:110px;" id="cp-percent-field"><label for="cp-percent">% off</label><input id="cp-percent" type="number" min="1" max="100" placeholder="20"></div>
+              <div class="field" style="max-width:170px;"><label for="cp-scope">Valid for</label>
+                <select id="cp-scope">
+                  <option value="all-courses">All courses</option>
+                  <option value="courses">Specific courses</option>
+                  <option value="products">Specific products</option>
+                </select>
+              </div>
+              <div class="field" style="min-width:220px;"><label for="cp-items">Items (Ctrl/Cmd-click for several)</label>
+                <select id="cp-items" multiple size="3"></select>
+              </div>
+              <div class="field" style="max-width:120px;"><label for="cp-max">Max uses</label><input id="cp-max" type="number" min="1" placeholder="∞"></div>
               <div class="field" style="max-width:170px;"><label for="cp-expires">Expires (optional)</label><input id="cp-expires" type="date"></div>
-              <button class="btn btn-primary" type="submit">Create coupon</button>
+              <button class="btn btn-primary" type="submit">Create code</button>
             </form>
             <div id="coupon-result" style="margin-top:10px;"></div>
             <table class="data-table" style="margin-top:14px;">
               <thead>
-                <tr><th>Code</th><th>Discount</th><th>Expires</th><th>Status</th><th>Stripe</th><th></th></tr>
+                <tr><th>Code</th><th>Discount</th><th>Valid for</th><th>Uses</th><th>Expires</th><th>Status</th><th></th></tr>
               </thead>
               <tbody id="coupons-body"></tbody>
             </table>

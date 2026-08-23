@@ -261,11 +261,22 @@ function renderAvailableCourses() {
           // Reload to show the course in the sidebar + open its roadmap.
           location.assign(`/courses.html?course=${encodeURIComponent(slug)}`);
         } else {
+          // A promo link (?promo=CODE) carries the code into checkout; the
+          // server validates it and prices it in, or rejects it with a
+          // buyer-readable message.
+          const promo = new URLSearchParams(location.search).get('promo');
           const res = await httpsCallable(functions, 'createCheckoutSession')({
             slug,
-            refCode: getRefCode() || undefined
+            refCode: getRefCode() || undefined,
+            couponCode: promo ? promo.trim().toUpperCase() : undefined
           });
-          const url = res && res.data && res.data.url;
+          const data = res && res.data;
+          if (data && data.enrolled) {
+            // 100% promo code: enrolled server-side, no payment page.
+            location.assign(`/courses.html?course=${encodeURIComponent(slug)}`);
+            return;
+          }
+          const url = data && data.url;
           if (!url) throw new Error('Checkout could not be started.');
           location.assign(url);
         }

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Store | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .store-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 18px 0 22px; }
+    .store-tab {
+      background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer;
+      padding: 12px 18px; font-family: var(--font-mono, monospace); font-size: 11px;
+      letter-spacing: 0.14em; text-transform: uppercase; color: var(--gray-mid, #808080);
+    }
+    .store-tab:hover { color: var(--white, #fff); }
+    .store-tab.active { color: var(--red); border-bottom-color: var(--red); }
+    .store-panel { display: none; }
+    .store-panel.active { display: block; }
+    .store-kind {
+      display: inline-block; font-family: var(--font-mono, monospace); font-size: 10px;
+      letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 8px; border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+    .store-kind.k-course { color: #7ab8ff; }
+    .store-kind.k-class { color: var(--red); }
+    .store-kind.k-physical { color: var(--amber, #E6A503); }
+    .store-kind.k-digital { color: var(--green, #1DB954); }
+    .store-input-sm { width: 90px; }
+    .store-addr { font-size: 12px; color: var(--gray-light, #a0a0a0); line-height: 1.5; }
+    .data-table td { vertical-align: top; }
+  </style>
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+  <div class="console-shell">
+    <div class="console-topbar">
+      <div class="console-topbar-left">
+        <a class="console-brand" href="/dashboard.html" aria-label="The One Percent Academy">
+          <img src="/assets/academy-logo.png" alt="" class="console-brand-mark">
+        </a>
+        <a class="back-to-main" href="https://the1pnation.com">&larr; Main Site</a>
+      </div>
+      <div class="user-chip" id="user-chip"></div>
+    </div>
+    <div class="console-body">
+      <div id="gate-msg"></div>
+      <div id="panel" style="display:none;">
+        <div class="crm-page-head">
+          <h1 class="crm-appbar-title" style="margin:0;">Store</h1>
+          <div class="crm-toolbar-spacer"></div>
+          <a class="btn btn-ghost" href="/manage-courses.html">Course editor</a>
+          <a class="btn btn-ghost" href="/manage-products.html">Product editor</a>
+          <a class="btn btn-ghost" href="/class-admin.html">Class console</a>
+        </div>
+        <div class="crm-section-sub">
+          Everything you sell in one place — courses, classes, and products, digital or physical —
+          with the promo codes and orders that go with them.
+        </div>
+
+        <div class="store-tabs">
+          <button class="store-tab active" data-tab="catalog">Catalog</button>
+          <button class="store-tab" data-tab="promos">Promo Codes</button>
+          <button class="store-tab" data-tab="orders">Orders</button>
+        </div>
+
+        <!-- ─── Catalog ─────────────────────────────────────────────── -->
+        <div class="store-panel active" id="panel-catalog">
+          <div class="card">
+            <table class="data-table">
+              <thead>
+                <tr><th>Item</th><th>Kind</th><th>Price</th><th>Status</th><th>Selling</th><th></th></tr>
+              </thead>
+              <tbody id="catalog-body"><tr><td colspan="6">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ─── Promo codes ─────────────────────────────────────────── -->
+        <div class="store-panel" id="panel-promos">
+          <div class="card" id="coupons-card">
+            <h2>Course &amp; product codes</h2>
+            <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+              Codes work the moment you create them — buyers apply them on the item's page (or via a
+              link like <code>?promo=CODE</code>) and checkout charges the discounted amount.
+              A <b>Free (comp)</b> code enrolls the person instantly with no payment page.
+              Scope a code to specific items so it can't be used anywhere else.
+            </p>
+            <form class="inline-form" id="coupon-form" style="flex-wrap:wrap;">
+              <div class="field" style="max-width:160px;"><label for="cp-code">Code</label><input id="cp-code" type="text" required placeholder="MATRIX50"></div>
+              <div class="field" style="max-width:150px;"><label for="cp-type">Type</label>
+                <select id="cp-type">
+                  <option value="percent">Percent off</option>
+                  <option value="comp">Free (comp)</option>
+                </select>
+              </div>
+              <div class="field" style="max-width:110px;" id="cp-percent-field"><label for="cp-percent">% off</label><input id="cp-percent" type="number" min="1" max="100" placeholder="20"></div>
+              <div class="field" style="max-width:170px;"><label for="cp-scope">Valid for</label>
+                <select id="cp-scope">
+                  <option value="all-courses">All courses</option>
+                  <option value="courses">Specific courses</option>
+                  <option value="products">Specific products</option>
+                </select>
+              </div>
+              <div class="field" style="min-width:220px;"><label for="cp-items">Items (Ctrl/Cmd-click for several)</label>
+                <select id="cp-items" multiple size="3"></select>
+              </div>
+              <div class="field" style="max-width:120px;"><label for="cp-max">Max uses</label><input id="cp-max" type="number" min="1" placeholder="∞"></div>
+              <div class="field" style="max-width:170px;"><label for="cp-expires">Expires (optional)</label><input id="cp-expires" type="date"></div>
+              <button class="btn btn-primary" type="submit">Create code</button>
+            </form>
+            <div id="coupon-result" style="margin-top:10px;"></div>
+            <table class="data-table" style="margin-top:14px;">
+              <thead>
+                <tr><th>Code</th><th>Discount</th><th>Valid for</th><th>Uses</th><th>Expires</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody id="coupons-body"></tbody>
+            </table>
+          </div>
+
+          <div class="card" style="margin-top:18px;">
+            <h2>Class access codes</h2>
+            <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+              Classes and masterminds (like the Social Media Matrix) use per-class access codes.
+              A code at 100% enrolls the person directly with no payment; below 100% the discount
+              is applied at checkout. Quick-toggle them here, or open the Class Console for the
+              full editor.
+            </p>
+            <div class="inline-form" style="margin-bottom:12px;">
+              <div class="field" style="max-width:280px;">
+                <label for="cc-class">Class</label>
+                <select id="cc-class"></select>
+              </div>
+              <a class="btn btn-ghost" id="cc-open" href="/class-admin.html">Open in Class Console →</a>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr><th>Code</th><th>Discount</th><th>Uses</th><th>Expires</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody id="class-codes-body"><tr><td colspan="6">Pick a class.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ─── Orders ──────────────────────────────────────────────── -->
+        <div class="store-panel" id="panel-orders">
+          <div class="card">
+            <h2>Product orders</h2>
+            <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+              Every product bought on the site lands here with the shipping address Stripe
+              collected. Work the list top to bottom: mark an order <b>shipped</b> when it's out
+              the door and <b>done</b> when it's delivered.
+            </p>
+            <table class="data-table">
+              <thead>
+                <tr><th>Date</th><th>Product</th><th>Buyer</th><th>Paid</th><th>Ship to</th><th>Status</th></tr>
+              </thead>
+              <tbody id="orders-body"><tr><td colspan="6">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <script type="module" src="js/manage-store.js"></script>
+</body>
+</html>

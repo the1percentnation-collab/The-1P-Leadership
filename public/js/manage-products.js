@@ -102,6 +102,19 @@ function openModal(product) {
             <div class="crm-form-row"><label>Price ($)</label><input class="c-input" id="p-price" type="number" min="0" value="${p.price != null ? p.price : ''}" /></div>
             <div class="crm-form-row"><label>Sort order</label><input class="c-input" id="p-sort" type="number" value="${p.sortOrder || 0}" /></div>
           </div>
+          <div class="crm-form-row-grid">
+            <div class="crm-form-row"><label>Selling</label>
+              <label style="display:flex;align-items:center;gap:8px;padding:8px 0;font-size:13px;cursor:pointer;">
+                <input type="checkbox" id="p-sellable" ${p.sellable ? 'checked' : ''}>
+                <span>Buyable on the site (needs status <b>live</b> and a price)</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer;">
+                <input type="checkbox" id="p-shipping" ${p.requiresShipping != null ? (p.requiresShipping ? 'checked' : '') : (p.type === 'physical' ? 'checked' : '')}>
+                <span>Collect a shipping address (physical goods)</span>
+              </label>
+            </div>
+            <div class="crm-form-row"><label>Inventory (blank = untracked)</label><input class="c-input" id="p-inventory" type="number" min="0" value="${p.inventory != null ? p.inventory : ''}" /></div>
+          </div>
           <div class="crm-form-row">
             <label>Cover image</label>
             <div class="p-img-uploader">
@@ -158,7 +171,10 @@ function openModal(product) {
     const data = {
       name: $('p-name').value, summary: $('p-summary').value || null, description: $('p-desc').value || null,
       type: $('p-type').value, status: $('p-status').value,
-      price: $('p-price').value, sortOrder: $('p-sort').value, imageUrl: $('p-image').value || null
+      price: $('p-price').value, sortOrder: $('p-sort').value, imageUrl: $('p-image').value || null,
+      sellable: $('p-sellable').checked,
+      requiresShipping: $('p-shipping').checked,
+      inventory: $('p-inventory').value
     };
     try {
       if (editing) await updateProduct(p.id, data); else await createProduct(data);

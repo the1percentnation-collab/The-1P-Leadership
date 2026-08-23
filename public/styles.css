@@ -9232,6 +9232,30 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
   margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);
 }
 .cl-coupon { font-size: 12px; color: var(--gray-light); text-decoration: underline dotted; cursor: help; }
+
+/* Promo code entry on the course buy card */
+.cl-promo { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.cl-promo-toggle {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: var(--font-body); font-size: 12px; color: var(--gray-light);
+  text-decoration: underline dotted;
+}
+.cl-promo-toggle:hover { color: var(--red); }
+.cl-promo-row { display: flex; gap: 8px; margin-top: 10px; }
+.cl-promo-input {
+  flex: 1; min-width: 0; background: var(--charcoal); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--white); font-family: var(--font-mono); font-size: 13px;
+  letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 10px;
+}
+.cl-promo-input:focus { outline: none; border-color: var(--border-red); }
+.cl-promo-apply {
+  background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--white-dim);
+  font-family: var(--font-body); font-size: 12px; font-weight: 600; padding: 6px 14px; cursor: pointer;
+}
+.cl-promo-apply:hover { border-color: var(--border-red); color: var(--red); }
+.cl-promo-msg { font-size: 12px; margin-top: 8px; min-height: 14px; }
+.cl-promo-msg.is-ok { color: var(--green, #1DB954); }
+.cl-promo-msg.is-error { color: var(--red); }
 .cl-share {
   background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--white-dim);
   font-family: var(--font-body); font-size: 12px; font-weight: 600; padding: 6px 12px; cursor: pointer;
