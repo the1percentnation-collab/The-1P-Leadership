@@ -17,6 +17,15 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
 
+    // Class-funnel admin. The Class Console (/class-admin.html) and its
+    // Cloud Functions codebase ("classes", deployed from the the1pnation-site
+    // repo) gate on the `admin: true` custom claim granted by that repo's
+    // scripts/grant-admin.js. The portal's own admins use role-based access.
+    // Accept both so one login manages the whole store.
+    function isClassAdmin() {
+      return isAnyAdmin() || (isSignedIn() && request.auth.token.admin == true);
+    }
+
     // A post's `category` is a channel key. Members create channels at
     // channels/{key}, so this can NOT be a fixed enum — hardcoding one silently
     // rejected every post into a custom channel. Accept the four seeded keys
@@ -729,14 +738,63 @@ service cloud.firestore {
       }
     }
 
-    // Coupon codes — created in /manage-courses.html, synced to Stripe by the
-    // syncCoupon callable (which writes stripePromotionCodeId server-side).
+    // Promo codes — created in /manage-courses.html and /manage-store.html.
+    // Validated server-side (validateCoupon / createCheckoutSession), so the
+    // public never needs to read this collection — reads used to be world-
+    // open, which let anyone enumerate every code. `redemptions` is the
+    // server-kept usage counter (Stripe webhook / comp path) and is frozen
+    // against client writes, like the legacy stripePromotionCodeId.
     match /coupons/{code} {
-      allow read: if true;
-      allow create: if isAnyAdmin() && !('stripePromotionCodeId' in request.resource.data);
+      allow read: if isAnyAdmin();
+      allow create: if isAnyAdmin()
+        && !('stripePromotionCodeId' in request.resource.data)
+        && request.resource.data.get('redemptions', 0) == 0;
       allow update: if isAnyAdmin()
-        && request.resource.data.get('stripePromotionCodeId', null) == resource.data.get('stripePromotionCodeId', null);
+        && request.resource.data.get('stripePromotionCodeId', null) == resource.data.get('stripePromotionCodeId', null)
+        && request.resource.data.get('redemptions', 0) == resource.data.get('redemptions', 0);
       allow delete: if isAnyAdmin();
+    }
+
+    // Product orders — written only by the Stripe webhook (Admin SDK) when a
+    // sellable product is bought. Admins fulfill manually from the store
+    // console: they may update fulfillment state, nothing else, so the money
+    // fields and the shipping address Stripe collected stay authoritative.
+    match /orders/{orderId} {
+      allow read: if isAnyAdmin();
+      allow create, delete: if false;
+      allow update: if isAnyAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'fulfillmentNote', 'updatedAt']);
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Classes / masterminds — the class funnel (matrix.html, class.html) and
+    // its Class Console (/class-admin.html). Merged from the the1pnation-site
+    // repo's firestore.rules.snippet: that repo owns the "classes" Cloud
+    // Functions codebase but deliberately deploys no rules — this file is the
+    // project's single ruleset.
+    //
+    // The public doc is marketing copy (name, sessions, price, status) that
+    // matrix.html and class.html read pre-auth. The private subdoc holds
+    // access codes and integration config. Signups are sealed: the funnel
+    // writes them through callables on the Admin SDK, and the console reads
+    // them through the listSignups callable, never the client SDK.
+    // ────────────────────────────────────────────────────────────────
+    match /classes/{slug} {
+      allow read: if true;
+      allow write: if isClassAdmin();
+      match /private/{docId} {
+        allow read, write: if isClassAdmin();
+      }
+      match /signups/{signupId} {
+        allow read, write: if false;
+      }
+    }
+
+    // Announcement audit log, written by the announceClass callable.
+    match /sendLog/{entry} {
+      allow read: if isClassAdmin();
+      allow write: if false;
     }
 
     // ────────────────────────────────────────────────────────────────

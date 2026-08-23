@@ -55,6 +55,7 @@ function roleAllows(roleRequired, role) {
 // stays uncluttered — one button instead of five separate red chips.
 const ADMIN_BUTTONS = [
   { key: 'crm', href: '/crm.html', label: 'CRM', requires: 'admin' },
+  { key: 'store-admin', href: '/manage-store.html', label: 'Store', requires: 'admin' },
   { key: 'courses-admin', href: '/manage-courses.html', label: 'Manage Courses', requires: 'admin' },
   { key: 'products-admin', href: '/manage-products.html', label: 'Products', requires: 'admin' },
   { key: 'affiliates-admin', href: '/manage-affiliates.html', label: 'Affiliates', requires: 'admin' },

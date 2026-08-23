@@ -3027,6 +3027,63 @@ function effectivePriceDollars(course) {
   return base;
 }
 
+// resolveCoupon — validate a coupons/{CODE} doc against one item and return
+// the discounted price. Firestore is the single source of truth: no Stripe
+// coupon objects are involved, so deactivating or expiring a code here takes
+// effect immediately. Throws HttpsError with a buyer-facing message on any
+// failure so callers can surface it directly.
+//
+// Scoping: `appliesTo` is null (legacy — valid for every course), or
+// { kind: 'course'|'product', ids: [] } where an empty ids list means every
+// item of that kind.
+async function resolveCoupon(db, rawCode, { kind, id, priceDollars }) {
+  const code = String(rawCode || '').trim().toUpperCase();
+  if (!code) return null;
+  const snap = await db.collection('coupons').doc(code).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'That promo code isn\'t recognized.');
+  const c = snap.data();
+  if (c.active === false) {
+    throw new HttpsError('failed-precondition', 'That promo code is no longer active.');
+  }
+  const expires = c.expiresAt && c.expiresAt.toDate ? c.expiresAt.toDate().getTime()
+    : (c.expiresAt ? new Date(c.expiresAt).getTime() : null);
+  if (expires && Date.now() > expires) {
+    throw new HttpsError('failed-precondition', 'That promo code has expired.');
+  }
+  if (c.maxRedemptions && Number(c.redemptions || 0) >= Number(c.maxRedemptions)) {
+    throw new HttpsError('resource-exhausted', 'That promo code has reached its limit.');
+  }
+  const scope = c.appliesTo || null;
+  if (scope) {
+    const kindOk = scope.kind === kind;
+    const idOk = !Array.isArray(scope.ids) || scope.ids.length === 0 || scope.ids.includes(id);
+    if (!kindOk || !idOk) {
+      throw new HttpsError('failed-precondition', 'That promo code doesn\'t apply to this item.');
+    }
+  } else if (kind !== 'course') {
+    // Legacy unscoped coupons predate products and were sold against courses.
+    throw new HttpsError('failed-precondition', 'That promo code doesn\'t apply to this item.');
+  }
+  const pct = typeof c.percentOff === 'number' ? c.percentOff : null;
+  const amt = typeof c.amountOff === 'number' ? c.amountOff : null;
+  let discounted;
+  if (pct != null) discounted = priceDollars * (1 - pct / 100);
+  else if (amt != null) discounted = priceDollars - amt;
+  else throw new HttpsError('failed-precondition', 'That promo code isn\'t set up correctly.');
+  discounted = Math.max(0, Math.round(discounted * 100) / 100);
+  return { code, percentOff: pct, amountOff: amt, discountedDollars: discounted, isFree: discounted <= 0 };
+}
+
+// countCouponRedemption — bump the usage counter. Callers are responsible for
+// idempotency (the webhook dedupes on stripeEvents/{eventId}; the free-comp
+// path runs once per enrollment because a second call hits already-exists).
+function countCouponRedemption(db, code) {
+  return db.collection('coupons').doc(code).set({
+    redemptions: admin.firestore.FieldValue.increment(1),
+    lastRedeemedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+}
+
 // enrollFree — server-side enrollment for free (or legacy) courses. All
 // client enrollment goes through here; firestore rules freeze
 // enrolledCourseSlugs on self-writes.
@@ -3065,14 +3122,62 @@ exports.enrollFree = onCall(async (request) => {
   return { ok: true, slug };
 });
 
-// createCheckoutSession — starts a Stripe Checkout for a live paid course.
-// Price is always read server-side from courses/{slug}; the client only
-// sends the slug.
+// validateCoupon — pre-checkout preview so the buyer sees the discounted
+// price before committing. Sign-in required (checkout requires it anyway),
+// and rate-limited so the coupons collection doesn't need public reads.
+exports.validateCoupon = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'validateCoupon', max: 30, windowSec: 600 });
+
+  const code = String((request.data && request.data.code) || '').trim().toUpperCase();
+  const kind = String((request.data && request.data.kind) || 'course');
+  const id = String((request.data && request.data.id) || '').trim();
+  if (!code || !id || !['course', 'product'].includes(kind)) {
+    throw new HttpsError('invalid-argument', 'code, kind and id are required.');
+  }
+
+  let priceDollars = null;
+  if (kind === 'course') {
+    const snap = await db.collection('courses').doc(id).get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Unknown course.');
+    if (snap.data().pricing && snap.data().pricing.mode === 'subscription') {
+      throw new HttpsError('failed-precondition', 'Promo codes can\'t be applied to subscriptions yet.');
+    }
+    priceDollars = effectivePriceDollars(snap.data());
+  } else {
+    const snap = await db.collection('products').doc(id).get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Unknown product.');
+    priceDollars = typeof snap.data().price === 'number' ? snap.data().price : null;
+  }
+  if (priceDollars == null || priceDollars <= 0) {
+    throw new HttpsError('failed-precondition', 'This item doesn\'t have a promo-eligible price.');
+  }
+
+  const resolved = await resolveCoupon(db, code, { kind, id, priceDollars });
+  return {
+    ok: true,
+    code: resolved.code,
+    percentOff: resolved.percentOff,
+    amountOff: resolved.amountOff,
+    originalPrice: priceDollars,
+    discountedPrice: resolved.discountedDollars,
+    isFree: resolved.isFree
+  };
+});
+
+// createCheckoutSession — starts a Stripe Checkout for a live paid course or
+// a sellable product. Price is always read server-side (courses/{slug} or
+// products/{productId}); the client sends only the identifier, an optional
+// refCode, and an optional couponCode.
 exports.createCheckoutSession = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
   const slug = String((request.data && request.data.slug) || '').trim();
-  if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
+  const productId = String((request.data && request.data.productId) || '').trim();
+  if (!slug && !productId) throw new HttpsError('invalid-argument', 'slug or productId is required.');
+  const couponCode = String((request.data && request.data.couponCode) || '').trim().toUpperCase();
 
   // Throttle checkout session creation: 15 per user per 10 minutes.
   await rateLimitCaller(admin.firestore(), request,
@@ -3085,6 +3190,66 @@ exports.createCheckoutSession = onCall(async (request) => {
   }
 
   const db = admin.firestore();
+
+  // ── Product checkout ────────────────────────────────────────────────
+  // Sellable products (digital or physical) from products/{id}. Physical
+  // items collect a shipping address in Stripe Checkout and land in the
+  // orders collection for manual fulfillment.
+  if (productId) {
+    const prodSnap = await db.collection('products').doc(productId).get();
+    if (!prodSnap.exists) throw new HttpsError('not-found', 'Unknown product.');
+    const product = prodSnap.data();
+    if (product.status !== 'live' || product.sellable !== true) {
+      throw new HttpsError('failed-precondition', 'This product isn\'t available to buy yet.');
+    }
+    const basePrice = typeof product.price === 'number' ? product.price : null;
+    if (basePrice == null || basePrice <= 0) {
+      throw new HttpsError('failed-precondition', 'This product doesn\'t have a price yet.');
+    }
+    if (typeof product.inventory === 'number' && product.inventory <= 0) {
+      throw new HttpsError('resource-exhausted', 'This product is sold out.');
+    }
+
+    const wantsShipping = product.requiresShipping === true
+      || (product.requiresShipping !== false && product.type === 'physical');
+
+    let unitDollars = basePrice;
+    const prodMeta = { productId, uid };
+    if (couponCode) {
+      const resolved = await resolveCoupon(db, couponCode,
+        { kind: 'product', id: productId, priceDollars: basePrice });
+      if (resolved.isFree) {
+        // A $0 order can't go through Stripe, and a comped physical item has
+        // no way to collect a shipping address. Comps are for courses and
+        // classes; keep product codes above zero.
+        throw new HttpsError('failed-precondition',
+          'Free product codes aren\'t supported — set the code below 100%.');
+      }
+      unitDollars = resolved.discountedDollars;
+      prodMeta.couponCode = resolved.code;
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: 'usd',
+          unit_amount: Math.max(50, Math.round(unitDollars * 100)),
+          product_data: { name: product.name || 'One Percent Nation product' }
+        }
+      }],
+      ...(wantsShipping ? { shipping_address_collection: { allowed_countries: ['US'] } } : {}),
+      customer_email: (request.auth.token && request.auth.token.email) || undefined,
+      client_reference_id: uid,
+      metadata: prodMeta,
+      success_url: `${APP_BASE_URL}/upcoming.html?purchase=success`,
+      cancel_url: `${APP_BASE_URL}/upcoming.html`
+    });
+    return { ok: true, url: session.url };
+  }
+
+  // ── Course checkout ─────────────────────────────────────────────────
   const courseSnap = await db.collection('courses').doc(slug).get();
   if (!courseSnap.exists) throw new HttpsError('not-found', 'Unknown course.');
   const course = courseSnap.data();
@@ -3107,6 +3272,42 @@ exports.createCheckoutSession = onCall(async (request) => {
   const interval = isSubscription
     ? (course.pricing.interval === 'year' ? 'year' : 'month')
     : null;
+
+  // ── Promo code ──────────────────────────────────────────────────────
+  // Validated in Firestore and baked into the session's unit_amount. A code
+  // at 100% never reaches Stripe: it enrolls directly, the same writes the
+  // webhook would have made.
+  let chargeDollars = dollars;
+  let appliedCoupon = null;
+  if (couponCode) {
+    if (isSubscription) {
+      // An ad-hoc recurring price would carry the discount into every
+      // renewal. Until subscription coupons are designed deliberately,
+      // refuse rather than surprise.
+      throw new HttpsError('failed-precondition',
+        'Promo codes can\'t be applied to subscriptions yet.');
+    }
+    const resolved = await resolveCoupon(db, couponCode,
+      { kind: 'course', id: slug, priceDollars: dollars });
+    if (resolved.isFree) {
+      await db.collection('users').doc(uid).set({
+        enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(slug),
+        lastActiveAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      await db.collection('users').doc(uid).collection('purchases').doc(`comp-${slug}`).set({
+        courseSlug: slug,
+        amount: 0,
+        mode: 'comp',
+        couponCode: resolved.code,
+        status: 'comped',
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      await countCouponRedemption(db, resolved.code);
+      return { ok: true, enrolled: true };
+    }
+    chargeDollars = resolved.discountedDollars;
+    appliedCoupon = resolved.code;
+  }
 
   // Affiliate attribution — validate the referral code server-side and lock
   // the commission rate into the session metadata at purchase time.
@@ -3132,18 +3333,21 @@ exports.createCheckoutSession = onCall(async (request) => {
     metadata.refCode = refCode;
     metadata.refPercent = String(refPercent);
   }
+  if (appliedCoupon) metadata.couponCode = appliedCoupon;
 
   const priceData = {
     currency: 'usd',
-    unit_amount: Math.round(dollars * 100),
+    unit_amount: Math.max(50, Math.round(chargeDollars * 100)),
     product_data: { name: course.title || slug }
   };
   if (isSubscription) priceData.recurring = { interval };
 
+  // No allow_promotion_codes: coupons are validated in Firestore above and
+  // priced into unit_amount, so per-item scoping and the active toggle are
+  // actually enforced. Stripe-native promo codes would bypass both.
   const session = await stripe.checkout.sessions.create({
     mode: isSubscription ? 'subscription' : 'payment',
     line_items: [{ price_data: priceData, quantity: 1 }],
-    allow_promotion_codes: true,
     customer_email: (request.auth.token && request.auth.token.email) || undefined,
     client_reference_id: uid,
     metadata,
@@ -3195,6 +3399,48 @@ exports.stripeWebhook = onRequest(
         const session = event.data.object;
         const uid = (session.metadata && session.metadata.uid) || session.client_reference_id;
         const courseSlug = session.metadata && session.metadata.courseSlug;
+        const productId = session.metadata && session.metadata.productId;
+        const couponCode = session.metadata && session.metadata.couponCode;
+
+        // ── Product order ────────────────────────────────────────────
+        // Fulfillment is manual: the order lands in `orders` with the
+        // shipping address Stripe collected, and Anthony works the list
+        // from the store console. Idempotent via the stripeEvents guard.
+        if (uid && productId) {
+          const prodRef = db.collection('products').doc(productId);
+          const prodSnap = await prodRef.get();
+          const product = prodSnap.exists ? prodSnap.data() : {};
+          await db.collection('orders').doc(session.id).set({
+            productId,
+            productName: product.name || null,
+            productType: product.type || null,
+            uid,
+            email: (session.customer_details && session.customer_details.email)
+              || session.customer_email || null,
+            amountTotal: (session.amount_total || 0) / 100,
+            currency: session.currency || 'usd',
+            couponCode: couponCode || null,
+            shipping: session.shipping_details || session.collected_information || null,
+            status: 'new',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          if (typeof product.inventory === 'number') {
+            await prodRef.set({
+              inventory: admin.firestore.FieldValue.increment(-1)
+            }, { merge: true });
+          }
+          await db.collection('users').doc(uid).collection('purchases').doc(session.id).set({
+            productId,
+            productName: product.name || null,
+            amount: (session.amount_total || 0) / 100,
+            mode: 'product',
+            couponCode: couponCode || null,
+            status: 'paid',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          if (couponCode) await countCouponRedemption(db, couponCode);
+        }
+
         if (uid && courseSlug) {
           await db.collection('users').doc(uid).set({
             enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(courseSlug)
@@ -3203,11 +3449,15 @@ exports.stripeWebhook = onRequest(
             courseSlug,
             amount: (session.amount_total || 0) / 100,
             mode: session.mode,
+            couponCode: couponCode || null,
             stripeCustomerId: session.customer || null,
             subscriptionId: session.subscription || null,
             status: session.mode === 'subscription' ? 'active' : 'paid',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
+          // Count the promo redemption. The stripeEvents/{eventId} guard
+          // above makes this once-per-checkout even across Stripe retries.
+          if (couponCode) await countCouponRedemption(db, couponCode);
           if (session.mode === 'subscription' && session.subscription) {
             // Index for cancellation handling.
             await db.collection('stripeSubscriptions').doc(String(session.subscription)).set({

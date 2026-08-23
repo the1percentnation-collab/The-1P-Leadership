@@ -77,6 +77,9 @@ export async function createProduct(data = {}) {
     description: data.description || null,
     imageUrl: data.imageUrl || null,
     price: data.price === '' || data.price == null ? null : Number(data.price),
+    sellable: data.sellable === true,
+    requiresShipping: data.requiresShipping != null ? !!data.requiresShipping : data.type === 'physical',
+    inventory: data.inventory === '' || data.inventory == null ? null : Number(data.inventory),
     preorderMode: ['interest', 'deposit', 'prepay'].includes(data.preorderMode) ? data.preorderMode : 'interest',
     depositAmount: data.depositAmount ? Number(data.depositAmount) : null,
     launchAt: data.launchAt || null,
@@ -94,11 +97,13 @@ export async function createProduct(data = {}) {
 
 export async function updateProduct(id, patch = {}) {
   const allowed = ['name', 'slug', 'type', 'status', 'summary', 'description', 'imageUrl',
-    'price', 'preorderMode', 'depositAmount', 'launchAt', 'sortOrder'];
+    'price', 'sellable', 'requiresShipping', 'inventory',
+    'preorderMode', 'depositAmount', 'launchAt', 'sortOrder'];
   const clean = {};
   allowed.forEach((k) => {
     if (patch[k] === undefined) return;
-    if (k === 'price' || k === 'depositAmount') clean[k] = patch[k] === '' || patch[k] == null ? null : Number(patch[k]);
+    if (k === 'price' || k === 'depositAmount' || k === 'inventory') clean[k] = patch[k] === '' || patch[k] == null ? null : Number(patch[k]);
+    else if (k === 'sellable' || k === 'requiresShipping') clean[k] = !!patch[k];
     else if (k === 'sortOrder') clean[k] = Number(patch[k]) || 0;
     else clean[k] = patch[k];
   });

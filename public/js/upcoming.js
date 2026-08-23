@@ -1,7 +1,8 @@
 // Public "what's coming" page — browse upcoming products, join a product's
 // interest list, or join the general early-access list. No login required.
 
-import { firebaseReady } from './firebase.js';
+import { firebaseReady, auth, functions } from './firebase.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import {
   listVisibleProducts, registerInterest, joinEarlyAccess, escapeHtml, fmtMoney
 } from './products.js';
@@ -21,9 +22,12 @@ function cardHtml(p) {
         ${price ? `<span class="pre-card-price">${price}</span>` : '<span class="pre-card-price muted">TBA</span>'}
         ${p.interestCount ? `<span class="pre-card-count">🔥 ${p.interestCount} interested</span>` : ''}
       </div>
-      ${p.status === 'live'
-        ? `<a class="btn btn-primary" href="/courses.html">View it →</a>`
-        : `<button class="btn btn-primary" data-interest="${escapeHtml(p.id)}">Notify me</button>`}
+      ${p.status === 'live' && p.sellable && p.price > 0
+        ? `<button class="btn btn-primary" data-buy="${escapeHtml(p.id)}">Buy now — ${price}</button>
+           ${typeof p.inventory === 'number' && p.inventory <= 0 ? '<div class="pre-card-sum" style="color:var(--red);">Sold out</div>' : ''}`
+        : p.status === 'live'
+          ? `<a class="btn btn-primary" href="/courses.html">View it →</a>`
+          : `<button class="btn btn-primary" data-interest="${escapeHtml(p.id)}">Notify me</button>`}
     </div>`;
 }
 
@@ -74,6 +78,16 @@ function openInterestModal(product) {
 
 let PRODUCTS = [];
 async function load() {
+  // Back from a successful Stripe checkout.
+  if (new URLSearchParams(location.search).get('purchase') === 'success') {
+    const grid = $('pre-grid');
+    const note = document.createElement('div');
+    note.className = 'auth-ok';
+    note.style.marginBottom = '16px';
+    note.textContent = 'Order received — check your email for the receipt. Thank you!';
+    grid.parentElement.insertBefore(note, grid);
+    history.replaceState(null, '', location.pathname);
+  }
   PRODUCTS = await listVisibleProducts();
   const grid = $('pre-grid');
   if (!PRODUCTS.length) {
@@ -85,6 +99,37 @@ async function load() {
     const p = PRODUCTS.find((x) => x.id === b.getAttribute('data-interest'));
     if (p) openInterestModal(p);
   }));
+  grid.querySelectorAll('[data-buy]').forEach((b) => b.addEventListener('click', () => buyProduct(b)));
+}
+
+// Checkout for a sellable product. Sign-in is required (same as courses);
+// the server prices the item and, when it's physical, has Stripe collect the
+// shipping address. A promo link (?promo=CODE) rides along and the server
+// validates it against this product.
+async function buyProduct(btn) {
+  const id = btn.getAttribute('data-buy');
+  if (!firebaseReady) return;
+  if (!auth.currentUser) {
+    location.assign('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
+    return;
+  }
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Opening secure checkout…';
+  try {
+    const promo = new URLSearchParams(location.search).get('promo');
+    const res = await httpsCallable(functions, 'createCheckoutSession')({
+      productId: id,
+      couponCode: promo ? promo.trim().toUpperCase() : undefined
+    });
+    const url = res && res.data && res.data.url;
+    if (!url) throw new Error('Checkout could not be started.');
+    location.assign(url);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = original;
+    alert(err.message || 'Could not start checkout. Please try again.');
+  }
 }
 
 function wireEarlyAccess() {
