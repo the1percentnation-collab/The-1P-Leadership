@@ -201,6 +201,29 @@ service cloud.firestore {
                       || (isSelf(uid) && resource.data.get('status', '') == 'submitted');
       }
 
+      // users/{uid}/ceCredits — continuing education entries behind the
+      // annual license renewal. Same submit/approve shape as coachingHours:
+      // members submit and may edit while pending; the verdict is server-only
+      // (reviewCeCredits callable).
+      match /ceCredits/{entryId} {
+        allow read: if isOwner() || isSelf(uid);
+        allow create: if (isOwner() || isSelf(uid))
+                      && request.resource.data.get('status', '') == 'submitted'
+                      && request.resource.data.get('credits', 0) is number
+                      && request.resource.data.get('credits', 0) > 0
+                      && request.resource.data.get('credits', 0) <= 50
+                      && !('reviewedBy' in request.resource.data);
+        allow update: if isOwner() || (isSelf(uid)
+                      && resource.data.get('status', '') == 'submitted'
+                      && request.resource.data.get('status', '') == 'submitted'
+                      && request.resource.data.get('credits', 0) is number
+                      && request.resource.data.get('credits', 0) > 0
+                      && request.resource.data.get('credits', 0) <= 50
+                      && !('reviewedBy' in request.resource.data));
+        allow delete: if isOwner()
+                      || (isSelf(uid) && resource.data.get('status', '') == 'submitted');
+      }
+
       // users/{uid}/examAttempts — written exam attempts, graded server-side
       // (startExam / submitExam). Members read their own results; all writes
       // go through the Admin SDK so scores can't be edited.
@@ -982,6 +1005,21 @@ service cloud.firestore {
       match /questions/{questionId} {
         allow read, write: if isAnyAdmin();
       }
+    }
+
+    // Public coach directory — the license renewal benefit. Listings are
+    // created server-side at issuance; `active` mirrors license standing and
+    // is server-only (a lapsed license hides the listing). Coaches edit their
+    // own profile fields. Public list queries must filter active == true —
+    // the read rule proves exactly that shape.
+    match /coachDirectory/{uid} {
+      allow read: if isAnyAdmin() || isSelf(uid) || resource.data.active == true;
+      allow create: if false;
+      allow update: if isAnyAdmin() || (isSelf(uid)
+                    && request.resource.data.get('active', false) == resource.data.get('active', false)
+                    && request.resource.data.get('uid', '') == resource.data.get('uid', '')
+                    && request.resource.data.get('track', '') == resource.data.get('track', ''));
+      allow delete: if isOwner();
     }
 
   }

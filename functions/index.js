@@ -3215,6 +3215,29 @@ exports.createCheckoutSession = onCall(async (request) => {
 
     let unitDollars = basePrice;
     const prodMeta = { productId, uid };
+
+    // Coach/affiliate attribution on product sales. Coaches selling the
+    // client-facing A.L.I.G.N. products earn their license tier's rate
+    // (rates.clientProductPercent); classic affiliates fall back to their
+    // flat commissionPercent. Validated and locked here, paid by the webhook.
+    let prodRefCode = String((request.data && request.data.refCode) || '').trim().toUpperCase();
+    if (prodRefCode) {
+      const affSnap = await db.collection('affiliates').doc(prodRefCode).get();
+      const aff = affSnap.exists ? affSnap.data() : null;
+      const buyerEmail = ((request.auth.token && request.auth.token.email) || '').toLowerCase();
+      const selfReferral = aff && (
+        (aff.uid && aff.uid === uid)
+        || (aff.email && String(aff.email).toLowerCase() === buyerEmail)
+      );
+      if (aff && aff.active !== false && !selfReferral) {
+        const rate = (aff.rates && typeof aff.rates.clientProductPercent === 'number')
+          ? aff.rates.clientProductPercent
+          : (typeof aff.commissionPercent === 'number' ? aff.commissionPercent : 20);
+        prodMeta.refCode = prodRefCode;
+        prodMeta.refPercent = String(rate);
+      }
+    }
+
     if (couponCode) {
       const resolved = await resolveCoupon(db, couponCode,
         { kind: 'product', id: productId, priceDollars: basePrice });
@@ -3427,6 +3450,39 @@ exports.stripeWebhook = onRequest(
         const courseSlug = session.metadata && session.metadata.courseSlug;
         const productId = session.metadata && session.metadata.productId;
         const couponCode = session.metadata && session.metadata.couponCode;
+        const licenseRenewal = session.metadata && session.metadata.licenseRenewal;
+
+        // ── License renewal ──────────────────────────────────────────
+        // Extends the A.L.I.G.N. Practitioner License one year from its
+        // current expiry (or from today if it already lapsed) and
+        // reactivates the coach's directory listing.
+        if (uid && licenseRenewal) {
+          const certRef = db.collection('certifications').doc(`${uid}_${licenseRenewal}`);
+          const certSnap = await certRef.get();
+          if (certSnap.exists) {
+            const cert = certSnap.data();
+            const now = Date.now();
+            const currentExpiry = cert.licenseExpiresAt && cert.licenseExpiresAt.toMillis
+              ? cert.licenseExpiresAt.toMillis() : now;
+            const newExpiry = Math.max(now, currentExpiry) + 365 * 24 * 60 * 60 * 1000;
+            await certRef.set({
+              licenseExpiresAt: admin.firestore.Timestamp.fromMillis(newExpiry),
+              status: 'active',
+              lastRenewedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            await db.collection('coachDirectory').doc(uid).set({
+              active: true,
+              licenseExpiresAt: admin.firestore.Timestamp.fromMillis(newExpiry)
+            }, { merge: true });
+            await db.collection('users').doc(uid).collection('purchases').doc(session.id).set({
+              licenseRenewal,
+              amount: (session.amount_total || 0) / 100,
+              mode: 'license-renewal',
+              status: 'paid',
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+          }
+        }
 
         // ── Product order ────────────────────────────────────────────
         // Fulfillment is manual: the order lands in `orders` with the
@@ -3465,6 +3521,38 @@ exports.stripeWebhook = onRequest(
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
           if (couponCode) await countCouponRedemption(db, couponCode);
+
+          // Commission on product sales — the code + rate were validated and
+          // locked into metadata by createCheckoutSession.
+          const prodRefCode = session.metadata && session.metadata.refCode;
+          if (prodRefCode) {
+            const affRef = db.collection('affiliates').doc(prodRefCode);
+            const affSnap = await affRef.get();
+            if (affSnap.exists) {
+              const pct = Number(session.metadata.refPercent)
+                || (typeof affSnap.data().commissionPercent === 'number' ? affSnap.data().commissionPercent : 20);
+              const saleAmount = (session.amount_total || 0) / 100;
+              const commission = Math.round(saleAmount * pct) / 100;
+              await affRef.collection('referrals').doc(session.id).set({
+                productId,
+                productName: product.name || null,
+                kind: 'product',
+                buyerUid: uid,
+                saleAmount,
+                commissionPercent: pct,
+                commission,
+                mode: 'product',
+                status: 'pending',
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+              }, { merge: true });
+              await affRef.set({
+                totalSales: admin.firestore.FieldValue.increment(saleAmount),
+                totalCommission: admin.firestore.FieldValue.increment(commission),
+                saleCount: admin.firestore.FieldValue.increment(1),
+                lastSaleAt: admin.firestore.FieldValue.serverTimestamp()
+              }, { merge: true });
+            }
+          }
         }
 
         if (uid && courseSlug) {
@@ -5120,6 +5208,31 @@ exports.reviewCoachingHours = onCall(async (request) => {
   return { ok: true };
 });
 
+// reviewCeCredits — admin approves or rejects a submitted continuing
+// education entry (renewal requirement).
+exports.reviewCeCredits = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const uid = String((request.data && request.data.uid) || '').trim();
+  const entryId = String((request.data && request.data.entryId) || '').trim();
+  const decision = String((request.data && request.data.decision) || '').trim();
+  if (!uid || !entryId) throw new HttpsError('invalid-argument', 'uid and entryId are required.');
+  if (!['approved', 'rejected'].includes(decision)) {
+    throw new HttpsError('invalid-argument', 'decision must be approved or rejected.');
+  }
+  const ref = db.collection('users').doc(uid).collection('ceCredits').doc(entryId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Unknown CE entry.');
+  await ref.set({
+    status: decision,
+    reviewedBy: request.auth.uid,
+    reviewedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true };
+});
+
 // reviewCapstone — admin scores a submitted recorded coaching session
 // against the published rubric and approves or returns it for another take.
 exports.reviewCapstone = onCall(async (request) => {
@@ -5161,9 +5274,10 @@ exports.listCertificationQueue = onCall(async (request) => {
   if (!(await isAdminCaller(db, request))) {
     throw new HttpsError('permission-denied', 'Admin or owner role required.');
   }
-  const [hoursSnap, capsSnap] = await Promise.all([
+  const [hoursSnap, capsSnap, ceSnap] = await Promise.all([
     db.collectionGroup('coachingHours').where('status', '==', 'submitted').limit(200).get(),
-    db.collectionGroup('capstone').where('status', '==', 'submitted').limit(100).get()
+    db.collectionGroup('capstone').where('status', '==', 'submitted').limit(100).get(),
+    db.collectionGroup('ceCredits').where('status', '==', 'submitted').limit(200).get()
   ]);
   const uidOf = (ref) => ref.path.split('/')[1];
   const uids = new Set();
@@ -5176,6 +5290,11 @@ exports.listCertificationQueue = onCall(async (request) => {
     const uid = uidOf(d.ref);
     uids.add(uid);
     return { uid, docId: d.id, ...d.data() };
+  });
+  const ceCredits = ceSnap.docs.map((d) => {
+    const uid = uidOf(d.ref);
+    uids.add(uid);
+    return { uid, entryId: d.id, ...d.data() };
   });
   const names = {};
   await Promise.all(Array.from(uids).map(async (uid) => {
@@ -5191,7 +5310,7 @@ exports.listCertificationQueue = onCall(async (request) => {
     });
     return out;
   });
-  return { hours: clean(hours), capstones: clean(capstones) };
+  return { hours: clean(hours), capstones: clean(capstones), ceCredits: clean(ceCredits) };
 });
 
 // getCertificationStatus — one call that tells a member (or an admin asking
@@ -5315,5 +5434,171 @@ exports.issueCertification = onCall(async (request) => {
   await db.collection('users').doc(uid).set({
     coachLevel: 'practitioner'
   }, { merge: true });
+
+  // Every certified coach gets a referral code so they can sell the
+  // client-facing 1P products from day one. Tiered rates: practitioner
+  // keeps 50% on client products, Certified + Practice Build keeps 70%
+  // (upgradeCoachLevel bumps it); certification referrals stay at 20%.
+  try {
+    await ensureCoachAffiliate(db, uid, 'practitioner');
+  } catch (e) {
+    console.warn('[issueCertification] affiliate create failed:', e && e.message);
+  }
+
+  // Directory listing is a license benefit — created active, hidden when the
+  // license lapses.
+  try {
+    const userSnap = await db.collection('users').doc(uid).get();
+    const u = userSnap.exists ? userSnap.data() : {};
+    await db.collection('coachDirectory').doc(uid).set({
+      uid,
+      name: u.displayName || null,
+      photoUrl: u.photoURL || null,
+      location: u.location || null,
+      bio: null,
+      specialties: [],
+      bookingUrl: null,
+      track: 'life',
+      active: true,
+      licenseExpiresAt,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch (e) {
+    console.warn('[issueCertification] directory create failed:', e && e.message);
+  }
+
   return { ok: true, certNumber: certNumberFor(uid, slug) };
+});
+
+// Coach revenue-share tiers, by license level.
+const COACH_PRODUCT_RATES = { 'practitioner': 50, 'practice-build': 70 };
+
+async function ensureCoachAffiliate(db, uid, coachLevel) {
+  const existing = await db.collection('affiliates').where('uid', '==', uid).limit(1).get();
+  const rates = {
+    courseReferralPercent: 20,
+    clientProductPercent: COACH_PRODUCT_RATES[coachLevel] || 50
+  };
+  if (!existing.empty) {
+    await existing.docs[0].ref.set({ rates, type: 'coach' }, { merge: true });
+    return existing.docs[0].id;
+  }
+  const userSnap = await db.collection('users').doc(uid).get();
+  const u = userSnap.exists ? userSnap.data() : {};
+  const base = String(u.displayName || 'COACH').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 10) || 'COACH';
+  let code = null;
+  for (let i = 0; i < 8 && !code; i++) {
+    const candidate = base + crypto.randomInt(100, 999);
+    const clash = await db.collection('affiliates').doc(candidate).get();
+    if (!clash.exists) code = candidate;
+  }
+  if (!code) code = base + Date.now().toString(36).toUpperCase().slice(-4);
+  await db.collection('affiliates').doc(code).set({
+    code,
+    name: u.displayName || null,
+    email: u.email || null,
+    uid,
+    type: 'coach',
+    commissionPercent: 20,
+    rates,
+    active: true,
+    clicks: 0,
+    saleCount: 0,
+    totalSales: 0,
+    totalCommission: 0,
+    totalPaid: 0,
+    createdBy: 'issueCertification',
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  return code;
+}
+
+// upgradeCoachLevel — admin moves a coach to the Certified + Practice Build
+// tier (70% on client products). The license record and rates follow.
+exports.upgradeCoachLevel = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const uid = String((request.data && request.data.uid) || '').trim();
+  const level = String((request.data && request.data.level) || '').trim();
+  if (!uid || !COACH_PRODUCT_RATES[level]) {
+    throw new HttpsError('invalid-argument', 'uid and a valid level (practitioner | practice-build) are required.');
+  }
+  await db.collection('users').doc(uid).set({ coachLevel: level }, { merge: true });
+  await ensureCoachAffiliate(db, uid, level);
+  return { ok: true, level };
+});
+
+// createRenewalCheckout — the $597 annual A.L.I.G.N. Practitioner License
+// renewal. Deliberately a one-time payment rather than an auto-renewing
+// subscription: renewal is GATED on continued practice (approved hours) and
+// continuing education, and an auto-charge would bypass the gate. The
+// webhook extends licenseExpiresAt when the payment lands.
+exports.createRenewalCheckout = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'createRenewalCheckout', max: 10, windowSec: 600 });
+  const slug = String((request.data && request.data.slug) || '1p-clc').trim();
+  const cfg = await loadCertConfig(db);
+
+  const certRef = db.collection('certifications').doc(`${uid}_${slug}`);
+  const certSnap = await certRef.get();
+  if (!certSnap.exists) {
+    throw new HttpsError('failed-precondition', 'No certification on file to renew.');
+  }
+  const cert = certSnap.data();
+  if (cert.status === 'revoked') {
+    throw new HttpsError('failed-precondition', 'This license has been revoked. Contact the program.');
+  }
+
+  // Hours + CE since the last issuance or renewal.
+  const sinceMs = cert.lastRenewedAt && cert.lastRenewedAt.toMillis
+    ? cert.lastRenewedAt.toMillis()
+    : (cert.issuedAt && cert.issuedAt.toMillis ? cert.issuedAt.toMillis() : 0);
+
+  const [hoursSnap, ceSnap] = await Promise.all([
+    db.collection('users').doc(uid).collection('coachingHours').where('status', '==', 'approved').get(),
+    db.collection('users').doc(uid).collection('ceCredits').where('status', '==', 'approved').get()
+  ]);
+  const minutesSince = hoursSnap.docs.reduce((sum, d) => {
+    const t = d.data().reviewedAt && d.data().reviewedAt.toMillis ? d.data().reviewedAt.toMillis() : 0;
+    return t >= sinceMs ? sum + (Number(d.data().minutes) || 0) : sum;
+  }, 0);
+  const ceSince = ceSnap.docs.reduce((sum, d) => {
+    const t = d.data().reviewedAt && d.data().reviewedAt.toMillis ? d.data().reviewedAt.toMillis() : 0;
+    return t >= sinceMs ? sum + (Number(d.data().credits) || 0) : sum;
+  }, 0);
+
+  if (minutesSince < cfg.renewalHours * 60) {
+    throw new HttpsError('failed-precondition',
+      `Renewal requires ${cfg.renewalHours} approved coaching hours this license year; you have ${Math.floor(minutesSince / 60)}.`);
+  }
+  if (ceSince < cfg.renewalCeCredits) {
+    throw new HttpsError('failed-precondition',
+      `Renewal requires ${cfg.renewalCeCredits} approved CE credits this license year; you have ${ceSince}.`);
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    throw new HttpsError('failed-precondition', 'Online checkout isn\'t available yet.');
+  }
+  const session = await stripe.checkout.sessions.create({
+    mode: 'payment',
+    line_items: [{
+      quantity: 1,
+      price_data: {
+        currency: 'usd',
+        unit_amount: 59700,
+        product_data: { name: 'A.L.I.G.N. Practitioner License — annual renewal' }
+      }
+    }],
+    customer_email: (request.auth.token && request.auth.token.email) || undefined,
+    client_reference_id: uid,
+    metadata: { uid, licenseRenewal: slug },
+    success_url: `${APP_BASE_URL}/affiliate.html?renewal=success`,
+    cancel_url: `${APP_BASE_URL}/affiliate.html`
+  });
+  return { ok: true, url: session.url };
 });

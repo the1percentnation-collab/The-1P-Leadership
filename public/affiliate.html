@@ -48,6 +48,34 @@
           </div>
         </div>
 
+        <div class="card" id="license-card" style="display:none;">
+          <h2>Your A.L.I.G.N. Practitioner License</h2>
+          <div id="license-body"></div>
+        </div>
+
+        <div class="card" id="ce-card" style="display:none;">
+          <h2>Continuing education</h2>
+          <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+            Renewal requires approved coaching hours plus CE credits each license
+            year. Log CE here; log coaching hours inside the course.
+          </p>
+          <form class="inline-form" id="ce-form" style="flex-wrap:wrap;">
+            <div class="field" style="flex:2; min-width:220px;"><label for="ce-title">What did you complete?</label><input id="ce-title" type="text" maxlength="120" required placeholder="Workshop, book study, course..."></div>
+            <div class="field" style="max-width:120px;"><label for="ce-credits">Credits</label><input id="ce-credits" type="number" min="1" max="50" value="1" required></div>
+            <button class="btn btn-primary" type="submit">Submit for approval</button>
+          </form>
+          <div id="ce-list" style="margin-top:12px;"></div>
+        </div>
+
+        <div class="card" id="products-card" style="display:none;">
+          <h2>Sell the 1P client products</h2>
+          <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+            As a licensed practitioner you earn your tier's share on every
+            client-facing product bought through your links.
+          </p>
+          <div id="products-list"></div>
+        </div>
+
         <div class="card">
           <h2>Performance</h2>
           <table class="data-table">

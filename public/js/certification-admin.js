@@ -35,7 +35,7 @@ const RUBRIC = [
   { key: 'nonAdvising', label: 'Non-Advising' }
 ];
 
-let _queue = { hours: [], capstones: [] };
+let _queue = { hours: [], capstones: [], ceCredits: [] };
 
 async function refreshQueue() {
   try {
@@ -43,10 +43,45 @@ async function refreshQueue() {
     _queue = res.data || { hours: [], capstones: [] };
   } catch (e) {
     console.warn('[cert-admin] queue load failed', e);
-    _queue = { hours: [], capstones: [] };
+    _queue = { hours: [], capstones: [], ceCredits: [] };
   }
   renderHours();
   renderCapstones();
+  renderCe();
+}
+
+function renderCe() {
+  const body = $('ce-body');
+  const rows = _queue.ceCredits || [];
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="4" style="color:var(--gray-mid);">Nothing waiting.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map((c, i) => `
+    <tr>
+      <td><b>${escapeHtml(c.userName)}</b><br><span style="font-size:11px;color:var(--gray-mid);">${escapeHtml(c.uid)}</span></td>
+      <td>${escapeHtml(c.title || '')}</td>
+      <td class="num">${Number(c.credits) || 0}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-primary" data-ce-approve="${i}" style="padding:3px 10px;font-size:11px;">Approve</button>
+        <button class="btn btn-ghost" data-ce-reject="${i}" style="padding:3px 10px;font-size:11px;">Reject</button>
+      </td>
+    </tr>`).join('');
+  body.querySelectorAll('[data-ce-approve]').forEach((b) =>
+    b.addEventListener('click', () => decideCe(Number(b.dataset.ceApprove), 'approved')));
+  body.querySelectorAll('[data-ce-reject]').forEach((b) =>
+    b.addEventListener('click', () => decideCe(Number(b.dataset.ceReject), 'rejected')));
+}
+
+async function decideCe(i, decision) {
+  const c = (_queue.ceCredits || [])[i];
+  if (!c) return;
+  try {
+    await httpsCallable(functions, 'reviewCeCredits')({ uid: c.uid, entryId: c.entryId, decision });
+    await refreshQueue();
+  } catch (e) {
+    alert('Review failed: ' + ((e && e.message) || 'unknown error'));
+  }
 }
 
 function renderHours() {
