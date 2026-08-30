@@ -3099,7 +3099,7 @@ exports.enrollFree = onCall(async (request) => {
 
   // Legacy migration: users with pre-enrollment 1P-CLC progress keep access
   // even though the course is paid. Server-verifies the progress exists.
-  const legacy = !!(request.data && request.data.legacy) && slug === '1p-clc';
+  const legacy = !!(request.data && request.data.legacy) && slug === '1p-clc-leader';
   if (legacy) {
     const prog = await db.collection('users').doc(uid).collection('progress').limit(1).get();
     if (prog.empty) throw new HttpsError('failed-precondition', 'No prior progress found.');
@@ -3273,6 +3273,26 @@ exports.createCheckoutSession = onCall(async (request) => {
     ? (course.pricing.interval === 'year' ? 'year' : 'month')
     : null;
 
+  // ── Payment plans (1P Certified Life Coach) ─────────────────────────
+  // Fixed-count installments modeled as a monthly subscription that the
+  // webhook cancels after the final payment (see invoice.paid below).
+  // Enrollment happens on checkout completion like any purchase; a missed
+  // installment marks the purchase past_due, which blocks certification
+  // issuance (not course access) until it's resolved.
+  const PLAN_OPTIONS = {
+    '6x': { installments: 6, monthlyCents: 69700, label: '6 payments of $697' },
+    '10x': { installments: 10, monthlyCents: 39700, label: '10 payments of $397' }
+  };
+  const planKey = String((request.data && request.data.plan) || '').trim();
+  const plan = planKey ? PLAN_OPTIONS[planKey] : null;
+  if (planKey && !plan) throw new HttpsError('invalid-argument', 'Unknown payment plan.');
+  if (plan && slug !== '1p-clc') {
+    throw new HttpsError('failed-precondition', 'Payment plans are only available for the 1P Certified Life Coach program.');
+  }
+  if (plan && couponCode) {
+    throw new HttpsError('failed-precondition', 'Promo codes can\'t be combined with a payment plan.');
+  }
+
   // ── Promo code ──────────────────────────────────────────────────────
   // Validated in Firestore and baked into the session's unit_amount. A code
   // at 100% never reaches Stripe: it enrolls directly, the same writes the
@@ -3280,7 +3300,7 @@ exports.createCheckoutSession = onCall(async (request) => {
   let chargeDollars = dollars;
   let appliedCoupon = null;
   if (couponCode) {
-    if (isSubscription) {
+    if (isSubscription || plan) {
       // An ad-hoc recurring price would carry the discount into every
       // renewal. Until subscription coupons are designed deliberately,
       // refuse rather than surprise.
@@ -3335,23 +3355,29 @@ exports.createCheckoutSession = onCall(async (request) => {
   }
   if (appliedCoupon) metadata.couponCode = appliedCoupon;
 
+  if (plan) {
+    metadata.installments = String(plan.installments);
+    metadata.plan = planKey;
+  }
+
   const priceData = {
     currency: 'usd',
-    unit_amount: Math.max(50, Math.round(chargeDollars * 100)),
-    product_data: { name: course.title || slug }
+    unit_amount: plan ? plan.monthlyCents : Math.max(50, Math.round(chargeDollars * 100)),
+    product_data: { name: plan ? `${course.title || slug} (${plan.label})` : (course.title || slug) }
   };
   if (isSubscription) priceData.recurring = { interval };
+  if (plan) priceData.recurring = { interval: 'month' };
 
   // No allow_promotion_codes: coupons are validated in Firestore above and
   // priced into unit_amount, so per-item scoping and the active toggle are
   // actually enforced. Stripe-native promo codes would bypass both.
   const session = await stripe.checkout.sessions.create({
-    mode: isSubscription ? 'subscription' : 'payment',
+    mode: (isSubscription || plan) ? 'subscription' : 'payment',
     line_items: [{ price_data: priceData, quantity: 1 }],
     customer_email: (request.auth.token && request.auth.token.email) || undefined,
     client_reference_id: uid,
     metadata,
-    ...(isSubscription ? { subscription_data: { metadata } } : {}),
+    ...((isSubscription || plan) ? { subscription_data: { metadata } } : {}),
     success_url: `${APP_BASE_URL}/courses.html?course=${encodeURIComponent(slug)}&purchase=success`,
     cancel_url: `${APP_BASE_URL}/courses.html`
   });
@@ -3362,7 +3388,7 @@ exports.createCheckoutSession = onCall(async (request) => {
 // stripeWebhook — enrolls buyers after checkout and revokes subscription
 // access on cancellation. Configure the endpoint in the Stripe dashboard to
 // send: checkout.session.completed, customer.subscription.deleted,
-// invoice.payment_failed.
+// invoice.paid, invoice.payment_failed.
 exports.stripeWebhook = onRequest(
   { cors: false, invoker: 'public' },
   async (req, res) => {
@@ -3460,8 +3486,10 @@ exports.stripeWebhook = onRequest(
           if (couponCode) await countCouponRedemption(db, couponCode);
           if (session.mode === 'subscription' && session.subscription) {
             // Index for cancellation handling.
+            const installments = Number(session.metadata && session.metadata.installments) || null;
             await db.collection('stripeSubscriptions').doc(String(session.subscription)).set({
               uid, courseSlug, sessionId: session.id,
+              ...(installments ? { installments, paidCount: 0 } : {}),
               createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
           }
@@ -3549,11 +3577,42 @@ exports.stripeWebhook = onRequest(
         } else {
           console.warn('[stripeWebhook] session missing uid/courseSlug metadata', session.id);
         }
+      } else if (event.type === 'invoice.paid') {
+        // Installment-plan bookkeeping. Each paid invoice counts one payment;
+        // after the final one the subscription is set to cancel at period end
+        // and the purchase is marked paid in full so the later
+        // customer.subscription.deleted event does NOT revoke access.
+        const invoice = event.data.object;
+        const subId = invoice.subscription;
+        if (subId) {
+          const idxRef = db.collection('stripeSubscriptions').doc(String(subId));
+          const idx = await idxRef.get();
+          const meta = idx.exists ? idx.data() : null;
+          if (meta && meta.installments) {
+            const paidCount = (Number(meta.paidCount) || 0) + 1;
+            await idxRef.set({ paidCount }, { merge: true });
+            if (meta.uid && meta.sessionId && meta.courseSlug) {
+              await db.collection('users').doc(meta.uid).collection('purchases').doc(meta.sessionId)
+                .set({ status: paidCount >= meta.installments ? 'paid_in_full' : 'active' }, { merge: true });
+            }
+            if (paidCount >= meta.installments) {
+              await idxRef.set({ installmentsComplete: true }, { merge: true });
+              try {
+                await stripe.subscriptions.update(String(subId), { cancel_at_period_end: true });
+              } catch (e) {
+                console.warn('[stripeWebhook] installment cancel_at_period_end failed:', e && e.message);
+              }
+            }
+          }
+        }
       } else if (event.type === 'customer.subscription.deleted') {
         const sub = event.data.object;
         const idx = await db.collection('stripeSubscriptions').doc(String(sub.id)).get();
         const meta = idx.exists ? idx.data() : (sub.metadata && sub.metadata.uid ? sub.metadata : null);
-        if (meta && meta.uid && meta.courseSlug) {
+        if (meta && meta.installmentsComplete === true) {
+          // A completed installment plan ending is not a cancellation —
+          // the buyer paid in full and keeps access.
+        } else if (meta && meta.uid && meta.courseSlug) {
           await db.collection('users').doc(meta.uid).set({
             enrolledCourseSlugs: admin.firestore.FieldValue.arrayRemove(meta.courseSlug)
           }, { merge: true });
@@ -4164,7 +4223,7 @@ exports.notifyProductInterest = onCall({ secrets: [sendgridKey] }, async (reques
 // ════════════════════════════════════════════════════════════════
 
 const OPN_COURSES = [
-  { slug: '1p-clc',              title: '1P Certified Leader Coach',        price: 497, modules: 7,  eyebrow: 'Certification', desc: 'Mindset, structure, and disciplined progress — one percent at a time.' },
+  { slug: '1p-clc',              title: '1P Certified Life Coach',          price: 3497, modules: 8, eyebrow: 'Certification · 16 Weeks', desc: 'Certified in 16 weeks: live weekly coaching, a certification exam, a reviewed session, and an A.L.I.G.N. Practitioner License.' },
   { slug: 'bundle-icant',        title: 'The Complete I Can\'t Experience', price: 197, modules: 8,  eyebrow: 'Best Value · Book + Course', desc: 'Book + Course together. The book gives you the map; the course gives you the journey.' },
   { slug: 'icant',               title: 'I Can\'t: The Course',             price: 197, modules: 8,  eyebrow: 'Self-paced', desc: 'Break the beliefs that have been running your life and build the ones that set you free.' },
   { slug: 'mindset-foundations', title: 'Mindset Foundations',              price: 197, modules: 5,  eyebrow: 'Self-paced', desc: 'Rewire how you relate to success, setbacks, and self.' },
@@ -4868,4 +4927,393 @@ exports.generateCourseLesson = onCall({ timeoutSeconds: 300 }, async (request) =
     throw new HttpsError('internal', 'AI lesson had no content — please try again.');
   }
   return { lesson };
+});
+
+// ════════════════════════════════════════════════════════════════
+// 1P Certification (Life Coach) — server-gated credentialing.
+//
+// The credential is a certification; the annual IP usage right is the
+// license. Everything that decides whether someone is certified lives
+// behind these callables and Admin-SDK-only records, because progress
+// and certificates under users/{uid} are self-writable by design:
+//   - examBank/{slug}/questions      admin-only (answers never client-readable)
+//   - users/{uid}/examAttempts       Admin SDK writes; member reads own
+//   - users/{uid}/coachingHours      member submits; server approves
+//   - users/{uid}/capstone           member submits URL; server reviews
+//   - certifications/{uid}_{slug}    Admin SDK writes; member reads own
+// ════════════════════════════════════════════════════════════════
+
+const CERT_CONFIG_DEFAULTS = {
+  passingScorePercent: 80,
+  maxExamAttempts: 3,
+  requiredHours: 25,          // minimum logged + approved practice coaching hours
+  examQuestionCount: 25,
+  renewalHours: 10,           // approved hours since last issuance/renewal
+  renewalCeCredits: 10        // approved CE credits since last issuance/renewal
+};
+
+async function loadCertConfig(db) {
+  try {
+    const snap = await db.collection('config').doc('certification').get();
+    return { ...CERT_CONFIG_DEFAULTS, ...(snap.exists ? snap.data() : {}) };
+  } catch (e) {
+    return { ...CERT_CONFIG_DEFAULTS };
+  }
+}
+
+// Same FNV-1a derivation as public/js/certificate.js so the printed sheet and
+// the server record always carry the same number.
+function certHash36(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36).toUpperCase().padStart(7, '0').slice(-7);
+}
+
+function certNumberFor(uid, slug) {
+  const part = String(slug || '').replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 5) || 'COURSE';
+  return `1P-${part}-${certHash36(`${uid || 'anon'}::${slug || ''}`)}`;
+}
+
+async function assertEnrolled(db, uid, slug) {
+  const snap = await db.collection('users').doc(uid).get();
+  const enrolled = (snap.exists && snap.data().enrolledCourseSlugs) || [];
+  if (!enrolled.includes(slug)) {
+    throw new HttpsError('permission-denied', 'You must be enrolled in this course.');
+  }
+}
+
+// startExam — begins (or resumes) a written exam attempt. Questions are
+// served without their answers; grading happens in submitExam.
+exports.startExam = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const slug = String((request.data && request.data.slug) || '').trim();
+  if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'startExam', max: 10, windowSec: 600 });
+  await assertEnrolled(db, uid, slug);
+  const cfg = await loadCertConfig(db);
+
+  const attemptsRef = db.collection('users').doc(uid).collection('examAttempts');
+  const prior = await attemptsRef.where('courseSlug', '==', slug).get();
+
+  // Resume an open attempt rather than burning a new one on a page refresh.
+  const open = prior.docs.find((d) => d.data().status === 'in-progress');
+  const finished = prior.docs.filter((d) => d.data().status === 'finished');
+  if (finished.some((d) => d.data().passed === true)) {
+    throw new HttpsError('already-exists', 'You have already passed this exam.');
+  }
+  if (!open && finished.length >= cfg.maxExamAttempts) {
+    throw new HttpsError('resource-exhausted',
+      'You have used all exam attempts. Contact your program admin for a reset.');
+  }
+
+  const bankSnap = await db.collection('examBank').doc(slug).collection('questions').get();
+  const bank = bankSnap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((q) => q.active !== false && q.prompt && Array.isArray(q.choices) && q.choices.length >= 2);
+  if (bank.length < 5) {
+    throw new HttpsError('failed-precondition', 'The exam isn\'t ready yet. Check back soon.');
+  }
+
+  let attemptId;
+  let questionIds;
+  if (open) {
+    attemptId = open.id;
+    questionIds = open.data().questionIds || [];
+  } else {
+    const shuffled = bank.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = crypto.randomInt(i + 1);
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    questionIds = shuffled.slice(0, Math.min(cfg.examQuestionCount, shuffled.length)).map((q) => q.id);
+    const ref = await attemptsRef.add({
+      courseSlug: slug,
+      status: 'in-progress',
+      questionIds,
+      startedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    attemptId = ref.id;
+  }
+
+  const byId = new Map(bank.map((q) => [q.id, q]));
+  const questions = questionIds
+    .filter((id) => byId.has(id))
+    .map((id) => ({ id, prompt: byId.get(id).prompt, choices: byId.get(id).choices }));
+  return {
+    attemptId,
+    questions,
+    attemptsUsed: finished.length,
+    attemptsAllowed: cfg.maxExamAttempts,
+    passingScorePercent: cfg.passingScorePercent
+  };
+});
+
+// submitExam — grades an in-progress attempt server-side.
+exports.submitExam = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const attemptId = String((request.data && request.data.attemptId) || '').trim();
+  const answers = (request.data && request.data.answers) || {};
+  if (!attemptId) throw new HttpsError('invalid-argument', 'attemptId is required.');
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'submitExam', max: 10, windowSec: 600 });
+
+  const attemptRef = db.collection('users').doc(uid).collection('examAttempts').doc(attemptId);
+  const attemptSnap = await attemptRef.get();
+  if (!attemptSnap.exists) throw new HttpsError('not-found', 'Unknown exam attempt.');
+  const attempt = attemptSnap.data();
+  if (attempt.status !== 'in-progress') {
+    throw new HttpsError('failed-precondition', 'This attempt has already been submitted.');
+  }
+  const slug = attempt.courseSlug;
+  const cfg = await loadCertConfig(db);
+
+  const bankSnap = await db.collection('examBank').doc(slug).collection('questions').get();
+  const byId = new Map(bankSnap.docs.map((d) => [d.id, d.data()]));
+  const ids = attempt.questionIds || [];
+  let correct = 0;
+  ids.forEach((qid) => {
+    const q = byId.get(qid);
+    if (q && Number(answers[qid]) === Number(q.correctIndex)) correct += 1;
+  });
+  const score = ids.length ? Math.round((correct / ids.length) * 100) : 0;
+  const passed = score >= cfg.passingScorePercent;
+
+  await attemptRef.set({
+    status: 'finished',
+    score,
+    passed,
+    finishedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  return { score, passed, correct, total: ids.length, passingScorePercent: cfg.passingScorePercent };
+});
+
+// reviewCoachingHours — admin approves or rejects a submitted hour-log entry.
+exports.reviewCoachingHours = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const uid = String((request.data && request.data.uid) || '').trim();
+  const entryId = String((request.data && request.data.entryId) || '').trim();
+  const decision = String((request.data && request.data.decision) || '').trim();
+  const note = String((request.data && request.data.note) || '').trim();
+  if (!uid || !entryId) throw new HttpsError('invalid-argument', 'uid and entryId are required.');
+  if (!['approved', 'rejected'].includes(decision)) {
+    throw new HttpsError('invalid-argument', 'decision must be approved or rejected.');
+  }
+  const ref = db.collection('users').doc(uid).collection('coachingHours').doc(entryId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Unknown hour-log entry.');
+  await ref.set({
+    status: decision,
+    reviewNote: note || null,
+    reviewedBy: request.auth.uid,
+    reviewedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true };
+});
+
+// reviewCapstone — admin scores a submitted recorded coaching session
+// against the published rubric and approves or returns it for another take.
+exports.reviewCapstone = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const uid = String((request.data && request.data.uid) || '').trim();
+  const docId = String((request.data && request.data.docId) || '').trim();
+  const decision = String((request.data && request.data.decision) || '').trim();
+  const feedback = String((request.data && request.data.feedback) || '').trim();
+  const scores = (request.data && request.data.scores) || {};
+  if (!uid || !docId) throw new HttpsError('invalid-argument', 'uid and docId are required.');
+  if (!['approved', 'revise'].includes(decision)) {
+    throw new HttpsError('invalid-argument', 'decision must be approved or revise.');
+  }
+  const clean = {};
+  ['presence', 'questions', 'structure', 'nonAdvising'].forEach((k) => {
+    const v = Number(scores[k]);
+    if (Number.isFinite(v)) clean[k] = Math.max(0, Math.min(5, v));
+  });
+  const ref = db.collection('users').doc(uid).collection('capstone').doc(docId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Unknown capstone submission.');
+  await ref.set({
+    status: decision,
+    rubricScores: clean,
+    feedback: feedback || null,
+    reviewedBy: request.auth.uid,
+    reviewedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true };
+});
+
+// listCertificationQueue — everything waiting on an admin: submitted hour
+// logs and capstone recordings, plus recent exam results for context.
+exports.listCertificationQueue = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const [hoursSnap, capsSnap] = await Promise.all([
+    db.collectionGroup('coachingHours').where('status', '==', 'submitted').limit(200).get(),
+    db.collectionGroup('capstone').where('status', '==', 'submitted').limit(100).get()
+  ]);
+  const uidOf = (ref) => ref.path.split('/')[1];
+  const uids = new Set();
+  const hours = hoursSnap.docs.map((d) => {
+    const uid = uidOf(d.ref);
+    uids.add(uid);
+    return { uid, entryId: d.id, ...d.data() };
+  });
+  const capstones = capsSnap.docs.map((d) => {
+    const uid = uidOf(d.ref);
+    uids.add(uid);
+    return { uid, docId: d.id, ...d.data() };
+  });
+  const names = {};
+  await Promise.all(Array.from(uids).map(async (uid) => {
+    try {
+      const u = await db.collection('users').doc(uid).get();
+      names[uid] = (u.exists && (u.data().displayName || u.data().email)) || uid;
+    } catch (e) { names[uid] = uid; }
+  }));
+  const clean = (rows) => rows.map((r) => {
+    const out = { ...r, userName: names[r.uid] || r.uid };
+    Object.keys(out).forEach((k) => {
+      if (out[k] && typeof out[k].toDate === 'function') out[k] = out[k].toDate().toISOString();
+    });
+    return out;
+  });
+  return { hours: clean(hours), capstones: clean(capstones) };
+});
+
+// getCertificationStatus — one call that tells a member (or an admin asking
+// about a member) exactly where they stand against every requirement.
+exports.getCertificationStatus = onCall(async (request) => {
+  const callerUid = request.auth && request.auth.uid;
+  if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = admin.firestore();
+  let uid = callerUid;
+  const askedUid = String((request.data && request.data.uid) || '').trim();
+  if (askedUid && askedUid !== callerUid) {
+    if (!(await isAdminCaller(db, request))) {
+      throw new HttpsError('permission-denied', 'Admin or owner role required.');
+    }
+    uid = askedUid;
+  }
+  const slug = String((request.data && request.data.slug) || '1p-clc').trim();
+  const cfg = await loadCertConfig(db);
+
+  const [hoursSnap, capsSnap, attemptsSnap, certSnap] = await Promise.all([
+    db.collection('users').doc(uid).collection('coachingHours').get(),
+    db.collection('users').doc(uid).collection('capstone').get(),
+    db.collection('users').doc(uid).collection('examAttempts').where('courseSlug', '==', slug).get(),
+    db.collection('certifications').doc(`${uid}_${slug}`).get()
+  ]);
+
+  let approvedMinutes = 0;
+  let pendingMinutes = 0;
+  hoursSnap.docs.forEach((d) => {
+    const e = d.data();
+    if (e.status === 'approved') approvedMinutes += Number(e.minutes) || 0;
+    else if (e.status === 'submitted') pendingMinutes += Number(e.minutes) || 0;
+  });
+  const capstoneApproved = capsSnap.docs.some((d) => d.data().status === 'approved');
+  const capstoneSubmitted = capsSnap.docs.some((d) => d.data().status === 'submitted');
+  const examPassed = attemptsSnap.docs.some((d) => d.data().passed === true);
+  const attemptsUsed = attemptsSnap.docs.filter((d) => d.data().status === 'finished').length;
+
+  return {
+    slug,
+    requiredHours: cfg.requiredHours,
+    approvedHours: Math.round((approvedMinutes / 60) * 10) / 10,
+    pendingHours: Math.round((pendingMinutes / 60) * 10) / 10,
+    hoursMet: approvedMinutes >= cfg.requiredHours * 60,
+    examPassed,
+    attemptsUsed,
+    attemptsAllowed: cfg.maxExamAttempts,
+    capstoneApproved,
+    capstoneSubmitted,
+    certified: certSnap.exists && certSnap.data().status === 'active',
+    certification: certSnap.exists ? {
+      certNumber: certSnap.data().certNumber,
+      track: certSnap.data().track,
+      issuedAt: certSnap.data().issuedAt && certSnap.data().issuedAt.toDate
+        ? certSnap.data().issuedAt.toDate().toISOString() : null,
+      licenseExpiresAt: certSnap.data().licenseExpiresAt && certSnap.data().licenseExpiresAt.toDate
+        ? certSnap.data().licenseExpiresAt.toDate().toISOString() : null,
+      status: certSnap.data().status
+    } : null
+  };
+});
+
+// issueCertification — the only path to the credential. Verifies every
+// requirement server-side, then writes the Admin-SDK-only record the
+// certificate page and (later) the coach license system key off.
+exports.issueCertification = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const uid = String((request.data && request.data.uid) || '').trim();
+  const slug = String((request.data && request.data.slug) || '1p-clc').trim();
+  if (!uid) throw new HttpsError('invalid-argument', 'uid is required.');
+  const cfg = await loadCertConfig(db);
+
+  await assertEnrolled(db, uid, slug);
+
+  const [hoursSnap, capsSnap, attemptsSnap, purchasesSnap] = await Promise.all([
+    db.collection('users').doc(uid).collection('coachingHours').where('status', '==', 'approved').get(),
+    db.collection('users').doc(uid).collection('capstone').where('status', '==', 'approved').get(),
+    db.collection('users').doc(uid).collection('examAttempts').where('courseSlug', '==', slug).get(),
+    db.collection('users').doc(uid).collection('purchases').get()
+  ]);
+
+  const approvedMinutes = hoursSnap.docs.reduce((sum, d) => sum + (Number(d.data().minutes) || 0), 0);
+  if (approvedMinutes < cfg.requiredHours * 60) {
+    throw new HttpsError('failed-precondition',
+      `Only ${Math.floor(approvedMinutes / 60)} of ${cfg.requiredHours} approved practice hours.`);
+  }
+  if (capsSnap.empty) {
+    throw new HttpsError('failed-precondition', 'No approved recorded-session review.');
+  }
+  if (!attemptsSnap.docs.some((d) => d.data().passed === true)) {
+    throw new HttpsError('failed-precondition', 'The written exam has not been passed.');
+  }
+  const pastDue = purchasesSnap.docs.some((d) =>
+    d.data().courseSlug === slug && d.data().status === 'past_due');
+  if (pastDue) {
+    throw new HttpsError('failed-precondition',
+      'A payment on this enrollment is past due. Resolve it before issuing.');
+  }
+
+  const issuedAt = admin.firestore.Timestamp.now();
+  const licenseExpiresAt = admin.firestore.Timestamp.fromMillis(
+    issuedAt.toMillis() + 365 * 24 * 60 * 60 * 1000);
+  const certRef = db.collection('certifications').doc(`${uid}_${slug}`);
+  const existing = await certRef.get();
+  if (existing.exists && existing.data().status === 'active') {
+    throw new HttpsError('already-exists', 'This certification has already been issued.');
+  }
+  await certRef.set({
+    uid,
+    slug,
+    track: 'life',
+    certNumber: certNumberFor(uid, slug),
+    issuedAt,
+    licenseExpiresAt,
+    status: 'active',
+    issuedBy: request.auth.uid
+  }, { merge: true });
+  await db.collection('users').doc(uid).set({
+    coachLevel: 'practitioner'
+  }, { merge: true });
+  return { ok: true, certNumber: certNumberFor(uid, slug) };
 });

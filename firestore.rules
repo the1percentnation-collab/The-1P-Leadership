@@ -127,7 +127,9 @@ service cloud.firestore {
                      && !('referralToken' in request.resource.data)
                      && !('referralCredited' in request.resource.data)
                      && !('invitedByToken' in request.resource.data)
-                     && !('invitedByUid' in request.resource.data));
+                     && !('invitedByUid' in request.resource.data)
+                     // Coach standing is granted by issueCertification (Admin SDK).
+                     && !('coachLevel' in request.resource.data));
       // On UPDATE the privilege fields must be byte-for-byte unchanged from the
       // existing doc. (Owner writes bypass; server writes use the Admin SDK.)
       allow update: if isOwner() || (isSelf(uid)
@@ -144,7 +146,9 @@ service cloud.firestore {
                      && request.resource.data.get('referralToken', '') == resource.data.get('referralToken', '')
                      && request.resource.data.get('referralCredited', false) == resource.data.get('referralCredited', false)
                      && request.resource.data.get('invitedByToken', '') == resource.data.get('invitedByToken', '')
-                     && request.resource.data.get('invitedByUid', '') == resource.data.get('invitedByUid', ''));
+                     && request.resource.data.get('invitedByUid', '') == resource.data.get('invitedByUid', '')
+                     // Coach standing is granted by issueCertification (Admin SDK).
+                     && request.resource.data.get('coachLevel', null) == resource.data.get('coachLevel', null));
       allow delete: if isOwner();
 
       // users/{uid}/progress/{moduleId} — STRICTLY private to the user (and owner).
@@ -152,9 +156,57 @@ service cloud.firestore {
         allow read, write: if isOwner() || isSelf(uid);
       }
 
-      // users/{uid}/capstone — same.
-      match /capstone/{docId=**} {
-        allow read, write: if isOwner() || isSelf(uid);
+      // users/{uid}/capstone — the recorded-session submission for
+      // certification. The member submits a link and can edit while it's
+      // still 'submitted'; the review verdict (status, rubricScores,
+      // feedback, reviewedBy/At) is written ONLY by the reviewCapstone
+      // callable (Admin SDK), because certification hangs off it.
+      match /capstone/{docId} {
+        allow read: if isOwner() || isSelf(uid);
+        allow create: if (isOwner() || isSelf(uid))
+                      && request.resource.data.get('status', '') == 'submitted'
+                      && !('rubricScores' in request.resource.data)
+                      && !('reviewedBy' in request.resource.data);
+        allow update: if isOwner() || (isSelf(uid)
+                      && resource.data.get('status', '') == 'submitted'
+                      && request.resource.data.get('status', '') == 'submitted'
+                      && !('rubricScores' in request.resource.data)
+                      && !('reviewedBy' in request.resource.data));
+        allow delete: if isOwner()
+                      || (isSelf(uid) && resource.data.get('status', '') == 'submitted');
+      }
+
+      // users/{uid}/coachingHours — the practice hour log behind the
+      // 25-hour certification requirement. Members submit entries and may
+      // edit or withdraw them while pending; approval (status flips to
+      // 'approved'/'rejected' with reviewedBy/At) happens ONLY through the
+      // reviewCoachingHours callable (Admin SDK). Nothing here is
+      // self-approvable, which is what makes the requirement real.
+      match /coachingHours/{entryId} {
+        allow read: if isOwner() || isSelf(uid);
+        allow create: if (isOwner() || isSelf(uid))
+                      && request.resource.data.get('status', '') == 'submitted'
+                      && request.resource.data.get('minutes', 0) is number
+                      && request.resource.data.get('minutes', 0) > 0
+                      && request.resource.data.get('minutes', 0) <= 600
+                      && !('reviewedBy' in request.resource.data);
+        allow update: if isOwner() || (isSelf(uid)
+                      && resource.data.get('status', '') == 'submitted'
+                      && request.resource.data.get('status', '') == 'submitted'
+                      && request.resource.data.get('minutes', 0) is number
+                      && request.resource.data.get('minutes', 0) > 0
+                      && request.resource.data.get('minutes', 0) <= 600
+                      && !('reviewedBy' in request.resource.data));
+        allow delete: if isOwner()
+                      || (isSelf(uid) && resource.data.get('status', '') == 'submitted');
+      }
+
+      // users/{uid}/examAttempts — written exam attempts, graded server-side
+      // (startExam / submitExam). Members read their own results; all writes
+      // go through the Admin SDK so scores can't be edited.
+      match /examAttempts/{attemptId} {
+        allow read: if isOwner() || isSelf(uid);
+        allow write: if false;
       }
 
       // users/{uid}/certificates/{courseSlug} — the record of a completed
@@ -719,6 +771,14 @@ service cloud.firestore {
         allow read: if isAnyAdmin() || isEnrolledIn(slug);
         allow create, update, delete: if isAnyAdmin();
       }
+
+      // Cohort configuration that must not be world-readable — today the
+      // live weekly call join link (courses/{slug}/private/cohort). The
+      // public cohort facts (dates, capacity) stay on the course doc.
+      match /private/{docId} {
+        allow read: if isAnyAdmin() || isEnrolledIn(slug);
+        allow create, update, delete: if isAnyAdmin();
+      }
     }
 
     // Products — generic pre-order / interest items (courses, books, services…).
@@ -900,18 +960,29 @@ service cloud.firestore {
              .hasOnly(['status', 'resolvedAt', 'resolution']);
       allow create, delete: if false;
     }
+
+    // ────────────────────────────────────────────────────────────────
+    // 1P Certification (Life Coach)
+    // ────────────────────────────────────────────────────────────────
+
+    // The credential record. Written ONLY by the issueCertification callable
+    // (Admin SDK); the certificate page and the coach license system key off
+    // it. Members read their own; admins read all (for the review console).
+    match /certifications/{certId} {
+      allow read: if isAnyAdmin()
+                  || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow write: if false;
+    }
+
+    // Written-exam question banks. Answers live here, so nothing is client-
+    // readable outside the admin console — startExam serves questions without
+    // their correctIndex and submitExam grades server-side.
+    match /examBank/{courseSlug} {
+      allow read, write: if isAnyAdmin();
+      match /questions/{questionId} {
+        allow read, write: if isAnyAdmin();
+      }
+    }
+
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

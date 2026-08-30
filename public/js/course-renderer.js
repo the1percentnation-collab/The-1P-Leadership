@@ -241,6 +241,20 @@ export async function mountFirestoreCourse(course, { startAt, includeDrafts = fa
     });
   }
 
+  // Course-specific player extras. The Life Coach certification course adds
+  // an ALIGN bar, an Hours Log tab, a Certification tab, and the live-call
+  // sidebar footer — all defined in clc-certification.js so this renderer
+  // stays generic.
+  let extras = null;
+  if (course.slug === '1p-clc') {
+    try {
+      extras = await (await import('./clc-certification.js')).clcPlayerExtras(course);
+      if (extras && Array.isArray(extras.tabs)) tabs.push(...extras.tabs);
+    } catch (e) {
+      console.warn('[course-renderer] course extras failed to load', e);
+    }
+  }
+
   mountCoursePlayer({
     container,
     courseTitle: String(course.short || course.title || '').toUpperCase(),
@@ -266,6 +280,8 @@ export async function mountFirestoreCourse(course, { startAt, includeDrafts = fa
     // draft-padded module list isn't the same course members will complete, so
     // preview never offers the certificate.
     certificateHref: includeDrafts ? null : certificateHref,
+    ...(extras && extras.moduleHeaderHtml ? { moduleHeaderHtml: extras.moduleHeaderHtml } : {}),
+    ...(extras && extras.sidebarFooterHtml ? { sidebarFooterHtml: extras.sidebarFooterHtml } : {}),
     startAt
   });
 }

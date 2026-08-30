@@ -40,8 +40,94 @@ const METHOD_PARAGRAPH =
 export const COURSES = [
   {
     slug: '1p-clc',
+    title: '1P Certified Life Coach',
+    short: 'Life Coach Certification',
+    subtitle: 'Certified in 16 weeks. A credential, a framework license, and a client-ready program to sell.',
+    status: 'coming-soon',
+    eyebrow: 'Certification \u00b7 16 Weeks',
+    category: 'Leadership & Coaching',
+    price: 3497,
+    priceLabel: '$3,497',
+    priceNote: 'Includes your first-year A.L.I.G.N. Practitioner License',
+    contentSource: 'firestore',
+    whatYoullLearn: [
+      'Coach real clients through the A.L.I.G.N. framework: Awareness, Leadership, Identity, Growth, Navigation.',
+      'Run coaching conversations with a repeatable session structure that creates real movement.',
+      'Build client engagements: discovery calls, packages, and a six-week client program you can deliver day one.',
+      'Log 25 real practice coaching hours and get certified on evidence, not attendance.',
+      'Pass a written certification exam and a reviewed, recorded coaching session scored against a published rubric.',
+      'Leave with the 1P Certified Life Coach credential and a license to deliver A.L.I.G.N. commercially.'
+    ],
+    requirements: [
+      'No prior coaching experience required. Come ready to practice, not just watch.',
+      'Four to five hours per week for sixteen weeks: live calls, module work, and real coaching practice.',
+      'A willingness to coach real people during the program. Your 25 practice hours are part of certification.'
+    ],
+    includes: [
+      'Eight modules mapped to the A.L.I.G.N. framework',
+      'Live weekly coaching call for twelve weeks',
+      'Four-week practicum: exam, recorded session review, certification',
+      'Coaching hour log with 25-hour certification requirement',
+      'Written certification exam and published session rubric',
+      'Certificate: 1P Certified Life Coach, with track designation',
+      'First-year A.L.I.G.N. Practitioner License included'
+    ],
+    description: [
+      'Certified in 16 weeks. Four to five hours per week. Live weekly coaching, a certification exam, ' +
+      'and a reviewed coaching session. You finish with a credential, a framework license, and a ' +
+      'client-ready program to sell.',
+      'This is a proprietary certification in the A.L.I.G.N. framework. You earn the credential once. ' +
+      'The practitioner license that comes with it is what lets you deliver A.L.I.G.N. commercially, ' +
+      'under The One Percent name, with client-facing products built for you.',
+      'The difference between a certification and a course is what it asks of you. Here that means all ' +
+      'eight modules, a written exam, one recorded coaching session reviewed against a published rubric, ' +
+      'and a minimum of 25 logged practice coaching hours. You get certified for coaching real people ' +
+      'through real change.'
+    ],
+    curriculum: [
+      {
+        title: 'Weeks 1\u20132 \u00b7 Awareness',
+        lessons: [
+          { t: 'Module 1: Foundations of 1P Coaching. What coaching is, ethics, and the non-advising stance', d: 'Week 1' },
+          { t: 'Module 2: The A.L.I.G.N. Framework. The full arc and the client journey map', d: 'Week 2' }
+        ]
+      },
+      {
+        title: 'Weeks 3\u20136 \u00b7 Leadership & Identity',
+        lessons: [
+          { t: 'Module 3: Leadership of Self and Session. Presence, listening, session structure', d: 'Weeks 3\u20134' },
+          { t: 'Module 4: Identity Work. Beliefs, story rewriting, values alignment', d: 'Weeks 5\u20136' }
+        ]
+      },
+      {
+        title: 'Weeks 7\u201310 \u00b7 Growth & Navigation',
+        lessons: [
+          { t: 'Module 5: Powerful Questions and Growth Plans. Question craft and goal architecture', d: 'Weeks 7\u20138' },
+          { t: 'Module 6: Navigation and Accountability. Execution systems and progress reviews', d: 'Weeks 9\u201310' }
+        ]
+      },
+      {
+        title: 'Weeks 11\u201312 \u00b7 Your Practice',
+        lessons: [
+          { t: 'Module 7: The Client Engagement. Discovery calls, packages, the six-week client program', d: 'Week 11' },
+          { t: 'Module 8: Practicum Preparation. Rubric walkthrough, recording requirements, hour log', d: 'Week 12' }
+        ]
+      },
+      {
+        title: 'Weeks 13\u201316 \u00b7 Practicum & Certification',
+        lessons: [
+          { t: 'Written certification exam', d: 'Week 13', kind: 'assessment' },
+          { t: 'Recorded coaching session, reviewed against the published rubric', d: 'Weeks 14\u201315', kind: 'assessment' },
+          { t: 'Hour log review and certification', d: 'Week 16' }
+        ]
+      }
+    ]
+  },
+  {
+    slug: '1p-clc-leader',
     title: '1P Certified Leader Coach',
     short: 'Leader Coach',
+    showOnSite: false,
     subtitle: 'Mindset, structure, and disciplined progress — one percent at a time.',
     status: 'coming-soon',
     eyebrow: 'Certification · 7 Modules',

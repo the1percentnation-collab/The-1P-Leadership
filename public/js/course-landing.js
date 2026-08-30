@@ -284,6 +284,22 @@ function purchaseCardHtml(course, { enrolled }) {
     ${course.priceNote ? `<div class="cl-price-note">${escapeHtml(course.priceNote)}</div>` : ''}
     ${!live && !isBundle ? `<div class="cl-soon-note">Coming soon — enrollment isn't open yet.</div>` : ''}`;
 
+  // The Life Coach certification offers fixed-count payment plans. Pay in
+  // full is the default; a plan can't be combined with a promo code, which
+  // createCheckoutSession also enforces server-side.
+  const planHtml = (!enrolled && live && course.slug === '1p-clc') ? `
+    <div class="cl-plan" id="cl-plan" style="display:flex;flex-direction:column;gap:6px;margin:10px 0 4px;font-size:13px;">
+      <label style="display:flex;gap:8px;align-items:center;cursor:pointer;">
+        <input type="radio" name="cl-plan" value="" checked> Pay in full
+      </label>
+      <label style="display:flex;gap:8px;align-items:center;cursor:pointer;">
+        <input type="radio" name="cl-plan" value="6x"> 6 payments of $697
+      </label>
+      <label style="display:flex;gap:8px;align-items:center;cursor:pointer;">
+        <input type="radio" name="cl-plan" value="10x"> 10 payments of $397
+      </label>
+    </div>` : '';
+
   return `
     <aside class="cl-buy" id="cl-buy">
       <div class="cl-buy-media">
@@ -292,6 +308,7 @@ function purchaseCardHtml(course, { enrolled }) {
       </div>
       <div class="cl-buy-body">
         ${priceHtml}
+        ${planHtml}
         ${cta}
         <div id="cl-cta-msg" class="cl-cta-msg"></div>
         <ul class="cl-buy-perks">
@@ -450,10 +467,13 @@ function bindEnroll(course) {
         await enrollInCourse(course.slug);
         location.assign(`/courses.html?course=${encodeURIComponent(course.slug)}`);
       } else {
+        const planInput = document.querySelector('input[name="cl-plan"]:checked');
+        const plan = planInput && planInput.value ? planInput.value : undefined;
         const res = await httpsCallable(functions, 'createCheckoutSession')({
           slug: course.slug,
+          plan,
           refCode: getRefCode() || undefined,
-          couponCode: appliedPromo || undefined
+          couponCode: plan ? undefined : (appliedPromo || undefined)
         });
         const data = res && res.data;
         if (data && data.enrolled) {

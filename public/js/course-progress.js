@@ -3,7 +3,7 @@
 //
 // Progress lives in three different places depending on how a course renders:
 //   contentSource === 'firestore' → users/{uid}/progress/{slug}__m{id}  (course-renderer.js)
-//   1p-clc                        → users/{uid}/progress/{id}           (store.js)
+//   1p-clc-leader                        → users/{uid}/progress/{id}           (store.js)
 //   icant                         → localStorage 'icant-course-v1'      (icant-course.js)
 // Anything that only needs "is this finished, and how far in are they" — the
 // roadmap, the certificate — should not have to know which. That is this module.
@@ -48,7 +48,7 @@ export async function loadCourseCompletion(course, { includeDrafts = false } = {
   let completed;
   if (course.contentSource === 'firestore') {
     completed = await firestoreCompleted(course.slug);
-  } else if (course.slug === '1p-clc') {
+  } else if (course.slug === '1p-clc-leader') {
     if (!store._loaded) { try { await store.load(); } catch (e) {} }
     completed = new Set(store.completed || []);
   } else if (course.slug === 'icant') {

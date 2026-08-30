@@ -101,18 +101,18 @@ function renderDailyQuote() {
 // Per-course progress helpers. Only 1P-CLC tracks real progress today; other
 // enrolled courses render as 0% until they ship real modules + store support.
 function courseProgressPct(course) {
-  if (course.slug === '1p-clc') {
+  if (course.slug === '1p-clc-leader') {
     return Math.round((store.completed.size / MODULES.length) * 100);
   }
   return 0;
 }
 
 function courseCompletedCount(course) {
-  return course.slug === '1p-clc' ? store.completed.size : 0;
+  return course.slug === '1p-clc-leader' ? store.completed.size : 0;
 }
 
 function courseTotalSteps(course) {
-  if (course.slug === '1p-clc') return MODULES.length;
+  if (course.slug === '1p-clc-leader') return MODULES.length;
   return 0;
 }
 
@@ -153,13 +153,13 @@ function renderContinueCard() {
   }
 
   // Pick the "primary" enrolled course — prefer 1P-CLC if enrolled, else first.
-  const primary = enrolled.find((c) => c.slug === '1p-clc') || enrolled[0];
+  const primary = enrolled.find((c) => c.slug === '1p-clc-leader') || enrolled[0];
   const pct = courseProgressPct(primary);
   const allDone = pct >= 100;
 
   let meta, title, sub, cta;
   let href = `/courses.html?course=${encodeURIComponent(primary.slug)}`;
-  if (primary.slug === '1p-clc') {
+  if (primary.slug === '1p-clc-leader') {
     const doneCount = store.completed.size;
     if (doneCount === 0) {
       // First time — surface module 0 as the starting point.
@@ -168,7 +168,7 @@ function renderContinueCard() {
       title = first.title;
       sub = first.subtitle || 'A seven-module path grounded in mindset, structure, and consistent action.';
       cta = `Begin Module ${first.id} →`;
-      href = `/courses.html?course=1p-clc&module=${first.id}`;
+      href = `/courses.html?course=1p-clc-leader&module=${first.id}`;
     } else if (allDone) {
       meta = 'You are certified';
       title = 'Revisit what matters';
@@ -181,7 +181,7 @@ function renderContinueCard() {
       title = next.title;
       sub = next.subtitle || 'Pick up where you left off. The work compounds when you stay consistent.';
       cta = `Resume Module ${next.id} →`;
-      href = `/courses.html?course=1p-clc&module=${next.id}`;
+      href = `/courses.html?course=1p-clc-leader&module=${next.id}`;
     }
   } else {
     meta = 'Continue your work';
@@ -213,7 +213,7 @@ function renderModuleMap() {
 
   // Only surface the map if the user is enrolled in 1P-CLC — the only course
   // with real module data today.
-  if (!isEnrolled('1p-clc')) {
+  if (!isEnrolled('1p-clc-leader')) {
     section.hidden = true;
     return;
   }
@@ -225,7 +225,7 @@ function renderModuleMap() {
     const isCurrent = m.id === currentId && !done;
     const state = done ? 'is-done' : (isCurrent ? 'is-current' : 'is-todo');
     const marker = done ? '✓' : String(m.id).padStart(2, '0');
-    const href = `/courses.html?course=1p-clc&module=${m.id}`;
+    const href = `/courses.html?course=1p-clc-leader&module=${m.id}`;
     return `
       <a class="hub-mm-cell ${state}" href="${href}" title="${escapeHtml(m.title)}">
         <span class="hub-mm-marker">${marker}</span>
