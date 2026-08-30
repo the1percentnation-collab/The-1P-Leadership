@@ -942,6 +942,23 @@ service cloud.firestore {
               && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
         allow write: if false;
       }
+
+      // The real Zoom join link lives out of public view. Attendees never
+      // read this doc directly: registerForEvent (Admin SDK) copies the link
+      // into their own users/{uid}/registrations mirror and returns it from
+      // the call, so the link is earned by registering, not scraped.
+      match /private/{docId} {
+        allow read, write: if isAnyAdmin();
+      }
+    }
+
+    // Site configuration. config/booking (the public booking page settings:
+    // scheduler URL, current webinar event id) is world-readable so public
+    // pages can render without auth; everything else under config
+    // (certification thresholds, lead routing) stays admin-only.
+    match /config/{docId} {
+      allow read: if docId == 'booking' || isAnyAdmin();
+      allow write: if isAnyAdmin();
     }
 
     // ────────────────────────────────────────────────────────────────

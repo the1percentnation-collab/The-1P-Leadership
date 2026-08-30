@@ -545,6 +545,7 @@
       <div class="success-icon">🎉</div>
       <div class="success-title">YOU'RE <span class="red">IN.</span></div>
       <p class="success-desc">Your spot is confirmed. Check your email for the session link and calendar invite. We'll see you live.</p>
+      <div id="success-join"></div>
       <div class="success-next">Check your inbox · Add to calendar · Join the community</div>
     </div>
 
@@ -950,6 +951,12 @@
     const success = document.getElementById('form-success');
     success.style.display = 'flex';
 
+    // Also register in the portal's events system (best-effort; the GHL
+    // flow above never depends on it). Defined in js/webinar-register.js.
+    try {
+      if (window.__1pWebinarRegistered) window.__1pWebinarRegistered({ name, email, phone });
+    } catch (err) { /* non-fatal */ }
+
     // Scroll into view
     success.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
@@ -1005,5 +1012,6 @@ const staggerObs = new IntersectionObserver((entries) => {
 }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
 document.querySelectorAll('.stagger-list').forEach(el => staggerObs.observe(el));
 </script>
+<script type="module" src="js/webinar-register.js"></script>
 </body>
 </html>

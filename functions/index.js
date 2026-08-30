@@ -1271,6 +1271,16 @@ exports.registerForEvent = onCall(async (request) => {
     console.warn('[registerForEvent] CRM upsert failed:', e && e.message);
   }
 
+  // Gated join link: the real Zoom URL lives in events/{id}/private/join
+  // (admin-only by rules). Registering is what earns it — it's returned from
+  // this call and, for members, stamped onto their registrations mirror so
+  // the events page and dashboard can show a Join button later.
+  let joinUrl = null;
+  try {
+    const joinSnap = await eventRef.collection('private').doc('join').get();
+    if (joinSnap.exists) joinUrl = joinSnap.data().joinUrl || null;
+  } catch (e) {}
+
   // Mirror to the member's account so they see it as "Registered".
   if (uid) {
     try {
@@ -1278,6 +1288,7 @@ exports.registerForEvent = onCall(async (request) => {
         eventId,
         title: event.title || null,
         startsAt: event.startsAt || null,
+        ...(joinUrl ? { joinUrl } : {}),
         registeredAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
     } catch (e) {}
@@ -1286,7 +1297,7 @@ exports.registerForEvent = onCall(async (request) => {
   let registrationCount = null;
   try { registrationCount = (await eventRef.get()).data().registrationCount || null; } catch (e) {}
 
-  return { ok: true, alreadyRegistered, registrationCount };
+  return { ok: true, alreadyRegistered, registrationCount, joinUrl };
 });
 
 // ────────────────────────────────────────────────────────────────

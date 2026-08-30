@@ -25,7 +25,8 @@ const state = {
   companyId: null,
   events: [],
   filter: 'upcoming',
-  myRegistrations: new Set()
+  myRegistrations: new Set(),
+  myRegData: new Map()
 };
 
 function fmtEventDate(ts, endTs) {
@@ -69,8 +70,13 @@ function eventDateBadge(ts) {
 function eventCardHtml(e) {
   const canEdit = state.role === 'owner' || (state.role === 'admin');
   const badge = eventDateBadge(e.startsAt);
-  const linkBtn = e.link
-    ? `<a class="btn btn-primary c-event-cta" href="${escapeHtml(e.link)}" target="_blank" rel="noopener">Join event →</a>`
+  // Join button priority: the link this member earned by registering (copied
+  // onto their registrations mirror by registerForEvent), then the event's
+  // public link (legacy events created before join links were gated).
+  const myReg = state.myRegData && state.myRegData.get(e.id);
+  const joinHref = (myReg && myReg.joinUrl) || e.link || null;
+  const linkBtn = joinHref
+    ? `<a class="btn btn-primary c-event-cta" href="${escapeHtml(joinHref)}" target="_blank" rel="noopener">Join event →</a>`
     : '';
   const shareBtn = canEdit && state.companyId
     ? `<button class="c-event-ctl" data-share="${escapeHtml(e.id)}" title="Share to CRM" aria-label="Share to CRM">↗</button>`
@@ -282,8 +288,11 @@ function openEventModal(prefill = null) {
         <label class="c-invite-label" for="c-ev-host">Host name</label>
         <input id="c-ev-host" class="c-ch-input" type="text" maxlength="60" value="${escapeHtml(prefill ? (prefill.hostName || '') : (state.me ? state.me.displayName || '' : ''))}">
 
-        <label class="c-invite-label" for="c-ev-link">Join link (optional)</label>
-        <input id="c-ev-link" class="c-ch-input" type="url" placeholder="https://zoom.us/j/...">
+        <label class="c-invite-label" for="c-ev-link">Public link (optional, visible to everyone)</label>
+        <input id="c-ev-link" class="c-ch-input" type="url" placeholder="Info page or replay URL">
+
+        <label class="c-invite-label" for="c-ev-joinurl">Zoom join link (revealed only after registration)</label>
+        <input id="c-ev-joinurl" class="c-ch-input" type="url" placeholder="https://zoom.us/j/...">
 
         <label class="c-invite-label" for="c-ev-loc">Location (optional)</label>
         <input id="c-ev-loc" class="c-ch-input" type="text" maxlength="120" placeholder="Online · Zoom · 123 Main St">
@@ -448,6 +457,12 @@ function openEventModal(prefill = null) {
 
   if (prefill) {
     $('c-ev-link').value = prefill.link || '';
+    getDoc(doc(db, 'events', prefill.id, 'private', 'join'))
+      .then((snap) => {
+        const el = $('c-ev-joinurl');
+        if (el && snap.exists()) el.value = snap.data().joinUrl || '';
+      })
+      .catch(() => {});
     $('c-ev-loc').value = prefill.location || '';
     $('c-ev-desc').value = prefill.description || '';
   }
@@ -544,6 +559,11 @@ function openEventModal(prefill = null) {
         ...(state.companyId ? { companyId: state.companyId } : {}),
         updatedAt: serverTimestamp(),
         ...(prefill ? {} : { createdAt: serverTimestamp(), createdByUid: state.me ? state.me.uid : null })
+      }, { merge: true });
+      const joinUrl = $('c-ev-joinurl') ? $('c-ev-joinurl').value.trim() : '';
+      await setDoc(doc(db, 'events', id, 'private', 'join'), {
+        joinUrl: joinUrl || null,
+        updatedAt: serverTimestamp()
       }, { merge: true });
       close();
       await loadEvents();
@@ -714,7 +734,8 @@ function openRegisterModal(event) {
     btn.textContent = 'Registering…';
     try {
       const call = httpsCallable(functions, 'registerForEvent');
-      await call({ eventId: event.id, name, email, phone, address, notes });
+      const res = await call({ eventId: event.id, name, email, phone, address, notes });
+      const earnedJoinUrl = res && res.data && res.data.joinUrl;
       // GA4 conversion event — completed event registration.
       if (window.gtag) {
         window.gtag('event', 'event_registration', {
@@ -724,13 +745,21 @@ function openRegisterModal(event) {
         });
       }
       // Reflect locally.
-      if (state.me) state.myRegistrations.add(event.id);
+      if (state.me) {
+        state.myRegistrations.add(event.id);
+        state.myRegData.set(event.id, { joinUrl: earnedJoinUrl || null });
+      }
       const ev = state.events.find((x) => x.id === event.id);
       if (ev) ev.registrationCount = Number(ev.registrationCount || 0) + 1;
-      okEl.textContent = "You're registered! See you there.";
+      if (earnedJoinUrl) {
+        okEl.innerHTML = 'You\'re registered! <a href="' + escapeHtml(earnedJoinUrl)
+          + '" target="_blank" rel="noopener">Here is your join link →</a>';
+      } else {
+        okEl.textContent = "You're registered! See you there.";
+      }
       okEl.style.display = 'block';
       btn.textContent = 'Registered ✓';
-      setTimeout(() => { close(); renderList(); }, 1400);
+      setTimeout(() => { close(); renderList(); }, earnedJoinUrl ? 4000 : 1400);
     } catch (err) {
       btn.disabled = false;
       btn.textContent = 'Register';
@@ -856,10 +885,14 @@ function renderPublicHeader() {
 
 async function loadMyRegistrations() {
   state.myRegistrations = new Set();
+  state.myRegData = new Map();
   if (!state.me) return;
   try {
     const snap = await getDocs(collection(db, 'users', state.me.uid, 'registrations'));
-    snap.docs.forEach((d) => state.myRegistrations.add(d.id));
+    snap.docs.forEach((d) => {
+      state.myRegistrations.add(d.id);
+      state.myRegData.set(d.id, d.data() || {});
+    });
   } catch (e) {
     console.warn('[events] my registrations load failed', e);
   }
