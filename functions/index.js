@@ -1322,6 +1322,24 @@ async function resolveAcademyCompanyId(db) {
   return null;
 }
 
+// Source-based lead routing. config/leadRouting maps a lead source key to a
+// company id (e.g. { "financial-services": "<partner company id>" }) so
+// partner verticals get their leads in their own CRM tenant. Anything
+// unmapped falls through to the academy company.
+async function resolveCompanyForSource(db, sourceKey) {
+  if (sourceKey) {
+    try {
+      const snap = await db.collection('config').doc('leadRouting').get();
+      const cid = snap.exists ? snap.data()[sourceKey] : null;
+      if (cid) {
+        const company = await db.collection('companies').doc(cid).get();
+        if (company.exists) return cid;
+      }
+    } catch (e) { console.warn('[resolveCompanyForSource]', e && e.message); }
+  }
+  return resolveAcademyCompanyId(db);
+}
+
 // Find-or-create a contact by email, merge fields, and return its ref.
 async function upsertCrmContact(db, companyId, { name, email, phone, address, companyName, source, tags }) {
   const colRef = db.collection('companies').doc(companyId).collection('contacts');
@@ -5601,4 +5619,65 @@ exports.createRenewalCheckout = onCall(async (request) => {
     cancel_url: `${APP_BASE_URL}/affiliate.html`
   });
   return { ok: true, url: session.url };
+});
+
+// ════════════════════════════════════════════════════════════════
+// Financial services — co-branded lead capture (Phase 3).
+//
+// The founder's insurance and securities licenses are in progress, NOT
+// held, so nothing here transacts or makes an offer: bookkeeping leads go
+// to the bookkeeping partner's CRM company (config/leadRouting), and the
+// insurance / investment waitlists stay with the academy. Keep it that
+// way until the licenses are in hand.
+// ════════════════════════════════════════════════════════════════
+
+const FIN_SERVICES = {
+  'bookkeeping': { label: 'Bookkeeping', tags: ['Financial Services', 'Bookkeeping'], routeKey: 'financial-services' },
+  'insurance-waitlist': { label: 'Insurance planning waitlist', tags: ['Financial Services', 'Insurance Waitlist'], routeKey: null },
+  'investments-waitlist': { label: 'Investment planning waitlist', tags: ['Financial Services', 'Investments Waitlist'], routeKey: null }
+};
+
+exports.registerServiceInterest = onCall(async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  const serviceKey = (data.service || '').toString().trim();
+  const service = FIN_SERVICES[serviceKey];
+  if (!service) throw new HttpsError('invalid-argument', 'Unknown service.');
+
+  const name = (data.name || '').toString().trim().slice(0, 120);
+  const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
+  const phone = (data.phone || '').toString().trim().slice(0, 40) || null;
+  const businessName = (data.businessName || '').toString().trim().slice(0, 120) || null;
+  const notes = (data.notes || '').toString().trim().slice(0, 500) || null;
+  const consent = !!data.consent;
+  if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
+
+  await rateLimitCaller(db, request, { action: 'registerServiceInterest', max: 10, windowSec: 600 });
+
+  const FV = admin.firestore.FieldValue;
+  const companyId = await resolveCompanyForSource(db, service.routeKey);
+  if (!companyId) throw new HttpsError('internal', 'Lead routing is not configured yet.');
+
+  const tags = service.tags.slice();
+  if (consent) tags.push('Opt-In: Calls/SMS/Email');
+  const ref = await upsertCrmContact(db, companyId, {
+    name: name || null, email, phone,
+    companyName: businessName,
+    source: 'Financial Services', tags
+  });
+  if (consent) {
+    await ref.set({
+      marketingConsent: true, marketingConsentAt: FV.serverTimestamp(),
+      marketingConsentText: `Opted in via financial services form (${service.label})`
+    }, { merge: true });
+  }
+  await ref.collection('activities').add({
+    type: 'service_interest',
+    description: `${service.label} inquiry${notes ? ': ' + notes.slice(0, 120) : ''}`,
+    actorUid: 'system', actorName: 'Financial services form',
+    createdAt: FV.serverTimestamp(),
+    meta: { service: serviceKey, notes }
+  });
+
+  return { ok: true, service: serviceKey };
 });

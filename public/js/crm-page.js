@@ -6,6 +6,7 @@ import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { renderCrmShell } from './crm-shell.js';
 import { collection, getDocs, query, where, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.js';
 import {
   STAGES, STAGE_IDS, SOURCES, stageMeta,
   listContacts, createContact, changeStage, listCompanyAdmins,
@@ -448,11 +449,13 @@ async function resolveCompanyId(uid, info) {
   let companyId = new URLSearchParams(location.search).get('companyId') || info.companyId || null;
   if (!companyId && info.isAdmin) {
     try {
-      const q = query(collection(db, 'companies'), where('adminUids', 'array-contains', uid), limit(1));
-      const snap = await getDocs(q);
-      if (!snap.empty) companyId = snap.docs[0].id;
+      // Multi-company aware: honors ?companyId=, remembers the last pick,
+      // and never silently lands an admin of two companies in the wrong one.
+      const resolved = await resolveCrmCompany(uid);
+      if (resolved.companyId) companyId = resolved.companyId;
     } catch (e) {}
   }
+  if (companyId) mountCrmCompanySwitcher(uid, companyId);
   return companyId;
 }
 

@@ -9,6 +9,7 @@ import {
   collection, doc, getDoc, getDocs, query, where, setDoc, deleteDoc, serverTimestamp, limit
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
+import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -249,11 +250,13 @@ async function main() {
   // If admin has no companyId but there's a company where their uid is in adminUids, try that.
   if (!companyId && info.isAdmin) {
     try {
-      const q = query(collection(db, 'companies'), where('adminUids', 'array-contains', u.uid), limit(1));
-      const snap = await getDocs(q);
-      if (!snap.empty) companyId = snap.docs[0].id;
+      // Multi-company aware: honors ?companyId=, remembers the last pick,
+      // and never silently lands an admin of two companies in the wrong one.
+      const resolved = await resolveCrmCompany(u.uid);
+      if (resolved.companyId) companyId = resolved.companyId;
     } catch (e) {}
   }
+  if (companyId) mountCrmCompanySwitcher(u.uid, companyId);
 
   if (!companyId) {
     gate('You are not an admin of any company yet. Ask the owner to create your company or visit /owner.html if you are the owner.');

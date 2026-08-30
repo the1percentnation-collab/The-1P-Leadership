@@ -6,6 +6,7 @@ import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { renderCrmShell } from './crm-shell.js';
 import { collection, getDocs, query, where, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.js';
 import {
   ensureDefaultPipeline, listOpportunities, listTasks, listContacts,
   escapeHtml, fmtMoney, fmtDate, toDate
@@ -39,11 +40,13 @@ async function main() {
   let companyId = new URLSearchParams(location.search).get('companyId') || info.companyId || null;
   if (!companyId && info.isAdmin) {
     try {
-      const q = query(collection(db, 'companies'), where('adminUids', 'array-contains', u.uid), limit(1));
-      const snap = await getDocs(q);
-      if (!snap.empty) companyId = snap.docs[0].id;
+      // Multi-company aware: honors ?companyId=, remembers the last pick,
+      // and never silently lands an admin of two companies in the wrong one.
+      const resolved = await resolveCrmCompany(u.uid);
+      if (resolved.companyId) companyId = resolved.companyId;
     } catch (e) {}
   }
+  if (companyId) mountCrmCompanySwitcher(u.uid, companyId);
   if (!companyId) {
     content.innerHTML = `<div class="card"><div class="auth-error">You are not an admin of any company yet. Use /owner.html.</div></div>`;
     return;
