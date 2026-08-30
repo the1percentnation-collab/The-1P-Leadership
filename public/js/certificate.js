@@ -113,7 +113,9 @@ export function certificateSheetHtml({
   dateLabel,
   certNumber,
   signer = CERT_SIGNER,
-  style = DEFAULT_CERT_STYLE
+  style = DEFAULT_CERT_STYLE,
+  trackLabel = '',
+  licenseLine = ''
 } = {}) {
   return `
     <div class="cert-sheet is-${esc(normalizeCertStyle(style))}" id="cert-sheet">
@@ -140,8 +142,10 @@ export function certificateSheetHtml({
 
             <div class="cert-lead">has successfully completed</div>
             <div class="cert-course">${esc(courseTitle || 'The Course')}</div>
+            ${trackLabel ? `<div class="cert-ruled">${esc(trackLabel)}</div>` : ''}
 
             <p class="cert-body">${esc(CERT_BODY)}</p>
+            ${licenseLine ? `<p class="cert-body" style="margin-top:0.4em;">${esc(licenseLine)}</p>` : ''}
 
             <div class="cert-foot">
               <div class="cert-foot-col">

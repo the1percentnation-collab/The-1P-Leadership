@@ -2,6 +2,7 @@
 // interest list, or join the general early-access list. No login required.
 
 import { firebaseReady, auth, functions } from './firebase.js';
+import { getRefCode } from './referral.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import {
   listVisibleProducts, registerInterest, joinEarlyAccess, escapeHtml, fmtMoney
@@ -120,6 +121,7 @@ async function buyProduct(btn) {
     const promo = new URLSearchParams(location.search).get('promo');
     const res = await httpsCallable(functions, 'createCheckoutSession')({
       productId: id,
+      refCode: getRefCode() || undefined,
       couponCode: promo ? promo.trim().toUpperCase() : undefined
     });
     const url = res && res.data && res.data.url;

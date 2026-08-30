@@ -21,7 +21,7 @@ import { uploadCourseFile, deleteCourseFile, formatBytes } from './course-upload
 const $ = (id) => document.getElementById(id);
 
 // Slugs whose lesson content is rendered from code (modules.js / icant-course.js).
-export const CODE_CONTENT_SLUGS = new Set(['1p-clc', 'icant']);
+export const CODE_CONTENT_SLUGS = new Set(['1p-clc-leader', 'icant']);
 
 function escapeHtml(s) {
   if (s == null) return '';

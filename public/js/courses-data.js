@@ -109,7 +109,7 @@ export function priceInfo(course) {
 // Code-rendered courses keep their module lists in JS. Anything else reads
 // `courses/{slug}/modules`.
 const CODE_MODULE_META = {
-  '1p-clc': async () => (await import('./modules.js')).MODULES,
+  '1p-clc-leader': async () => (await import('./modules.js')).MODULES,
   'icant': async () => (await import('./icant-course.js')).MODULES
 };
 

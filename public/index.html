@@ -2292,6 +2292,7 @@
           <a href="#impact">Purpose Pathways</a>
           <a href="#impact">Leadership Ascension</a>
           <a href="/matrix.html">The Social Media Matrix</a>
+          <a href="/course.html?course=1p-clc">Life Coach Certification</a>
           <a href="#courses">Course Library</a>
         </div>
       </div>
@@ -2300,6 +2301,9 @@
         <div class="footer-col-title">Resources</div>
         <div class="footer-col-links stagger-list">
           <a href="/goal-planning.html">Goal Planner</a>
+          <a href="/book-a-call.html">Book a Call</a>
+          <a href="/coaches.html">Find a Certified Coach</a>
+          <a href="/financial-services.html">Financial Services</a>
           <a href="/webinar.html">Live Webinars</a>
           <a href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">I Can't — Book</a>
           <a href="https://community.theonepercentnation.com/communities/groups/one-percent-nation/home?invite=69c883b5aef1c33276cae240" target="_blank" rel="noopener">Join Community</a>
@@ -2816,7 +2820,11 @@ setInterval(() => {
 function submitNewsletter() {
   const email = document.getElementById('nl-email').value.trim();
   if (!email || !email.includes('@')) { alert('Please enter a valid email address.'); return; }
-  // Integrate with your email marketing system (HighLevel, Mailchimp, etc.)
+  // Captured in the portal CRM (js/newsletter-lead.js). Best-effort: the
+  // visitor sees the welcome either way; a failed call is logged, not shown.
+  try {
+    if (window.__1pNewsletterLead) window.__1pNewsletterLead({ email });
+  } catch (err) { /* non-fatal */ }
   alert('Welcome to the Nation! Check your inbox for a confirmation email.');
   document.getElementById('nl-email').value = '';
 }
@@ -2872,5 +2880,6 @@ function submitNewsletter() {
   initHomeCourses();
 </script>
 <script src="/js/consent-banner.js" defer></script>
+<script type="module" src="js/newsletter-lead.js"></script>
 </body>
 </html>

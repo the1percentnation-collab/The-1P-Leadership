@@ -152,7 +152,30 @@ async function main() {
   } else {
     const { done, total, pct, isComplete } = await loadCourseCompletion(course);
 
-    if (!isComplete) {
+    // The Life Coach certification is issued server-side (issueCertification)
+    // after the exam, session review, and 25 approved hours — module
+    // completion alone never unlocks this sheet. The record is Admin-SDK-only,
+    // so reading it IS the proof.
+    let serverCert = null;
+    if (course.slug === '1p-clc') {
+      const uid = currentUser() ? currentUser().uid : '';
+      try {
+        const certSnap = await getDoc(doc(db, 'certifications', `${uid}_${course.slug}`));
+        if (certSnap.exists() && certSnap.data().status === 'active') {
+          serverCert = certSnap.data();
+        }
+      } catch (e) { /* treated as not certified */ }
+      if (!serverCert) {
+        panel(messageHtml({
+          title: 'Certification not issued yet',
+          body: 'The 1P Certified Life Coach credential is issued after you complete all modules, pass the written exam, have your recorded session approved, and log 25 approved practice hours. Track your progress on the Certification tab inside the course.',
+          actions: `<a class="btn btn-primary" href="/courses.html?course=${encodeURIComponent(course.slug)}">Open the course →</a>`
+        }));
+        return;
+      }
+    }
+
+    if (!isComplete && !serverCert) {
       const left = Math.max(total - done, 0);
       panel(messageHtml({
         title: 'Certificate not earned yet',
@@ -166,17 +189,33 @@ async function main() {
       let profile = null;
       try { if (uid) profile = await getUserProfile(uid); } catch (e) {}
       const name = memberName(profile, currentUser());
-      const certNumber = certificateNumber(uid, course.slug);
+      const certNumber = serverCert && serverCert.certNumber
+        ? serverCert.certNumber
+        : certificateNumber(uid, course.slug);
       const { date, style } = await certRecord(uid, course, name, certNumber);
+      const issuedDate = serverCert && serverCert.issuedAt && typeof serverCert.issuedAt.toDate === 'function'
+        ? serverCert.issuedAt.toDate()
+        : date;
+      const licenseExpiry = serverCert && serverCert.licenseExpiresAt && typeof serverCert.licenseExpiresAt.toDate === 'function'
+        ? serverCert.licenseExpiresAt.toDate()
+        : null;
+      const trackLabel = serverCert
+        ? `${serverCert.track === 'life' ? 'Life Coaching Track' : 'Leadership Track'}`
+        : '';
+      const licenseLine = licenseExpiry
+        ? `A.L.I.G.N. Practitioner License valid through ${formatCertDate(licenseExpiry)}.`
+        : '';
 
       panel(
         certificateSheetHtml({
           name,
           courseTitle: course.title,
-          dateLabel: formatCertDate(date),
+          dateLabel: formatCertDate(issuedDate),
           certNumber,
           signer: CERT_SIGNER,
-          style
+          style,
+          trackLabel,
+          licenseLine
         }) +
         certStylePickerHtml(style) +
         actionsHtml(course) +

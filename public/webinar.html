@@ -545,6 +545,7 @@
       <div class="success-icon">🎉</div>
       <div class="success-title">YOU'RE <span class="red">IN.</span></div>
       <p class="success-desc">Your spot is confirmed. Check your email for the session link and calendar invite. We'll see you live.</p>
+      <div id="success-join"></div>
       <div class="success-next">Check your inbox · Add to calendar · Join the community</div>
     </div>
 
@@ -766,11 +767,10 @@
   // true, and on a brand built around integrity a fabricated one is
   // not worth the conversions it buys.
   //
-  // The registration form on this page posts straight to
-  // GoHighLevel, so there is no live count available here yet. The
-  // meter is hidden until this page is moved onto the class signup
-  // pipeline used by /matrix, which tracks real registrations in
-  // Firestore. Until then it shows nothing rather than a fiction.
+  // Registrations now land in the portal's events system, so a real
+  // count exists on the event doc (registrationCount) once
+  // config/booking.webinarEventId is set. The meter stays hidden until
+  // it is wired to that real number; nothing rather than a fiction.
   document.querySelector('.spots-row')?.remove();
 
   // Consent toggles
@@ -922,27 +922,23 @@
     btn.disabled = true;
     btnText.textContent = 'Securing your spot...';
 
-    // Submit to GoHighLevel
+    // Submit to the portal (Firestore + CRM). This is the only destination
+    // now, so a failure re-enables the form instead of losing the lead.
+    // The hook lives in js/webinar-register.js: it captures the lead, then
+    // registers the signup for the webinar event to get the Zoom join link.
     try {
-      const formData = new FormData();
-      formData.append('full_name', name);
-      formData.append('phone', phone);
-      formData.append('email', email);
-      formData.append('state', state);
-      formData.append('city', city);
-      formData.append('inspire', inspire);
-      formData.append('holdback', holdback);
-      formData.append('reset', reset);
-      formData.append('question', question);
-      formData.append('source', source);
-
-      await fetch('https://api.leadconnectorhq.com/widget/form/2RRVTzt8PJABfOAPd84Z', {
-        method: 'POST',
-        mode: 'no-cors',
-        body: formData
+      if (!window.__1pSubmitWebinarLead) throw new Error('Form is still loading. Please try again.');
+      await window.__1pSubmitWebinarLead({
+        name, email, phone,
+        fields: { state, city, inspire, holdback, reset, question, source },
+        consent: document.getElementById('c1')?.classList.contains('checked')
+          || document.getElementById('c2')?.classList.contains('checked') || false
       });
-    } catch(err) {
-      // no-cors means we can't read the response; proceed to success
+    } catch (err) {
+      btn.disabled = false;
+      btnText.textContent = 'Claim My Spot Today';
+      alert((err && err.message) || 'Could not submit. Please check your connection and try again.');
+      return;
     }
 
     // Show success
@@ -1005,5 +1001,6 @@ const staggerObs = new IntersectionObserver((entries) => {
 }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
 document.querySelectorAll('.stagger-list').forEach(el => staggerObs.observe(el));
 </script>
+<script type="module" src="js/webinar-register.js"></script>
 </body>
 </html>

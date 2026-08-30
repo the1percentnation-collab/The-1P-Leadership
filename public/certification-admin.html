@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Certification | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+  <div class="console-shell">
+    <div class="console-topbar">
+      <div class="console-topbar-left">
+        <a class="console-brand" href="/dashboard.html" aria-label="The One Percent Academy">
+          <img src="/assets/academy-logo.png" alt="" class="console-brand-mark">
+        </a>
+        <a class="back-to-main" href="https://the1pnation.com">&larr; Main Site</a>
+      </div>
+      <div class="user-chip" id="user-chip"></div>
+    </div>
+    <div class="console-body">
+      <div id="gate-msg"></div>
+      <div id="panel" style="display:none;">
+
+        <div class="card">
+          <h2>Practice hours awaiting review</h2>
+          <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+            Members log practice coaching sessions inside the course. Approve real
+            sessions; certification requires 25 approved hours.
+          </p>
+          <table class="data-table">
+            <thead>
+              <tr><th>Member</th><th>Date</th><th>Client</th><th>Length</th><th>Notes</th><th></th></tr>
+            </thead>
+            <tbody id="hours-body"></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <h2>Recorded sessions awaiting review</h2>
+          <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+            Score each recording 0 to 5 against the four rubric criteria, then
+            approve it or return it for another take.
+          </p>
+          <div id="capstones-body"></div>
+        </div>
+
+        <div class="card">
+          <h2>CE credits awaiting review</h2>
+          <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+            Continuing education entries submitted by licensed coaches. Approved
+            CE counts toward their annual renewal requirement.
+          </p>
+          <table class="data-table">
+            <thead>
+              <tr><th>Coach</th><th>What they completed</th><th>Credits</th><th></th></tr>
+            </thead>
+            <tbody id="ce-body"></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <h2>Issue a certification</h2>
+          <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+            Look a member up to see where they stand against every requirement.
+            The Issue button only succeeds when the server confirms all four:
+            modules, exam, reviewed session, and approved hours.
+          </p>
+          <form class="inline-form" id="lookup-form" style="flex-wrap:wrap;">
+            <div class="field" style="min-width:280px;"><label for="lookup-uid">Member UID</label><input id="lookup-uid" type="text" required placeholder="From the Admin roster"></div>
+            <button class="btn btn-primary" type="submit">Check status</button>
+          </form>
+          <div id="status-result" style="margin-top:14px;"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/certification-admin.js"></script>
+</body>
+</html>

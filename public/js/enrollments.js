@@ -54,13 +54,13 @@ export async function loadEnrollments({ force = false } = {}) {
 
     // Legacy migration: users with 1P-CLC progress from before enrollments
     // shipped get enrolled server-side (the callable verifies the progress).
-    if (!_cache.has('1p-clc')) {
+    if (!_cache.has('1p-clc-leader')) {
       try {
         const progQ = query(collection(db, 'users', uid, 'progress'), limit(1));
         const progSnap = await getDocs(progQ);
         if (!progSnap.empty) {
-          await httpsCallable(functions, 'enrollFree')({ slug: '1p-clc', legacy: true });
-          _cache.add('1p-clc');
+          await httpsCallable(functions, 'enrollFree')({ slug: '1p-clc-leader', legacy: true });
+          _cache.add('1p-clc-leader');
           lsSet(_cache);
         }
       } catch (e) { /* best-effort; ignore */ }

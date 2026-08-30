@@ -461,7 +461,7 @@ async function migrateClcCore() {
       if (p) prompts.push(p);
       ta.remove();
     });
-    await setDoc(doc(db, 'courses', '1p-clc', 'modules', String(m.id)), {
+    await setDoc(doc(db, 'courses', '1p-clc-leader', 'modules', String(m.id)), {
       id: m.id,
       title: m.title,
       subtitle: m.subtitle || null,
@@ -479,7 +479,7 @@ async function migrateClcCore() {
     }, { merge: true });
     wrote++;
   }
-  await setDoc(doc(db, 'courses', '1p-clc'), {
+  await setDoc(doc(db, 'courses', '1p-clc-leader'), {
     contentSource: 'firestore',
     moduleCount: MODULES.length,
     updatedAt: serverTimestamp(),
@@ -490,7 +490,7 @@ async function migrateClcCore() {
 
 const MIGRATABLE = {
   icant: { label: '"I Can’t: The Course"', run: migrateIcantCore },
-  '1p-clc': { label: '"1P Certified Leader Coach"', run: migrateClcCore }
+  '1p-clc-leader': { label: '"1P Certified Leader Coach"', run: migrateClcCore }
 };
 
 // Banner-triggered migration from inside the builder: migrate, then reopen the

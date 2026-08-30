@@ -64,7 +64,7 @@ function moduleParam() {
 function sidebarEntryHtml(course, { isActive, completedCount = 0 } = {}) {
   const href = `/courses.html?course=${encodeURIComponent(course.slug)}`;
   let chip = '';
-  if (course.slug === '1p-clc') {
+  if (course.slug === '1p-clc-leader') {
     const total = course.moduleCount || 7;
     const pct = Math.round((completedCount / total) * 100);
     chip = `<span class="course-entry-pct">${pct}%</span>`;
@@ -412,7 +412,7 @@ async function renderRoadmap(course, { preview = false } = {}) {
   const { modules, completed: completedSet } = await loadCourseCompletion(course, { includeDrafts: preview });
 
   let currentId = 0;
-  if (course.slug === '1p-clc') {
+  if (course.slug === '1p-clc-leader') {
     currentId = typeof store.currentModule === 'number' ? store.currentModule : 0;
   } else {
     currentId = modules.length ? modules[0].id : 0;

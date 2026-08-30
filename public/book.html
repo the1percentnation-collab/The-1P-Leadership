@@ -241,6 +241,11 @@
   <p class="hero-sub" id="hero-sub">Loading…</p>
 
   <div class="prog-switch" id="prog-switch"></div>
+
+  <p style="margin-top:18px; font-size:14px; color:var(--gray-400);">
+    Prefer to talk it through first?
+    <a href="/book-a-call.html" style="color:var(--red); font-weight:600; text-decoration:none;">Book a discovery call with Anthony →</a>
+  </p>
 </div>
 
 <!-- MAIN -->
@@ -507,14 +512,33 @@
     btn.disabled = true;
     btnText.textContent = 'Sending your request...';
 
+    // Submit to the portal (Firestore + CRM) — the site's own lead capture.
+    // On failure the form re-enables so the request is never silently lost.
     try {
       const fd = new FormData(this);
-      // Same public lead destination the site already uses (GoHighLevel / LeadConnector)
-      await fetch('https://api.leadconnectorhq.com/widget/form/2RRVTzt8PJABfOAPd84Z', {
-        method: 'POST', mode: 'no-cors', body: fd
+      if (!window.__1pSubmitBookingLead) throw new Error('The form is still loading. Please try again.');
+      await window.__1pSubmitBookingLead({
+        name,
+        email,
+        phone: (fd.get('phone') || '').toString().trim(),
+        fields: {
+          program: (fd.get('program') || '').toString(),
+          source: (fd.get('source') || '').toString(),
+          company: (fd.get('company') || '').toString().trim(),
+          role: (fd.get('role') || '').toString().trim(),
+          team_size: (fd.get('team_size') || '').toString().trim(),
+          format: (fd.get('format') || '').toString().trim(),
+          dates: (fd.get('dates') || '').toString().trim(),
+          budget: (fd.get('budget') || '').toString().trim(),
+          goals
+        },
+        consent: consentChecked
       });
     } catch (err) {
-      // no-cors: response is opaque, proceed to success
+      btn.disabled = false;
+      btnText.textContent = 'Send My Booking Request →';
+      alert((err && err.message) || 'Could not send your request. Please check your connection and try again.');
+      return;
     }
 
     try { gtag('event', 'generate_lead', { program: key, value: 1 }); } catch (e) {}
@@ -531,5 +555,6 @@
   }, { threshold: 0.1 });
   document.querySelectorAll('.fade-up').forEach(el => obs.observe(el));
 </script>
+<script type="module" src="js/book-lead.js"></script>
 </body>
 </html>

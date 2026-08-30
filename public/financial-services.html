@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Financial Services | The One Percent</title>
+  <meta name="description" content="Bookkeeping services through our partner firm, in partnership with The One Percent. Insurance and investment planning coming soon.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+  <div class="console-shell">
+    <div class="console-topbar">
+      <div class="console-topbar-left">
+        <a class="console-brand" href="/index.html" aria-label="The One Percent Academy">
+          <img src="/assets/academy-logo.png" alt="" class="console-brand-mark">
+        </a>
+        <a class="back-to-main" href="https://the1pnation.com">&larr; Main Site</a>
+      </div>
+      <div class="user-chip" id="user-chip"></div>
+    </div>
+    <div class="console-body">
+      <div style="max-width:860px; margin:0 auto;">
+
+        <div style="text-align:center; margin:28px 0 8px;">
+          <h1 style="font-family:'Bebas Neue',sans-serif; letter-spacing:1px; font-size:38px; margin-bottom:8px;">Financial Services</h1>
+          <p style="color:var(--gray-light); font-size:15px; max-width:620px; margin:0 auto;">
+            Aligned growth includes your money. The One Percent partners with
+            established professionals so the numbers behind your life and
+            business get the same intention as everything else you build.
+          </p>
+        </div>
+
+        <!-- Partner brand block. TODO Anthony: swap the placeholder name,
+             add the partner's logo, and their real blurb. The partner keeps
+             their own identity; 1P is the "in partnership with" line. -->
+        <div class="card" style="margin-top:24px;">
+          <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+            <div id="partner-logo" style="width:72px; height:72px; border-radius:12px; background:#1E1E1E; display:flex; align-items:center; justify-content:center; font-family:'Bebas Neue',sans-serif; font-size:26px; color:var(--gray-light);">
+              LOGO
+            </div>
+            <div style="flex:1; min-width:240px;">
+              <div style="font-size:20px; font-weight:600;" id="partner-name">[Partner Firm Name]</div>
+              <div style="font-size:12px; letter-spacing:1.5px; color:var(--red,#E60306); margin:3px 0 6px;">IN PARTNERSHIP WITH THE ONE PERCENT</div>
+              <p style="font-size:13px; color:var(--gray-light); margin:0;" id="partner-blurb">
+                An established bookkeeping firm serving entrepreneurs and small
+                businesses. Their books, your clarity, one partnership.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Bookkeeping</h2>
+          <p style="font-size:13px; color:var(--gray-light); margin-bottom:14px;">
+            Clean, current books through our partner firm: monthly bookkeeping,
+            reconciliation, and reporting you can actually make decisions from.
+            Tell us about your business and the team will reach out.
+          </p>
+          <form id="bk-form" class="inline-form" style="flex-wrap:wrap;">
+            <div class="field" style="min-width:180px;"><label for="bk-name">Your name</label><input id="bk-name" type="text" required maxlength="120"></div>
+            <div class="field" style="min-width:200px;"><label for="bk-email">Email</label><input id="bk-email" type="email" required maxlength="160"></div>
+            <div class="field" style="min-width:150px;"><label for="bk-phone">Phone (optional)</label><input id="bk-phone" type="tel" maxlength="40"></div>
+            <div class="field" style="min-width:180px;"><label for="bk-business">Business name (optional)</label><input id="bk-business" type="text" maxlength="120"></div>
+            <div class="field" style="flex:1; min-width:240px;"><label for="bk-notes">What do you need help with?</label><input id="bk-notes" type="text" maxlength="500" placeholder="Monthly books, catch-up, payroll..."></div>
+            <label style="display:flex; gap:8px; align-items:center; font-size:12px; color:var(--gray-light); width:100%;">
+              <input id="bk-consent" type="checkbox"> It is okay to contact me by email, phone, or text about this request.
+            </label>
+            <button class="btn btn-primary" type="submit">Request a conversation</button>
+            <span id="bk-msg" style="font-size:12px; color:var(--gray-mid); align-self:center;"></span>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Insurance and investment planning</h2>
+          <p style="font-size:13px; color:var(--gray-light); margin-bottom:14px;">
+            Coming soon. Licensing is in progress, so nothing is offered or sold
+            here today. Join the list and you will be the first to know when
+            these services open.
+          </p>
+          <form id="wl-form" class="inline-form" style="flex-wrap:wrap;">
+            <div class="field" style="min-width:180px;"><label for="wl-name">Your name</label><input id="wl-name" type="text" required maxlength="120"></div>
+            <div class="field" style="min-width:200px;"><label for="wl-email">Email</label><input id="wl-email" type="email" required maxlength="160"></div>
+            <div class="field" style="min-width:200px;">
+              <label for="wl-service">I'm interested in</label>
+              <select id="wl-service">
+                <option value="insurance-waitlist">Insurance planning</option>
+                <option value="investments-waitlist">Investment planning</option>
+              </select>
+            </div>
+            <label style="display:flex; gap:8px; align-items:center; font-size:12px; color:var(--gray-light); width:100%;">
+              <input id="wl-consent" type="checkbox"> It is okay to contact me by email about this list.
+            </label>
+            <button class="btn btn-primary" type="submit">Join the list</button>
+            <span id="wl-msg" style="font-size:12px; color:var(--gray-mid); align-self:center;"></span>
+          </form>
+          <p style="font-size:11px; color:var(--gray-mid); margin-top:12px;">
+            No products or services are being offered, recommended, or sold on
+            this page. Joining the list is a request for future information only.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/financial-services.js"></script>
+</body>
+</html>

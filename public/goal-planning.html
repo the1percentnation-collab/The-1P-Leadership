@@ -929,15 +929,17 @@ function generatePlan() {
   output.classList.add('visible');
   output.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  // Optionally submit to HL survey
+  // Capture the lead in the portal CRM (best-effort; the plan renders
+  // either way). Hook defined in js/goal-planner-lead.js.
   if (email) {
-    setTimeout(() => {
-      const link = document.createElement('a');
-      link.href = `https://api.leadconnectorhq.com/widget/survey/bhIS7gQCcguEIYLf2gE8?notrack=true&email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}`;
-      link.target = '_blank';
-      // Silently open in background — comment this out if you don't want auto-redirect
-      // link.click();
-    }, 3000);
+    try {
+      if (window.__1pGoalPlannerLead) {
+        window.__1pGoalPlannerLead({
+          name, email,
+          fields: { role, hours, barrier, win, income: String(income), focuses: focuses.join(', ') }
+        });
+      }
+    } catch (err) { /* non-fatal */ }
   }
 }
 
@@ -1006,5 +1008,6 @@ const staggerObs = new IntersectionObserver((entries) => {
 }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
 document.querySelectorAll('.stagger-list').forEach(el => staggerObs.observe(el));
 </script>
+<script type="module" src="js/goal-planner-lead.js"></script>
 </body>
 </html>
