@@ -2820,7 +2820,11 @@ setInterval(() => {
 function submitNewsletter() {
   const email = document.getElementById('nl-email').value.trim();
   if (!email || !email.includes('@')) { alert('Please enter a valid email address.'); return; }
-  // Integrate with your email marketing system (HighLevel, Mailchimp, etc.)
+  // Captured in the portal CRM (js/newsletter-lead.js). Best-effort: the
+  // visitor sees the welcome either way; a failed call is logged, not shown.
+  try {
+    if (window.__1pNewsletterLead) window.__1pNewsletterLead({ email });
+  } catch (err) { /* non-fatal */ }
   alert('Welcome to the Nation! Check your inbox for a confirmation email.');
   document.getElementById('nl-email').value = '';
 }
@@ -2876,5 +2880,6 @@ function submitNewsletter() {
   initHomeCourses();
 </script>
 <script src="/js/consent-banner.js" defer></script>
+<script type="module" src="js/newsletter-lead.js"></script>
 </body>
 </html>

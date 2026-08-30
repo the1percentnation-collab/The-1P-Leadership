@@ -1,12 +1,13 @@
-// Webinar page → portal events bridge.
+// Webinar page → portal lead capture + event registration.
 //
-// The webinar form keeps posting to GoHighLevel exactly as before; this hook
-// ALSO registers the signup into the portal's events system so the lead lands
-// in Firestore + the CRM and the attendee gets the gated Zoom join link on
-// the spot. Which event is "the webinar" comes from config/booking
-// .webinarEventId (set by Anthony after creating the event in /events).
-// Everything here is best-effort: if the config is unset or any call fails,
-// the GHL flow and the success screen are untouched.
+// GoHighLevel is gone: this is now the webinar form's only destination.
+// window.__1pSubmitWebinarLead is awaited by the inline form handler and
+// must succeed for the success screen to show:
+//   1. submitLeadForm captures the lead (CRM contact, tags, answers, consent)
+//   2. registerForEvent (best-effort) registers the signup for the webinar
+//      event named by config/booking.webinarEventId and returns the gated
+//      Zoom join link, which is shown on the confirmation screen.
+// Step 2 failing never fails the submit; the lead is already captured.
 
 import { db, functions, firebaseReady } from './firebase.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -20,8 +21,7 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-window.__1pWebinarRegistered = async ({ name, email, phone }) => {
-  if (!firebaseReady) return;
+async function registerForWebinarEvent({ name, email, phone }) {
   try {
     const cfg = await getDoc(doc(db, 'config', 'booking'));
     const eventId = cfg.exists() ? cfg.data().webinarEventId : null;
@@ -40,6 +40,17 @@ window.__1pWebinarRegistered = async ({ name, email, phone }) => {
         <div style="font-size:12px;opacity:0.7;margin-bottom:6px;">Save it. This is your door into the session.</div>`;
     }
   } catch (e) {
-    console.warn('[webinar] portal registration skipped:', e && e.message);
+    console.warn('[webinar] event registration skipped:', e && e.message);
   }
+}
+
+window.__1pSubmitWebinarLead = async ({ name, email, phone, fields, consent }) => {
+  if (!firebaseReady) {
+    throw new Error('The form is unavailable right now. Please refresh and try again.');
+  }
+  await httpsCallable(functions, 'submitLeadForm')({
+    formType: 'webinar', name, email, phone, fields, consent
+  });
+  // Lead is safe; the join link is a bonus on top.
+  registerForWebinarEvent({ name, email, phone });
 };

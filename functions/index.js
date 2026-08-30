@@ -5692,3 +5692,73 @@ exports.registerServiceInterest = onCall(async (request) => {
 
   return { ok: true, service: serviceKey };
 });
+
+// ════════════════════════════════════════════════════════════════
+// Native lead capture — replaces the GoHighLevel form posts.
+//
+// One public callable for the site's lead forms (webinar signup, speaking
+// request, goal planner). Upserts the contact into the academy CRM with a
+// per-form source and tags, records the full answers as an activity, and
+// stamps marketing consent. The webinar page separately registers the
+// signup for the webinar event (registerForEvent) to get its gated Zoom
+// join link; this callable is the lead-capture half.
+// ════════════════════════════════════════════════════════════════
+
+const LEAD_FORMS = {
+  'webinar': { source: 'Webinar', tags: ['Webinar Signup'] },
+  'speaking': { source: 'Speaking Request', tags: ['Speaking Request'] },
+  'goal-planner': { source: 'Goal Planner', tags: ['Goal Planner'] },
+  'newsletter': { source: 'Newsletter', tags: ['Newsletter'] }
+};
+
+exports.submitLeadForm = onCall(async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  const formType = (data.formType || '').toString().trim();
+  const form = LEAD_FORMS[formType];
+  if (!form) throw new HttpsError('invalid-argument', 'Unknown form.');
+
+  const name = (data.name || '').toString().trim().slice(0, 120);
+  const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
+  const phone = (data.phone || '').toString().trim().slice(0, 40) || null;
+  const consent = !!data.consent;
+  if (!name) throw new HttpsError('invalid-argument', 'Please enter your name.');
+  if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
+
+  await rateLimitCaller(db, request, { action: 'submitLeadForm', max: 10, windowSec: 600 });
+
+  // The form's answers, kept as a bounded map of short strings.
+  const fields = {};
+  const raw = data.fields && typeof data.fields === 'object' ? data.fields : {};
+  Object.keys(raw).slice(0, 20).forEach((k) => {
+    const key = String(k).slice(0, 40);
+    const val = String(raw[k] == null ? '' : raw[k]).trim().slice(0, 600);
+    if (val) fields[key] = val;
+  });
+
+  const FV = admin.firestore.FieldValue;
+  const companyId = await resolveAcademyCompanyId(db);
+  if (!companyId) throw new HttpsError('internal', 'Lead routing is not configured yet.');
+
+  const tags = form.tags.slice();
+  if (consent) tags.push('Opt-In: Calls/SMS/Email');
+  const ref = await upsertCrmContact(db, companyId, {
+    name, email, phone, source: form.source, tags
+  });
+  if (consent) {
+    await ref.set({
+      marketingConsent: true, marketingConsentAt: FV.serverTimestamp(),
+      marketingConsentText: `Opted in via ${form.source.toLowerCase()} form`
+    }, { merge: true });
+  }
+  const summary = Object.entries(fields).map(([k, v]) => `${k}: ${v}`).join(' · ');
+  await ref.collection('activities').add({
+    type: 'lead_form',
+    description: `${form.source} form${summary ? ': ' + summary.slice(0, 200) : ''}`,
+    actorUid: 'system', actorName: `${form.source} form`,
+    createdAt: FV.serverTimestamp(),
+    meta: { formType, fields }
+  });
+
+  return { ok: true };
+});
