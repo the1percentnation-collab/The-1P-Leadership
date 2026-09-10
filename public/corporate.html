@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-RBH536HRZE');
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Corporate &amp; Leadership Programs | The One Percent</title>
+  <meta name="description" content="Keynotes, intensives, retreats and twelve-month leadership programs for sales teams, leadership groups, and mission-driven organizations. Start with a free Alignment Audit.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap">
+  <link rel="canonical" href="https://the1pnation.com/corporate.html">
+  <link rel="icon" href="/assets/favicon.jpg">
+  <style>
+    :root {
+      --red: #E60306; --red-dark: #B30205; --red-glow: rgba(230,3,6,0.12);
+      --black: #080808; --black-2: #0F0F0F; --charcoal: #151515;
+      --surface: #1A1A1A; --surface-2: #222222;
+      --border: rgba(255,255,255,0.08); --border-red: rgba(230,3,6,0.3);
+      --white: #FFFFFF; --gray-400: #A0A0A0; --gray-600: #606060;
+      --gold: #C9A84C; --border-gold: rgba(201,168,76,0.35);
+      --font-display: 'Bebas Neue', Impact, sans-serif;
+      --font-body: 'Outfit', system-ui, sans-serif;
+      --font-mono: 'Space Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { background: var(--black); color: var(--white); font-family: var(--font-body); overflow-x: hidden; }
+    a { color: inherit; text-decoration: none; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--red); border-radius: 2px; }
+
+    body::before {
+      content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 256px;
+    }
+
+    .wrap { max-width: 1120px; margin: 0 auto; padding-inline: 28px; position: relative; z-index: 1; }
+    .tag {
+      display: inline-block; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.2em;
+      text-transform: uppercase; color: var(--red); border: 1px solid var(--border-red);
+      border-radius: 100px; padding: 6px 14px; background: var(--red-glow);
+    }
+    .eyebrow {
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.22em;
+      text-transform: uppercase; color: var(--gray-600); margin-bottom: 16px;
+    }
+    h2.sec {
+      font-family: var(--font-display); font-size: clamp(34px, 4.6vw, 60px);
+      letter-spacing: 0.02em; line-height: 0.98; margin-bottom: 18px;
+    }
+    h2.sec .red { color: var(--red); }
+    h2.sec .outline {
+      -webkit-text-stroke: 1px var(--gray-600); -webkit-text-fill-color: transparent;
+      color: transparent;
+    }
+    .lede { font-size: 17px; font-weight: 300; color: var(--gray-400); line-height: 1.7; max-width: 62ch; }
+    section { padding-block: 84px; }
+    section + section { border-top: 1px solid var(--border); }
+
+    /* NAV */
+    nav {
+      position: sticky; top: 0; z-index: 50; background: rgba(8,8,8,0.9);
+      backdrop-filter: blur(12px); border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 1120px; margin: 0 auto; padding: 0 28px; height: 68px;
+      display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 12px; }
+    .nav-logo img { height: 38px; width: 38px; object-fit: cover; border-radius: 6px; }
+    .nav-logo .l1 { display: block; font-family: var(--font-display); font-size: 17px; letter-spacing: 0.06em; line-height: 1; }
+    .nav-logo .l2 { display: block; font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.24em; color: var(--gray-600); }
+    .nav-cta {
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+      border: 1px solid var(--border-red); color: var(--white); background: var(--red-glow);
+      padding: 10px 18px; border-radius: 100px; transition: background 0.2s, border-color 0.2s;
+    }
+    .nav-cta:hover { background: var(--red); border-color: var(--red); }
+
+    /* HERO */
+    .hero { padding-block: 96px 78px; }
+    .hero h1 {
+      font-family: var(--font-display); font-size: clamp(52px, 9vw, 118px);
+      letter-spacing: 0.01em; line-height: 0.9; margin: 20px 0 26px;
+    }
+    .hero h1 .red { color: var(--red); }
+    .wedge {
+      border-left: 3px solid var(--red); padding: 4px 0 4px 22px; margin: 30px 0 34px;
+      max-width: 60ch;
+    }
+    .wedge p { font-size: clamp(19px, 2.2vw, 25px); font-weight: 300; line-height: 1.45; }
+    .wedge p strong { font-weight: 600; color: var(--white); }
+    .hero-actions { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 10px; padding: 17px 32px;
+      background: var(--red); color: var(--white); border-radius: 8px; border: none; cursor: pointer;
+      font-family: var(--font-body); font-size: 15px; font-weight: 700; letter-spacing: 0.03em;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .btn-primary:hover { background: var(--red-dark); transform: translateY(-2px); }
+    .btn-ghost {
+      display: inline-flex; align-items: center; gap: 10px; padding: 16px 30px;
+      border: 1px solid var(--border); border-radius: 8px; font-size: 15px; font-weight: 500;
+      transition: border-color 0.2s;
+    }
+    .btn-ghost:hover { border-color: rgba(255,255,255,0.28); }
+
+    /* THE ROOM */
+    .rooms { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin-top: 44px; }
+    .room {
+      background: var(--charcoal); border: 1px solid var(--border); border-radius: 10px;
+      padding: 26px 24px; border-top: 3px solid var(--red);
+    }
+    .room-who { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--red); margin-bottom: 12px; }
+    .room p { font-size: 15px; font-weight: 300; color: var(--gray-400); line-height: 1.65; }
+    .room p strong { color: var(--white); font-weight: 500; }
+
+    /* REFRAMES */
+    .reframes { margin-top: 40px; display: flex; flex-direction: column; gap: 2px; }
+    .reframe {
+      display: grid; grid-template-columns: 1fr 44px 1fr; align-items: center; gap: 0;
+      background: var(--charcoal); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    }
+    .reframe-from { padding: 18px 22px; color: var(--gray-600); font-size: 15px; text-decoration: line-through; text-decoration-color: rgba(255,255,255,0.2); }
+    .reframe-arrow { text-align: center; color: var(--red); font-size: 17px; }
+    .reframe-to { padding: 18px 22px; font-size: 15px; font-weight: 500; border-left: 1px solid var(--border); }
+
+    /* FIELDS */
+    .fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin-top: 44px; }
+    .field-card {
+      background: var(--charcoal); border: 1px solid var(--border); border-radius: 10px; padding: 28px 26px;
+      display: flex; flex-direction: column;
+    }
+    .field-name { font-family: var(--font-display); font-size: 26px; letter-spacing: 0.03em; margin-bottom: 6px; }
+    .field-for { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--red); margin-bottom: 20px; }
+    .mod { padding: 13px 0; border-top: 1px solid var(--border); }
+    .mod-t { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .mod-d { font-size: 13px; font-weight: 300; color: var(--gray-400); line-height: 1.55; }
+
+    /* FORMATS */
+    .formats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 2px; margin-top: 44px; }
+    .fmt {
+      background: var(--charcoal); border: 1px solid var(--border); border-radius: 10px; padding: 24px 22px;
+    }
+    .fmt-n { font-family: var(--font-display); font-size: 34px; color: var(--red); line-height: 1; margin-bottom: 12px; }
+    .fmt-t { font-family: var(--font-display); font-size: 22px; letter-spacing: 0.03em; margin-bottom: 4px; }
+    .fmt-len { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gray-600); margin-bottom: 12px; }
+    .fmt-d { font-size: 13.5px; font-weight: 300; color: var(--gray-400); line-height: 1.6; }
+
+    /* ANNUAL */
+    .tiers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin-top: 44px; align-items: start; }
+    .tier {
+      background: var(--charcoal); border: 1px solid var(--border); border-radius: 10px; padding: 30px 26px;
+    }
+    .tier.featured { border-color: var(--border-gold); background: linear-gradient(180deg, #14100701, var(--charcoal)); }
+    .tier-badge {
+      font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--gold); border: 1px solid var(--border-gold); border-radius: 100px; padding: 4px 10px;
+      display: inline-block; margin-bottom: 14px;
+    }
+    .tier-name { font-family: var(--font-display); font-size: 30px; letter-spacing: 0.03em; margin-bottom: 6px; }
+    .tier-for { font-size: 13px; font-weight: 300; color: var(--gray-400); margin-bottom: 20px; line-height: 1.55; }
+    .tier ul { list-style: none; display: flex; flex-direction: column; gap: 11px; }
+    .tier li { font-size: 14px; font-weight: 300; color: var(--gray-400); line-height: 1.55; display: flex; gap: 11px; }
+    .tier li::before { content: '›'; color: var(--red); font-weight: 700; flex-shrink: 0; }
+    .tier li strong { color: var(--white); font-weight: 500; }
+    .annual-line {
+      margin-top: 44px; padding: 28px 30px; background: var(--black-2);
+      border: 1px solid var(--border); border-left: 3px solid var(--red); border-radius: 10px;
+    }
+    .annual-line p { font-size: clamp(19px, 2.2vw, 26px); font-weight: 300; line-height: 1.45; }
+
+    /* MEASUREMENT */
+    .measure { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin-top: 40px; }
+    .m-card { background: var(--charcoal); border: 1px solid var(--border); border-radius: 10px; padding: 24px 22px; }
+    .m-f { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--red); margin-bottom: 12px; }
+    .m-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .m-list li { font-size: 13.5px; font-weight: 300; color: var(--gray-400); line-height: 1.5; }
+
+    /* AUDIT / CTA */
+    #audit { background: var(--black-2); }
+    .audit-grid { display: grid; grid-template-columns: 1fr 440px; gap: 60px; align-items: start; }
+    .steps { margin-top: 32px; display: flex; flex-direction: column; }
+    .step { display: grid; grid-template-columns: 62px 1fr; gap: 18px; padding: 20px 0; border-top: 1px solid var(--border); }
+    .step:last-of-type { border-bottom: 1px solid var(--border); }
+    .step-min { font-family: var(--font-display); font-size: 28px; color: var(--red); line-height: 1.1; }
+    .step-t { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .step-d { font-size: 13.5px; font-weight: 300; color: var(--gray-400); line-height: 1.6; }
+    .deliverable {
+      margin-top: 26px; padding: 22px 24px; border: 1px solid var(--border-gold);
+      border-radius: 10px; background: rgba(201,168,76,0.05);
+    }
+    .deliverable-l { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); margin-bottom: 8px; }
+    .deliverable p { font-size: 14.5px; font-weight: 300; color: var(--gray-400); line-height: 1.65; }
+    .deliverable p strong { color: var(--white); font-weight: 500; }
+
+    .form-card { background: var(--charcoal); border: 1px solid var(--border); border-radius: 12px; padding: 30px 28px; }
+    .form-title { font-family: var(--font-display); font-size: 28px; letter-spacing: 0.03em; margin-bottom: 6px; }
+    .form-sub { font-size: 13.5px; font-weight: 300; color: var(--gray-400); line-height: 1.6; margin-bottom: 24px; }
+    .fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .f { display: flex; flex-direction: column; gap: 6px; }
+    .f.full { grid-column: 1 / -1; }
+    .f label { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gray-600); }
+    .f input, .f select, .f textarea {
+      width: 100%; background: var(--black); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--white); padding: 12px 14px; font-family: var(--font-body); font-size: 14px;
+    }
+    .f textarea { resize: vertical; min-height: 88px; }
+    .f input:focus, .f select:focus, .f textarea:focus { outline: 2px solid var(--red); outline-offset: 1px; border-color: transparent; }
+    .consent { display: flex; gap: 11px; align-items: flex-start; margin-top: 18px; font-size: 12px; font-weight: 300; color: var(--gray-400); line-height: 1.5; cursor: pointer; }
+    .consent input { margin-top: 2px; accent-color: var(--red); flex-shrink: 0; }
+    .form-msg { margin-top: 14px; font-size: 13px; line-height: 1.5; min-height: 1px; }
+    .form-msg.err { color: #ff6b6d; }
+    .form-msg.ok { color: #46c98b; }
+    .form-card button { width: 100%; justify-content: center; margin-top: 20px; }
+    .form-success { display: none; text-align: center; padding: 20px 0; }
+    .form-success.show { display: block; }
+    .form-success .fs-mark { font-size: 40px; margin-bottom: 12px; }
+    .form-success .fs-t { font-family: var(--font-display); font-size: 30px; letter-spacing: 0.03em; margin-bottom: 10px; }
+    .form-success .fs-d { font-size: 14px; font-weight: 300; color: var(--gray-400); line-height: 1.65; }
+
+    footer { border-top: 1px solid var(--border); padding-block: 40px; text-align: center; position: relative; z-index: 1; }
+    .foot-logo { font-family: var(--font-display); font-size: 18px; letter-spacing: 0.08em; color: var(--gray-600); margin-bottom: 14px; }
+    .foot-links { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; }
+    .foot-links a { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gray-600); transition: color 0.2s; }
+    .foot-links a:hover { color: var(--white); }
+
+    @media (max-width: 940px) {
+      .audit-grid { grid-template-columns: 1fr; gap: 44px; }
+      .rooms, .fields, .tiers, .measure { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      .wrap { padding-inline: 20px; }
+      .nav-inner { padding: 0 20px; }
+      section { padding-block: 60px; }
+      .reframe { grid-template-columns: 1fr; }
+      .reframe-arrow { display: none; }
+      .reframe-to { border-left: none; border-top: 1px solid var(--border); }
+      .fgrid { grid-template-columns: 1fr; }
+      .step { grid-template-columns: 48px 1fr; gap: 12px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a class="nav-logo" href="/">
+      <img src="/assets/academy-logo.png" alt="">
+      <span>
+        <span class="l1">THE ONE PERCENT</span>
+        <span class="l2">NATION</span>
+      </span>
+    </a>
+    <a class="nav-cta" href="#audit">Book an Alignment Audit</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <span class="tag">Corporate &amp; Leadership Programs</span>
+    <h1>WE DON'T SELL<br>TRAINING.<br><span class="red">WE SELL ALIGNMENT.</span></h1>
+    <div class="wedge">
+      <p><strong>Your numbers are not the problem.</strong> The distance between your people and their reason for being here is the problem.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn-primary" href="#audit">Book a free Alignment Audit →</a>
+      <a class="btn-ghost" href="#annual">See the twelve-month program</a>
+    </div>
+  </div>
+</section>
+
+<!-- THE ROOM -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">The gap nobody measures</div>
+    <h2 class="sec">EVERY ROOM HAS<br><span class="outline">THESE THREE</span> <span class="red">PEOPLE.</span></h2>
+    <p class="lede">Performing on paper and disconnected underneath. That gap between the scoreboard and the person is where performance quietly leaks, and it is the one thing most corporate training never touches.</p>
+    <div class="rooms">
+      <div class="room">
+        <div class="room-who">The producer</div>
+        <p><strong>The rep hitting quota who is already interviewing elsewhere.</strong> Nothing is visibly wrong. The number is fine. They are gone in four months and the leading indicators were there the whole time.</p>
+      </div>
+      <div class="room">
+        <div class="room-who">The new manager</div>
+        <p><strong>Promoted for producing, never taught to lead.</strong> The thing that earned the promotion is now the thing holding the team back, and nobody has told them that out loud.</p>
+      </div>
+      <div class="room">
+        <div class="room-who">The mission leader</div>
+        <p><strong>Running on purpose and fumes.</strong> The person most committed to the work is the one most likely to break, because commitment was never the same thing as sustainability.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- REFRAMES -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">What you'll actually hear from us</div>
+    <h2 class="sec">SAME ROOM.<br><span class="red">DIFFERENT</span> <span class="outline">PROMISE.</span></h2>
+    <p class="lede">Most proposals in this category are written in a language that commits to nothing. Here is the translation.</p>
+    <div class="reframes">
+      <div class="reframe">
+        <div class="reframe-from">Enhance employee skill sets</div>
+        <div class="reframe-arrow">→</div>
+        <div class="reframe-to">Cut ramp time for new reps</div>
+      </div>
+      <div class="reframe">
+        <div class="reframe-from">Improve team engagement</div>
+        <div class="reframe-arrow">→</div>
+        <div class="reframe-to">Keep your top quartile from leaving</div>
+      </div>
+      <div class="reframe">
+        <div class="reframe-from">Leadership development</div>
+        <div class="reframe-arrow">→</div>
+        <div class="reframe-to">Turn producers into leaders without losing the producer</div>
+      </div>
+      <div class="reframe">
+        <div class="reframe-from">Motivational speaking</div>
+        <div class="reframe-arrow">→</div>
+        <div class="reframe-to">Give the room something to run Monday morning</div>
+      </div>
+      <div class="reframe">
+        <div class="reframe-from">Training workshop</div>
+        <div class="reframe-arrow">→</div>
+        <div class="reframe-to">A working session that ends with a written commitment</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FIELDS -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Built for your room, not a generic one</div>
+    <h2 class="sec">THREE FIELDS.<br><span class="red">ONE</span> <span class="outline">STANDARD.</span></h2>
+    <p class="lede">The delivery is the same discipline every time. The content is built for the people actually in the room.</p>
+    <div class="fields">
+
+      <div class="field-card">
+        <div class="field-name">Sales &amp; Revenue</div>
+        <div class="field-for">For CROs and VPs of Sales</div>
+        <div class="mod"><div class="mod-t">The Aligned Producer</div><div class="mod-d">Why high performers stall at exactly the moment they should be scaling, and what to rebuild first.</div></div>
+        <div class="mod"><div class="mod-t">Ramp</div><div class="mod-d">Cutting time from hire to first closed deal, and the manager behaviors that create the delay.</div></div>
+        <div class="mod"><div class="mod-t">The Retention Problem</div><div class="mod-d">Why your best people leave when nothing is visibly wrong, and the indicators that show up months before the resignation.</div></div>
+        <div class="mod"><div class="mod-t">Discipline Over Motivation</div><div class="mod-d">Pipeline as a daily practice instead of an end-of-quarter panic. The system that survives a bad month.</div></div>
+        <div class="mod"><div class="mod-t">Redefining the Number</div><div class="mod-d">Goals that stretch the team without burning it down, and what to measure when quota alone stops working.</div></div>
+      </div>
+
+      <div class="field-card">
+        <div class="field-name">Leadership &amp; Management</div>
+        <div class="field-for">For CEOs, COOs and Presidents</div>
+        <div class="mod"><div class="mod-t">The A.L.I.G.N. Leadership Framework</div><div class="mod-d">The core module. The full system, delivered as the foundation for every other leadership engagement.</div></div>
+        <div class="mod"><div class="mod-t">From Producer to Leader</div><div class="mod-d">The promotion trap. What has to be unlearned when the thing that got you promoted now holds your team back.</div></div>
+        <div class="mod"><div class="mod-t">Leading Without Borrowed Authority</div><div class="mod-d">Influence that does not depend on the title. Built for emerging leaders and matrixed organizations.</div></div>
+        <div class="mod"><div class="mod-t">The One Percent Standard</div><div class="mod-d">Building a culture where daily improvement is the norm rather than an initiative, and how standards get inherited.</div></div>
+        <div class="mod"><div class="mod-t">Decisions Under Pressure</div><div class="mod-d">Making the call with incomplete information, and what to do about the ones you got wrong in front of everyone.</div></div>
+      </div>
+
+      <div class="field-card">
+        <div class="field-name">Faith-Based &amp; Nonprofit</div>
+        <div class="field-for">For Executive Directors and Senior Pastors</div>
+        <div class="mod"><div class="mod-t">Purpose Without Burnout</div><div class="mod-d">The most requested session in this field. Why the people most committed to the mission break first, and how to build service that sustains.</div></div>
+        <div class="mod"><div class="mod-t">Serving From Full</div><div class="mod-d">Personal alignment for staff and volunteers who have run on empty long enough to think it is normal.</div></div>
+        <div class="mod"><div class="mod-t">Aligned Leadership for Boards and Staff</div><div class="mod-d">Getting governance and operations pointed at the same outcome. Built for board retreats.</div></div>
+        <div class="mod"><div class="mod-t">Stewardship and the Redefinition of Success</div><div class="mod-d">What success means when the scoreboard is not revenue, and how to measure it without losing the mission.</div></div>
+        <div class="mod"><div class="mod-t">Vision That Sticks</div><div class="mod-d">Casting vision people can still repeat ninety days later, and the cadence that keeps it alive.</div></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- FORMATS -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Five ways to bring it in</div>
+    <h2 class="sec">PICK THE ROOM.<br>WE'LL <span class="red">BUILD</span> <span class="outline">THE WORK.</span></h2>
+    <p class="lede">Any module can be delivered in any format. A module compressed into a keynote is one idea. The same module as a full-day intensive is one idea plus the systems to run it.</p>
+    <div class="formats">
+      <div class="fmt">
+        <div class="fmt-n">01</div>
+        <div class="fmt-t">KEYNOTE</div>
+        <div class="fmt-len">45–90 min · any size room</div>
+        <div class="fmt-d">One idea, delivered hard, with a single action the room can take immediately. Conference general sessions, kickoffs, all-hands, banquets.</div>
+      </div>
+      <div class="fmt">
+        <div class="fmt-n">02</div>
+        <div class="fmt-t">WORKSHOP</div>
+        <div class="fmt-len">2–4 hrs · 10–40 people</div>
+        <div class="fmt-d">Teaching plus applied work. Participants leave with something written, not something remembered.</div>
+      </div>
+      <div class="fmt">
+        <div class="fmt-n">03</div>
+        <div class="fmt-t">INTENSIVE</div>
+        <div class="fmt-len">Half or full day · 10–30 people</div>
+        <div class="fmt-d">Deep work on one outcome, built around the A.L.I.G.N. framework. This is where real behavior change starts.</div>
+      </div>
+      <div class="fmt">
+        <div class="fmt-n">04</div>
+        <div class="fmt-t">RETREAT</div>
+        <div class="fmt-len">2–3 days · 8–25 people</div>
+        <div class="fmt-d">Leadership teams, executive groups and board offsites. The deepest work we do in a single engagement.</div>
+      </div>
+      <div class="fmt">
+        <div class="fmt-n">05</div>
+        <div class="fmt-t">ANNUAL PROGRAM</div>
+        <div class="fmt-len">12 months</div>
+        <div class="fmt-d">The only format that compounds. A day changes what people think. A year changes what they do.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ANNUAL -->
+<section id="annual">
+  <div class="wrap">
+    <div class="eyebrow">The twelve-month program</div>
+    <h2 class="sec">A DAY CHANGES<br>WHAT PEOPLE <span class="outline">THINK.</span><br>A YEAR CHANGES<br>WHAT THEY <span class="red">DO.</span></h2>
+    <p class="lede">Single events are transactional. You bring someone in, the room feels good, and six weeks later nothing has changed. The annual program is the only version of this work that actually holds, because it is measured, reinforced, and built into the calendar.</p>
+    <div class="tiers">
+
+      <div class="tier">
+        <div class="tier-name">FOUNDATION</div>
+        <div class="tier-for">For a single team or department.</div>
+        <ul>
+          <li>Two on-site intensives, half day each</li>
+          <li>Four virtual reinforcement sessions</li>
+          <li>Quarterly one-on-one coaching for up to <strong>three leaders</strong></li>
+          <li>Participant workbooks for the full team</li>
+          <li>Baseline and end-of-year measurement report</li>
+        </ul>
+      </div>
+
+      <div class="tier featured">
+        <div class="tier-badge">Most organizations start here</div>
+        <div class="tier-name">CORE</div>
+        <div class="tier-for">For a full function or a mid-size organization.</div>
+        <ul>
+          <li>Four on-site intensives, <strong>one per quarter</strong></li>
+          <li>Monthly virtual reinforcement sessions</li>
+          <li>Monthly one-on-one coaching for up to <strong>five leaders</strong></li>
+          <li>Full measurement dashboard with quarterly reporting</li>
+          <li>On-call advisory access for the primary buyer</li>
+          <li>Participant workbooks and internal replay rights</li>
+        </ul>
+      </div>
+
+      <div class="tier">
+        <div class="tier-name">ENTERPRISE</div>
+        <div class="tier-for">For multi-team organizations and executive groups.</div>
+        <ul>
+          <li><strong>Everything in Core</strong></li>
+          <li>A two-day annual leadership retreat</li>
+          <li>One-on-one coaching for up to <strong>ten leaders</strong></li>
+          <li>A certified One Percent leader coach embedded for monthly team sessions</li>
+          <li>One custom module built to your language and KPIs</li>
+          <li>Internal licensing so you can run the material between visits</li>
+        </ul>
+      </div>
+
+    </div>
+    <div class="annual-line">
+      <p>Never an upgrade from a single event. It is the only version of the work that actually holds. <strong>If you want the second one, this is what it takes.</strong></p>
+    </div>
+  </div>
+</section>
+
+<!-- MEASUREMENT -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Proof, not applause</div>
+    <h2 class="sec">CONTRACTS RENEW ON<br><span class="red">EVIDENCE.</span> NOT ON HOW<br><span class="outline">THE ROOM FELT.</span></h2>
+    <p class="lede">Measurement is written into every engagement above the workshop level and reported quarterly inside the annual program. Baseline is captured before the first session. Comparison runs at ninety days and at twelve months.</p>
+    <div class="measure">
+      <div class="m-card">
+        <div class="m-f">Sales &amp; Revenue</div>
+        <ul class="m-list">
+          <li>Ramp time to first close</li>
+          <li>Quota attainment rate</li>
+          <li>Pipeline velocity</li>
+          <li>Voluntary rep turnover</li>
+        </ul>
+      </div>
+      <div class="m-card">
+        <div class="m-f">Leadership &amp; Management</div>
+        <ul class="m-list">
+          <li>Manager retention</li>
+          <li>Internal promotion rate</li>
+          <li>Turnover in the affected function</li>
+          <li>360 leadership scores</li>
+        </ul>
+      </div>
+      <div class="m-card">
+        <div class="m-f">Faith-Based &amp; Nonprofit</div>
+        <ul class="m-list">
+          <li>Staff and volunteer retention</li>
+          <li>Burnout indicators</li>
+          <li>Board engagement</li>
+          <li>Program continuity</li>
+        </ul>
+      </div>
+    </div>
+    <div class="annual-line">
+      <p>We build the retention number with your own inputs, in the room, using your compensation and turnover figures rather than an industry statistic. <strong>If this work keeps two people who would have left, it paid for itself.</strong></p>
+    </div>
+  </div>
+</section>
+
+<!-- AUDIT -->
+<section id="audit">
+  <div class="wrap">
+    <div class="audit-grid">
+      <div>
+        <div class="eyebrow">Start here · No cost</div>
+        <h2 class="sec">THE <span class="red">ALIGNMENT</span><br><span class="outline">AUDIT.</span></h2>
+        <p class="lede">Forty-five minutes with your team, structured and timed. Not a sales call, not an open-ended discovery chat. A working session that ends with a document naming what is actually misaligned in your organization.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-min">20<span style="font-size:13px;"> MIN</span></div>
+            <div>
+              <div class="step-t">Teaching</div>
+              <div class="step-d">One module, chosen for your field and the problem you named when you booked.</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-min">15<span style="font-size:13px;"> MIN</span></div>
+            <div>
+              <div class="step-t">Live diagnostic</div>
+              <div class="step-d">With your team in the room, not a survey sent around afterward.</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-min">10<span style="font-size:13px;"> MIN</span></div>
+            <div>
+              <div class="step-t">What surfaced</div>
+              <div class="step-d">Presented back to the room while everyone is still in it.</div>
+            </div>
+          </div>
+        </div>
+        <div class="deliverable">
+          <div class="deliverable-l">You leave with</div>
+          <p><strong>A one-page Alignment Scorecard, in your hands within 48 hours.</strong> It names where your team is misaligned, in writing. Whether you ever work with us is a separate conversation, and the scorecard is yours either way.</p>
+        </div>
+      </div>
+
+      <div class="form-card">
+        <div class="form-success" id="audit-success">
+          <div class="fs-mark">✓</div>
+          <div class="fs-t">REQUEST <span style="color:var(--red);">RECEIVED.</span></div>
+          <div class="fs-d">Anthony will be in touch within one business day to schedule your session and confirm which module fits your room.</div>
+        </div>
+
+        <form id="audit-form" novalidate>
+          <div class="form-title">BOOK YOUR AUDIT</div>
+          <div class="form-sub">Tell us about the room. We'll come back with a time and the module we'd run.</div>
+          <div class="fgrid">
+            <div class="f full">
+              <label for="a-name">Your name</label>
+              <input id="a-name" type="text" autocomplete="name" maxlength="120" required>
+            </div>
+            <div class="f">
+              <label for="a-email">Work email</label>
+              <input id="a-email" type="email" autocomplete="email" maxlength="160" required>
+            </div>
+            <div class="f">
+              <label for="a-phone">Phone (optional)</label>
+              <input id="a-phone" type="tel" autocomplete="tel" maxlength="40">
+            </div>
+            <div class="f">
+              <label for="a-org">Organization</label>
+              <input id="a-org" type="text" autocomplete="organization" maxlength="120">
+            </div>
+            <div class="f">
+              <label for="a-role">Your role</label>
+              <input id="a-role" type="text" maxlength="120" placeholder="e.g. VP of Sales">
+            </div>
+            <div class="f">
+              <label for="a-field">Which fits you</label>
+              <select id="a-field">
+                <option value="">Select one</option>
+                <option>Sales &amp; Revenue</option>
+                <option>Leadership &amp; Management</option>
+                <option>Faith-Based &amp; Nonprofit</option>
+                <option>Not sure yet</option>
+              </select>
+            </div>
+            <div class="f">
+              <label for="a-size">Team size</label>
+              <select id="a-size">
+                <option value="">Select one</option>
+                <option>Under 10</option>
+                <option>10–40</option>
+                <option>40–150</option>
+                <option>150+</option>
+              </select>
+            </div>
+            <div class="f full">
+              <label for="a-problem">What's actually going on?</label>
+              <textarea id="a-problem" maxlength="600" placeholder="The turnover, the ramp time, the team that stopped talking. Be specific, it shapes the session."></textarea>
+            </div>
+          </div>
+          <label class="consent">
+            <input type="checkbox" id="a-consent">
+            <span>I agree to be contacted about this request by email, phone or text.</span>
+          </label>
+          <div class="form-msg" id="audit-msg" role="status" aria-live="polite"></div>
+          <button class="btn-primary" type="submit" id="audit-submit">Request my Alignment Audit →</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="foot-logo">THE ONE PERCENT NATION</div>
+  <div class="foot-links">
+    <a href="/">Home</a>
+    <a href="/courses.html">Courses</a>
+    <a href="/book.html">Book an Experience</a>
+    <a href="/coaches.html">Find a Coach</a>
+    <a href="/privacy.html">Privacy</a>
+    <a href="/terms.html">Terms</a>
+  </div>
+</footer>
+
+<script type="module" src="/js/corporate.js"></script>
+</body>
+</html>
