@@ -17,7 +17,7 @@ import {
   doc, getDoc, addDoc, collection, getDocs, query, orderBy, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
-import { ALIGN } from './icant-course.js';
+import { ALIGN } from './align.js';
 import { escPlayer as esc } from './course-player.js';
 
 const CLC_SLUG = '1p-clc';
