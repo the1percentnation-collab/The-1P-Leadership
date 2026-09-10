@@ -664,10 +664,14 @@
       </div>
 
       <div class="offer-cta">
-        <div style="background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.3);border-radius:8px;padding:16px 20px;text-align:center;">
-          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:var(--gold);margin-bottom:6px;">Coming Soon</div>
-          <div style="font-size:13px;color:var(--gray-400);line-height:1.5;">Secure checkout is being set up. Enrollment opens shortly — check back soon.</div>
+        <!-- Swapped for a live Enroll button by js/bundle-page.js once the bundle is live. -->
+        <div id="bundle-cta">
+          <div style="background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.3);border-radius:8px;padding:16px 20px;text-align:center;">
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:var(--gold);margin-bottom:6px;">Coming Soon</div>
+            <div style="font-size:13px;color:var(--gray-400);line-height:1.5;">Secure checkout is being set up. Enrollment opens shortly — check back soon.</div>
+          </div>
         </div>
+        <div id="bundle-cta-msg" style="font-size:12px;color:var(--red);line-height:1.5;" hidden></div>
         <a class="btn-book" href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">Just want the book? Get it on Amazon →</a>
         <div class="offer-guarantee">
           <span class="offer-guarantee-icon">📦</span>
@@ -696,7 +700,7 @@
   <h2>Ready to Break <span class="gold">Every Belief</span><br>That's Held You Back?</h2>
   <p>Stop reading about change. Start building it. The complete I Can't experience — one price, lifetime access, zero excuses.</p>
   <div class="bottom-cta-btns">
-    <span class="btn-primary-lg" style="opacity:0.5;cursor:not-allowed;">Enrollment Coming Soon</span>
+    <span class="btn-primary-lg" id="bundle-cta-bottom" style="opacity:0.5;cursor:not-allowed;">Enrollment Coming Soon</span>
     <a class="btn-ghost-lg" href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">Get the Book First →</a>
   </div>
 </div>
@@ -712,6 +716,7 @@
   </div>
 </footer>
 
+<script type="module" src="/js/bundle-page.js"></script>
 <script>
   // FAQ accordion
   document.querySelectorAll('.faq-question').forEach(btn => {

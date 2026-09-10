@@ -300,8 +300,13 @@ export const COURSES = [
     category: 'Mindset & Personal Growth',
     price: 197,
     priceLabel: '$197',
-    priceNote: 'Paperback shipped to you · lifetime access',
-    shipsBook: true,
+    priceNote: 'Included in The Complete I Can\'t Experience',
+    // Sold only through the bundle: hidden from the library and the homepage
+    // for people who don't own it, and checkout refuses the slug directly.
+    // Members enrolled through the bundle open it here as normal.
+    sellable: false,
+    showOnSite: false,
+    bundleHref: '/bundle.html',
     whatYoullLearn: ICANT_OUTCOMES,
     requirements: ICANT_REQUIREMENTS,
     includes: [

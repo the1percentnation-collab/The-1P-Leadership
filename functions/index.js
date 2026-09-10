@@ -3208,19 +3208,23 @@ exports.validateCoupon = onCall(async (request) => {
 // enrolls the buyer in the course itself (bundle-icant has no lessons of its
 // own). Firestore `courses/{slug}.shipsBook` / `.enrollsAlso` override these
 // defaults so the owner can change them without a deploy.
+// `sellable: false` means the course can only be reached through a bundle:
+// checkout refuses it directly. The I Can't course is sold only as
+// The Complete I Can't Experience (bundle-icant), which ships the paperback.
 const COURSE_FULFILLMENT = {
-  'bundle-icant': { shipsBook: true, enrollsAlso: ['icant'] },
-  'icant':        { shipsBook: true, enrollsAlso: [] }
+  'bundle-icant': { shipsBook: true,  enrollsAlso: ['icant'], sellable: true },
+  'icant':        { shipsBook: false, enrollsAlso: [],        sellable: false }
 };
 const SHIPPED_BOOK_NAME = 'I Can\'t: Is Not A Strategy (paperback)';
 
 function courseFulfillment(slug, course) {
-  const d = COURSE_FULFILLMENT[slug] || { shipsBook: false, enrollsAlso: [] };
+  const d = COURSE_FULFILLMENT[slug] || { shipsBook: false, enrollsAlso: [], sellable: true };
   const shipsBook = typeof course.shipsBook === 'boolean' ? course.shipsBook : d.shipsBook;
+  const sellable = typeof course.sellable === 'boolean' ? course.sellable : d.sellable;
   const enrollsAlso = Array.isArray(course.enrollsAlso)
     ? course.enrollsAlso.map(String).filter(Boolean)
     : d.enrollsAlso;
-  return { shipsBook, enrollsAlso };
+  return { shipsBook, enrollsAlso, sellable };
 }
 
 // Stripe moved the collected address from `session.shipping_details` to
@@ -3343,6 +3347,10 @@ exports.createCheckoutSession = onCall(async (request) => {
     throw new HttpsError('failed-precondition', 'This course isn\'t available to join yet.');
   }
   const fulfil = courseFulfillment(slug, course);
+  if (fulfil.sellable === false) {
+    throw new HttpsError('failed-precondition',
+      'This course is included in The Complete I Can\'t Experience. Enroll through the bundle.');
+  }
 
   const userSnap = await db.collection('users').doc(uid).get();
   const enrolled = (userSnap.exists && userSnap.data().enrolledCourseSlugs) || [];
@@ -4422,7 +4430,7 @@ exports.notifyProductInterest = onCall({ secrets: [sendgridKey] }, async (reques
 const OPN_COURSES = [
   { slug: '1p-clc',              title: '1P Certified Life Coach',          price: 3497, modules: 8, eyebrow: 'Certification · 16 Weeks', desc: 'Certified in 16 weeks: live weekly coaching, a certification exam, a reviewed session, and an A.L.I.G.N. Practitioner License.' },
   { slug: 'bundle-icant',        title: 'The Complete I Can\'t Experience', price: 197, modules: 10, eyebrow: 'Best Value · Book + Course', desc: 'The course plus a paperback of I Can\'t: Is Not A Strategy shipped to you. One module per chapter; every workbook is the book\'s own exercise.' },
-  { slug: 'icant',               title: 'I Can\'t: The Course',             price: 197, modules: 10, eyebrow: 'Self-paced', desc: 'The companion to the book, one module per chapter. The paperback ships to you with enrollment.' },
+  { slug: 'icant',               title: 'I Can\'t: The Course',             price: 197, modules: 10, eyebrow: 'Self-paced', desc: 'The companion to the book, one module per chapter. Not sold separately: it is included in The Complete I Can\'t Experience.' },
   { slug: 'mindset-foundations', title: 'Mindset Foundations',              price: 197, modules: 5,  eyebrow: 'Self-paced', desc: 'Rewire how you relate to success, setbacks, and self.' },
   { slug: 'business-alignment',  title: 'Business Alignment',               price: 297, modules: 6,  eyebrow: 'Self-paced', desc: 'Build a business that reflects your values and sustains your life.' },
   { slug: 'faith-leadership',    title: 'Faith & Leadership',               price: 197, modules: 4,  eyebrow: 'Self-paced', desc: 'Lead from purpose — grounded in principle, not performance.' },

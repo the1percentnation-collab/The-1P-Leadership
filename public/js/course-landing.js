@@ -269,7 +269,7 @@ function purchaseCardHtml(course, { enrolled }) {
   if (enrolled) {
     cta = `<a class="cl-cta" href="/courses.html?course=${encodeURIComponent(course.slug)}">Go to course →</a>`;
   } else if (isBundle) {
-    cta = `<a class="cl-cta" href="${escapeHtml(course.bundleHref || '/bundle.html')}">See bundle deal →</a>`;
+    cta = `<a class="cl-cta" href="${escapeHtml(course.bundleHref || '/bundle.html')}">${course.sellable === false ? 'Get it in the bundle →' : 'See bundle deal →'}</a>`;
   } else if (live) {
     cta = `<button class="cl-cta" id="cl-enroll">${p.isFree ? 'Enroll free' : 'Enroll now'}</button>`;
   } else {

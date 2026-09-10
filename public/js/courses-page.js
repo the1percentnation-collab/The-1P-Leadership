@@ -173,7 +173,7 @@ function renderAvailableCourses() {
   }
 
   const cards = available.map((c) => {
-    const isBundle = c.status === 'bundle';
+    const isBundle = c.status === 'bundle' || !!c.bundleHref;
     const isLive   = c.status === 'live';
     const statusBadge = isBundle
       ? `<span class="course-badge is-bundle">★ Best Value</span>`
