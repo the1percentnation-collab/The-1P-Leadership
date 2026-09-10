@@ -51,6 +51,18 @@ const REFERRAL_POINTS = 10;
 // .github/workflows/firebase-deploy-backend.yml.
 const sendgridKey = defineSecret('SENDGRID_API_KEY');
 
+// Stripe. These MUST be declared with defineSecret and listed in each
+// function's `secrets:` option, or they are simply not present at runtime.
+// functions/.env is git-ignored, so the GitHub Actions deploy (which is the
+// only thing that deploys this project) would never carry a .env file — a
+// key set that way survives exactly until the next merge to main.
+// Set them once with:
+//   firebase functions:secrets:set STRIPE_SECRET_KEY
+//   firebase functions:secrets:set STRIPE_WEBHOOK_SECRET
+const stripeSecretKey = defineSecret('STRIPE_SECRET_KEY');
+const stripeWebhookSecret = defineSecret('STRIPE_WEBHOOK_SECRET');
+const STRIPE_SECRETS = [stripeSecretKey, stripeWebhookSecret];
+
 // Anthropic API key — read from runtime environment so deploys never block
 // waiting for a secret value. Set via Firebase Console > Functions > Runtime
 // environment variables, or `firebase functions:secrets:set ANTHROPIC_API_KEY`
@@ -3022,12 +3034,14 @@ exports.searchPosts = onCall(async (request) => {
 // ────────────────────────────────────────────────────────────────
 // Course commerce — enrollment + Stripe checkout.
 //
-// Stripe keys are read from the environment at runtime (set them in
-// functions/.env or via Secret Manager once a Stripe account exists):
+// Stripe keys come from Secret Manager, declared as stripeSecretKey /
+// stripeWebhookSecret above and injected into process.env for the functions
+// that list STRIPE_SECRETS in their `secrets:` option:
 //   STRIPE_SECRET_KEY      — sk_live_... / sk_test_...
 //   STRIPE_WEBHOOK_SECRET  — whsec_... (from the webhook endpoint config)
-// Until they're set, paid checkout returns a clear "not configured" error
-// while free enrollment keeps working.
+// Do NOT use functions/.env for these: it is git-ignored, so the CI deploy
+// would drop them on the next merge. Until they're set, paid checkout returns
+// a clear "not configured" error while free enrollment keeps working.
 // ────────────────────────────────────────────────────────────────
 
 let _stripeClient = null;
@@ -3238,7 +3252,7 @@ function sessionShipping(session) {
   return null;
 }
 
-exports.createCheckoutSession = onCall(async (request) => {
+exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
   const slug = String((request.data && request.data.slug) || '').trim();
@@ -3507,7 +3521,7 @@ exports.createCheckoutSession = onCall(async (request) => {
 // send: checkout.session.completed, customer.subscription.deleted,
 // invoice.paid, invoice.payment_failed.
 exports.stripeWebhook = onRequest(
-  { cors: false, invoker: 'public' },
+  { cors: false, invoker: 'public', secrets: STRIPE_SECRETS },
   async (req, res) => {
     const stripe = getStripe();
     const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
@@ -3854,7 +3868,7 @@ exports.stripeWebhook = onRequest(
 
 // syncCoupon — mirrors a coupons/{code} doc into a Stripe Coupon +
 // Promotion Code so it's redeemable on the checkout page. Admin/owner only.
-exports.syncCoupon = onCall(async (request) => {
+exports.syncCoupon = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
   const db = admin.firestore();
   if (!(await isAdminCaller(db, request))) {
     throw new HttpsError('permission-denied', 'Admin or owner role required.');
@@ -5652,7 +5666,7 @@ exports.upgradeCoachLevel = onCall(async (request) => {
 // subscription: renewal is GATED on continued practice (approved hours) and
 // continuing education, and an auto-charge would bypass the gate. The
 // webhook extends licenseExpiresAt when the payment lands.
-exports.createRenewalCheckout = onCall(async (request) => {
+exports.createRenewalCheckout = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
   const db = admin.firestore();

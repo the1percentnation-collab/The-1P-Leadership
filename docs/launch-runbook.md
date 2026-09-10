@@ -37,19 +37,31 @@ member's progress and purchase records.
 ## 2. Connect Stripe
 
 Until these are set, every paid path returns "not configured" and nothing can
-be bought. Set them in `functions/.env` or Secret Manager, then deploy:
+be bought.
 
-```
-STRIPE_SECRET_KEY=sk_live_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-```
-
-The webhook endpoint is `stripeWebhook`. Point Stripe at it and subscribe to
-`checkout.session.completed`, `invoice.paid`, and the subscription events.
+Use Secret Manager, not `functions/.env`. The `.env` file is git-ignored, and
+GitHub Actions is what deploys this project, so a key set that way would
+disappear on the next merge to main.
 
 ```bash
-./scripts/deploy-functions.sh
+npx firebase-tools functions:secrets:set STRIPE_SECRET_KEY --project the-1p-leadership
+npx firebase-tools functions:secrets:set STRIPE_WEBHOOK_SECRET --project the-1p-leadership
 ```
+
+Start with test keys (`sk_test_...`). Both are declared in `functions/index.js`
+as `stripeSecretKey` / `stripeWebhookSecret` and listed in the `secrets:`
+option of the four functions that touch Stripe: `createCheckoutSession`,
+`stripeWebhook`, `syncCoupon`, `createRenewalCheckout`.
+
+Then in the Stripe dashboard add a webhook endpoint pointing at the deployed
+`stripeWebhook` URL, subscribed to `checkout.session.completed`,
+`customer.subscription.deleted`, `invoice.paid` and `invoice.payment_failed`.
+The signing secret it gives you is `STRIPE_WEBHOOK_SECRET`.
+
+Deploying happens automatically on merge to `main`
+(`.github/workflows/firebase-deploy-backend.yml`). Setting a new secret value
+requires a redeploy to take effect: merge something, or run the workflow by
+hand from the Actions tab.
 
 ## 3. Flip the finished products live
 
