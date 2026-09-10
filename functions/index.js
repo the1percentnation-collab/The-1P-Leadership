@@ -3200,6 +3200,40 @@ exports.validateCoupon = onCall(async (request) => {
 // a sellable product. Price is always read server-side (courses/{slug} or
 // products/{productId}); the client sends only the identifier, an optional
 // refCode, and an optional couponCode.
+// ── Course fulfillment ──────────────────────────────────────────────
+// Courses that ship a physical item and/or unlock other courses when bought.
+// The I Can't course and its bundle both ship a paperback of the book:
+// Checkout collects a US shipping address and the webhook writes the order
+// to `orders` for Anthony to work from the store console. The bundle also
+// enrolls the buyer in the course itself (bundle-icant has no lessons of its
+// own). Firestore `courses/{slug}.shipsBook` / `.enrollsAlso` override these
+// defaults so the owner can change them without a deploy.
+const COURSE_FULFILLMENT = {
+  'bundle-icant': { shipsBook: true, enrollsAlso: ['icant'] },
+  'icant':        { shipsBook: true, enrollsAlso: [] }
+};
+const SHIPPED_BOOK_NAME = 'I Can\'t: Is Not A Strategy (paperback)';
+
+function courseFulfillment(slug, course) {
+  const d = COURSE_FULFILLMENT[slug] || { shipsBook: false, enrollsAlso: [] };
+  const shipsBook = typeof course.shipsBook === 'boolean' ? course.shipsBook : d.shipsBook;
+  const enrollsAlso = Array.isArray(course.enrollsAlso)
+    ? course.enrollsAlso.map(String).filter(Boolean)
+    : d.enrollsAlso;
+  return { shipsBook, enrollsAlso };
+}
+
+// Stripe moved the collected address from `session.shipping_details` to
+// `session.collected_information.shipping_details` in newer API versions.
+// Return the `{ name, address }` shape either way.
+function sessionShipping(session) {
+  if (!session) return null;
+  if (session.shipping_details) return session.shipping_details;
+  const ci = session.collected_information;
+  if (ci && ci.shipping_details) return ci.shipping_details;
+  return null;
+}
+
 exports.createCheckoutSession = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -3308,6 +3342,7 @@ exports.createCheckoutSession = onCall(async (request) => {
   if (course.status !== 'live') {
     throw new HttpsError('failed-precondition', 'This course isn\'t available to join yet.');
   }
+  const fulfil = courseFulfillment(slug, course);
 
   const userSnap = await db.collection('users').doc(uid).get();
   const enrolled = (userSnap.exists && userSnap.data().enrolledCourseSlugs) || [];
@@ -3363,9 +3398,27 @@ exports.createCheckoutSession = onCall(async (request) => {
       { kind: 'course', id: slug, priceDollars: dollars });
     if (resolved.isFree) {
       await db.collection('users').doc(uid).set({
-        enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(slug),
+        enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(slug, ...fulfil.enrollsAlso),
         lastActiveAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
+      if (fulfil.shipsBook) {
+        // No Stripe session, so no address was collected. The order lands in
+        // the store console flagged so Anthony can ask for one.
+        await db.collection('orders').doc(`comp-${slug}-${uid}`).set({
+          kind: 'course-book',
+          courseSlug: slug,
+          productName: SHIPPED_BOOK_NAME,
+          productType: 'book',
+          uid,
+          email: (request.auth.token && request.auth.token.email) || null,
+          amountTotal: 0,
+          currency: 'usd',
+          couponCode: resolved.code,
+          shipping: null,
+          status: 'needs-address',
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
       await db.collection('users').doc(uid).collection('purchases').doc(`comp-${slug}`).set({
         courseSlug: slug,
         amount: 0,
@@ -3406,6 +3459,8 @@ exports.createCheckoutSession = onCall(async (request) => {
     metadata.refPercent = String(refPercent);
   }
   if (appliedCoupon) metadata.couponCode = appliedCoupon;
+  if (fulfil.shipsBook) metadata.shipsBook = '1';
+  if (fulfil.enrollsAlso.length) metadata.enrollsAlso = fulfil.enrollsAlso.join(',');
 
   if (plan) {
     metadata.installments = String(plan.installments);
@@ -3426,6 +3481,8 @@ exports.createCheckoutSession = onCall(async (request) => {
   const session = await stripe.checkout.sessions.create({
     mode: (isSubscription || plan) ? 'subscription' : 'payment',
     line_items: [{ price_data: priceData, quantity: 1 }],
+    // Courses that ship the book ask for a US address inside Stripe Checkout.
+    ...(fulfil.shipsBook ? { shipping_address_collection: { allowed_countries: ['US'] } } : {}),
     customer_email: (request.auth.token && request.auth.token.email) || undefined,
     client_reference_id: uid,
     metadata,
@@ -3531,7 +3588,7 @@ exports.stripeWebhook = onRequest(
             amountTotal: (session.amount_total || 0) / 100,
             currency: session.currency || 'usd',
             couponCode: couponCode || null,
-            shipping: session.shipping_details || session.collected_information || null,
+            shipping: sessionShipping(session),
             status: 'new',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
@@ -3585,9 +3642,32 @@ exports.stripeWebhook = onRequest(
         }
 
         if (uid && courseSlug) {
+          // A bundle unlocks the course it wraps (see COURSE_FULFILLMENT).
+          const enrollsAlso = String((session.metadata && session.metadata.enrollsAlso) || '')
+            .split(',').map((x) => x.trim()).filter(Boolean);
           await db.collection('users').doc(uid).set({
-            enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(courseSlug)
+            enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(courseSlug, ...enrollsAlso)
           }, { merge: true });
+
+          // The book ships with this course: record the order with the address
+          // Stripe collected. Worked from the store console like product orders.
+          if (session.metadata && session.metadata.shipsBook === '1') {
+            await db.collection('orders').doc(session.id).set({
+              kind: 'course-book',
+              courseSlug,
+              productName: SHIPPED_BOOK_NAME,
+              productType: 'book',
+              uid,
+              email: (session.customer_details && session.customer_details.email)
+                || session.customer_email || null,
+              amountTotal: (session.amount_total || 0) / 100,
+              currency: session.currency || 'usd',
+              couponCode: couponCode || null,
+              shipping: sessionShipping(session),
+              status: sessionShipping(session) ? 'new' : 'needs-address',
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+          }
           await db.collection('users').doc(uid).collection('purchases').doc(session.id).set({
             courseSlug,
             amount: (session.amount_total || 0) / 100,
@@ -4341,8 +4421,8 @@ exports.notifyProductInterest = onCall({ secrets: [sendgridKey] }, async (reques
 
 const OPN_COURSES = [
   { slug: '1p-clc',              title: '1P Certified Life Coach',          price: 3497, modules: 8, eyebrow: 'Certification · 16 Weeks', desc: 'Certified in 16 weeks: live weekly coaching, a certification exam, a reviewed session, and an A.L.I.G.N. Practitioner License.' },
-  { slug: 'bundle-icant',        title: 'The Complete I Can\'t Experience', price: 197, modules: 8,  eyebrow: 'Best Value · Book + Course', desc: 'Book + Course together. The book gives you the map; the course gives you the journey.' },
-  { slug: 'icant',               title: 'I Can\'t: The Course',             price: 197, modules: 8,  eyebrow: 'Self-paced', desc: 'Break the beliefs that have been running your life and build the ones that set you free.' },
+  { slug: 'bundle-icant',        title: 'The Complete I Can\'t Experience', price: 197, modules: 10, eyebrow: 'Best Value · Book + Course', desc: 'The course plus a paperback of I Can\'t: Is Not A Strategy shipped to you. One module per chapter; every workbook is the book\'s own exercise.' },
+  { slug: 'icant',               title: 'I Can\'t: The Course',             price: 197, modules: 10, eyebrow: 'Self-paced', desc: 'The companion to the book, one module per chapter. The paperback ships to you with enrollment.' },
   { slug: 'mindset-foundations', title: 'Mindset Foundations',              price: 197, modules: 5,  eyebrow: 'Self-paced', desc: 'Rewire how you relate to success, setbacks, and self.' },
   { slug: 'business-alignment',  title: 'Business Alignment',               price: 297, modules: 6,  eyebrow: 'Self-paced', desc: 'Build a business that reflects your values and sustains your life.' },
   { slug: 'faith-leadership',    title: 'Faith & Leadership',               price: 197, modules: 4,  eyebrow: 'Self-paced', desc: 'Lead from purpose — grounded in principle, not performance.' },

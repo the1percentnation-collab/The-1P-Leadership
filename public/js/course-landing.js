@@ -282,6 +282,7 @@ function purchaseCardHtml(course, { enrolled }) {
       ${p.onSale ? `<s class="cl-price-was">${escapeHtml(p.originalLabel)}</s>` : ''}
     </div>
     ${course.priceNote ? `<div class="cl-price-note">${escapeHtml(course.priceNote)}</div>` : ''}
+    ${course.shipsBook ? `<div class="cl-price-note">Includes a paperback of <em>I Can't: Is Not A Strategy</em>. We ask for your US shipping address at checkout.</div>` : ''}
     ${!live && !isBundle ? `<div class="cl-soon-note">Coming soon — enrollment isn't open yet.</div>` : ''}`;
 
   // The Life Coach certification offers fixed-count payment plans. Pay in

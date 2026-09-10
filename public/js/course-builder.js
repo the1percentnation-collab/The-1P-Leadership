@@ -977,6 +977,9 @@ function fillSettingsForm(c) {
   const onSite = !c || c.showOnSite !== false;
   $('f-onsite').checked = onSite;
   $('f-onsite-label').textContent = onSite ? 'On main site' : 'Hidden from main site';
+  const ships = !!(c && c.shipsBook === true);
+  $('f-shipsbook').checked = ships;
+  $('f-shipsbook-label').textContent = ships ? 'Ships the book' : 'No shipped item';
   $('settings-result').innerHTML = '';
   S.suppress = false;
 }
@@ -1001,6 +1004,7 @@ async function saveSettings() {
       sortOrder: Number($('f-sort').value) || 0,
       contentSource: source,
       showOnSite: $('f-onsite').checked,
+      shipsBook: $('f-shipsbook').checked,
       updatedAt: serverTimestamp(),
       updatedBy: _userEmail
     }, { merge: true });
