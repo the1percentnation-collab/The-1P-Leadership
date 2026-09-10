@@ -1,0 +1,12 @@
+{
+  "name": "the-1p-leadership-scripts",
+  "description": "One-off admin scripts (migrations and seeds) run against Firestore with Admin credentials. Separate from functions/ so `npm install` here does not disturb the deployed function dependencies.",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.3.0"
+  }
+}

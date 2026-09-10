@@ -21,10 +21,14 @@ overrides the registry, so the record is currently two programs at once. This
 also archives `silence-the-voice`, the superseded I Can't draft.
 
 ```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-node scripts/fix-clc-slugs.js            # dry run, prints the plan
-node scripts/fix-clc-slugs.js --apply    # commits it
+cd scripts
+npm install                      # one time
+export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/key.json
+node fix-clc-slugs.js            # dry run, prints the plan
+node fix-clc-slugs.js --apply    # commits it
 ```
+
+Credential setup and a backup command are in `scripts/README.md`.
 
 Safe to run once. A second run aborts rather than corrupting anything. It
 verifies the lesson copy before deleting anything, and repoints any enrolled

@@ -30,19 +30,16 @@
 // Firestore, course-renderer.js reads `users/{uid}/progress/{slug}__m{id}`.
 // Step 3 rewrites those docs so nobody loses their place.
 //
-// USAGE
-//   node scripts/fix-clc-slugs.js            # dry run — prints the plan only
-//   node scripts/fix-clc-slugs.js --apply    # actually writes
-//   node scripts/fix-clc-slugs.js --apply --force   # overwrite a non-empty
-//                                                   # 1p-clc-leader
+// USAGE (from the scripts/ directory, after `npm install`)
+//   node fix-clc-slugs.js            # dry run — prints the plan only
+//   node fix-clc-slugs.js --apply    # actually writes
+//   node fix-clc-slugs.js --apply --force   # overwrite a non-empty 1p-clc-leader
 //
-// Needs Admin credentials:
-//   GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json node scripts/fix-clc-slugs.js
+// Needs Admin credentials. See scripts/README.md.
 // ─────────────────────────────────────────────────────────────────────────
 
-const admin = require('firebase-admin');
-admin.initializeApp();
-const db = admin.firestore();
+const { initAdmin, assertCredentials } = require('./lib/init');
+const { admin, db, projectId } = initAdmin();
 
 const OLD = '1p-clc';           // currently holds the Leader Coach
 const NEW = '1p-clc-leader';    // where the Leader Coach belongs
@@ -255,6 +252,8 @@ async function archiveDraft() {
 }
 
 async function main() {
+  await assertCredentials(db, projectId);
+  log(`Project: ${projectId}`);
   log(APPLY
     ? '── APPLYING CHANGES ──────────────────────────────────────'
     : '── DRY RUN (no writes). Re-run with --apply to commit. ───');
