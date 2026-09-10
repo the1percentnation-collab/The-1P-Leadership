@@ -12,7 +12,7 @@
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bundle Deal — Book + Course | The One Percent Nation</title>
-  <meta name="description" content="Get I Can't: Is Not A Strategy + the 8-module companion course together. The book gives you the map. The course gives you the journey.">
+  <meta name="description" content="Get I Can't: Is Not A Strategy + the companion course together. One module per chapter, and every workbook is the book's own exercise.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -171,46 +171,21 @@
     .inc-title { font-size: 14px; font-weight: 600; letter-spacing: 0.02em; margin-bottom: 4px; }
     .inc-desc { font-size: 12px; font-weight: 300; color: var(--gray-400); line-height: 1.5; }
 
-    /* ALIGN FRAMEWORK */
-    .align-strip { margin-top: 40px; }
-    .align-strip-title {
+    /* CHAPTER MAP */
+    .chapters-strip { margin-top: 40px; }
+    .chapters-strip-title {
       font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.2em;
       text-transform: uppercase; color: var(--gray-600); margin-bottom: 14px;
     }
-    .align-letters {
-      display: flex; gap: 8px;
+    .chapter-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .chapter-row {
+      display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 8px;
+      background: var(--charcoal); border: 1px solid var(--border); transition: border-color 0.2s;
     }
-    .align-letter {
-      flex: 1; padding: 16px 10px; border-radius: 8px;
-      background: var(--charcoal); border: 1px solid var(--border);
-      text-align: center; transition: border-color 0.2s;
-    }
-    .align-letter:hover { border-color: var(--border-red); }
-    .align-letter .letter { font-family: var(--font-display); font-size: 28px; color: var(--red); line-height: 1; }
-    .align-letter .word { font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gray-600); margin-top: 4px; }
-
-    /* TESTIMONIALS */
-    .testimonials { margin-top: 56px; }
-    .testimonial-grid { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; }
-    .testimonial {
-      padding: 24px; border-radius: 10px;
-      background: var(--charcoal); border: 1px solid var(--border);
-      border-left: 3px solid var(--red);
-    }
-    .testimonial-quote { font-size: 14px; font-weight: 300; color: var(--gray-400); line-height: 1.7; font-style: italic; margin-bottom: 16px; }
-    .testimonial-quote::before { content: '\201C'; color: var(--red); font-size: 24px; font-style: normal; line-height: 0; vertical-align: -8px; margin-right: 4px; }
-    .testimonial-author { display: flex; align-items: center; gap: 12px; }
-    .testimonial-avatar {
-      width: 36px; height: 36px; border-radius: 50%;
-      background: linear-gradient(135deg, #1a0000, #2d0000);
-      border: 1px solid var(--border-red);
-      display: flex; align-items: center; justify-content: center;
-      font-family: var(--font-display); font-size: 16px; color: var(--red);
-      flex-shrink: 0;
-    }
-    .testimonial-name { font-size: 13px; font-weight: 600; }
-    .testimonial-role { font-size: 11px; color: var(--gray-600); }
-    .stars { color: var(--gold); font-size: 12px; letter-spacing: 2px; margin-bottom: 10px; }
+    .chapter-row:hover { border-color: var(--border-red); }
+    .chapter-num { font-family: var(--font-display); font-size: 24px; color: var(--red); line-height: 1; min-width: 28px; }
+    .chapter-title { font-size: 13px; font-weight: 500; line-height: 1.3; }
+    .chapter-ex { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gray-600); margin-top: 4px; }
 
     /* FAQ */
     .faq-section { margin-top: 56px; }
@@ -384,8 +359,7 @@
     @media (max-width: 600px) {
       .hero-strip { padding: 120px 20px 60px; }
       .main-wrap { padding: 48px 20px; }
-      .align-letters { gap: 4px; }
-      .align-letter .word { display: none; }
+      .chapter-list { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -417,7 +391,7 @@
     <span class="red">I Can't</span><br>
     <span class="outline">Experience</span>
   </h1>
-  <p class="hero-sub">The book gives you the map. The course gives you the journey. Get both — and pay for neither more than the course alone.</p>
+  <p class="hero-sub">The book is the teaching. The course is where you do the work and keep it. Get both — and pay for neither more than the course alone.</p>
   <div class="hero-hook">
     <div>
       <div class="hero-hook-text">Bundle Value</div>
@@ -448,21 +422,21 @@
   <div>
     <div class="section-eyebrow">What You're Getting</div>
     <h2 class="section-title">Two Products.<br>One Transformation.</h2>
-    <p class="section-desc">Most people read the book and move on. The ones who change their lives go deeper. This bundle is designed so you don't just understand the framework — you live it.</p>
+    <p class="section-desc">Most people read the book and move on. The ones who change their lives do the exercises. The course follows the book chapter for chapter and turns every exercise into a workbook you keep, so the reading becomes reps.</p>
 
     <!-- VALUE TABLE -->
     <div class="value-table">
       <div class="value-row">
         <div>
           <div class="value-label">📖 &nbsp;I Can't: Is Not A Strategy</div>
-          <div class="value-sub">Paperback + digital · available on Amazon</div>
+          <div class="value-sub">Paperback · shipped to your door</div>
         </div>
         <div class="value-price">$14.99</div>
       </div>
       <div class="value-row">
         <div>
           <div class="value-label">🎓 &nbsp;I Can't: The Course</div>
-          <div class="value-sub">8 modules · self-paced · lifetime access</div>
+          <div class="value-sub">10 chapter modules · self-paced · lifetime access</div>
         </div>
         <div class="value-price">$197</div>
       </div>
@@ -488,21 +462,21 @@
         <div class="inc-icon">📖</div>
         <div>
           <div class="inc-title">The Book — I Can't: Is Not A Strategy</div>
-          <div class="inc-desc">The framework that started it all. Learn to see your limiting beliefs, name them precisely, and begin the process of dismantling them. Available in paperback and digital on Amazon.</div>
+          <div class="inc-desc">The book the course is built on. A paperback copy ships to you when you enroll. We ask for your US shipping address at checkout, so the book and your course access arrive together.</div>
         </div>
       </div>
       <div class="inc-item">
         <div class="inc-icon">🎓</div>
         <div>
-          <div class="inc-title">The Course — 8 Modules, Lifetime Access</div>
-          <div class="inc-desc">The book's companion. Every chapter of the A.L.I.G.N. framework is expanded into a full module with core teaching, workbook exercises, and implementation prompts. Go at your own pace.</div>
+          <div class="inc-title">The Course — 10 Chapters, Lifetime Access</div>
+          <div class="inc-desc">The book's companion, built one module per chapter in the book's order. Each module carries Anthony's story from that chapter, the core teaching, and the chapter's hand-off to the next one. Read the chapter, then do the module.</div>
         </div>
       </div>
       <div class="inc-item">
         <div class="inc-icon">📝</div>
         <div>
-          <div class="inc-title">The Digital Workbook — All 8 Modules</div>
-          <div class="inc-desc">Built into the course platform. Every module has a reflection prompt, action prompt, and guided writing exercises. Your answers are saved privately — no one else sees them.</div>
+          <div class="inc-title">The Workbook — The Book's 10 Exercises</div>
+          <div class="inc-desc">Every Workbook is the book's own exercise for that chapter, the same ten collected in the book's Appendix, with a saved field for every step. They build on each other: the sentence you write in Chapter 1 is the one you rewrite in Chapter 8, and nothing gets lost.</div>
         </div>
       </div>
       <div class="inc-item">
@@ -514,29 +488,79 @@
       </div>
     </div>
 
-    <!-- A.L.I.G.N. Framework -->
-    <div class="align-strip">
-      <div class="align-strip-title">The A.L.I.G.N. Framework — Core of the Course</div>
-      <div class="align-letters">
-        <div class="align-letter">
-          <div class="letter">A</div>
-          <div class="word">Awareness</div>
+    <!-- Chapter map: the course follows the book exactly -->
+    <div class="chapters-strip">
+      <div class="chapters-strip-title">One Module Per Chapter — In the Book's Order</div>
+      <div class="chapter-list">
+        <div class="chapter-row">
+          <div class="chapter-num">1</div>
+          <div>
+            <div class="chapter-title">Understanding Limiting Beliefs</div>
+            <div class="chapter-ex">Exercise · Fact vs. Verdict</div>
+          </div>
         </div>
-        <div class="align-letter">
-          <div class="letter">L</div>
-          <div class="word">Leadership</div>
+        <div class="chapter-row">
+          <div class="chapter-num">2</div>
+          <div>
+            <div class="chapter-title">The Neuroscience of Belief</div>
+            <div class="chapter-ex">Exercise · Catch the Reflex, Pave the New Road</div>
+          </div>
         </div>
-        <div class="align-letter">
-          <div class="letter">I</div>
-          <div class="word">Identity</div>
+        <div class="chapter-row">
+          <div class="chapter-num">3</div>
+          <div>
+            <div class="chapter-title">Identifying Limiting Beliefs</div>
+            <div class="chapter-ex">Exercise · The Shrink List</div>
+          </div>
         </div>
-        <div class="align-letter">
-          <div class="letter">G</div>
-          <div class="word">Growth</div>
+        <div class="chapter-row">
+          <div class="chapter-num">4</div>
+          <div>
+            <div class="chapter-title">Challenging and Reframing Beliefs</div>
+            <div class="chapter-ex">Exercise · To Me, or For Me</div>
+          </div>
         </div>
-        <div class="align-letter">
-          <div class="letter">N</div>
-          <div class="word">Navigation</div>
+        <div class="chapter-row">
+          <div class="chapter-num">5</div>
+          <div>
+            <div class="chapter-title">The Power of Mindset Shifts</div>
+            <div class="chapter-ex">Exercise · Your Two Minds</div>
+          </div>
+        </div>
+        <div class="chapter-row">
+          <div class="chapter-num">6</div>
+          <div>
+            <div class="chapter-title">Six Weeks Deep</div>
+            <div class="chapter-ex">Exercise · Build Your One Move</div>
+          </div>
+        </div>
+        <div class="chapter-row">
+          <div class="chapter-num">7</div>
+          <div>
+            <div class="chapter-title">Building Resilience and Overcoming Setbacks</div>
+            <div class="chapter-ex">Exercise · Your Comeback Plan</div>
+          </div>
+        </div>
+        <div class="chapter-row">
+          <div class="chapter-num">8</div>
+          <div>
+            <div class="chapter-title">Embracing Empowering Beliefs</div>
+            <div class="chapter-ex">Exercise · Write Your New Sentence</div>
+          </div>
+        </div>
+        <div class="chapter-row">
+          <div class="chapter-num">9</div>
+          <div>
+            <div class="chapter-title">Creating a Supportive Environment</div>
+            <div class="chapter-ex">Exercise · Audit Your Environment</div>
+          </div>
+        </div>
+        <div class="chapter-row">
+          <div class="chapter-num">10</div>
+          <div>
+            <div class="chapter-title">The Journey of Continuous Growth</div>
+            <div class="chapter-ex">Exercise · Your One Percent</div>
+          </div>
         </div>
       </div>
     </div>
@@ -551,46 +575,6 @@
       </div>
     </div>
 
-    <!-- TESTIMONIALS -->
-    <div class="testimonials">
-      <div class="section-eyebrow">What Members Are Saying</div>
-      <div class="testimonial-grid">
-        <div class="testimonial">
-          <div class="stars">★★★★★</div>
-          <p class="testimonial-quote">I read the book in two days. Then I started the course and realized I had only scratched the surface. The workbook sections alone changed how I talk to myself every morning.</p>
-          <div class="testimonial-author">
-            <div class="testimonial-avatar">MJ</div>
-            <div>
-              <div class="testimonial-name">Marcus J.</div>
-              <div class="testimonial-role">Entrepreneur · 1P Nation Member</div>
-            </div>
-          </div>
-        </div>
-        <div class="testimonial">
-          <div class="stars">★★★★★</div>
-          <p class="testimonial-quote">The 'I Can't' framework is the first thing that made my limiting beliefs feel like something I could actually work with — not just something to feel guilty about.</p>
-          <div class="testimonial-author">
-            <div class="testimonial-avatar">TR</div>
-            <div>
-              <div class="testimonial-name">Tanisha R.</div>
-              <div class="testimonial-role">Director of Operations · Course Graduate</div>
-            </div>
-          </div>
-        </div>
-        <div class="testimonial">
-          <div class="stars">★★★★★</div>
-          <p class="testimonial-quote">I bought the book first. Three weeks later I enrolled in the course. This bundle being priced at $197 is honestly a steal — the book alone was worth double.</p>
-          <div class="testimonial-author">
-            <div class="testimonial-avatar">DW</div>
-            <div>
-              <div class="testimonial-name">David W.</div>
-              <div class="testimonial-role">Sales Leader · 1P Nation Member</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- FAQ -->
     <div class="faq-section">
       <div class="section-eyebrow">Frequently Asked</div>
@@ -600,7 +584,14 @@
             Do I need to read the book before starting the course?
             <span class="faq-icon">+</span>
           </button>
-          <div class="faq-answer">No — the course is designed to stand on its own. But if you have the book, use them together. The book gives you the conceptual map; the course takes you through the territory with structured exercises and deeper teaching on each principle.</div>
+          <div class="faq-answer">The course is built to be used with the book. Each module matches one chapter, and the Workbook is that chapter's exercise. Read the chapter first, then do the module. The book is included in this bundle, so you will have it.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question">
+            How do I get the book?
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-answer">It ships to you. When you enroll, Stripe Checkout asks for your shipping address and we mail a paperback copy. US addresses only for now. If you already own the book, you can still enroll, and the extra copy is yours to give to someone who needs it.</div>
         </div>
         <div class="faq-item">
           <button class="faq-question">
@@ -614,14 +605,14 @@
             How long does the course take to complete?
             <span class="faq-icon">+</span>
           </button>
-          <div class="faq-answer">The 8 modules average 18–25 minutes of core teaching each. With workbook time, plan for 3–4 hours total. Most members go at their own pace over 2–4 weeks. There's no deadline — return as many times as you need.</div>
+          <div class="faq-answer">Ten chapter modules of 20–25 minutes each, plus the book's exercise for every chapter at 10–20 minutes. Chapter 2's exercise is a seven-day log, and Chapter 6 asks you to run one small system for six weeks. Plan on working through it over four to six weeks. There's no deadline — return as many times as you need.</div>
         </div>
         <div class="faq-item">
           <button class="faq-question">
             Can I access the course on my phone?
             <span class="faq-icon">+</span>
           </button>
-          <div class="faq-answer">Yes. The academy is fully mobile-responsive. Your workbook answers are saved to your account, so you can switch between devices without losing your progress.</div>
+          <div class="faq-answer">Yes. The academy is fully mobile-responsive. Your workbook answers are saved in your browser on the device you use, so pick one device for the exercises and keep it there.</div>
         </div>
         <div class="faq-item">
           <button class="faq-question">
@@ -640,7 +631,7 @@
       <div class="offer-panel-header">
         <div class="offer-badge">Best Value Bundle</div>
         <div class="offer-title">The Complete<br>I Can't Experience</div>
-        <div class="offer-hook">"The book gives you the map. The course gives you the journey."</div>
+        <div class="offer-hook">"The reading was never the point. The reps are."</div>
       </div>
 
       <div class="offer-breakdown">
@@ -649,7 +640,7 @@
           <div class="offer-line-price" style="text-decoration:line-through;">$14.99</div>
         </div>
         <div class="offer-line">
-          <div class="offer-line-label"><strong>Course</strong> — 8 Modules, Lifetime Access</div>
+          <div class="offer-line-label"><strong>Course</strong> — 10 Chapters, Lifetime Access</div>
           <div class="offer-line-price">$197</div>
         </div>
         <div class="offer-line savings">
@@ -673,11 +664,19 @@
       </div>
 
       <div class="offer-cta">
-        <div style="background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.3);border-radius:8px;padding:16px 20px;text-align:center;">
-          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:var(--gold);margin-bottom:6px;">Coming Soon</div>
-          <div style="font-size:13px;color:var(--gray-400);line-height:1.5;">Secure checkout is being set up. Enrollment opens shortly — check back soon.</div>
+        <!-- Swapped for a live Enroll button by js/bundle-page.js once the bundle is live. -->
+        <div id="bundle-cta">
+          <div style="background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.3);border-radius:8px;padding:16px 20px;text-align:center;">
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:var(--gold);margin-bottom:6px;">Coming Soon</div>
+            <div style="font-size:13px;color:var(--gray-400);line-height:1.5;">Secure checkout is being set up. Enrollment opens shortly — check back soon.</div>
+          </div>
         </div>
-        <a class="btn-book" href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">Get the Book on Amazon →</a>
+        <div id="bundle-cta-msg" style="font-size:12px;color:var(--red);line-height:1.5;" hidden></div>
+        <a class="btn-book" href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">Just want the book? Get it on Amazon →</a>
+        <div class="offer-guarantee">
+          <span class="offer-guarantee-icon">📦</span>
+          <span>Paperback ships to your door. We ask for your US address at checkout.</span>
+        </div>
         <div class="offer-guarantee">
           <span class="offer-guarantee-icon">🛡</span>
           <span>30-day money-back guarantee on the course. Zero risk.</span>
@@ -685,12 +684,11 @@
       </div>
 
       <div class="offer-checklist">
-        <div class="offer-check">Book: <em>I Can't: Is Not A Strategy</em> (FREE)</div>
-        <div class="offer-check">8-module self-paced course</div>
-        <div class="offer-check">Full digital workbook — all modules</div>
+        <div class="offer-check">Paperback of <em>I Can't: Is Not A Strategy</em>, shipped free</div>
+        <div class="offer-check">10 chapter modules, one per chapter of the book</div>
+        <div class="offer-check">The book's 10 exercises as a saved workbook</div>
         <div class="offer-check">Lifetime access + all future updates</div>
         <div class="offer-check">30-day money-back guarantee</div>
-        <div class="offer-check">A.L.I.G.N. framework mastery</div>
       </div>
     </div>
   </div>
@@ -702,7 +700,7 @@
   <h2>Ready to Break <span class="gold">Every Belief</span><br>That's Held You Back?</h2>
   <p>Stop reading about change. Start building it. The complete I Can't experience — one price, lifetime access, zero excuses.</p>
   <div class="bottom-cta-btns">
-    <span class="btn-primary-lg" style="opacity:0.5;cursor:not-allowed;">Enrollment Coming Soon</span>
+    <span class="btn-primary-lg" id="bundle-cta-bottom" style="opacity:0.5;cursor:not-allowed;">Enrollment Coming Soon</span>
     <a class="btn-ghost-lg" href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">Get the Book First →</a>
   </div>
 </div>
@@ -718,6 +716,7 @@
   </div>
 </footer>
 
+<script type="module" src="/js/bundle-page.js"></script>
 <script>
   // FAQ accordion
   document.querySelectorAll('.faq-question').forEach(btn => {

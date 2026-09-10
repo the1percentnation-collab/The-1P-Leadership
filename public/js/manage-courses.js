@@ -371,57 +371,55 @@ async function seedDefaults() {
 }
 
 // ─── One-time content migration: "I Can't: The Course" ─────────────────────
-// The icant course ships its 8 lessons in code (icant-course.js). This copies
-// them into courses/icant/modules as editable lessons — the workbook and
-// summary become structured fields (real tabs in the player), the rest of the
-// lesson becomes rich-text html. Safe to re-run: setDoc merges by module id.
+// The icant course ships its lessons in code (icant-course.js), one module per
+// chapter of the book. This copies them into courses/icant/modules as editable
+// lessons — the book's exercise becomes the Workbook (real prompts in the
+// player), the summary becomes a structured field, the rest of the lesson
+// becomes rich-text html. Safe to re-run: setDoc merges by module id.
 
-function icantModuleToHtml(m, ALIGN) {
+function icantModuleToHtml(m) {
   const e = escapeHtml;
-  const align = (ALIGN && ALIGN[m.alignKey]) || { label: '' };
   const parts = [];
   parts.push(`<p>${e(m.welcome)}</p>`);
   if (m.coreTeaching) {
     parts.push(`<h2>${e(m.coreTeaching.headline)}</h2>`);
     parts.push('<ul>' + (m.coreTeaching.points || []).map((p) => `<li>${e(p)}</li>`).join('') + '</ul>');
   }
-  if (m.alignIntegration) {
-    parts.push(`<h2>A.L.I.G.N. — ${e(align.label)}</h2>`);
-    parts.push(`<p>${e(m.alignIntegration.teaching)}</p>`);
+  if (m.fromTheBook) {
+    parts.push(`<blockquote>${e(m.fromTheBook)}</blockquote>`);
   }
   if (m.bridge) {
     parts.push('<h2>What’s Next</h2>');
-    parts.push(`<blockquote>${e(m.bridge)}</blockquote>`);
+    parts.push(`<p>${e(m.bridge)}</p>`);
   }
-  if (m.id === 1) {
+  if (m.id === 0) {
     parts.push('<p><em>Companion book:</em> <a href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">I Can’t: Is Not A Strategy →</a></p>');
-  }
-  if (m.id === 8) {
-    parts.push('<p><a href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">★ Leave an Amazon review →</a></p>');
   }
   return parts.join('\n');
 }
 
 async function migrateIcantCore() {
-  const { MODULES, ALIGN } = await import('./icant-course.js');
+  const { MODULES } = await import('./icant-course.js');
+  const lastId = MODULES[MODULES.length - 1].id;
   let wrote = 0;
   for (const m of MODULES) {
-    const align = (ALIGN && ALIGN[m.alignKey]) || { label: '' };
-    const pillar = [m.chapterRef, align.label].filter(Boolean).join(' · ');
-    const wb = m.workbook || null;
+    const ex = m.exercise || null;
+    const html = icantModuleToHtml(m) + (m.id === lastId
+      ? '\n<p><a href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">★ Leave an Amazon review →</a></p>'
+      : '');
     await setDoc(doc(db, 'courses', 'icant', 'modules', String(m.id)), {
       id: m.id,
       title: m.title,
       subtitle: m.subtitle || null,
-      pillar: pillar || null,
+      pillar: m.chapterRef || null,
       duration: m.duration || null,
-      tagLabel: m.alignKey || null,
-      html: icantModuleToHtml(m, ALIGN),
+      tagLabel: m.id > 0 ? `CH ${m.id}` : 'INTRO',
+      html,
       videoUrl: null,
-      workbook: wb ? {
-        reflection: wb.reflection || null,
-        action: wb.action || null,
-        prompts: Array.isArray(wb.prompts) ? wb.prompts : []
+      workbook: ex ? {
+        reflection: ex.intro || null,
+        action: ex.name || null,
+        prompts: Array.isArray(ex.steps) ? ex.steps.map((st) => `${st.label} — ${st.prompt}`) : []
       } : null,
       summary: Array.isArray(m.summary) && m.summary.length ? m.summary : null,
       published: true,

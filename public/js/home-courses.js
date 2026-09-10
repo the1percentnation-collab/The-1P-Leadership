@@ -187,7 +187,7 @@ export async function init() {
   // `showOnSite` is the owner's per-course override on top of that, a
   // default-true opt-out so existing courses needed no backfill.
   const courses = getCourses().filter(
-    (c) => c.status === 'live' && c.showOnSite !== false
+    (c) => c.status === 'live' && c.showOnSite !== false && c.sellable !== false
   );
 
   if (!courses.length) {

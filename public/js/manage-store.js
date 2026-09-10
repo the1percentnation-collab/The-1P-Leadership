@@ -251,7 +251,7 @@ async function renderOrders() {
         <td>${shippingHtml(o.shipping)}</td>
         <td>
           <select class="c-input crm-select" data-order="${escapeHtml(d.id)}">
-            ${['new', 'shipped', 'done'].map((s) => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+            ${['needs-address', 'new', 'shipped', 'done'].map((s) => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s}</option>`).join('')}
           </select>
         </td>
       </tr>`;

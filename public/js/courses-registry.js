@@ -37,6 +37,41 @@ const METHOD_PARAGRAPH =
   'practiced fades in weeks; that\'s why every lesson ends with a rewirement, and the course ends ' +
   'with a 4-week 1% Challenge that turns your biggest shift into a daily habit.';
 
+// ─── I Can't: The Course (companion to the book) ─────────────────────────
+// Unlike the courses below, I Can't does not run the Learn → Rewire → Measure
+// method. It follows the book "I Can't: Is Not A Strategy" chapter for chapter,
+// and its Workbook is the book's own ten exercises. Keep this copy honest to
+// what icant-course.js actually renders.
+
+const ICANT_REQUIREMENTS = [
+  'A copy of I Can\'t: Is Not A Strategy. The course follows it chapter for chapter (it comes free in the bundle).',
+  'Ten to twenty minutes per chapter for the exercise. The chapters explain the machinery. The exercises take it apart.',
+  'A willingness to write the honest version, not the polite one. Your answers are private and saved.'
+];
+
+const ICANT_PARAGRAPH =
+  'Every module matches one chapter of the book, in the book\'s order. The Lesson tab carries ' +
+  'Anthony\'s story and the chapter\'s core teaching. The Workbook tab is that chapter\'s exercise, ' +
+  'the same ten exercises collected in the book\'s Appendix, with a saved field for every step. ' +
+  'They build on each other, so nothing you write gets lost.';
+
+const ICANT_OUTCOMES = [
+  'Split your limiting belief into its fact and its verdict, and put the verdict on trial.',
+  'Catch the old belief firing in real time with a seven-day two-column log, and pave the new road.',
+  'Find the beliefs hiding under your wins with the Shrink List, and name the one running your life.',
+  'Run the reframe engine: the same facts read as something that happened for you, not to you.',
+  'Build one small system, anchored to a habit you already have, with the rule: never miss twice.',
+  'Pre-decide your first move after a setback, and install the empowering belief that replaces the old one.'
+];
+
+const ICANT_CURRICULUM_SUMMARY = [
+  { t: 'Start Here: how the course follows the book', d: '8 min' },
+  { t: 'Chapters 1–3: Understanding, Neuroscience, Identifying (3 exercises)', d: '1hr 4min' },
+  { t: 'Chapters 4–5: Reframing, Mindset Shifts (2 exercises)', d: '44 min' },
+  { t: 'Chapters 6–7: Six Weeks Deep, Resilience (2 exercises)', d: '49 min' },
+  { t: 'Chapters 8–10: Empowering Beliefs, Environment, Continuous Growth (3 exercises)', d: '1hr 8min' }
+];
+
 export const COURSES = [
   {
     slug: '1p-clc',
@@ -215,56 +250,43 @@ export const COURSES = [
     slug: 'bundle-icant',
     title: 'The Complete I Can\'t Experience',
     short: 'Bundle Deal',
-    subtitle: 'Book + Course together. The book gives you the map. The course gives you the journey.',
+    subtitle: 'Book + Course together. Read the chapter, then do the work.',
     status: 'coming-soon',
-    eyebrow: 'Best Value · Book + 8 Modules',
+    eyebrow: 'Best Value · Book + 10 Chapters',
     category: 'Mindset & Personal Growth',
     price: 197,
     priceLabel: '$197',
-    priceNote: 'Book included FREE · was $216.99',
+    priceNote: 'Paperback shipped to you · US addresses',
+    shipsBook: true,
     bundleHref: '/bundle.html',
-    whatYoullLearn: [
-      'Everything in I Can\'t: The Course — all 8 modules, rewirements, and the 1% Challenge.',
-      'The complete I Can\'t book to read alongside the course — the map and the journey together.',
-      'Measure your belief baseline before module one, and retake it at the end to see the shift.',
-      'Identify the exact limiting beliefs running your decisions, then reframe them with a repeatable drill.',
-      'Turn one breakthrough into a 4-week daily practice so the change survives contact with real life.',
-      'Build the setback protocol that keeps you moving when motivation doesn\'t show up.'
-    ],
-    requirements: METHOD_REQUIREMENTS,
+    whatYoullLearn: ICANT_OUTCOMES,
+    requirements: ICANT_REQUIREMENTS,
     includes: [
-      'The I Can\'t book — included free',
-      'All 8 course modules of on-demand lessons',
-      'Baseline + final belief self-assessments',
-      'A rewirement practice after every module',
-      '4-week 1% Challenge with daily tracking',
+      'The I Can\'t: Is Not A Strategy book — included free',
+      'All 10 chapter modules plus a Start Here module',
+      'The book\'s 10 exercises as a guided, saved Workbook',
+      'A three-point summary and the chapter\'s hand-off after every module',
       'Lifetime access on desktop and mobile'
     ],
     description: [
-      'The book gives you the map. The course gives you the journey. Together they\'re the complete ' +
-      'I Can\'t experience — read the principle, then rewire it into your life the same day.',
-      METHOD_PARAGRAPH,
-      'This bundle exists because the two formats do different jobs: the book builds understanding you ' +
-      'can return to for years, and the course turns that understanding into assessments, rewirements, ' +
-      'and a tracked 4-week challenge. Buying them together saves you money and gives the work its best ' +
+      'The book and the course do one job together. Read the chapter, then open its module and do ' +
+      'that chapter\'s exercise with your answers saved, so the sentence you write in Chapter 1 is ' +
+      'the one you rewrite in Chapter 8.',
+      ICANT_PARAGRAPH,
+      'This bundle exists because the book is where the teaching lives and the course is where the ' +
+      'work gets done and kept. Buying them together saves you money and gives the work its best ' +
       'chance of sticking.'
     ],
     curriculum: [
       {
-        title: 'The Book: I Can\'t',
+        title: 'The Book: I Can\'t: Is Not A Strategy',
         lessons: [
-          { t: 'Your copy of the I Can\'t book — shipped to you, yours for life', d: 'included' }
+          { t: 'Your copy of the book — paperback or digital, yours for life', d: 'included' }
         ]
       },
       {
         title: 'The Course: everything in I Can\'t: The Course',
-        lessons: [
-          { t: 'Start Here: baseline assessment + how the method works', d: '20 min' },
-          { t: 'Part 1 — See the Chains (3 modules + rewirements)', d: '1hr 28min' },
-          { t: 'Part 2 — Break the Pattern (3 modules + rewirements)', d: '1hr 30min' },
-          { t: 'Part 3 — Become Who You Decided to Be (2 modules + rewirements)', d: '1hr 3min' },
-          { t: 'The 1% Challenge: 4 weeks + your final assessment', d: '25 min' }
-        ]
+        lessons: ICANT_CURRICULUM_SUMMARY
       }
     ]
   },
@@ -272,87 +294,85 @@ export const COURSES = [
     slug: 'icant',
     title: 'I Can\'t: The Course',
     short: 'I Can\'t',
-    subtitle: 'Break the beliefs that have been running your life — and build the ones that set you free.',
+    subtitle: 'The companion to the book. One module per chapter, and every Workbook is the book\'s own exercise.',
     status: 'coming-soon',
-    eyebrow: 'Self-paced · 8 Modules',
+    eyebrow: 'Self-paced · 10 Chapters',
     category: 'Mindset & Personal Growth',
     price: 197,
     priceLabel: '$197',
-    priceNote: 'Full course · lifetime access',
-    whatYoullLearn: [
-      'Measure your belief baseline before module one — and retake it at the end to see exactly what changed.',
-      'Understand the neuroscience of why your brain defends the beliefs that limit you.',
-      'Excavate the specific "I can\'t" beliefs running your decisions, using a guided worksheet.',
-      'Challenge and reframe limiting beliefs with a repeatable drill you can run for life.',
-      'Practice a rewirement after every module — small daily actions that make the shift stick.',
-      'Finish with the 4-week 1% Challenge: one practice, tracked daily, with a measured result.'
-    ],
-    requirements: METHOD_REQUIREMENTS,
+    priceNote: 'Included in The Complete I Can\'t Experience',
+    // Sold only through the bundle: hidden from the library and the homepage
+    // for people who don't own it, and checkout refuses the slug directly.
+    // Members enrolled through the bundle open it here as normal.
+    sellable: false,
+    showOnSite: false,
+    bundleHref: '/bundle.html',
+    whatYoullLearn: ICANT_OUTCOMES,
+    requirements: ICANT_REQUIREMENTS,
     includes: [
-      '8 modules of on-demand lessons',
-      'Baseline + final belief self-assessments',
-      'A rewirement practice after every module',
-      'Guided belief-excavation worksheet',
-      '4-week 1% Challenge with daily tracking',
+      '10 chapter modules plus a Start Here module',
+      'The book\'s 10 exercises as a guided, saved Workbook',
+      'Anthony\'s story and the core teaching from every chapter',
+      'A three-point summary and the chapter\'s hand-off after every module',
       'Lifetime access on desktop and mobile'
     ],
     description: [
-      '"I can\'t" is rarely a fact. It\'s a belief — installed early, rehearsed for years, and defended ' +
-      'by a brain that prefers safe over free. This course is a guided demolition of those beliefs, and ' +
-      'a build of the ones that set you free.',
-      METHOD_PARAGRAPH,
-      'In three parts — See the Chains, Break the Pattern, Become Who You Decided to Be — you\'ll learn ' +
-      'why limiting beliefs form, find yours by name, and replace them with beliefs you chose on purpose. ' +
-      'Every module ends with a rewirement so the work happens in your life, not just in your notes.',
-      'By the end you won\'t just feel different. You\'ll have two assessment scores that prove you are.'
+      '"I can\'t" is rarely a fact. It is a sentence about yourself that you did not choose, that you ' +
+      'now defend without noticing. This course walks the book chapter for chapter and makes you do ' +
+      'the work the book asks for, with every answer kept.',
+      ICANT_PARAGRAPH,
+      'You will catch the belief in the act, split its fact from its verdict, reframe it, build the ' +
+      'small daily system that outlasts motivation, pre-build your comeback, install the empowering ' +
+      'belief that replaces the old one, fix the room you are growing in, and set up the one percent ' +
+      'practice you keep for life.',
+      'The course is built to be used with the book. It stands on its own, but it is the book\'s ' +
+      'exercises that do the changing.'
     ],
     curriculum: [
       {
-        title: 'Start Here: Your Baseline',
+        title: 'Start Here',
         lessons: [
-          { t: 'How this course works: Learn → Rewire → Measure', d: '4 min' },
-          { t: 'The Belief Baseline Assessment', d: '10 min', kind: 'assessment' },
-          { t: 'What inspired I Can\'t — and why it will work for you', d: '6 min' }
+          { t: 'How this works: one module per chapter, and the exercises are the book', d: '8 min' }
         ]
       },
       {
-        title: 'Part 1 — See the Chains',
+        title: 'See the Voice · Chapters 1–3',
         lessons: [
-          { t: 'Understanding Limiting Beliefs: name the invisible chains', d: '18 min' },
-          { t: 'Rewirement: Catch one "I can\'t" in the wild today', d: '8 min', kind: 'practice' },
-          { t: 'The Neuroscience of Belief: wired for safe, not free', d: '22 min' },
-          { t: 'Rewirement: Name your safety pattern', d: '8 min', kind: 'practice' },
-          { t: 'Identifying Your Limiting Beliefs: stop guessing, start excavating', d: '20 min' },
-          { t: 'Rewirement: The excavation worksheet', d: '12 min', kind: 'practice' }
+          { t: 'Chapter 1 — Understanding Limiting Beliefs', d: '20 min' },
+          { t: 'Exercise: Fact vs. Verdict', d: '10 min', kind: 'practice' },
+          { t: 'Chapter 2 — The Neuroscience of Belief', d: '22 min' },
+          { t: 'Exercise: Catch the Reflex, Pave the New Road (a 7-day log)', d: '7 days', kind: 'practice' },
+          { t: 'Chapter 3 — Identifying Limiting Beliefs', d: '22 min' },
+          { t: 'Exercise: The Shrink List', d: '15 min', kind: 'practice' }
         ]
       },
       {
-        title: 'Part 2 — Break the Pattern',
+        title: 'Take the Wheel · Chapters 4–5',
         lessons: [
-          { t: 'Challenging and Reframing Beliefs: the belief was never the truth', d: '25 min' },
-          { t: 'Rewirement: The reframe drill', d: '10 min', kind: 'practice' },
-          { t: 'The Power of Mindset Shifts: beyond the temporary fix', d: '20 min' },
-          { t: 'Rewirement: Your daily shift practice', d: '8 min', kind: 'practice' },
-          { t: 'Actionable Strategies for Change: transformation needs execution', d: '22 min' },
-          { t: 'Rewirement: One action before noon', d: '5 min', kind: 'practice' }
+          { t: 'Chapter 4 — Challenging and Reframing Beliefs', d: '24 min' },
+          { t: 'Exercise: To Me, or For Me', d: '20 min', kind: 'practice' },
+          { t: 'Chapter 5 — The Power of Mindset Shifts', d: '20 min' },
+          { t: 'Exercise: Your Two Minds', d: '15 min', kind: 'practice' }
         ]
       },
       {
-        title: 'Part 3 — Become Who You Decided to Be',
+        title: 'Build · Chapters 6–7',
         lessons: [
-          { t: 'Building Resilience: the setback is part of the strategy', d: '18 min' },
-          { t: 'Rewirement: The setback protocol', d: '10 min', kind: 'practice' },
-          { t: 'Embracing Empowering Beliefs: this is who you\'ve become', d: '25 min' },
-          { t: 'Rewirement: Write the new belief — and sign it', d: '10 min', kind: 'practice' }
+          { t: 'Chapter 6 — Six Weeks Deep', d: '25 min' },
+          { t: 'Exercise: Build Your One Move', d: '15 min', kind: 'practice' },
+          { t: 'Chapter 7 — Building Resilience and Overcoming Setbacks', d: '24 min' },
+          { t: 'Exercise: Your Comeback Plan', d: '15 min', kind: 'practice' }
         ]
       },
       {
-        title: 'The 1% Challenge',
+        title: 'Become · Chapters 8–10',
         lessons: [
-          { t: 'Choose your 4-week rewirement', d: '6 min', kind: 'practice' },
-          { t: 'Track it daily: the challenge scoreboard', d: '4 min', kind: 'practice' },
-          { t: 'Retake the Belief Baseline: measure the change', d: '10 min', kind: 'assessment' },
-          { t: 'Where you go from here', d: '5 min' }
+          { t: 'Chapter 8 — Embracing Empowering Beliefs', d: '22 min' },
+          { t: 'Exercise: Write Your New Sentence', d: '10 min', kind: 'practice' },
+          { t: 'Chapter 9 — Creating a Supportive Environment', d: '24 min' },
+          { t: 'Exercise: Audit Your Environment', d: '20 min', kind: 'practice' },
+          { t: 'Chapter 10 — The Journey of Continuous Growth', d: '22 min' },
+          { t: 'Exercise: Your One Percent (the one you keep)', d: '15 min', kind: 'practice' }
         ]
       }
     ],

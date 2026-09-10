@@ -99,12 +99,16 @@ export function isEnrolled(slug) {
   return _cache ? _cache.has(slug) : false;
 }
 
+// A bundle is an offer, not content: buying it enrolls the member in the
+// course it wraps, so the bundle record itself stays out of "My courses".
 export function enrolledCourses() {
   const set = _cache || new Set();
-  return getCourses().filter((c) => set.has(c.slug));
+  return getCourses().filter((c) => set.has(c.slug) && !c.bundleHref);
 }
 
+// Courses you could still buy. A course marked `sellable: false` is only
+// reachable through a bundle, so it never appears here (its bundle does).
 export function availableCourses() {
   const set = _cache || new Set();
-  return getCourses().filter((c) => !set.has(c.slug));
+  return getCourses().filter((c) => !set.has(c.slug) && c.sellable !== false);
 }

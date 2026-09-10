@@ -269,7 +269,7 @@ function purchaseCardHtml(course, { enrolled }) {
   if (enrolled) {
     cta = `<a class="cl-cta" href="/courses.html?course=${encodeURIComponent(course.slug)}">Go to course →</a>`;
   } else if (isBundle) {
-    cta = `<a class="cl-cta" href="${escapeHtml(course.bundleHref || '/bundle.html')}">See bundle deal →</a>`;
+    cta = `<a class="cl-cta" href="${escapeHtml(course.bundleHref || '/bundle.html')}">${course.sellable === false ? 'Get it in the bundle →' : 'See bundle deal →'}</a>`;
   } else if (live) {
     cta = `<button class="cl-cta" id="cl-enroll">${p.isFree ? 'Enroll free' : 'Enroll now'}</button>`;
   } else {
@@ -282,6 +282,7 @@ function purchaseCardHtml(course, { enrolled }) {
       ${p.onSale ? `<s class="cl-price-was">${escapeHtml(p.originalLabel)}</s>` : ''}
     </div>
     ${course.priceNote ? `<div class="cl-price-note">${escapeHtml(course.priceNote)}</div>` : ''}
+    ${course.shipsBook ? `<div class="cl-price-note">Includes a paperback of <em>I Can't: Is Not A Strategy</em>. We ask for your US shipping address at checkout.</div>` : ''}
     ${!live && !isBundle ? `<div class="cl-soon-note">Coming soon — enrollment isn't open yet.</div>` : ''}`;
 
   // The Life Coach certification offers fixed-count payment plans. Pay in
