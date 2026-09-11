@@ -82,9 +82,19 @@ export function expiredReason(user) {
   const t = nowMs();
   const anchor = signInAnchor(user);
   if (anchor && (t - anchor) > ABSOLUTE_LIMIT_MS) return 'session-expired';
+
+  // Idle is judged ONLY from recorded activity. With no record there is no
+  // evidence of idleness, so there is nothing to expire.
+  //
+  // This used to fall back to the sign-in time via Math.max(stored, anchor),
+  // which looks reasonable but is not: Firebase does not advance
+  // lastSignInTime on its silent hourly token refresh, and the guard that
+  // writes `stored` runs on only one page in the site, so `stored` is almost
+  // always 0. The effect was that any signed-in user who reached /login.html
+  // more than 30 minutes after signing in — following an invite link, for
+  // instance — was silently signed out of a perfectly valid session.
   const stored = Number(localStorage.getItem(LS_LAST_ACTIVITY) || 0);
-  const lastActive = Math.max(stored, anchor || 0);
-  if (lastActive > 0 && (t - lastActive) > IDLE_LIMIT_MS) return 'idle-timeout';
+  if (stored > 0 && (t - stored) > IDLE_LIMIT_MS) return 'idle-timeout';
   return null;
 }
 

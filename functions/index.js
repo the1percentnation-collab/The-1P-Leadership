@@ -413,9 +413,15 @@ exports.deleteUser = onCall(async (request) => {
     return deleted;
   }
 
-  const progressDeleted = await deleteCollection(targetUserRef.collection('progress'));
-  const capstoneDeleted = await deleteCollection(targetUserRef.collection('capstone'));
-  const enrollDeleted  = await deleteCollection(targetUserRef.collection('enrollments'));
+  // Same list as the self-service deletion path, for the same reason: a
+  // subcollection left behind survives the parent document and is orphaned
+  // under a uid that no longer exists. This used to clear only progress,
+  // capstone and a nonexistent 'enrollments'.
+  let subDeleted = 0;
+  for (const name of USER_SUBCOLLECTIONS) {
+    try { subDeleted += await deleteCollection(targetUserRef.collection(name)); }
+    catch (e) { /* best-effort */ }
+  }
 
   // Remove from company roster + decrement seat + strip from adminUids.
   if (targetCompanyId) {
@@ -446,9 +452,40 @@ exports.deleteUser = onCall(async (request) => {
 
   return {
     ok: true,
-    deleted: progressDeleted + capstoneDeleted + enrollDeleted + 1
+    deleted: subDeleted + 1
   };
 });
+
+/**
+ * Every subcollection under users/{uid}.
+ *
+ * One list, used by both deleteMyAccount (right to delete) and
+ * requestDataExport (right to know), because the two must not drift apart.
+ *
+ * Deleting a Firestore document does NOT delete its subcollections, so a name
+ * missing here is data that survives an account deletion, orphaned under a
+ * uid that no longer exists. The previous inline list named 'enrollments',
+ * which is not a subcollection at all (course access lives in the user doc's
+ * enrolledCourseSlugs array), and omitted the five written by the
+ * certification flow: practiceRecordings, coachingHours, ceCredits,
+ * examAttempts and certificates.
+ *
+ * Keep in step with the match blocks under users/{uid} in firestore.rules.
+ */
+const USER_SUBCOLLECTIONS = [
+  'progress',
+  'capstone',
+  'practiceRecordings',
+  'coachingHours',
+  'ceCredits',
+  'examAttempts',
+  'certificates',
+  'stats',
+  'notifications',
+  'registrations',
+  'courseInterests',
+  'purchases'
+];
 
 /**
  * deleteMyAccount() — self-service account + data deletion (CCPA/CPRA "right to
@@ -487,9 +524,7 @@ exports.deleteMyAccount = onCall(async (request) => {
     }
     return deleted;
   }
-  const subcollections = ['progress', 'capstone', 'enrollments', 'notifications',
-    'registrations', 'courseInterests', 'purchases', 'stats'];
-  for (const name of subcollections) {
+  for (const name of USER_SUBCOLLECTIONS) {
     try { await deleteCollection(userRef.collection(name)); } catch (e) { /* best-effort */ }
   }
 
@@ -560,9 +595,7 @@ exports.requestDataExport = onCall(async (request) => {
     collections: {}
   };
 
-  const subcollections = ['progress', 'capstone', 'enrollments', 'notifications',
-    'registrations', 'courseInterests', 'purchases', 'stats'];
-  for (const name of subcollections) {
+  for (const name of USER_SUBCOLLECTIONS) {
     try {
       const snap = await userRef.collection(name).get();
       if (!snap.empty) {
@@ -843,21 +876,118 @@ exports.sendContactEmail = onCall(
 );
 
 // ────────────────────────────────────────────────────────────────
+// Email unsubscribe (CAN-SPAM)
+// ────────────────────────────────────────────────────────────────
+//
+// Every bulk email must carry a working one-click opt-out, and a contact who
+// uses it must never be mailed again. Before this, /unsubscribe.html called a
+// function that did not exist, campaign emails carried no opt-out link at all,
+// and a SendGrid unsubscribe event only incremented a counter — the contact
+// stayed on the list and was mailed again by the next campaign.
+//
+// The link carries a per-contact random token stored on the contact document,
+// rather than an HMAC over a shared secret. It is equally unguessable, needs no
+// new secret to be configured before it works, and can be rotated per contact.
+
+/** Mint (once) and return a contact's unsubscribe token. */
+async function ensureUnsubToken(contactRef, existing) {
+  if (existing && typeof existing === 'string' && existing.length >= 24) return existing;
+  const token = crypto.randomBytes(24).toString('hex');
+  await contactRef.set({ unsubToken: token }, { merge: true });
+  return token;
+}
+
+function unsubscribeUrl(companyId, contactId, token) {
+  const q = new URLSearchParams({ c: companyId, id: contactId, t: token });
+  return `${APP_BASE_URL}/unsubscribe.html?${q.toString()}`;
+}
+
+/**
+ * unsubscribe — public HTTP endpoint behind /unsubscribe.html.
+ *
+ * Verifies the per-contact token, then suppresses the contact. Deliberately
+ * never reveals whether a given contact or company exists: a bad token and a
+ * missing contact both return the same `{ ok: false }`.
+ */
+exports.unsubscribe = onRequest({ cors: true }, async (req, res) => {
+  const db = admin.firestore();
+  const companyId = String(req.query.c || '').trim();
+  const contactId = String(req.query.id || '').trim();
+  const token = String(req.query.t || '').trim();
+
+  const deny = () => res.status(200).json({ ok: false });
+  if (!companyId || !contactId || !token) return deny();
+
+  try {
+    const ref = db.collection('companies').doc(companyId)
+      .collection('contacts').doc(contactId);
+    const snap = await ref.get();
+    if (!snap.exists) return deny();
+
+    const stored = (snap.data() || {}).unsubToken;
+    // Constant-time compare so the endpoint cannot be used as an oracle.
+    if (!stored || stored.length !== token.length
+        || !crypto.timingSafeEqual(Buffer.from(stored), Buffer.from(token))) {
+      return deny();
+    }
+
+    const FV = admin.firestore.FieldValue;
+    await ref.set({
+      emailOptOut: true,
+      emailOptOutAt: FV.serverTimestamp(),
+      emailOptOutSource: 'unsubscribe-link',
+      marketingConsent: false,
+      tags: FV.arrayUnion('Unsubscribed'),
+      updatedAt: FV.serverTimestamp(),
+      lastActivityAt: FV.serverTimestamp()
+    }, { merge: true });
+
+    try {
+      await ref.collection('activities').add({
+        type: 'email_event',
+        description: 'Unsubscribed from marketing email',
+        actorUid: 'system',
+        actorName: 'Unsubscribe link',
+        createdAt: FV.serverTimestamp(),
+        meta: { eventType: 'unsubscribe' }
+      });
+    } catch (e) { /* best-effort */ }
+
+    return res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error('[unsubscribe] failed:', err && err.message);
+    return res.status(200).json({ ok: false });
+  }
+});
+
+/** Has this contact opted out of marketing email? */
+function isEmailSuppressed(c) {
+  return !!(c && (c.emailOptOut === true
+    || (Array.isArray(c.tags) && c.tags.includes('Unsubscribed'))));
+}
+
+// ────────────────────────────────────────────────────────────────
 // sendCampaign — callable
 // ────────────────────────────────────────────────────────────────
 
 async function buildRecipients(db, companyId, filter) {
   const mode = (filter && filter.mode) || 'all_contacts';
   const seen = new Set();
-  const recipients = []; // { email, name?, firstName? }
+  const recipients = []; // { email, name?, firstName?, contactId?, unsubToken? }
 
-  function push(email, name) {
+  function push(email, name, contactId, unsubToken) {
     if (!email) return;
     const e = String(email).trim().toLowerCase();
     if (!e || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) || seen.has(e)) return;
     seen.add(e);
     const firstName = name ? String(name).split(' ')[0] : '';
-    recipients.push({ email: e, name: name || '', firstName });
+    recipients.push({
+      email: e,
+      name: name || '',
+      firstName,
+      contactId: contactId || null,
+      unsubToken: unsubToken || null
+    });
   }
 
   if (mode === 'all_users') {
@@ -880,25 +1010,36 @@ async function buildRecipients(db, companyId, filter) {
     for (let i = 0; i < filter.stages.length; i += 10) chunks.push(filter.stages.slice(i, i + 10));
     for (const chunk of chunks) {
       const snap = await colRef.where('stage', 'in', chunk).get();
-      snap.docs.forEach((d) => rows.push(d.data()));
+      snap.docs.forEach((d) => rows.push({ id: d.id, ref: d.ref, data: d.data() }));
     }
   } else if (mode === 'tags' && Array.isArray(filter.tags) && filter.tags.length) {
     const chunks = [];
     for (let i = 0; i < filter.tags.length; i += 10) chunks.push(filter.tags.slice(i, i + 10));
     for (const chunk of chunks) {
       const snap = await colRef.where('tags', 'array-contains-any', chunk).get();
-      snap.docs.forEach((d) => rows.push(d.data()));
+      snap.docs.forEach((d) => rows.push({ id: d.id, ref: d.ref, data: d.data() }));
     }
   } else if (mode === 'owner' && filter.ownerUid) {
     const snap = await colRef.where('ownerUid', '==', filter.ownerUid).get();
-    snap.docs.forEach((d) => rows.push(d.data()));
+    snap.docs.forEach((d) => rows.push({ id: d.id, ref: d.ref, data: d.data() }));
   } else {
     // all_contacts
     const snap = await colRef.get();
-    snap.docs.forEach((d) => rows.push(d.data()));
+    snap.docs.forEach((d) => rows.push({ id: d.id, ref: d.ref, data: d.data() }));
   }
 
-  rows.forEach((c) => push(c.email, c.name));
+  // Drop anyone who has opted out, then mint an unsubscribe token for the
+  // rest so the send can put a working opt-out link in the message. Without
+  // this filter a contact who unsubscribed was mailed again by the very next
+  // campaign.
+  for (const row of rows) {
+    const c = row.data || {};
+    if (isEmailSuppressed(c)) continue;
+    let token = null;
+    try { token = await ensureUnsubToken(row.ref, c.unsubToken); }
+    catch (e) { /* a contact with no token still gets the generic footer */ }
+    push(c.email, c.name, row.id, token);
+  }
   return recipients;
 }
 
@@ -974,9 +1115,24 @@ exports.sendCampaign = onCall(
       const chunk = recipients.slice(i, i + BATCH_SIZE);
       const personalizations = chunk.map((r) => {
         const personalizedSubject = subject.replace(/\{\{\s*firstName\s*\}\}/g, r.firstName || '');
+        // Per-recipient opt-out. A contact row carries a token; a company
+        // member (all_users mode) has no contact doc, so they fall back to the
+        // mailto opt-out, which is an equally valid CAN-SPAM mechanism.
+        const link = (r.contactId && r.unsubToken)
+          ? unsubscribeUrl(companyId, r.contactId, r.unsubToken)
+          : `mailto:${REPLY_TO}?subject=Unsubscribe`;
         return {
           to: [{ email: r.email, name: r.name || undefined }],
           subject: personalizedSubject,
+          // Key is unwrapped: the SendGrid helper wraps it with
+          // substitutionWrappers below, producing -unsubscribe_url- to match
+          // the placeholder in the body.
+          substitutions: { unsubscribe_url: link },
+          headers: {
+            // One-click opt-out for mail clients that surface it.
+            'List-Unsubscribe': `<${link}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+          },
           customArgs: {
             type: 'campaign',
             companyId,
@@ -986,8 +1142,19 @@ exports.sendCampaign = onCall(
         };
       });
 
-      const htmlPersonalized = bodyHtml; // No per-recipient token substitution beyond subject (kept simple per spec).
-      const textPersonalized = finalText;
+      // Required footer. Bulk mail must carry a working opt-out and a postal
+      // identity; the campaign body alone carried neither.
+      const htmlPersonalized = `${bodyHtml}
+<hr style="margin:28px 0 14px;border:none;border-top:1px solid #ddd;">
+<p style="font-size:12px;color:#777;line-height:1.6;">
+  You are receiving this because you signed up with The One Percent Nation.<br>
+  <a href="-unsubscribe_url-" style="color:#777;">Unsubscribe from these emails</a>.
+</p>`;
+      const textPersonalized = `${finalText}
+
+—
+You are receiving this because you signed up with The One Percent Nation.
+Unsubscribe: -unsubscribe_url-`;
 
       const msg = {
         from: { email: FROM_EMAIL, name: fromName },
@@ -996,6 +1163,9 @@ exports.sendCampaign = onCall(
         text: textPersonalized,
         html: htmlPersonalized,
         personalizations,
+        // Keys in `substitutions` above are already wrapped in `-`, so tell
+        // the helper not to wrap them a second time.
+        substitutionWrappers: ['-', '-'],
         customArgs: {
           type: 'campaign',
           companyId,
@@ -1669,6 +1839,36 @@ exports.sendgridEventWebhook = onRequest(
             else if (type === 'click') bump(`${companyId}/${campaignId}`, 'stats.clicks');
             else if (type === 'bounce' || type === 'dropped') bump(`${companyId}/${campaignId}`, 'stats.bounces');
             else if (type === 'unsubscribe' || type === 'group_unsubscribe' || type === 'spamreport') bump(`${companyId}/${campaignId}`, 'stats.unsubs');
+          }
+
+          // Suppress the contact on an opt-out or complaint.
+          //
+          // This used to only increment stats.unsubs, so someone who
+          // unsubscribed in their mail client — or reported the message as
+          // spam — stayed on the list and was mailed again by the next
+          // campaign. Matched by email because SendGrid's own unsubscribe UI
+          // does not carry our contactId.
+          if (companyId && email
+              && (type === 'unsubscribe' || type === 'group_unsubscribe' || type === 'spamreport')) {
+            try {
+              const FV = admin.firestore.FieldValue;
+              const contactsCol = db.collection('companies').doc(companyId).collection('contacts');
+              const match = contactId
+                ? [await contactsCol.doc(contactId).get()].filter((d) => d.exists)
+                : (await contactsCol.where('email', '==', String(email).toLowerCase()).limit(5).get()).docs;
+              for (const d of match) {
+                await d.ref.set({
+                  emailOptOut: true,
+                  emailOptOutAt: FV.serverTimestamp(),
+                  emailOptOutSource: type,
+                  marketingConsent: false,
+                  tags: FV.arrayUnion('Unsubscribed'),
+                  updatedAt: FV.serverTimestamp()
+                }, { merge: true });
+              }
+            } catch (e) {
+              console.warn('[webhook] opt-out suppression failed:', e && e.message);
+            }
           }
 
           // 1-on-1 contact email events → append activity.
@@ -4937,7 +5137,13 @@ exports.courseAdvisorChat = onCall(async (request) => {
 // reportBug — any user (authenticated or not) can submit a bug report.
 // Captures description + optional screenshot, runs Claude AI analysis,
 // saves to bugReports collection, and emails the owner.
-exports.reportBug = onCall(async (request) => {
+//
+// `secrets` is required, not optional: this function calls sendgridKey.value()
+// to send the owner notification, and a secret that is not declared here is
+// never injected at runtime. Without it the notification threw on every
+// report, was swallowed by the try/catch around the email block, and the
+// reporter was still told "Bug report sent" while nobody was ever notified.
+exports.reportBug = onCall({ secrets: [sendgridKey] }, async (request) => {
   const db = admin.firestore();
 
   const { description, screenshotDataUrl, url: pageUrl, userAgent } = request.data || {};
@@ -5990,7 +6196,11 @@ const LEAD_FORMS = {
   // Homepage footer signup for people willing to test a course before it is
   // finished and report back. Tagged separately so the beta group is one
   // filter in the CRM when it is time to invite them.
-  'beta-tester': { source: 'Beta Tester', tags: ['Beta Tester'] }
+  'beta-tester': { source: 'Beta Tester', tags: ['Beta Tester'] },
+  // /book-bonus — readers claiming the companion material for the book.
+  // These are the warmest leads on the site (they bought the book), so they
+  // get their own tag rather than being folded into the newsletter.
+  'book-bonus': { source: 'Book Bonus', tags: ['Book Bonus', 'Book Reader'] }
 };
 
 exports.submitLeadForm = onCall(async (request) => {

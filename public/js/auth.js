@@ -84,12 +84,31 @@ export async function signupEmail({ email, password, displayName, inviteCode, co
     try { await updateProfile(cred.user, { displayName }); } catch (e) {}
   }
   await ensureUserDoc(cred.user, { displayName });
+
+  // The account now exists. From here, nothing may throw out of this function:
+  // the caller treats a rejection as "sign-up failed" and stays on the form,
+  // but retrying then hits auth/email-already-in-use, so the user is stranded
+  // signed-in on the signup page with no way forward. A bad or used invite
+  // code is reported back as a warning instead, and the caller continues into
+  // the app.
+  let inviteWarning = null;
   if (inviteCode) {
-    await acceptInvite(inviteCode);
+    try {
+      await acceptInvite(inviteCode);
+    } catch (e) {
+      console.warn('[auth] invite accept failed', e);
+      inviteWarning = (e && e.message)
+        ? `Your account was created, but the invite code could not be applied: ${e.message}`
+        : 'Your account was created, but the invite code could not be applied.';
+    }
   }
   if (communityInviteToken) {
     try { await acceptCommunityInvite(communityInviteToken); }
     catch (e) { console.warn('[auth] community invite accept failed', e); }
+  }
+  // Callers that care can read `inviteWarning` off the returned user object.
+  if (inviteWarning) {
+    try { cred.user.inviteWarning = inviteWarning; } catch (e) { /* non-fatal */ }
   }
   return cred.user;
 }

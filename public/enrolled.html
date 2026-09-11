@@ -82,7 +82,7 @@
     </div>
   </div>
 
-  <a class="cta" id="portal-link" href="https://the1p-leadership.web.app/signup.html">Set Up Portal Access →</a>
+  <a class="cta" id="portal-link" href="/signup.html">Set Up Portal Access →</a>
 </div>
 
 <footer>
@@ -97,10 +97,20 @@
 <script>
   // Carry the class reference through so the portal signup knows
   // which cohort this person belongs to.
+  //
+  // Relative, not absolute: this page and signup.html are served from the
+  // same Hosting site, so a hardcoded host can only ever be wrong. The
+  // previous one ("the1p-leadership.web.app") was missing a hyphen and
+  // resolved to nothing at all, which broke the only post-purchase link
+  // a buyer is given.
+  //
+  // The param is `class`, not `ref`: `ref` is the affiliate code namespace
+  // (js/referral.js), and putting a class slug there would be stored as a
+  // bogus affiliate attribution for 60 days.
   const slug = new URLSearchParams(location.search).get('c');
   if (slug) {
     const link = document.getElementById('portal-link');
-    link.href = `https://the1p-leadership.web.app/signup.html?ref=${encodeURIComponent(slug)}`;
+    link.href = `/signup.html?class=${encodeURIComponent(slug)}`;
   }
 </script>
 </body>

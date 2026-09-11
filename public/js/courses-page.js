@@ -510,7 +510,11 @@ async function main() {
   if (firebaseReady) {
     const user = await onAuthReady();
     if (!user) {
-      location.replace('/login.html');
+      // Preserve where they were headed. This one matters most: the Stripe
+      // success URL is /courses.html?course=X&purchase=success, so dropping
+      // the query sent a buyer who had just paid to a bare dashboard with no
+      // confirmation.
+      location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
       return;
     }
     if (!(await ensureOnboarded(user))) return;

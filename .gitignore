@@ -23,3 +23,8 @@ functions/firebase-debug.log
 
 # scripts
 scripts/node_modules/
+
+# tests
+tests/node_modules/
+tests/*.log
+tests/firestore-debug.log
