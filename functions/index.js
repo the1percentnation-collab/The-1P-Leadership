@@ -687,6 +687,14 @@ exports.onUserCreated = onDocumentCreated(
     const user = snap.data();
     if (!user || !user.email) return;
 
+    // Access granted before the account existed (beta testers, comps).
+    try {
+      const n = await applyPendingGrants(admin.firestore(), event.params.uid, user.email);
+      if (n) console.log(`[onUserCreated] applied ${n} pending grant(s) for ${user.email}`);
+    } catch (e) {
+      console.error('[onUserCreated] pending grants failed:', e && e.message);
+    }
+
     try {
       sgMail.setApiKey(sendgridKey.value());
 
@@ -3151,8 +3159,17 @@ exports.enrollFree = onCall(async (request) => {
     if (course.status !== 'live') {
       throw new HttpsError('failed-precondition', 'This course isn\'t available to join yet.');
     }
+    // Free means an explicit price of zero. A missing price used to count as
+    // free, which let anyone self-enroll in a paid course whose Firestore
+    // record happened not to carry one (the price lived only in the code
+    // registry, which the server never reads). Bundle-only courses are never
+    // self-enrollable either; their access comes from buying the bundle or
+    // from an admin grant.
+    if (courseFulfillment(slug, course).sellable === false) {
+      throw new HttpsError('failed-precondition', 'This course is included in a bundle and can\'t be joined on its own.');
+    }
     const price = effectivePriceDollars(course);
-    if (price != null && price > 0) {
+    if (price !== 0) {
       throw new HttpsError('failed-precondition', 'This course requires checkout to enroll.');
     }
   }
@@ -3164,6 +3181,97 @@ exports.enrollFree = onCall(async (request) => {
 
   return { ok: true, slug };
 });
+
+// ── Admin grants ────────────────────────────────────────────────────
+// Course access without a purchase: beta testers, scholarships, comps that
+// should not ship a book. Client writes to enrolledCourseSlugs are frozen by
+// the rules, so this is the only non-checkout way in.
+//
+// If the person has no account yet (most beta applicants), the grant is
+// parked in pendingGrants/{emailLower} and applied by onUserCreated the
+// moment they sign up, so Anthony can grant from a lead record without
+// waiting for them to register first.
+
+function normalizeEmail(e) { return String(e || '').trim().toLowerCase(); }
+
+async function findUserByEmail(db, email) {
+  const lower = normalizeEmail(email);
+  if (!lower) return null;
+  let snap = await db.collection('users').where('email', '==', lower).limit(1).get();
+  if (snap.empty && lower !== String(email).trim()) {
+    snap = await db.collection('users').where('email', '==', String(email).trim()).limit(1).get();
+  }
+  return snap.empty ? null : snap.docs[0];
+}
+
+// Enrolls uid in slug (plus whatever the slug unlocks) and records why.
+async function applyGrant(db, uid, slug, course, { note, grantedBy }) {
+  const also = courseFulfillment(slug, course || {}).enrollsAlso;
+  await db.collection('users').doc(uid).set({
+    enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(slug, ...also),
+    lastActiveAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  await db.collection('users').doc(uid).collection('purchases').doc(`grant-${slug}-${Date.now()}`).set({
+    courseSlug: slug,
+    amount: 0,
+    mode: 'grant',
+    note: note || null,
+    grantedBy: grantedBy || null,
+    status: 'granted',
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+}
+
+exports.grantCourseAccess = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admins only.');
+
+  const email = normalizeEmail(request.data && request.data.email);
+  const slug = String((request.data && request.data.slug) || '').trim();
+  const note = String((request.data && request.data.note) || '').trim().slice(0, 200) || null;
+  if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
+  if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
+
+  const courseSnap = await db.collection('courses').doc(slug).get();
+  if (!courseSnap.exists) throw new HttpsError('not-found', 'Unknown course.');
+  const course = courseSnap.data();
+  const grantedBy = (request.auth.token && request.auth.token.email) || uid;
+
+  const userDoc = await findUserByEmail(db, email);
+  if (userDoc) {
+    await applyGrant(db, userDoc.id, slug, course, { note, grantedBy });
+    return { ok: true, applied: true, email };
+  }
+
+  await db.collection('pendingGrants').doc(email).set({
+    email,
+    slugs: admin.firestore.FieldValue.arrayUnion(slug),
+    notes: admin.firestore.FieldValue.arrayUnion(`${slug}: ${note || 'granted'}`),
+    grantedBy,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true, applied: false, pending: true, email };
+});
+
+// Called from onUserCreated: apply anything parked for this email.
+async function applyPendingGrants(db, uid, email) {
+  const lower = normalizeEmail(email);
+  if (!lower) return 0;
+  const ref = db.collection('pendingGrants').doc(lower);
+  const snap = await ref.get();
+  if (!snap.exists) return 0;
+  const pg = snap.data();
+  const slugs = Array.isArray(pg.slugs) ? pg.slugs : [];
+  for (const slug of slugs) {
+    const cSnap = await db.collection('courses').doc(slug).get();
+    await applyGrant(db, uid, slug, cSnap.exists ? cSnap.data() : null,
+      { note: 'applied from pending grant at signup', grantedBy: pg.grantedBy || null });
+  }
+  await ref.delete();
+  return slugs.length;
+}
 
 // validateCoupon — pre-checkout preview so the buyer sees the discounted
 // price before committing. Sign-in required (checkout requires it anyway),
