@@ -827,6 +827,12 @@ service cloud.firestore {
     // open, which let anyone enumerate every code. `redemptions` is the
     // server-kept usage counter (Stripe webhook / comp path) and is frozen
     // against client writes, like the legacy stripePromotionCodeId.
+    // Course grants parked for people who have not signed up yet. Written and
+    // consumed by Cloud Functions only (grantCourseAccess / onUserCreated).
+    match /pendingGrants/{email} {
+      allow read, write: if false;
+    }
+
     match /coupons/{code} {
       allow read: if isAnyAdmin();
       allow create: if isAnyAdmin()

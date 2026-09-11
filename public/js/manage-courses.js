@@ -12,6 +12,8 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { COURSES } from './courses-registry.js';
 import { loadCourses, getCourses, priceInfo } from './courses-data.js';
+import { functions } from './firebase.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import {
   initBuilder, openBuilder, builderHasUnsavedChanges, builderDiscardChanges, CODE_CONTENT_SLUGS
 } from './course-builder.js';
@@ -125,6 +127,7 @@ function courseCardHtml(c) {
           <button class="kebab-btn" type="button" aria-label="More actions" data-kebab-toggle>⋯</button>
           <span class="kebab-menu">
             <button type="button" data-landing="${slug}">Landing page ↗</button>
+            <button type="button" data-grant="${slug}">Grant access…</button>
             <button type="button" class="kebab-danger" data-del-course="${slug}">Delete</button>
           </span>
         </span>
@@ -600,3 +603,28 @@ async function main() {
 }
 
 main();
+
+
+// ─── Grant access (no purchase) ──────────────────────────────────────────
+// Beta testers, scholarships, comps. Works whether or not the person has an
+// account yet: a grant for an unknown email is applied when they sign up.
+document.addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('[data-grant]');
+  if (!btn) return;
+  const slug = btn.dataset.grant;
+  const email = window.prompt(`Grant free access to "${slug}".\n\nMember's email:`);
+  if (email == null) return;
+  const note = window.prompt('Reason (shows in their purchase history):', 'beta tester') || '';
+  btn.disabled = true;
+  try {
+    const res = await httpsCallable(functions, 'grantCourseAccess')({ email: email.trim(), slug, note });
+    const d = (res && res.data) || {};
+    alert(d.applied
+      ? `Done. ${d.email} now has access to ${slug}.`
+      : `${d.email} doesn't have an account yet. Access is parked and will apply automatically the moment they sign up at /signup.html.`);
+  } catch (e) {
+    alert(`Could not grant access: ${e && e.message ? e.message : e}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
