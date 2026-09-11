@@ -248,6 +248,9 @@ export const COURSES = [
   },
   {
     slug: 'bundle-icant',
+    // An offer, not content: buying it enrolls the member in `icant`. The
+    // library uses this to keep the record out of "My courses".
+    kind: 'bundle',
     title: 'The Complete I Can\'t Experience',
     short: 'Bundle Deal',
     subtitle: 'Book + Course together. Read the chapter, then do the work.',

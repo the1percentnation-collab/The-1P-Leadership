@@ -3509,7 +3509,10 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
     client_reference_id: uid,
     metadata,
     ...((isSubscription || plan) ? { subscription_data: { metadata } } : {}),
-    success_url: `${APP_BASE_URL}/courses.html?course=${encodeURIComponent(slug)}&purchase=success`,
+    // A bundle record has no lessons of its own, so send the buyer to the
+    // course it unlocks. Landing on the bundle showed "content is being
+    // prepared" to someone who had just paid.
+    success_url: `${APP_BASE_URL}/courses.html?course=${encodeURIComponent(fulfil.enrollsAlso[0] || slug)}&purchase=success`,
     cancel_url: `${APP_BASE_URL}/courses.html`
   });
 
