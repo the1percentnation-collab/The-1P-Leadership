@@ -36,7 +36,8 @@ if (form) {
     btn.textContent = 'Sending…';
     msg('');
 
-    const fields = { course: $('beta-course').value, why: $('beta-why').value.trim() };
+    // One program in beta for now. Sent as a field so the CRM record says which.
+    const fields = { course: "I Can't: The Course", why: $('beta-why').value.trim() };
     Object.keys(fields).forEach((k) => { if (!fields[k]) delete fields[k]; });
 
     try {
