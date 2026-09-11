@@ -793,6 +793,28 @@
 
 <script type="module" src="/js/clc-page.js"></script>
 <script>
+  // Safety net: if the page module never runs (a blocked or offline CDN
+  // import), the CTAs would sit on "Loading…" forever. Give them something
+  // that works instead.
+  setTimeout(function () {
+    var ids = ['clc-cta-hero', 'clc-cta-pricing', 'clc-cta-bottom'];
+    var stuck = ids.map(function (id) { return document.getElementById(id); })
+      .filter(function (el) { return el && el.textContent.trim() === 'Loading…'; });
+    if (!stuck.length) return;
+    stuck.forEach(function (el) {
+      el.textContent = 'Email us about the next cohort';
+      el.addEventListener('click', function () {
+        location.href = 'mailto:anthonybrown@the1pnation.com?subject=' +
+          encodeURIComponent('1P Certified Life Coach');
+      });
+    });
+    var msg = document.getElementById('clc-cta-msg');
+    if (msg) {
+      msg.textContent = 'Enrollment is handled by email right now. Write to anthonybrown@the1pnation.com and we will get back to you.';
+      msg.hidden = false;
+    }
+  }, 8000);
+
   // FAQ accordion (same behavior as bundle.html)
   document.querySelectorAll('.faq-question').forEach(function (btn) {
     btn.addEventListener('click', function () {
