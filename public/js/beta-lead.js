@@ -18,6 +18,34 @@ function msg(text, kind) {
   el.className = 'beta-msg' + (kind ? ' ' + kind : '');
 }
 
+// ── Open / close ─────────────────────────────────────────────────────────
+// The form lives in a modal opened from the footer strip. Backdrop click, the
+// × button and Escape all close it; focus goes to the first field on open
+// and back to the opener on close. A completed application stays visible if
+// the visitor reopens it, since the form is hidden and the thank-you shown.
+const modal = $('beta-modal');
+const opener = $('beta-open');
+function openBeta() {
+  if (!modal) return;
+  modal.hidden = false;
+  document.body.classList.add('beta-modal-open');
+  const first = $('beta-name');
+  if (first && $('beta-form').style.display !== 'none') setTimeout(() => first.focus(), 30);
+}
+function closeBeta() {
+  if (!modal || modal.hidden) return;
+  modal.hidden = true;
+  document.body.classList.remove('beta-modal-open');
+  if (opener) opener.focus();
+}
+if (opener) opener.addEventListener('click', openBeta);
+if (modal) {
+  modal.querySelectorAll('[data-beta-close]').forEach((el) => el.addEventListener('click', closeBeta));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeBeta(); });
+}
+// Deep link: /#beta-apply opens it directly (usable in emails and posts).
+if (location.hash === '#beta-apply') openBeta();
+
 const form = $('beta-form');
 if (form) {
   form.addEventListener('submit', async (ev) => {

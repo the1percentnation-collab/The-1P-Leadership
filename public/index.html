@@ -1193,10 +1193,11 @@
 
     /* Beta tester signup strip */
     .beta-strip {
-      display: grid; grid-template-columns: 1.1fr 1.4fr; gap: 48px; align-items: start;
       padding: 40px 0; margin-bottom: 40px;
       border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
     }
+    .beta-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+    .beta-copy .btn-primary { margin-top: 18px; }
     .beta-title { font-family: var(--font-display); font-size: 34px; letter-spacing: 0.03em; line-height: 0.95; margin: 12px 0 12px; }
     .beta-title .red { color: var(--red); }
     .beta-sub { font-size: 14px; font-weight: 300; line-height: 1.65; color: var(--gray-400); max-width: 46ch; }
@@ -1227,8 +1228,30 @@
     .beta-done .t { font-family: var(--font-display); font-size: 28px; letter-spacing: 0.03em; margin-bottom: 8px; }
     .beta-done .t .red { color: var(--red); }
     .beta-done p { font-size: 14px; font-weight: 300; color: var(--gray-400); line-height: 1.65; max-width: 52ch; }
-    @media (max-width: 900px) { .beta-strip { grid-template-columns: 1fr; gap: 28px; } }
     @media (max-width: 600px) { .beta-form { grid-template-columns: 1fr; } }
+
+    /* Beta modal */
+    .beta-modal { position: fixed; inset: 0; z-index: 2100; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .beta-modal[hidden] { display: none; }
+    .beta-modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.78); backdrop-filter: blur(6px); }
+    .beta-modal-panel {
+      position: relative; width: 100%; max-width: 640px; max-height: calc(100vh - 40px); overflow-y: auto;
+      background: var(--black-2, #0F0F0F); border: 1px solid var(--border); border-top: 3px solid var(--red);
+      border-radius: 12px; padding: 32px 28px 28px;
+      animation: betaIn 0.28s var(--ease-out) both;
+    }
+    @keyframes betaIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    .beta-modal-close {
+      position: absolute; top: 12px; right: 12px; width: 36px; height: 36px; border-radius: 6px;
+      background: transparent; border: 1px solid var(--border); color: var(--gray-400); font-size: 22px; line-height: 1; cursor: pointer;
+    }
+    .beta-modal-close:hover { color: var(--white); border-color: rgba(255,255,255,0.25); }
+    .eyebrow-mono { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--red); margin-bottom: 10px; }
+    .beta-modal-title { font-family: var(--font-display); font-size: 36px; letter-spacing: 0.03em; line-height: 0.95; margin-bottom: 22px; }
+    .beta-modal-title .red { color: var(--red); }
+    body.beta-modal-open { overflow: hidden; }
+    @media (prefers-reduced-motion: reduce) { .beta-modal-panel { animation: none; } }
+    @media (max-width: 600px) { .beta-modal { padding: 12px; } .beta-modal-panel { padding: 26px 18px 20px; max-height: calc(100vh - 24px); } }
 
     /* ============================================================
        BUTTONS (shared)
@@ -2364,12 +2387,32 @@
 
     <!-- BETA TESTERS -->
     <div class="beta-strip" id="beta">
-      <div>
+      <div class="beta-copy">
         <span class="tag">Beta Testers Wanted</span>
         <div class="beta-title">TEST THE COURSE<br><span class="red">BEFORE</span> IT LAUNCHES.</div>
         <p class="beta-sub">We're finishing <em>I Can't: The Course</em>, the companion to the book, and want a small group to go through it first. You get early access at no cost. We get honest notes on what lands and what doesn't. That's the whole deal.</p>
+        <button class="btn-primary btn-lg" type="button" id="beta-open" aria-haspopup="dialog" aria-controls="beta-modal">Apply to beta test →</button>
       </div>
-      <div>
+    </div>
+
+    <div class="footer-bottom">
+      <div class="footer-copy">© 2025 The One Percent Nation. All rights reserved.</div>
+      <div class="footer-legal">
+        <a href="/privacy.html">Privacy Policy</a>
+        <a href="/terms.html">Terms of Service</a>
+        <a href="/contact.html">Contact</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- BETA TESTER MODAL (opened by #beta-open) -->
+<div class="beta-modal" id="beta-modal" role="dialog" aria-modal="true" aria-labelledby="beta-modal-title" hidden>
+  <div class="beta-modal-backdrop" data-beta-close></div>
+  <div class="beta-modal-panel">
+    <button class="beta-modal-close" type="button" aria-label="Close" data-beta-close>×</button>
+    <div class="eyebrow-mono">Beta Testers · I Can't: The Course</div>
+    <div class="beta-modal-title" id="beta-modal-title">APPLY TO <span class="red">BETA TEST.</span></div>
         <div class="beta-done" id="beta-done">
           <div class="t">YOU'RE ON <span class="red">THE LIST.</span></div>
           <p>Anthony will reach out personally with access details and what we'd like you to look at first. Beta seats are limited, so watch your inbox.</p>
@@ -2402,19 +2445,9 @@
             <div class="beta-msg" id="beta-msg" role="status" aria-live="polite"></div>
           </div>
         </form>
-      </div>
-    </div>
-
-    <div class="footer-bottom">
-      <div class="footer-copy">© 2025 The One Percent Nation. All rights reserved.</div>
-      <div class="footer-legal">
-        <a href="/privacy.html">Privacy Policy</a>
-        <a href="/terms.html">Terms of Service</a>
-        <a href="/contact.html">Contact</a>
-      </div>
-    </div>
   </div>
-</footer>
+</div>
+
 
 <!-- ============================================================
      LOGIN / MEMBER PORTAL MODAL
