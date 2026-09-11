@@ -23,9 +23,27 @@ function initials(name) {
   return String(name || '?').split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 }
 
+/**
+ * Only http(s) links are rendered.
+ *
+ * Coaches can edit their own directory entry, so `bookingUrl` and `photoUrl`
+ * are attacker-controlled as far as this public page is concerned. Escaping
+ * alone does not help: `javascript:alert(1)` contains no HTML metacharacters
+ * and would have rendered as a live link for every visitor. Returns null for
+ * anything that is not an absolute http/https URL, and the caller drops it.
+ */
+function safeUrl(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  let u;
+  try { u = new URL(raw.trim()); } catch (e) { return null; }
+  return (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : null;
+}
+
 function coachCardHtml(c) {
-  const avatar = c.photoUrl
-    ? `<img src="${escapeHtml(c.photoUrl)}" alt="" style="width:64px;height:64px;border-radius:50%;object-fit:cover;">`
+  const photoUrl = safeUrl(c.photoUrl);
+  const bookingUrl = safeUrl(c.bookingUrl);
+  const avatar = photoUrl
+    ? `<img src="${escapeHtml(photoUrl)}" alt="" style="width:64px;height:64px;border-radius:50%;object-fit:cover;">`
     : `<div style="width:64px;height:64px;border-radius:50%;background:#1E1E1E;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--red,#E60306);">${escapeHtml(initials(c.name))}</div>`;
   const specialties = Array.isArray(c.specialties) && c.specialties.length
     ? `<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:8px;">
@@ -39,7 +57,7 @@ function coachCardHtml(c) {
       ${c.location ? `<div style="font-size:12px; color:var(--gray-mid);">${escapeHtml(c.location)}</div>` : ''}
       ${c.bio ? `<p style="font-size:13px; color:var(--gray-light); margin:10px 0 0; line-height:1.5;">${escapeHtml(String(c.bio).slice(0, 200))}</p>` : ''}
       ${specialties}
-      ${c.bookingUrl ? `<a class="btn btn-primary" href="${escapeHtml(c.bookingUrl)}" target="_blank" rel="noopener" style="margin-top:14px; display:inline-block; font-size:13px;">Book a conversation →</a>` : ''}
+      ${bookingUrl ? `<a class="btn btn-primary" href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer" style="margin-top:14px; display:inline-block; font-size:13px;">Book a conversation →</a>` : ''}
     </div>`;
 }
 

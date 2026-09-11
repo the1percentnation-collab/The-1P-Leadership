@@ -96,7 +96,9 @@
 
     function nextUrl() {
       const n = new URLSearchParams(location.search).get('next');
-      return n && n.startsWith('/') ? n : '/dashboard';
+      // Same-site only: "//evil.com" starts with "/" but is protocol-relative,
+      // which would turn `next` into an open redirect.
+      return n && n.startsWith('/') && !n.startsWith('//') ? n : '/dashboard';
     }
 
     if (!firebaseReady) showErr('Authentication service is unreachable. Check your connection and retry.');

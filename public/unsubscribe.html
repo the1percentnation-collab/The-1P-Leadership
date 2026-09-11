@@ -42,12 +42,19 @@
 </footer>
 
 <script>
-  // The unsubscribe function verifies a signed token, so a link
+  // The unsubscribe function verifies a per-contact token, so a link
   // cannot be edited to unsubscribe somebody else.
+  //
+  // Routed through a Hosting rewrite (/api/unsubscribe in firebase.json)
+  // rather than a function hostname. v2 functions are served from Cloud Run
+  // under a generated, project-specific host, so the old hardcoded
+  // us-central1-<project>.cloudfunctions.net URL resolved to nothing and
+  // every unsubscribe link on the site dead-ended in "Something went wrong".
+  // The rewrite is same-origin, so it also needs no CORS.
   (async () => {
     const wrap = document.getElementById('wrap');
     const q = location.search;
-    const endpoint = `https://us-central1-the-1p-leadership.cloudfunctions.net/unsubscribe${q}`;
+    const endpoint = `/api/unsubscribe${q}`;
     try {
       const res = await fetch(endpoint);
       const data = await res.json();

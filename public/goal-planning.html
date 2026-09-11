@@ -636,12 +636,16 @@
     <div class="step" id="step-4">
       <div class="step-label">Step 5 of 5 — Commitment</div>
       <div class="step-title">READY TO<br><span class="red">EXECUTE?</span></div>
-      <p class="step-desc">One final step before your plan is generated. Enter your email to receive your full workbook and set the cadence for your weekly reviews.</p>
+      <p class="step-desc">One final step before your plan is generated. Leave your email so we can stay in touch, and set the cadence for your weekly reviews.</p>
 
       <div class="input-group">
-        <label class="input-label">Email Address (to receive your plan)</label>
+        <label class="input-label">Email Address (optional)</label>
         <input class="wb-input" type="email" id="inp-email" placeholder="you@example.com">
-        <div class="input-hint">Your plan will be sent here within minutes. No spam — just your workbook.</div>
+        <!-- Nothing emails the plan today: it renders on the next screen and
+             prints from there. The hint used to promise delivery "within
+             minutes", which never happened. -->
+        <div class="input-hint">Your plan appears on the next screen and you can print or save it there. No spam.</div>
+        <div class="input-hint" id="email-warn" style="display:none; color:#f88;"></div>
       </div>
 
       <div class="input-group">
@@ -931,15 +935,28 @@ function generatePlan() {
 
   // Capture the lead in the portal CRM (best-effort; the plan renders
   // either way). Hook defined in js/goal-planner-lead.js.
+  //
+  // A malformed address used to be dropped with no signal at all — the plan
+  // rendered, the lead was rejected server-side, and nobody knew. Now it is
+  // checked first and the visitor is told when it will not be stored.
+  const emailWarn = document.getElementById('email-warn');
+  if (emailWarn) emailWarn.style.display = 'none';
   if (email) {
-    try {
-      if (window.__1pGoalPlannerLead) {
-        window.__1pGoalPlannerLead({
-          name, email,
-          fields: { role, hours, barrier, win, income: String(income), focuses: focuses.join(', ') }
-        });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      if (emailWarn) {
+        emailWarn.textContent = 'That email address is not valid, so we could not save it. Your plan is below either way.';
+        emailWarn.style.display = 'block';
       }
-    } catch (err) { /* non-fatal */ }
+    } else {
+      try {
+        if (window.__1pGoalPlannerLead) {
+          window.__1pGoalPlannerLead({
+            name, email,
+            fields: { role, hours, barrier, win, income: String(income), focuses: focuses.join(', ') }
+          });
+        }
+      } catch (err) { /* non-fatal */ }
+    }
   }
 }
 

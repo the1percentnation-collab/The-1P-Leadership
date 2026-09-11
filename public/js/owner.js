@@ -96,9 +96,14 @@ async function main() {
   const u = await onAuthReady();
   if (!u) { location.replace('/login.html?next=' + encodeURIComponent('/owner.html')); return; }
 
-  renderTopbar({ user: u, role: 'owner', currentPage: 'owner' });
-
+  // Resolve the real role BEFORE painting. Hardcoding role:'owner' here meant
+  // any signed-in member who opened /owner.html was shown the whole Owner
+  // dropdown (CRM, Store, Courses, Products, Affiliates, Certification, Admin,
+  // Owner). Every destination re-gates, so it granted nothing, but it
+  // advertised the entire back office to ordinary members.
   const info = await getRoleInfo(true);
+  renderTopbar({ user: u, role: info.role, currentPage: 'owner' });
+
   if (info.role !== 'owner') {
     // Still allow the page to load so the user can run bootstrapOwner.
     $('panel').style.display = 'block';

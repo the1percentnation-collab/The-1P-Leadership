@@ -96,7 +96,14 @@
       }
       $('btn-submit').disabled = true;
       try {
-        await signupEmail({ email, password, displayName, inviteCode, communityInviteToken });
+        const user = await signupEmail({ email, password, displayName, inviteCode, communityInviteToken });
+        // The account was created either way; an invite that could not be
+        // applied is worth saying out loud, but it must not block entry.
+        if (user && user.inviteWarning) {
+          showErr(user.inviteWarning + ' Continuing to your profile setup…');
+          setTimeout(() => location.replace('/onboarding'), 2500);
+          return;
+        }
         location.replace('/onboarding');
       } catch (err) {
         showErr(err.message || 'Sign-up failed.');

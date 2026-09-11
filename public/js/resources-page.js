@@ -10,7 +10,7 @@ async function main() {
   if (firebaseReady) {
     const user = await onAuthReady();
     if (!user) {
-      location.replace('/login.html');
+      location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
       return;
     }
   }

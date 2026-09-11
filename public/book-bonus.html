@@ -380,6 +380,7 @@
         <button type="submit" class="btn-submit" id="submit-btn">
           <span id="btn-text">Unlock My Bonuses →</span>
         </button>
+        <div class="field-error" id="err-submit" style="display:none; text-align:center; margin-top:10px;"></div>
         <p class="form-legal">No spam. No selling your info. Unsubscribe anytime. By submitting you agree to receive updates from The One Percent Nation.</p>
       </form>
 
@@ -446,12 +447,31 @@
 
     if (!valid) return;
 
+    const submitErr = document.getElementById('err-submit');
+    submitErr.style.display = 'none';
     submitBtn.disabled = true;
     btnText.textContent = 'Sending…';
 
-    // In production: POST to your email provider (Mailchimp, ConvertKit, etc.)
-    // For now, simulate a short delay and show the success state.
-    await new Promise(r => setTimeout(r, 900));
+    try {
+      // Real capture. This used to be `await new Promise(r => setTimeout(r, 900))`
+      // with a comment saying to wire up an email provider "in production", so
+      // every reader who claimed their bonuses was silently thrown away.
+      // book-bonus-lead.js writes them into the academy CRM.
+      if (typeof window.__1pBookBonusLead !== 'function') {
+        throw new Error('The form is still loading. Give it a second and try again.');
+      }
+      await window.__1pBookBonusLead({ firstName: fname, lastName: lname, email });
+    } catch (err) {
+      // Do NOT show the success panel on failure — it promises bonuses that
+      // would never arrive, and the localStorage flag below would lock the
+      // reader out of ever retrying.
+      submitErr.textContent = (err && err.message)
+        || 'Something went wrong. Email the1percentnation@gmail.com and I will send your bonuses directly.';
+      submitErr.style.display = 'block';
+      submitBtn.disabled = false;
+      btnText.textContent = 'Unlock My Bonuses →';
+      return;
+    }
 
     form.style.display = 'none';
     success.style.display = 'flex';
@@ -468,5 +488,6 @@
     }
   } catch {}
 </script>
+<script type="module" src="/js/book-bonus-lead.js"></script>
 </body>
 </html>

@@ -2934,15 +2934,31 @@ setInterval(() => {
 }, 8000);
 
 // ─── NEWSLETTER ─────────────────────────────────────────────────
-function submitNewsletter() {
+async function submitNewsletter() {
   const email = document.getElementById('nl-email').value.trim();
-  if (!email || !email.includes('@')) { alert('Please enter a valid email address.'); return; }
-  // Captured in the portal CRM (js/newsletter-lead.js). Best-effort: the
-  // visitor sees the welcome either way; a failed call is logged, not shown.
+  // Same test the server applies, so an address that will be rejected is
+  // caught here instead of being dropped behind a success message. The old
+  // check was `email.includes('@')`, which let "a@b" and "@x.com" through to
+  // a server rejection the visitor never saw.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    alert('Please enter a valid email address.');
+    return;
+  }
+  // Captured in the portal CRM (js/newsletter-lead.js).
   try {
-    if (window.__1pNewsletterLead) window.__1pNewsletterLead({ email });
-  } catch (err) { /* non-fatal */ }
-  alert('Welcome to the Nation! Check your inbox for a confirmation email.');
+    if (!window.__1pNewsletterLead) {
+      // The module is deferred; a very fast click can beat it.
+      alert('Still loading — give it a second and try again.');
+      return;
+    }
+    await window.__1pNewsletterLead({ email });
+  } catch (err) {
+    alert((err && err.message)
+      || 'We could not sign you up just now. Email the1percentnation@gmail.com and I will add you myself.');
+    return;
+  }
+  // No confirmation email is sent today, so this no longer promises one.
+  alert("You're on the list. Welcome to the Nation.");
   document.getElementById('nl-email').value = '';
 }
 

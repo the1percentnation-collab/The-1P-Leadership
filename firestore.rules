@@ -325,7 +325,15 @@ service cloud.firestore {
                      && exists(/databases/$(database)/documents/users/$(request.auth.uid))
                      && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == cid);
 
-      allow list: if isOwner();
+      // List: owner, or a query provably narrowed to companies the caller
+      // already admins. js/company-resolver.js runs exactly that query
+      // (where adminUids array-contains uid), and restricting this to
+      // isOwner() denied it — so every admin who was added straight to
+      // adminUids, rather than through an invite, was told "You are not an
+      // admin of any company yet" on the CRM, Admin and Campaigns consoles,
+      // and the multi-company switcher never rendered for anyone.
+      allow list: if isOwner()
+                  || (isSignedIn() && request.auth.uid in resource.data.adminUids);
 
       // Create/delete: owner only.
       allow create, delete: if isOwner();
@@ -336,10 +344,16 @@ service cloud.firestore {
                         && request.auth.uid in resource.data.adminUids
                         && request.resource.data.adminUids == resource.data.adminUids);
 
-      // companies/{cid}/invites/{inviteId} — readable by anyone (so new signups can look up by
-      // code); writable by company admins and owner. Cloud Function mutates on accept.
+      // companies/{cid}/invites/{inviteId} — company admins and owner only.
+      //
+      // This was `allow read: if true`, on the stale reasoning that new
+      // signups needed to look up an invite by code. They don't: acceptInvite
+      // does that lookup server-side with the Admin SDK, which bypasses rules
+      // entirely, and js/admin.js is the only client that reads invites — for
+      // a company it already administers. Public read meant anyone who knew a
+      // companyId could list every pending invite code and self-join with it.
       match /invites/{inviteId} {
-        allow read: if true;
+        allow read: if isOwner() || isCompanyAdmin(cid);
         allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
       }
 
@@ -468,10 +482,16 @@ service cloud.firestore {
       }
 
       allow get: if canReadPost();
-      // list: we can't evaluate resource.data per-query here across companyId == null OR ==
-      // user's cid easily; clients run two queries (one per companyId filter). Allow list to
-      // any signed-in user — individual documents still filter via `get` rules above.
-      allow list: if isSignedIn();
+
+      // List: the same test as `get`, applied per returned document.
+      //
+      // This used to be `allow list: if isSignedIn()`, on the reasoning that
+      // "individual documents still filter via `get` rules above". They do
+      // not — `get` rules are never consulted for query results — so any
+      // signed-in member could run getDocs(collection(db,'posts')) and read
+      // every other company's feed. The clients already query one companyId
+      // at a time (js/community.js), so each returned doc satisfies this.
+      allow list: if canReadPost();
 
       // Create: authorUid must match auth.uid. Counters must start at 0. companyId must be
       // null (global) only if the caller is owner, otherwise it must match caller's own cid.
@@ -489,7 +509,16 @@ service cloud.firestore {
               && request.resource.data.mentionedUids.size() <= 10)
         )
         && (
-          (request.resource.data.companyId == null && isOwner())
+          // Global post (companyId == null). The owner posts globally by
+          // design, and so does an individual member — someone who bought a
+          // course directly and has no company. canReadPost() above already
+          // treats companyId == null as world-readable inside the portal, and
+          // community-page.js sends null for exactly those two cases, so
+          // requiring isOwner() here rejected every post an individual member
+          // ever tried to make.
+          (request.resource.data.companyId == null
+            && (isOwner() || callerCompanyId() == null))
+          // Company post: must be the caller's own company.
           || (request.resource.data.companyId != null
               && request.resource.data.companyId == callerCompanyId())
         );

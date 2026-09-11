@@ -14,7 +14,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign in | The One Percent Academy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.static.com" crossorgin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <style>
@@ -218,12 +218,29 @@
     function nextUrl() {
       const p = new URLSearchParams(location.search);
       const n = p.get('next');
-      return n && n.startsWith('/') ? n : '/dashboard';
+      // Must be a same-site path. "//evil.com" also starts with "/" and is a
+      // protocol-relative URL, so it has to be excluded explicitly or `next`
+      // becomes an open redirect off the site.
+      return n && n.startsWith('/') && !n.startsWith('//') ? n : '/dashboard';
     }
 
     if (!firebaseReady) {
       showErr('Authentication service is unreachable. Check your connection and retry.');
     }
+
+    // Explain an expired session. js/session.js appends ?reason= when it ends
+    // one, but nothing ever read it, so a user who was signed out arrived at a
+    // blank login page with no idea why.
+    (function showExpiryReason() {
+      const reason = new URLSearchParams(location.search).get('reason');
+      if (!reason) return;
+      const text = {
+        'idle-timeout': 'You were signed out after a period of inactivity. Please sign in again.',
+        'session-expired': 'Your session reached its time limit. Please sign in again.',
+        'token-invalid': 'Your session is no longer valid. Please sign in again.'
+      }[reason];
+      if (text) showErr(text);
+    })();
 
     // If already signed in, bounce to next — unless the session has already
     // exceeded its idle/absolute limit, in which case end it here silently and

@@ -3,9 +3,21 @@
 // Call init() once per page.
 
 import { functions } from './firebase.js';
+import { onAuthReady } from './auth.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 let _init = false;
+
+// The courseAdvisorChat callable requires a signed-in user. This widget is
+// mounted on the public homepage as well as on the signed-in pages, so track
+// auth state and tell an anonymous visitor to sign in instead of greeting them
+// with "ask me anything" and then failing with "Something went wrong".
+let _signedIn = false;
+onAuthReady((u) => { _signedIn = !!u; });
+
+const SIGN_IN_PROMPT =
+  'Hi — I\'m 1PN. Sign in and I can answer questions about the courses, your progress, '
+  + 'and what to take next. Create an account or sign in at /signup.html.';
 
 export function init() {
   if (_init) return;
@@ -284,7 +296,10 @@ function wireUp(root) {
     input.focus();
     if (!greeted) {
       greeted = true;
-      setTimeout(() => addMsg('assistant', 'Hi — I\'m 1PN. Ask me anything about our courses, your progress, or what you\'d like to learn next. You can type or tap the mic to speak.'), 350);
+      const greeting = _signedIn
+        ? 'Hi — I\'m 1PN. Ask me anything about our courses, your progress, or what you\'d like to learn next. You can type or tap the mic to speak.'
+        : SIGN_IN_PROMPT;
+      setTimeout(() => addMsg('assistant', greeting), 350);
     }
   }
 
@@ -366,7 +381,12 @@ function wireUp(root) {
     } catch (err) {
       console.error('[chatbot]', err);
       thinkRow.remove();
-      addMsg('assistant', 'Something went wrong — please try again.', true);
+      // "Sign in required" is a normal state on the public pages, not a fault.
+      // Saying so beats a generic failure the visitor can do nothing about.
+      const msg = err && err.code === 'functions/unauthenticated'
+        ? SIGN_IN_PROMPT
+        : 'Something went wrong — please try again.';
+      addMsg('assistant', msg, err && err.code !== 'functions/unauthenticated');
       setS(S.IDLE);
     } finally {
       loading = false;

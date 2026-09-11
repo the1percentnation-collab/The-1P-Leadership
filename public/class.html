@@ -127,10 +127,13 @@
       // before rendering or calling getClassState, so nobody sees a flash of
       // the generic page and no needless request goes out. Old links, sent
       // emails, and bookmarks all land in the right place.
-      if (redirectToClassPage(cls)) return;
-
-      const state = await callFn('getClassState', { slug });
-      render(cls, state);
+      // `return` is illegal here: this is module top level, not a function.
+      // Guard the render instead so the bounce still short-circuits the
+      // getClassState call.
+      if (!redirectToClassPage(cls)) {
+        const state = await callFn('getClassState', { slug });
+        render(cls, state);
+      }
     } catch (err) {
       loading.innerHTML = esc(readableError(err));
     }
