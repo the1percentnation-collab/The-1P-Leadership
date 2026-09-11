@@ -10,6 +10,7 @@
 
 import { loadCourses, getCourseBySlug } from './courses-data.js';
 import { onAuthReady, currentUser } from './auth.js';
+import { ensureOnboarded } from './onboarding-guard.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import { getRoleInfo } from './roles.js';
 import { db, firebaseReady } from './firebase.js';
@@ -117,6 +118,7 @@ async function main() {
       location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
       return;
     }
+    if (!(await ensureOnboarded(user))) return;
   }
 
   renderTopbarEarly({ user: currentUser(), currentPage: null, links: [] });

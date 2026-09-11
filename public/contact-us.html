@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact | The One Percent Nation</title>
+  <meta name="description" content="Get in touch with The One Percent Nation about speaking, corporate programs, coaching, the courses, or anything else.">
+  <link rel="canonical" href="https://the1pnation.com/contact-us">
+  <meta property="og:title" content="Contact The One Percent Nation">
+  <meta property="og:description" content="Speaking, corporate programs, coaching, courses, or support. Write in and Anthony's team will get back to you.">
+  <meta property="og:url" content="https://the1pnation.com/contact-us">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Contact The One Percent Nation">
+  <meta name="twitter:description" content="Speaking, corporate programs, coaching, courses, or support.">
+  <link rel="icon" type="image/jpeg" href="/assets/favicon.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --red: #E60306; --red-dark: #B30205;
+      --black: #080808; --black-2: #0F0F0F; --charcoal: #151515;
+      --border: rgba(255,255,255,0.08);
+      --white: #FFFFFF; --gray-400: #A0A0A0; --gray-600: #606060;
+      --gold: #C9A84C; --border-gold: rgba(201,168,76,0.35);
+      --font-display: 'Bebas Neue', Impact, sans-serif;
+      --font-body: 'Outfit', system-ui, sans-serif;
+      --font-mono: 'Space Mono', monospace;
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--black); color: var(--white); font-family: var(--font-body); overflow-x: hidden; min-height: 100vh; display: flex; flex-direction: column; }
+    a { color: inherit; text-decoration: none; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--red); border-radius: 2px; }
+
+    body::before {
+      content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 256px;
+    }
+    .hero-grid {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 80px 80px;
+      mask-image: radial-gradient(ellipse 60% 60% at 20% 30%, black 10%, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse 60% 60% at 20% 30%, black 10%, transparent 70%);
+      opacity: 0.5;
+    }
+
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      height: 68px; background: rgba(8,8,8,0.92); backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 1200px; margin: 0 auto; padding: 0 32px;
+      height: 100%; display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo-text { font-family: var(--font-display); letter-spacing: 0.06em; line-height: 1; }
+    .nav-logo-text .l1 { font-size: 11px; color: var(--gray-400); display: block; }
+    .nav-logo-text .l2 { font-size: 17px; display: block; }
+    .nav-back {
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--gray-400); transition: color 0.2s;
+    }
+    .nav-back:hover { color: var(--white); }
+
+    .tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+      letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--gold); border: 1px solid var(--border-gold);
+      padding: 5px 12px; border-radius: 2px;
+    }
+    .tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--gold); }
+
+    main { position: relative; z-index: 1; flex: 1; padding: 128px 32px 80px; }
+    .wrap {
+      max-width: 1100px; margin: 0 auto;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start;
+    }
+    .copy { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+    .title { font-family: var(--font-display); font-size: clamp(48px, 6vw, 76px); letter-spacing: 0.03em; line-height: 0.92; margin: 18px 0 20px; text-wrap: balance; }
+    .title .red { color: var(--red); }
+    .sub { font-size: 17px; font-weight: 300; line-height: 1.7; color: var(--gray-400); max-width: 46ch; }
+    .sub em { color: var(--white); font-style: italic; }
+
+    /* Direct routes. These are alternatives to the form, not decoration —
+       somebody who already knows what they want should not have to fill
+       anything in. */
+    .routes { list-style: none; margin-top: 30px; display: grid; gap: 16px; }
+    .routes li { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
+    .routes .k {
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--red); padding-top: 4px; white-space: nowrap;
+    }
+    .routes .v { font-size: 15px; font-weight: 300; color: var(--gray-400); line-height: 1.55; }
+    .routes .v strong { color: var(--white); font-weight: 500; }
+    .routes .v a { color: var(--white); border-bottom: 1px solid var(--border); }
+    .routes .v a:hover { border-bottom-color: var(--red); }
+
+    .direct { margin-top: 32px; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gray-600); }
+    .direct a { color: var(--gray-400); border-bottom: 1px solid var(--border); transition: color 0.2s; }
+    .direct a:hover { color: var(--white); }
+
+    .panel {
+      background: var(--black-2); border: 1px solid var(--border); border-top: 3px solid var(--red);
+      border-radius: 12px; padding: 32px 28px 28px;
+      animation: panelIn 0.4s var(--ease-out) both;
+    }
+    @keyframes panelIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { .panel { animation: none; } }
+    .eyebrow-mono { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--red); margin-bottom: 10px; }
+    .panel-title { font-family: var(--font-display); font-size: 36px; letter-spacing: 0.03em; line-height: 0.95; margin-bottom: 22px; }
+    .panel-title .red { color: var(--red); }
+
+    .cform { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .cform .full { grid-column: 1 / -1; }
+    .cform label {
+      display: block; font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.16em;
+      text-transform: uppercase; color: var(--gray-600); margin-bottom: 6px;
+    }
+    .cform input, .cform textarea, .cform select {
+      width: 100%; background: var(--charcoal); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--white); padding: 12px 14px; font-family: var(--font-body); font-size: 14px;
+    }
+    .cform textarea { resize: vertical; min-height: 110px; }
+    .cform input:focus, .cform textarea:focus, .cform select:focus { outline: 2px solid var(--red); outline-offset: 1px; border-color: transparent; }
+    .req { color: var(--red); }
+
+    .actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .msg { font-size: 13px; line-height: 1.5; }
+    .msg.err { color: #ff6b6d; }
+    .done { display: none; padding: 8px 0; }
+    .done.show { display: block; }
+    .done .t { font-family: var(--font-display); font-size: 28px; letter-spacing: 0.03em; margin-bottom: 8px; }
+    .done .t .red { color: var(--red); }
+    .done p { font-size: 14px; font-weight: 300; color: var(--gray-400); line-height: 1.65; max-width: 52ch; }
+
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: var(--font-body); font-size: 15px; font-weight: 600; letter-spacing: 0.04em;
+      padding: 14px 28px; border-radius: 6px; border: 0; cursor: pointer;
+      background: var(--red); color: var(--white);
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    }
+    .btn-primary:hover { background: var(--red-dark); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(230,3,6,0.25); }
+    .btn-primary:disabled { opacity: 0.6; cursor: wait; transform: none; box-shadow: none; }
+    .btn-primary:focus-visible { outline: 2px solid var(--white); outline-offset: 2px; }
+
+    footer { position: relative; z-index: 1; border-top: 1px solid var(--border); padding: 28px 32px; }
+    .footer-inner { max-width: 1100px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .footer-copy { font-size: 12px; color: var(--gray-600); }
+    .footer-legal { display: flex; gap: 20px; font-size: 12px; color: var(--gray-600); flex-wrap: wrap; }
+    .footer-legal a:hover { color: var(--white); }
+
+    @media (max-width: 860px) {
+      main { padding: 104px 20px 56px; }
+      .wrap { grid-template-columns: 1fr; gap: 36px; }
+      .title { font-size: 52px; }
+      .sub { font-size: 15px; }
+    }
+    @media (max-width: 600px) {
+      .nav-inner { padding: 0 20px; }
+      .cform { grid-template-columns: 1fr; }
+      .panel { padding: 26px 18px 20px; }
+      .panel-title { font-size: 32px; }
+      footer { padding: 24px 20px; }
+    }
+  </style>
+</head>
+<body>
+<div class="hero-grid"></div>
+
+<nav>
+  <div class="nav-inner">
+    <a class="nav-logo-text" href="/">
+      <span class="l1">The One Percent Nation</span>
+      <span class="l2">CONTACT</span>
+    </a>
+    <a class="nav-back" href="/">← the1pnation.com</a>
+  </div>
+</nav>
+
+<main>
+  <div class="wrap">
+    <div class="copy">
+      <span class="tag">We read everything</span>
+      <h1 class="title">TELL US WHAT<br>YOU <span class="red">NEED.</span></h1>
+      <p class="sub">Speaking, a corporate program, coaching, the courses, or a problem with your account. Write in and someone gets back to you. <em>No auto-responder, no funnel.</em></p>
+
+      <ul class="routes">
+        <li>
+          <span class="k">Speaking</span>
+          <span class="v"><strong>Booking Anthony for an event?</strong> The <a href="/book.html">speaking request form</a> asks the questions we need up front and gets you an answer faster.</span>
+        </li>
+        <li>
+          <span class="k">Corporate</span>
+          <span class="v"><strong>Leadership work for a team?</strong> Start with the <a href="/corporate.html">Alignment Audit</a>.</span>
+        </li>
+        <li>
+          <span class="k">Coaching</span>
+          <span class="v"><strong>Looking for a coach?</strong> Browse the <a href="/coaches.html">certified coach directory</a> and book directly.</span>
+        </li>
+        <li>
+          <span class="k">Account</span>
+          <span class="v"><strong>Already a member?</strong> Sign in at the <a href="/login.html">member portal</a> — course access and billing questions are fastest from inside.</span>
+        </li>
+      </ul>
+
+      <div class="direct">Prefer email? <a href="mailto:the1percentnation@gmail.com">the1percentnation@gmail.com</a></div>
+    </div>
+
+    <div class="panel">
+      <div class="eyebrow-mono">Contact · The One Percent Nation</div>
+      <div class="panel-title">SEND A <span class="red">MESSAGE.</span></div>
+
+      <div class="done" id="contact-done">
+        <div class="t">MESSAGE <span class="red">RECEIVED.</span></div>
+        <p>It's in front of the team now. You'll get a reply at the address you gave, usually within two business days. If it's urgent, email the1percentnation@gmail.com directly.</p>
+      </div>
+
+      <form class="cform" id="contact-form" novalidate>
+        <div>
+          <label for="c-name">Your name <span class="req">*</span></label>
+          <input id="c-name" name="name" type="text" autocomplete="name" maxlength="120" required>
+        </div>
+        <div>
+          <label for="c-email">Email <span class="req">*</span></label>
+          <input id="c-email" name="email" type="email" autocomplete="email" maxlength="160" required>
+        </div>
+        <div>
+          <label for="c-phone">Phone (optional)</label>
+          <input id="c-phone" name="phone" type="tel" autocomplete="tel" maxlength="40">
+        </div>
+        <div>
+          <label for="c-topic">What's this about?</label>
+          <select id="c-topic" name="topic">
+            <option value="General">General question</option>
+            <option value="Speaking">Speaking</option>
+            <option value="Corporate">Corporate / team program</option>
+            <option value="Coaching">Coaching</option>
+            <option value="Courses">Courses &amp; the book</option>
+            <option value="Account support">Account or billing</option>
+            <option value="Press">Press / partnerships</option>
+          </select>
+        </div>
+        <div class="full">
+          <label for="c-message">Message <span class="req">*</span></label>
+          <textarea id="c-message" name="message" maxlength="600" required></textarea>
+        </div>
+        <div class="full actions">
+          <button class="btn-primary" id="c-submit" type="submit">Send message →</button>
+          <span class="msg" id="c-msg"></span>
+        </div>
+      </form>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-copy">© 2026 The One Percent Nation. All rights reserved.</div>
+    <div class="footer-legal">
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/terms.html">Terms of Service</a>
+      <a href="/">Home</a>
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="/js/contact-lead.js"></script>
+<script>
+  (function () {
+    const form = document.getElementById('contact-form');
+    const done = document.getElementById('contact-done');
+    const btn  = document.getElementById('c-submit');
+    const msg  = document.getElementById('c-msg');
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    function show(text, isErr) {
+      msg.textContent = text || '';
+      msg.className = 'msg' + (isErr ? ' err' : '');
+    }
+
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      show('');
+
+      const name    = document.getElementById('c-name').value.trim();
+      const email   = document.getElementById('c-email').value.trim();
+      const phone   = document.getElementById('c-phone').value.trim();
+      const topic   = document.getElementById('c-topic').value;
+      const message = document.getElementById('c-message').value.trim();
+
+      // Checked against the same rule the server applies, so nothing is
+      // rejected server-side after the visitor has been told it went through.
+      if (!name) return show('Please enter your name.', true);
+      if (!EMAIL_RE.test(email)) return show('Please enter a valid email address.', true);
+      if (!message) return show('Please write a message.', true);
+
+      btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = 'Sending…';
+
+      try {
+        if (typeof window.__1pContactLead !== 'function') {
+          throw new Error('The form is still loading. Give it a second and try again.');
+        }
+        await window.__1pContactLead({ name, email, phone, topic, message });
+      } catch (err) {
+        // Never show the confirmation on failure — it promises a reply that
+        // would never come, and the message would be lost silently.
+        show((err && err.message)
+          || 'We could not send that. Email the1percentnation@gmail.com and we will pick it up there.', true);
+        btn.disabled = false;
+        btn.textContent = label;
+        return;
+      }
+
+      form.style.display = 'none';
+      done.classList.add('show');
+    });
+  })();
+</script>
+</body>
+</html>

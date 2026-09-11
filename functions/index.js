@@ -457,6 +457,71 @@ exports.deleteUser = onCall(async (request) => {
 });
 
 /**
+ * revokeSeat({ companyId, uid }) — remove a member from a company.
+ *
+ * One transaction does all three things that have to move together: the
+ * roster document goes, the company's seatsUsed comes down, and the member's
+ * own companyId is cleared.
+ *
+ * This replaces a client-side path in js/admin.js that could do only the
+ * first two, and did them from a stale in-memory copy of seatsUsed rather
+ * than a transaction, so the seat count drifted whenever two admins acted at
+ * once. It also could not touch users/{uid}.companyId at all (rules restrict
+ * that document to self and owner), so a revoked member kept passing the
+ * "same company" read rules and could still see the company roster and
+ * company-scoped posts. Only the Admin SDK can clear that field, which is why
+ * this lives here.
+ */
+exports.revokeSeat = onCall(async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  const companyId = (data.companyId || '').toString().trim();
+  const targetUid = (data.uid || '').toString().trim();
+  if (!companyId || !targetUid) {
+    throw new HttpsError('invalid-argument', 'companyId and uid are required.');
+  }
+  const { uid: callerUid } = await assertCompanyAdmin(db, companyId, request);
+  if (callerUid === targetUid) {
+    throw new HttpsError('failed-precondition', 'You cannot revoke your own seat here.');
+  }
+
+  const companyRef = db.collection('companies').doc(companyId);
+  const memberRef = companyRef.collection('members').doc(targetUid);
+  const userRef = db.collection('users').doc(targetUid);
+
+  await db.runTransaction(async (tx) => {
+    const [companySnap, memberSnap, userSnap] = await Promise.all([
+      tx.get(companyRef), tx.get(memberRef), tx.get(userRef)
+    ]);
+    if (!companySnap.exists) throw new HttpsError('not-found', 'Company not found.');
+    const c = companySnap.data() || {};
+
+    // Only free a seat if this member actually held one, so a double-click or
+    // a stale roster never drives seatsUsed below the truth.
+    const heldSeat = memberSnap.exists;
+    if (heldSeat) tx.delete(memberRef);
+
+    const patch = {
+      seatsUsed: Math.max(0, (c.seatsUsed || 0) - (heldSeat ? 1 : 0)),
+      // A revoked member is no longer an admin of the company either.
+      adminUids: (c.adminUids || []).filter((u) => u !== targetUid),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    tx.update(companyRef, patch);
+
+    if (userSnap.exists && (userSnap.data() || {}).companyId === companyId) {
+      tx.update(userRef, {
+        companyId: null,
+        // Company admins are a company concept; without one, the role is plain member.
+        ...((userSnap.data() || {}).role === 'admin' ? { role: 'user' } : {})
+      });
+    }
+  });
+
+  return { ok: true };
+});
+
+/**
  * Every subcollection under users/{uid}.
  *
  * One list, used by both deleteMyAccount (right to delete) and
@@ -6200,10 +6265,74 @@ const LEAD_FORMS = {
   // /book-bonus — readers claiming the companion material for the book.
   // These are the warmest leads on the site (they bought the book), so they
   // get their own tag rather than being folded into the newsletter.
-  'book-bonus': { source: 'Book Bonus', tags: ['Book Bonus', 'Book Reader'] }
+  'book-bonus': { source: 'Book Bonus', tags: ['Book Bonus', 'Book Reader'] },
+  // /contact-us — the public "get in touch" form. Someone who writes in
+  // unprompted is asking for a reply, so this type always notifies.
+  'contact': { source: 'Contact Form', tags: ['Contact Form'], urgent: true }
 };
 
-exports.submitLeadForm = onCall(async (request) => {
+/**
+ * Email the owner that a lead came in.
+ *
+ * Every lead form on the site wrote to Firestore and stopped there, so a
+ * speaking request, a corporate Alignment Audit enquiry or someone using the
+ * contact form sat in the CRM until somebody happened to open it. Nothing told
+ * anyone it had arrived.
+ *
+ * Best-effort by design: the caller has already stored the lead before this
+ * runs, so a mail failure must never turn a captured lead into an error the
+ * visitor sees. Requires `sendgridKey` to be declared on the calling function.
+ */
+async function notifyOwnerOfLead({ source, name, email, phone, fields, contactUrl }) {
+  try {
+    const key = sendgridKey.value();
+    if (!key) return;
+    sgMail.setApiKey(key);
+
+    const rows = Object.entries(fields || {})
+      .map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top;">${escapeHtmlBasic(k)}</td><td style="padding:4px 0;">${escapeHtmlBasic(v)}</td></tr>`)
+      .join('');
+    const textRows = Object.entries(fields || {})
+      .map(([k, v]) => `${k}: ${v}`).join('\n');
+
+    await sgMail.send({
+      to: OWNER_EMAIL,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      // Replying to the notification replies to the person who wrote in.
+      replyTo: email || REPLY_TO,
+      subject: `New ${source}: ${name || email || 'someone'}`,
+      text: `${source}\n\nName: ${name || '—'}\nEmail: ${email || '—'}\nPhone: ${phone || '—'}\n\n${textRows}\n\n${contactUrl || ''}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;color:#222;max-width:560px;margin:0 auto;">
+          <h2 style="color:#CC1B1B;margin-bottom:4px;">New ${escapeHtmlBasic(source)}</h2>
+          <p style="margin:0 0 16px;color:#666;font-size:13px;">Reply to this email to answer them directly.</p>
+          <table style="font-size:14px;border-collapse:collapse;">
+            <tr><td style="padding:4px 12px 4px 0;color:#666;">Name</td><td style="padding:4px 0;"><strong>${escapeHtmlBasic(name || '—')}</strong></td></tr>
+            <tr><td style="padding:4px 12px 4px 0;color:#666;">Email</td><td style="padding:4px 0;">${escapeHtmlBasic(email || '—')}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0;color:#666;">Phone</td><td style="padding:4px 0;">${escapeHtmlBasic(phone || '—')}</td></tr>
+            ${rows}
+          </table>
+          ${contactUrl ? `<p style="margin-top:20px;"><a href="${contactUrl}" style="display:inline-block;background:#CC1B1B;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none;font-weight:600;">Open in CRM</a></p>` : ''}
+        </div>`,
+      customArgs: { type: 'lead_notification' }
+    });
+  } catch (e) {
+    console.warn('[notifyOwnerOfLead] failed:', e && e.message);
+  }
+}
+
+/** Minimal HTML escaping for values interpolated into notification email. */
+function escapeHtmlBasic(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// `secrets` is required for the owner notification below — an undeclared
+// secret is never injected at runtime, so sendgridKey.value() would throw.
+exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
   const db = admin.firestore();
   const data = request.data || {};
   const formType = (data.formType || '').toString().trim();
@@ -6250,6 +6379,16 @@ exports.submitLeadForm = onCall(async (request) => {
     actorUid: 'system', actorName: `${form.source} form`,
     createdAt: FV.serverTimestamp(),
     meta: { formType, fields }
+  });
+
+  // Tell the owner. The lead is already saved, so this is best-effort and
+  // never fails the submission. Awaited rather than fire-and-forget because a
+  // Cloud Function's runtime can be frozen the moment the handler returns,
+  // which would drop an in-flight send.
+  await notifyOwnerOfLead({
+    source: form.source,
+    name, email, phone, fields,
+    contactUrl: `${APP_BASE_URL}/contact.html?id=${encodeURIComponent(ref.id)}`
   });
 
   return { ok: true };
