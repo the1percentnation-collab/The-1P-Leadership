@@ -36,8 +36,21 @@ member's progress and purchase records.
 
 ## 2. Connect Stripe
 
-Until these are set, every paid path returns "not configured" and nothing can
-be bought.
+**Checked 2026-09-11 against production:**
+
+| Secret | State |
+|---|---|
+| `STRIPE_SECRET_KEY` | Set, and it is a **live** key (`sk_live_…`). Real money. |
+| `STRIPE_WEBHOOK_SECRET` | **Placeholder only** (`whsec_placeholder`, 17 chars). |
+
+Both secrets existed all along. Checkout never worked because no function
+*declared* them, so they were never injected at runtime. That is fixed.
+
+The webhook secret is the remaining blocker, and it is the dangerous one. With
+a live key and a placeholder signing secret, a purchase would be **charged and
+then never enrolled**, because `stripeWebhook` rejects every event whose
+signature it cannot verify. Do not set any course live until the real
+`whsec_` value is in place.
 
 Use Secret Manager, not `functions/.env`. The `.env` file is git-ignored, and
 GitHub Actions is what deploys this project, so a key set that way would
