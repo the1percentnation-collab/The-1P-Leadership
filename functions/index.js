@@ -5817,7 +5817,11 @@ const LEAD_FORMS = {
   // The Alignment Audit is the top of the corporate funnel and the path to an
   // annual program, so it is tagged as its own pipeline rather than folded in
   // with generic speaking requests.
-  'alignment-audit': { source: 'Alignment Audit', tags: ['Alignment Audit', 'Corporate'] }
+  'alignment-audit': { source: 'Alignment Audit', tags: ['Alignment Audit', 'Corporate'] },
+  // Homepage footer signup for people willing to test a course before it is
+  // finished and report back. Tagged separately so the beta group is one
+  // filter in the CRM when it is time to invite them.
+  'beta-tester': { source: 'Beta Tester', tags: ['Beta Tester'] }
 };
 
 exports.submitLeadForm = onCall(async (request) => {
