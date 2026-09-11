@@ -101,9 +101,12 @@ export function isEnrolled(slug) {
 
 // A bundle is an offer, not content: buying it enrolls the member in the
 // course it wraps, so the bundle record itself stays out of "My courses".
+// Keyed on `kind`, not `bundleHref`: a bundle-only course also carries a
+// bundleHref (its landing page points buyers at the bundle), and filtering on
+// that hid the course itself from the people who had just bought it.
 export function enrolledCourses() {
   const set = _cache || new Set();
-  return getCourses().filter((c) => set.has(c.slug) && !c.bundleHref);
+  return getCourses().filter((c) => set.has(c.slug) && c.kind !== 'bundle');
 }
 
 // Courses you could still buy. A course marked `sellable: false` is only
