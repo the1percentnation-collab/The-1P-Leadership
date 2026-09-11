@@ -15,6 +15,11 @@ import { getRefCode } from './referral.js';
 
 const BUNDLE_SLUG = 'bundle-icant';
 const COURSE_SLUG = 'icant';
+
+// Promo links: /bundle.html?promo=CODE pre-applies the code, so Anthony can
+// hand out one URL instead of a code to type. Validated and priced in by
+// createCheckoutSession; the client never trusts it.
+const PROMO = (new URLSearchParams(location.search).get('promo') || '').trim().toUpperCase() || null;
 const COURSE_URL = `/courses.html?course=${encodeURIComponent(COURSE_SLUG)}`;
 
 const $ = (id) => document.getElementById(id);
@@ -46,7 +51,10 @@ function renderCta({ live, enrolled, label }) {
   }
   if (!live) return; // keep the "coming soon" block from the markup
 
-  top.innerHTML = `<button class="btn-enroll" id="bundle-enroll" type="button">Enroll now — ${label}</button>`;
+  const promoNote = PROMO
+    ? `<div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--gold);text-align:center;margin-bottom:10px;">Promo ${PROMO} will be applied at checkout</div>`
+    : '';
+  top.innerHTML = `${promoNote}<button class="btn-enroll" id="bundle-enroll" type="button">Enroll now — ${label}</button>`;
   if (bottom) bottom.outerHTML = `<button class="btn-primary-lg" id="bundle-cta-bottom" type="button">Enroll now — ${label}</button>`;
 
   const buttons = [$('bundle-enroll'), $('bundle-cta-bottom')].filter(Boolean);
@@ -60,7 +68,8 @@ async function startCheckout(buttons, label) {
   try {
     const res = await httpsCallable(functions, 'createCheckoutSession')({
       slug: BUNDLE_SLUG,
-      refCode: getRefCode() || undefined
+      refCode: getRefCode() || undefined,
+      couponCode: PROMO || undefined
     });
     const data = res && res.data;
     if (data && data.enrolled) { location.assign(COURSE_URL); return; }
