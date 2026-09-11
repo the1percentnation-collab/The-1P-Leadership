@@ -180,6 +180,70 @@ function certTabHtml() {
   return '<div id="clc-cert-tab"><p style="color:#888;font-size:13px;">Loading your certification status…</p></div>';
 }
 
+// Feedback-only practice recordings (after modules 4 and 6). Never scored,
+// never part of certification: they exist so the graded capstone is not the
+// first recording anyone has reviewed.
+const PRACTICE_CRITERIA = [
+  ['presence', 'Presence and Listening'],
+  ['questions', 'Question Quality'],
+  ['structure', 'Session Structure'],
+  ['nonAdvising', 'Non-Advising']
+];
+
+function practiceFeedbackHtml(fb) {
+  if (!fb) return '';
+  const rows = PRACTICE_CRITERIA
+    .filter(([k]) => fb[k] && (fb[k].strength || fb[k].change))
+    .map(([k, label]) => `
+      <div style="padding:8px 0;border-top:1px solid #1E1E1E;">
+        <div style="font-size:11px;letter-spacing:1px;color:#AAA;margin-bottom:4px;">${esc(label.toUpperCase())}</div>
+        ${fb[k].strength ? `<div style="font-size:12px;color:#CFE9D6;">Strength: ${esc(fb[k].strength)}</div>` : ''}
+        ${fb[k].change ? `<div style="font-size:12px;color:#EEE;">Change: ${esc(fb[k].change)}</div>` : ''}
+      </div>`).join('');
+  return `
+    ${fb.overall ? `<p style="color:#EEE;font-size:12px;margin:8px 0;">${esc(fb.overall)}</p>` : ''}
+    ${rows}`;
+}
+
+function practiceSectionHtml(status) {
+  const list = Array.isArray(status.practice) ? status.practice : [];
+  const fmt = (s) => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  const items = list.map((p) => `
+    <div style="background:#111;border:1px solid #1E1E1E;border-radius:8px;padding:12px 14px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <span style="color:#EEE;font-size:13px;">Practice recording${p.module ? ` · after Module ${p.module}` : ''}</span>
+        <span style="font-size:11px;color:${p.status === 'reviewed' ? '#4caf6d' : '#888'};">${p.status === 'reviewed' ? `Feedback in ${esc(fmt(p.reviewedAt))}` : `Submitted ${esc(fmt(p.submittedAt))} · awaiting feedback`}</span>
+      </div>
+      ${practiceFeedbackHtml(p.feedback)}
+    </div>`).join('');
+  const submittedModules = list.map((p) => p.module);
+  const nextModule = !submittedModules.includes(4) ? 4 : (!submittedModules.includes(6) ? 6 : null);
+  const form = nextModule === null ? '' : `
+    <form id="clc-practice-form" style="background:#111;border:1px solid #222;border-radius:12px;padding:16px;margin-top:8px;">
+      <p style="color:#AAA;font-size:12px;margin:0 0 10px;">Fifteen to twenty minutes from any practice session, with the client's written consent. Reviewed for feedback only. No score is recorded and it has no effect on certification.</p>
+      <label style="display:block;font-size:12px;color:#AAA;margin-bottom:8px;">This recording follows
+        <select name="module" style="display:block;width:100%;background:#0D0D0D;border:1px solid #2A2A2A;border-radius:8px;color:#fff;padding:9px 11px;font-size:13px;margin-top:4px;">
+          ${!submittedModules.includes(4) ? '<option value="4">Module 4</option>' : ''}
+          ${!submittedModules.includes(6) ? '<option value="6">Module 6</option>' : ''}
+        </select>
+      </label>
+      <input name="sessionUrl" type="url" required placeholder="https://..." style="display:block;width:100%;background:#0D0D0D;border:1px solid #2A2A2A;border-radius:8px;color:#fff;padding:9px 11px;font-size:13px;box-sizing:border-box;margin-bottom:10px;">
+      <input name="notes" type="text" maxlength="300" placeholder="What you want feedback on (optional)" style="display:block;width:100%;background:#0D0D0D;border:1px solid #2A2A2A;border-radius:8px;color:#fff;padding:9px 11px;font-size:13px;box-sizing:border-box;margin-bottom:10px;">
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;color:#AAA;margin-bottom:12px;">
+        <input name="consent" type="checkbox" value="1" style="margin-top:2px;">
+        <span>The client gave written consent to be recorded and knows who will watch it.</span>
+      </label>
+      <button type="submit" style="background:#333;color:#fff;border:1px solid #444;border-radius:8px;padding:10px 18px;font-size:13px;cursor:pointer;">Submit for feedback</button>
+      <span id="clc-practice-msg" style="font-size:12px;color:#888;margin-left:10px;"></span>
+    </form>`;
+  return `
+    <div style="margin-bottom:22px;">
+      <div style="font-size:10px;letter-spacing:2px;color:#AAA;font-weight:600;margin-bottom:8px;">PRACTICE RECORDINGS · FEEDBACK ONLY</div>
+      ${items || '<p style="color:#888;font-size:12px;margin:0 0 8px;">Two practice recordings go in before your graded session: one after Module 4, one after Module 6.</p>'}
+      ${form}
+    </div>`;
+}
+
 function checkRow(done, label, detail) {
   return `
     <div style="display:flex;gap:12px;align-items:flex-start;padding:13px 15px;background:#111;border:1px solid #1E1E1E;border-radius:8px;">
@@ -249,6 +313,7 @@ async function renderCertTab(root, course) {
       </button>
       <span id="clc-exam-msg" style="font-size:12px;color:#888;margin-left:10px;"></span>`}
     </div>
+    ${practiceSectionHtml(status)}
     ${status.capstoneApproved ? '' : `
     <form id="clc-capstone-form" style="background:#111;border:1px solid #222;border-radius:12px;padding:18px;">
       <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:8px;">SUBMIT YOUR RECORDED SESSION</div>
@@ -263,6 +328,31 @@ async function renderCertTab(root, course) {
   const startBtn = slot.querySelector('#clc-exam-start');
   if (startBtn) {
     startBtn.addEventListener('click', () => beginExam(root, course));
+  }
+  const practiceForm = slot.querySelector('#clc-practice-form');
+  if (practiceForm) {
+    practiceForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const msg = slot.querySelector('#clc-practice-msg');
+      const fd = new FormData(practiceForm);
+      if (!fd.get('consent')) { msg.textContent = 'Confirm the client gave written consent first.'; return; }
+      try {
+        msg.textContent = 'Submitting…';
+        await addDoc(collection(db, 'users', auth.currentUser.uid, 'practiceRecordings'), {
+          courseSlug: CLC_SLUG,
+          module: Number(fd.get('module')) || 4,
+          sessionUrl: String(fd.get('sessionUrl') || '').trim(),
+          notes: String(fd.get('notes') || '').trim(),
+          clientConsent: true,
+          status: 'submitted',
+          submittedAt: serverTimestamp()
+        });
+        await renderCertTab(root, course);
+      } catch (e) {
+        console.warn('[clc] practice recording submit failed', e);
+        msg.textContent = 'Could not submit. Check the link and try again.';
+      }
+    });
   }
   const capForm = slot.querySelector('#clc-capstone-form');
   if (capForm) {

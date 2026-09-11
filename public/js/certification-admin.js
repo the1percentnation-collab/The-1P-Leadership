@@ -35,7 +35,7 @@ const RUBRIC = [
   { key: 'nonAdvising', label: 'Non-Advising' }
 ];
 
-let _queue = { hours: [], capstones: [], ceCredits: [] };
+let _queue = { hours: [], capstones: [], ceCredits: [], practice: [] };
 
 async function refreshQueue() {
   try {
@@ -43,10 +43,11 @@ async function refreshQueue() {
     _queue = res.data || { hours: [], capstones: [] };
   } catch (e) {
     console.warn('[cert-admin] queue load failed', e);
-    _queue = { hours: [], capstones: [], ceCredits: [] };
+    _queue = { hours: [], capstones: [], ceCredits: [], practice: [] };
   }
   renderHours();
   renderCapstones();
+  renderPractice();
   renderCe();
 }
 
@@ -184,6 +185,62 @@ async function decideCapstone(i, decision) {
     await refreshQueue();
   } catch (e) {
     alert('Review failed: ' + ((e && e.message) || 'unknown error'));
+  }
+}
+
+function renderPractice() {
+  const body = $('practice-body');
+  if (!body) return;
+  const rows = _queue.practice || [];
+  if (!rows.length) {
+    body.innerHTML = '<p style="color:var(--gray-mid);font-size:13px;">Nothing waiting. Every practice recording has feedback.</p>';
+    return;
+  }
+  body.innerHTML = rows.map((p, i) => `
+    <div class="card" style="margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        <div>
+          <b>${escapeHtml(p.userName)}</b>
+          <span style="font-size:11px;color:var(--gray-mid);"> · after Module ${escapeHtml(String(p.module || '?'))}</span><br>
+          <a href="${escapeHtml(p.sessionUrl || '#')}" target="_blank" rel="noopener" style="font-size:13px;">Open the recording ↗</a>
+          ${p.notes ? `<div style="font-size:12px;color:var(--gray-light);margin-top:4px;">${escapeHtml(p.notes)}</div>` : ''}
+        </div>
+        <div style="font-size:11px;color:var(--gray-mid);">${escapeHtml(p.submittedAt || '')}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:10px;">
+        ${RUBRIC.map((r) => `
+          <div style="font-size:12px;color:var(--gray-light);">
+            <b>${escapeHtml(r.label)}</b>
+            <input type="text" maxlength="600" placeholder="One strength" data-pr="${i}" data-crit="${r.key}" data-part="strength" style="display:block;width:100%;margin-top:4px;">
+            <input type="text" maxlength="600" placeholder="One specific change" data-pr="${i}" data-crit="${r.key}" data-part="change" style="display:block;width:100%;margin-top:4px;">
+          </div>`).join('')}
+      </div>
+      <label style="font-size:12px;color:var(--gray-light);display:block;margin-bottom:10px;">Overall note (optional)
+        <textarea data-pr-overall="${i}" rows="2" maxlength="2000" style="display:block;width:100%;margin-top:4px;"></textarea>
+      </label>
+      <button class="btn btn-primary" data-pr-send="${i}" style="font-size:12px;">Send feedback</button>
+    </div>`).join('');
+  body.querySelectorAll('[data-pr-send]').forEach((b) =>
+    b.addEventListener('click', () => sendPracticeFeedback(Number(b.dataset.prSend))));
+}
+
+async function sendPracticeFeedback(i) {
+  const p = (_queue.practice || [])[i];
+  if (!p) return;
+  const feedback = {};
+  document.querySelectorAll(`[data-pr="${i}"]`).forEach((inp) => {
+    feedback[inp.dataset.crit] = feedback[inp.dataset.crit] || {};
+    feedback[inp.dataset.crit][inp.dataset.part] = inp.value.trim();
+  });
+  const ov = document.querySelector(`[data-pr-overall="${i}"]`);
+  feedback.overall = ov ? ov.value.trim() : '';
+  const any = feedback.overall || Object.keys(feedback).some((k) => k !== 'overall' && (feedback[k].strength || feedback[k].change));
+  if (!any) { alert('Write some feedback before sending it.'); return; }
+  try {
+    await httpsCallable(functions, 'reviewPracticeRecording')({ uid: p.uid, docId: p.docId, feedback });
+    await refreshQueue();
+  } catch (e) {
+    alert('Feedback failed: ' + ((e && e.message) || 'unknown error'));
   }
 }
 
