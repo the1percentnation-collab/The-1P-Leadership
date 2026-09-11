@@ -42,7 +42,6 @@ module.exports = {
 <p><strong>Coach:</strong> (silence)</p>
 <p><strong>Client:</strong> And my daughter stopped asking me to come to things. That is the real cost.</p>
 <p>Nothing in that exchange came from the coach except a question and five seconds of patience. Five seconds feels like a minute when you are new. Count it if you have to. Do not rescue the silence with a softer version of the same question, and do not fill it with agreement noises. Let the discomfort do its work.</p>
-<p>One caution: silence is a tool, not a posture. If a client is clearly lost rather than thinking, help them. The tell is usually their eyes. Thinking looks inward. Lost looks at you.</p>
 
 <h2>Question families by A.L.I.G.N. stage</h2>
 <p>You do not need a hundred questions. You need a small set per stage that you can reach for without thinking, and the judgment to know which stage the client is actually in. Build these into your own language. Borrowed phrasing sounds borrowed.</p>
@@ -52,7 +51,6 @@ module.exports = {
 <li>What would have to be true for that to be the only option?</li>
 <li>Where did you first learn that about yourself?</li>
 <li>What is the sentence underneath that sentence?</li>
-<li>What do you already know that you have not said out loud?</li>
 </ul>
 <h3>Leadership: taking ownership of your story</h3>
 <ul>
@@ -66,13 +64,11 @@ module.exports = {
 <li>Who would you have to be for this to be normal?</li>
 <li>What does that belief protect you from?</li>
 <li>What would the version of you who already has this do on an ordinary Tuesday?</li>
-<li>What would you have to stop calling yourself?</li>
 </ul>
 <h3>Growth: choosing expansion over comfort</h3>
 <ul>
 <li>What is the smallest uncomfortable thing you could do this week?</li>
 <li>Where is comfort costing you more than the risk would?</li>
-<li>What would you attempt if you knew it would take two years?</li>
 <li>What are you calling not ready that is actually not willing?</li>
 </ul>
 <h3>Navigation: executing the path forward</h3>
@@ -80,17 +76,15 @@ module.exports = {
 <li>What is the first step, and when does it happen?</li>
 <li>What is most likely to get in the way?</li>
 <li>How will you know it happened?</li>
-<li>What support do you need, and who has it?</li>
 </ul>
 
 <h2>The questions that quietly fail</h2>
-<p>Most weak coaching is not dramatic. It is a series of reasonable-sounding questions that go nowhere. Here are the six failures you will hear on your own recording, and the fix for each.</p>
+<p>Most weak coaching is not dramatic. It is a series of reasonable-sounding questions that go nowhere. Here are the five failures you will hear on your own recording, and the fix for each.</p>
 <p><strong>The stacked question.</strong> "So what is driving that, and is it something you have felt before, or is this new?" The client answers the last clause. Ask one. Stop.</p>
 <p><strong>Advice wearing a question mark.</strong> "Have you thought about setting a boundary with him?" That is your answer with rising intonation. The fix: name what you noticed, then ask an open question. "You have mentioned him three times. What is happening there?"</p>
 <p><strong>The leading question.</strong> "Do you not think that is really about your father?" Even when you are right, you just took the insight. The client will agree to be agreeable and nothing will change. Ask: "What is this connected to?"</p>
 <p><strong>The defensive why.</strong> "Why did you say yes to that?" Why puts people on trial. Convert it: "What made that feel like the right call at the time?" Same information, no defense.</p>
 <p><strong>The information question.</strong> "How long have you been at the company?" Useful in a discovery call, dead weight in a session. Take notes so you never spend session time on facts you were already given.</p>
-<p><strong>The comfort question.</strong> "Do you want to talk about something lighter?" This one comes from your discomfort, not theirs. Notice it, breathe, stay.</p>
 
 <h2>Turning insight into a plan the client owns</h2>
 <p>A session that produces insight and no action is half a session. A session that produces action the coach designed is worse, because it teaches the client that progress arrives from outside them.</p>
@@ -104,7 +98,6 @@ module.exports = {
 <p><strong>Coach:</strong> How will you know you did it?</p>
 <p><strong>Client:</strong> I will text you a photo of the laptop in the car.</p>
 <p>Notice what the coach did not do. The coach did not suggest two evenings. The coach did not suggest the laptop. The coach asked for specificity and the client built the plan. That plan survives contact with a hard week because the client wrote it.</p>
-<p>If the client cannot generate anything, you have two honest moves. Ask smaller: "What is one thing you are already willing to do?" Or offer options rather than an answer: "Some people start with a time boundary, some start with a conversation. What fits you?" Options keep the choice with the client. An instruction does not.</p>
 
 <h2>The goal stack: outcome, identity, process</h2>
 <p>Every 1P growth plan has three levels. Missing any one of them is why most plans die.</p>
@@ -132,7 +125,6 @@ module.exports = {
 <li>Demonstration: a live fifteen-minute coaching segment with a volunteer from the cohort, run with a hard constraint of no question longer than twelve words. You will watch the silence do most of the work.</li>
 <li>Teardown: we replay the demo out loud, question by question, and name which A.L.I.G.N. family each one came from and why it was chosen there.</li>
 <li>Breakout practice: triads, thirty minutes. One coach, one client, one observer. Fifteen-minute segment, then the observer reads back every question the coach asked, verbatim, with no commentary. Hearing your own questions read back is the fastest correction in this program. Rotate once if time allows.</li>
-<li>Goal stack lab: bring a real goal from your own life. We build the stack live and stress-test it in pairs.</li>
 <li>Close: open questions and next week's assignment.</li>
 </ul>
 <p>What to bring: one real goal of your own, your written question bank in progress, and a recording setup you are comfortable with. Volunteers for the demonstration are taken in the first five minutes.</p>

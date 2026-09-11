@@ -79,3 +79,22 @@ first; they become portal resources once Anthony signs off.
 - Brand voice: grounded, direct, clear. No hype, no fear, no em dashes.
 - Field names and Firestore shapes stay exactly as they are; the renderer and
   the callables depend on them.
+
+## Decisions surfaced by the build (for Anthony)
+
+- Capstone pass rule proposed in `docs/1p-clc-rubric.md`: minimum 3 on every
+  criterion and 14 or more of 20; below either bar is a revise, resubmission
+  unlimited. Confirm, and decide whether a 2 on Non-Advising is an automatic
+  revise on its own.
+- How many of the 25 hours must be with clients who are not classmates.
+  Modules ask for a growing share; the admin needs a number.
+- What happens after three failed exam attempts. Module 8 routes the student
+  to the program admin for a path forward.
+- A recommended price band for the six-week client program. The delivery guide
+  gives a method only, so every practitioner will otherwise invent one.
+- Whether the founding seat count should be publicly readable on the sales
+  page (needs a rules change for `coupons/FOUNDING`), or stay hidden.
+- The feedback-only recordings after modules 4 and 6 have no submission
+  channel yet; the Certification tab handles the graded capstone only. A
+  simple "practice recording" link submission in that tab is the next portal
+  item.

@@ -45,7 +45,6 @@ module.exports = {
 <p><strong>Coach:</strong> So what would make it harder to skip than to do?</p>
 <p><strong>Client:</strong> If the laptop was already on the table, open, with the file up. And if I did it before they wake up.</p>
 <p>Three weeks of failed willpower was four steps and a scheduling conflict. Nothing about that client's character changed. The setup did.</p>
-<p>Common frictions to listen for: the tool is not ready, the time slot is shared with someone else's needs, the first step is undefined, the action depends on a decision the client has not yet made, and the action requires a conversation they are avoiding. That last one is not friction. That is an avoided conversation wearing friction's clothes, and it belongs back in the session.</p>
 
 <h2>Habit design around real constraints</h2>
 <p>Coach the life the client has, not the life a productivity book assumes they have. A single parent with a commute and a rotating shift schedule does not need a morning routine. They need one anchored action that fits their actual week.</p>
@@ -57,7 +56,6 @@ module.exports = {
 <li><strong>The signal.</strong> How the client marks it as done. A check on a paper calendar beats an app they will stop opening.</li>
 </ul>
 <p>Two rules. One habit at a time until it holds for two weeks. And the floor is never negotiable downward mid-week, because a floor that moves is not a floor.</p>
-<p>The common mistake here is designing an elegant system the client will not maintain. If your client has to learn a new tool to keep a commitment, you have added friction while trying to remove it. Ask: "What are you already using every day?" Build there.</p>
 
 <h2>The accountability cadence</h2>
 <p>Accountability is not pressure and it is not surveillance. It is honest measurement plus belief. Measurement without belief is a performance review. Belief without measurement is cheerleading. Clients need both, from the same person, in the same week.</p>
@@ -69,7 +67,6 @@ module.exports = {
 <li><strong>Next session open.</strong> The first three minutes review the commitment out loud before any new material.</li>
 </ul>
 <p>Keep the midweek check tiny and specific. "Done or not done, plus one line" is a check a busy person keeps. "Let me know how it is going" is a check nobody answers. Set the channel once and hold it. If you coach across text, email and three social apps, you will lose track and so will they.</p>
-<p>Boundaries matter as much as the cadence. Say plainly what you respond to and when. You are a coach, not an on-call service. A client who can reach you at any hour will eventually outsource their regulation to you, and that is dependency, which is the opposite of what you are building.</p>
 
 <h2>The progress review</h2>
 <p>Every three or four sessions, stop coaching the week and coach the arc. The progress review is a short, structured segment, not a whole session, and it runs on three questions.</p>
@@ -111,7 +108,6 @@ module.exports = {
 <p>Agenda, ninety minutes on the cohort's fixed call day.</p>
 <ul>
 <li>Opening: the four causes of a missed commitment, and how to diagnose which one you are looking at in under three questions.</li>
-<li>Demonstration: a live progress review with a volunteer, run in twelve minutes, including a recalibration the client proposes.</li>
 <li>Demonstration: naming the pattern with the agreeable client. You will watch how short and calm that sentence is, and how much silence follows it.</li>
 <li>Breakout practice: pairs, twenty-five minutes. One coach runs a friction audit on a real habit the other has dropped. Redesign the anchor, the floor, the setup and the signal. Swap.</li>
 <li>Cadence clinic: each coach reads out their proposed accountability cadence in one sentence. The group flags anything that will not survive a busy month.</li>
@@ -133,7 +129,6 @@ module.exports = {
 <li>Redesign one habit with all four parts: anchor, floor, setup, signal.</li>
 <li>Set the midweek check with the client: one channel, one time, one line.</li>
 </ul>
-<p>Then run one progress review on your own life. Name your baseline from eight weeks ago, when this program started. Write what has actually changed. Coaches who do not run their own reviews stop believing reviews work.</p>
 <p>Log each session in the Hours tab with the date, the duration, and the client's initials only. No full names and no identifying details. Approved hours are the only ones that count toward your twenty-five.</p>
 
 <h2>Where this goes next</h2>

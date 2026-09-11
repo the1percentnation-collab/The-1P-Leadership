@@ -73,15 +73,15 @@ module.exports = {
 </ul>
 
 <h2>The six-session journey map</h2>
-<p>Here is the skeleton you will coach from. It is the map, not the commercial package. Module 7 turns it into the client-facing six-week program you deliver under your practitioner license, with the workbook and the assessment.</p>
-<ol>
-<li><strong>Session 1, Awareness.</strong> Produces: the presenting gap named, one belief surfaced, and a baseline the client can be measured against later.</li>
-<li><strong>Session 2, Awareness into Leadership.</strong> Produces: the belief traced to its source, and the client's first clear statement of what they are keeping alive now.</li>
-<li><strong>Session 3, Leadership into Identity.</strong> Produces: ownership language, values elicited, and the contradiction between stated values and actual calendar laid out honestly.</li>
-<li><strong>Session 4, Identity.</strong> Produces: the rewritten identity sentence, in the client's own words, plus one piece of evidence from their own life that it is already partly true.</li>
-<li><strong>Session 5, Growth.</strong> Produces: the goal stack. Outcome, identity, and process goals, chosen by the client.</li>
-<li><strong>Session 6, Navigation.</strong> Produces: the execution rhythm, the measurement, the accountability cadence, and a review against the session one baseline so the client sees the change instead of taking your word for it.</li>
-</ol>
+<p>Here is the skeleton you will coach from. It is the map, not the commercial package. Module 7 turns it into the client-facing six-week program you deliver under your practitioner license, with the delivery guide, the workbook and the Alignment Assessment. One stage per session, in order, then a sixth session where the client holds the pen.</p>
+<ul>
+<li><strong>Session 1, Awareness.</strong> Produces: the gap named in one sentence, one belief surfaced, and a baseline from the Alignment Assessment the client can be measured against later.</li>
+<li><strong>Session 2, Leadership.</strong> Produces: the move from explanation to ownership on the one area they most want to change, and the part of the pattern that is theirs, named.</li>
+<li><strong>Session 3, Identity.</strong> Produces: values elicited, the old belief tested against real evidence, and a truer identity sentence in the client's own words.</li>
+<li><strong>Session 4, Growth.</strong> Produces: the goal stack. Outcome, identity, and process goals, chosen by the client and anchored to the new sentence.</li>
+<li><strong>Session 5, Navigation.</strong> Produces: the execution system. Friction removed, cadence set, and a recovery rule for the first miss.</li>
+<li><strong>Session 6, Integration.</strong> Produces: the assessment retaken and compared, the change visible in the client's own data, and a ninety-day plan they run without you.</li>
+</ul>
 <p>The baseline in session one is what makes session six land. Capture it in the client's own language and read it back to them at the end. Progress the client can see is what makes them renew, refer, and keep going after you are gone.</p>
 
 <h2>This week's live call</h2>
