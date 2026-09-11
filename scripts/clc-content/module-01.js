@@ -97,7 +97,9 @@ module.exports = {
 
 <h2>Practice this week</h2>
 <p>Target: <strong>2 practice coaching hours</strong> this week.</p>
+<p>From this week on you practice in a fixed peer triad: one coach, one client, one observer, rotating roles every week so you sit in all three seats. The observer watches against the four rubric criteria (Presence and Listening, Question Quality, Session Structure, Non-Advising) and gives two minutes of specific feedback after each round. Specific means the moment and the words, not a grade. Being observed early is how you avoid discovering your habits in week 13. Triad practice counts toward your logged hours only for the person in the coach seat.</p>
 <ol>
+<li>Meet your triad once this week and run one round in each seat.</li>
 <li>Find two practice clients. A friend, a colleague, anyone with a real goal who is not in crisis. Send them your one-page agreement first.</li>
 <li>Run two sessions of roughly 30 minutes each, or four of 20 minutes. One rule for the whole week: you may not give advice. If you feel the urge, ask a question instead and note it afterward.</li>
 <li>After each session, write three lines: the moment you most wanted to advise, what you asked instead, and what the client saw that they did not see at the start.</li>

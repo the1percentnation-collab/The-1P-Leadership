@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>1P Certified Life Coach | The One Percent Nation</title>
+  <meta name="description" content="Certified in 16 weeks. Live weekly coaching, a certification exam, and a reviewed coaching session. You finish with a credential, a framework license, and a client-ready program to sell.">
+  <link rel="canonical" href="https://the1pnation.com/clc">
+  <meta property="og:title" content="1P Certified Life Coach">
+  <meta property="og:description" content="Certified in 16 weeks. A credential, an A.L.I.G.N. Practitioner License, and a client-ready six-week program you can deliver.">
+  <meta property="og:url" content="https://the1pnation.com/clc">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="The One Percent Nation">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="1P Certified Life Coach">
+  <meta name="twitter:description" content="Certified in 16 weeks. A credential, an A.L.I.G.N. Practitioner License, and a client-ready six-week program you can deliver.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --red: #E60306; --red-dark: #B30205; --red-glow: rgba(230,3,6,0.12);
+      --black: #080808; --black-2: #0F0F0F; --charcoal: #151515;
+      --surface: #1A1A1A; --surface-2: #222222;
+      --border: rgba(255,255,255,0.08); --border-red: rgba(230,3,6,0.3);
+      --white: #FFFFFF; --gray-400: #A0A0A0; --gray-600: #606060;
+      --gold: #C9A84C; --gold-glow: rgba(201,168,76,0.12); --border-gold: rgba(201,168,76,0.35);
+      --font-display: 'Bebas Neue', Impact, sans-serif;
+      --font-body: 'Outfit', system-ui, sans-serif;
+      --font-mono: 'Space Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { background: var(--black); color: var(--white); font-family: var(--font-body); overflow-x: hidden; }
+    a { color: inherit; text-decoration: none; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--red); border-radius: 2px; }
+
+    body::before {
+      content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 256px;
+    }
+    .hero-grid {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 80px 80px;
+      mask-image: radial-gradient(ellipse 60% 60% at 20% 30%, black 10%, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse 60% 60% at 20% 30%, black 10%, transparent 70%);
+      opacity: 0.5;
+    }
+
+    /* NAV */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      height: 68px; background: rgba(8,8,8,0.92); backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 1200px; margin: 0 auto; padding: 0 32px;
+      height: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    }
+    .nav-logo-text { font-family: var(--font-display); letter-spacing: 0.06em; line-height: 1; }
+    .nav-logo-text .l1 { font-size: 11px; color: var(--gray-400); display: block; }
+    .nav-logo-text .l2 { font-size: 17px; display: block; }
+    .nav-back {
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--gray-400); transition: color 0.2s;
+    }
+    .nav-back:hover { color: var(--white); }
+
+    .tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+      letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--gold); border: 1px solid var(--border-gold);
+      padding: 5px 12px; border-radius: 2px;
+    }
+    .tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--gold); }
+
+    /* HERO */
+    .hero {
+      padding: 140px 32px 72px; max-width: 1200px; margin: 0 auto;
+      position: relative; z-index: 1;
+    }
+    .hero-title {
+      font-family: var(--font-display); font-size: clamp(48px, 6.6vw, 96px);
+      letter-spacing: 0.02em; line-height: 0.92; margin: 20px 0 22px; max-width: 16ch;
+    }
+    .hero-title .red { color: var(--red); }
+    .hero-sub { font-size: 18px; font-weight: 300; color: var(--gray-400); line-height: 1.7; max-width: 620px; }
+    .hero-actions { margin-top: 32px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .cta-msg { font-size: 13px; font-weight: 300; color: var(--gray-400); line-height: 1.6; max-width: 52ch; }
+    .cta-msg.err { color: #ff6b6d; }
+
+    .cohort-facts {
+      margin-top: 28px; display: flex; flex-wrap: wrap; gap: 10px 24px;
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--gray-600);
+    }
+    .cohort-facts .fact { display: inline-flex; align-items: center; gap: 8px; }
+    .cohort-facts .fact::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--red); }
+    .cohort-facts .fact strong { color: var(--white); font-weight: 700; }
+
+    /* SECTION SHELL */
+    section.band { position: relative; z-index: 1; padding: 72px 32px; }
+    section.band.alt { background: var(--black-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .wrap { max-width: 1200px; margin: 0 auto; }
+    .wrap-narrow { max-width: 860px; margin: 0 auto; }
+    .section-eyebrow {
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.2em;
+      text-transform: uppercase; color: var(--red); margin-bottom: 14px;
+    }
+    .section-title {
+      font-family: var(--font-display); font-size: clamp(34px, 4vw, 52px);
+      letter-spacing: 0.02em; line-height: 0.95; margin-bottom: 18px;
+    }
+    .section-title .gold { color: var(--gold); }
+    .section-desc { font-size: 16px; font-weight: 300; color: var(--gray-400); line-height: 1.75; max-width: 70ch; }
+
+    /* CARD GRIDS */
+    .grid-3 { margin-top: 32px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .grid-2 { margin-top: 32px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .card {
+      background: var(--charcoal); border: 1px solid var(--border);
+      border-radius: 10px; padding: 22px; transition: border-color 0.2s;
+    }
+    .card:hover { border-color: var(--border-red); }
+    .card h3 { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; margin-bottom: 8px; }
+    .card p { font-size: 13px; font-weight: 300; color: var(--gray-400); line-height: 1.65; }
+    .card .kicker {
+      font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--gray-600); margin-bottom: 10px; display: block;
+    }
+
+    /* ALIGN */
+    .align-grid { margin-top: 32px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+    .align-cell {
+      background: var(--charcoal); border: 1px solid var(--border); border-top: 3px solid var(--red);
+      border-radius: 10px; padding: 22px 18px;
+    }
+    .align-letter { font-family: var(--font-display); font-size: 44px; color: var(--red); line-height: 1; }
+    .align-word { font-size: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin: 8px 0 6px; }
+    .align-desc { font-size: 12px; font-weight: 300; color: var(--gray-400); line-height: 1.6; }
+
+    /* TIMELINE */
+    .phase-grid { margin-top: 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .phase {
+      background: var(--charcoal); border: 1px solid var(--border); border-radius: 10px; padding: 24px;
+    }
+    .phase-weeks { font-family: var(--font-display); font-size: 30px; letter-spacing: 0.04em; color: var(--gold); line-height: 1; }
+    .phase h3 { font-size: 15px; font-weight: 600; margin: 10px 0 8px; }
+    .phase ul { list-style: none; display: grid; gap: 8px; margin-top: 10px; }
+    .phase li { font-size: 13px; font-weight: 300; color: var(--gray-400); line-height: 1.6; display: flex; gap: 10px; }
+    .phase li::before { content: '✓'; color: var(--red); font-weight: 700; flex-shrink: 0; }
+
+    /* MODULES */
+    .module-list { margin-top: 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .module-row {
+      display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: 8px;
+      background: var(--charcoal); border: 1px solid var(--border); transition: border-color 0.2s;
+    }
+    .module-row:hover { border-color: var(--border-red); }
+    .module-num { font-family: var(--font-display); font-size: 26px; color: var(--red); line-height: 1; min-width: 30px; }
+    .module-title { font-size: 14px; font-weight: 600; line-height: 1.3; }
+    .module-sub { font-size: 12px; font-weight: 300; color: var(--gray-400); line-height: 1.55; margin-top: 4px; }
+
+    /* CHECK LIST */
+    .check-list { margin-top: 24px; display: grid; gap: 12px; }
+    .check-list li { list-style: none; display: flex; gap: 14px; font-size: 15px; font-weight: 300; color: var(--gray-400); line-height: 1.6; }
+    .check-list li::before { content: '✓'; color: var(--red); font-weight: 700; flex-shrink: 0; }
+    .check-list li strong { color: var(--white); font-weight: 500; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+
+    /* PRICING */
+    .price-grid { margin-top: 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: stretch; }
+    .price-card {
+      background: var(--charcoal); border: 1px solid var(--border); border-radius: 14px;
+      padding: 28px; display: flex; flex-direction: column;
+    }
+    .price-card.founding { border-color: var(--border-gold); background: linear-gradient(160deg, #120c00, var(--charcoal)); }
+    .price-kicker {
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--gold); margin-bottom: 12px;
+    }
+    .price-card:not(.founding) .price-kicker { color: var(--gray-600); }
+    .price-amount { font-family: var(--font-display); font-size: 56px; letter-spacing: 0.02em; line-height: 1; }
+    .price-note { font-size: 13px; font-weight: 300; color: var(--gray-400); line-height: 1.65; margin-top: 10px; }
+    .price-card .price-foot { margin-top: auto; padding-top: 18px; }
+
+    .plan-box { margin-top: 28px; background: var(--charcoal); border: 1px solid var(--border); border-radius: 14px; padding: 26px; }
+    .plan-title { font-family: var(--font-display); font-size: 26px; letter-spacing: 0.04em; margin-bottom: 6px; }
+    .plan-options { margin-top: 16px; display: grid; gap: 10px; }
+    .plan-option {
+      display: flex; gap: 12px; align-items: flex-start; cursor: pointer;
+      padding: 14px 16px; border-radius: 8px; background: var(--black-2);
+      border: 1px solid var(--border); transition: border-color 0.2s;
+      font-size: 14px; font-weight: 400;
+    }
+    .plan-option:hover { border-color: var(--border-red); }
+    .plan-option input { accent-color: var(--red); margin-top: 3px; flex-shrink: 0; }
+    .plan-option .po-sub { display: block; font-size: 12px; font-weight: 300; color: var(--gray-600); margin-top: 3px; }
+    .plan-note { font-size: 12px; font-weight: 300; color: var(--gray-600); line-height: 1.65; margin-top: 14px; }
+
+    .renewal {
+      margin-top: 24px; padding: 22px 24px; border-radius: 12px;
+      background: var(--gold-glow); border: 1px solid var(--border-gold);
+    }
+    .renewal h3 { font-family: var(--font-display); font-size: 24px; letter-spacing: 0.04em; color: var(--gold); margin-bottom: 8px; }
+    .renewal p { font-size: 14px; font-weight: 300; color: var(--gray-400); line-height: 1.7; }
+    .renewal p strong { color: var(--white); font-weight: 500; }
+
+    .btn-primary {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      font-family: var(--font-body); font-size: 15px; font-weight: 600; letter-spacing: 0.04em;
+      padding: 15px 30px; border-radius: 8px; border: 0; cursor: pointer;
+      background: var(--red); color: var(--white); text-align: center;
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    }
+    .btn-primary:hover { background: var(--red-dark); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(230,3,6,0.25); }
+    .btn-primary:disabled { opacity: 0.6; cursor: wait; transform: none; box-shadow: none; }
+    .btn-ghost {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      font-family: var(--font-body); font-size: 14px; font-weight: 500; letter-spacing: 0.02em;
+      padding: 14px 26px; border-radius: 8px; cursor: pointer;
+      background: transparent; color: var(--white); border: 1px solid var(--border);
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .btn-ghost:hover { border-color: rgba(255,255,255,0.25); }
+    .btn-gold {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      font-family: var(--font-body); font-size: 14px; font-weight: 600; letter-spacing: 0.02em;
+      padding: 13px 24px; border-radius: 8px; cursor: pointer;
+      background: transparent; color: var(--gold); border: 1px solid var(--border-gold);
+      transition: background 0.2s, color 0.2s;
+    }
+    .btn-gold:hover { background: var(--gold-glow); }
+    .btn-gold:disabled { opacity: 0.6; cursor: default; }
+
+    /* TRUTH TABLE */
+    .truth-grid { margin-top: 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .truth-col { background: var(--charcoal); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+    .truth-col.is { border-top: 3px solid var(--red); }
+    .truth-col.isnt { border-top: 3px solid var(--gray-600); }
+    .truth-col h3 { font-family: var(--font-display); font-size: 24px; letter-spacing: 0.04em; margin-bottom: 14px; }
+    .truth-col ul { list-style: none; display: grid; gap: 12px; }
+    .truth-col li { font-size: 14px; font-weight: 300; color: var(--gray-400); line-height: 1.7; }
+    .truth-col li strong { color: var(--white); font-weight: 500; }
+    .standing-answer {
+      margin-top: 18px; padding: 18px 20px; border-radius: 10px;
+      background: var(--black-2); border: 1px solid var(--border);
+      font-size: 14px; font-weight: 300; color: var(--gray-400); line-height: 1.75;
+    }
+
+    /* FAQ */
+    .faq-list { margin-top: 24px; display: flex; flex-direction: column; gap: 2px; }
+    .faq-item { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .faq-question {
+      width: 100%; background: var(--charcoal); border: none; color: var(--white);
+      font-family: var(--font-body); font-size: 14px; font-weight: 500;
+      padding: 18px 20px; text-align: left; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      transition: background 0.15s;
+    }
+    .faq-question:hover { background: var(--surface-2); }
+    .faq-icon { font-size: 18px; color: var(--red); flex-shrink: 0; transition: transform 0.25s; }
+    .faq-item.open .faq-icon { transform: rotate(45deg); }
+    .faq-answer {
+      display: none; padding: 0 20px 18px; background: var(--charcoal);
+      font-size: 13px; font-weight: 300; color: var(--gray-400); line-height: 1.75;
+    }
+    .faq-item.open .faq-answer { display: block; }
+
+    /* BOTTOM CTA */
+    .bottom-cta {
+      margin-top: 0; padding: 80px 32px;
+      background: linear-gradient(135deg, #0f0800, #080808, #0f0800);
+      border-top: 1px solid var(--border-gold); border-bottom: 1px solid var(--border);
+      text-align: center; position: relative; z-index: 1;
+    }
+    .bottom-cta h2 {
+      font-family: var(--font-display); font-size: clamp(36px, 5vw, 68px);
+      letter-spacing: 0.02em; line-height: 0.95; margin-bottom: 18px;
+    }
+    .bottom-cta h2 .gold { color: var(--gold); }
+    .bottom-cta p { font-size: 16px; font-weight: 300; color: var(--gray-400); max-width: 560px; margin: 0 auto 30px; line-height: 1.7; }
+    .bottom-cta-btns { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+
+    footer { position: relative; z-index: 1; padding: 36px 32px; border-top: 1px solid var(--border); }
+    .footer-inner { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .footer-copy { font-size: 12px; color: var(--gray-600); }
+    .footer-legal { display: flex; gap: 20px; font-size: 12px; color: var(--gray-600); flex-wrap: wrap; }
+    .footer-legal a:hover { color: var(--white); }
+
+    @media (max-width: 960px) {
+      .align-grid { grid-template-columns: repeat(2, 1fr); }
+      .grid-3 { grid-template-columns: 1fr; }
+      .two-col { grid-template-columns: 1fr; gap: 28px; }
+    }
+    @media (max-width: 760px) {
+      .hero { padding: 118px 20px 56px; }
+      section.band { padding: 56px 20px; }
+      .bottom-cta { padding: 60px 20px; }
+      .nav-inner { padding: 0 20px; }
+      .grid-2, .phase-grid, .module-list, .price-grid, .truth-grid { grid-template-columns: 1fr; }
+      .align-grid { grid-template-columns: 1fr; }
+      .hero-sub { font-size: 16px; }
+      footer { padding: 28px 20px; }
+    }
+  </style>
+</head>
+<body>
+<div class="hero-grid"></div>
+
+<nav>
+  <div class="nav-inner">
+    <a class="nav-logo-text" href="/">
+      <span class="l1">The One Percent Nation</span>
+      <span class="l2">1P CERTIFIED LIFE COACH</span>
+    </a>
+    <a class="nav-back" href="/">← the1pnation.com</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <span class="tag" id="clc-eyebrow">Certification · 16 Weeks</span>
+  <h1 class="hero-title">CERTIFIED IN<br><span class="red">16 WEEKS.</span></h1>
+  <p class="hero-sub">
+    Four to five hours per week. Live weekly coaching, a certification exam, and a reviewed
+    coaching session. You finish with a credential, a framework license, and a client-ready
+    program to sell.
+  </p>
+  <div class="hero-actions">
+    <button class="btn-primary" id="clc-cta-hero" type="button">Loading…</button>
+    <a class="btn-ghost" href="#pricing">See pricing and payment plans</a>
+  </div>
+  <div class="cta-msg" id="clc-cta-msg" hidden></div>
+  <div class="cohort-facts" id="clc-cohort-facts" hidden></div>
+</header>
+
+<!-- WHO THIS IS FOR -->
+<section class="band alt" id="who">
+  <div class="wrap">
+    <div class="section-eyebrow">Who this is for</div>
+    <h2 class="section-title">BUILT FOR PEOPLE READY TO <span class="gold">COACH.</span></h2>
+    <p class="section-desc">
+      Three kinds of people come through this program. All three finish with the same credential
+      and the same standards behind it.
+    </p>
+    <div class="grid-3">
+      <div class="card">
+        <span class="kicker">01 · The career shift</span>
+        <h3>Successful on paper, misaligned in practice</h3>
+        <p>
+          You have built something real and it does not fit who you are anymore. You have been
+          the person friends call when they are stuck, and you want to do that work on purpose,
+          with a method behind it.
+        </p>
+      </div>
+      <div class="card">
+        <span class="kicker">02 · The new coach</span>
+        <h3>You want a system and a client base</h3>
+        <p>
+          You know you can coach. What you do not have is a repeatable structure, a program to
+          sell, or a way to get the first paying clients. This gives you all three.
+        </p>
+      </div>
+      <div class="card">
+        <span class="kicker">03 · The fast track</span>
+        <h3>Existing coaches and professional leaders</h3>
+        <p>
+          A 12-week fast track compresses the cadence for people already coaching or already
+          leading. Same requirements, same standards, same price. No discount, no shortcut
+          through the work.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- A.L.I.G.N. -->
+<section class="band" id="align">
+  <div class="wrap">
+    <div class="section-eyebrow">The framework</div>
+    <h2 class="section-title">A.L.I.G.N.</h2>
+    <p class="section-desc">
+      Five movements your client travels, in order. You learn to coach each one, and you leave
+      licensed to deliver the whole arc commercially.
+    </p>
+    <div class="align-grid">
+      <div class="align-cell">
+        <div class="align-letter">A</div>
+        <div class="align-word">Awareness</div>
+        <p class="align-desc">Seeing the belief clearly</p>
+      </div>
+      <div class="align-cell">
+        <div class="align-letter">L</div>
+        <div class="align-word">Leadership</div>
+        <p class="align-desc">Taking ownership of your story</p>
+      </div>
+      <div class="align-cell">
+        <div class="align-letter">I</div>
+        <div class="align-word">Identity</div>
+        <p class="align-desc">Rewriting who you believe you are</p>
+      </div>
+      <div class="align-cell">
+        <div class="align-letter">G</div>
+        <div class="align-word">Growth</div>
+        <p class="align-desc">Choosing expansion over comfort</p>
+      </div>
+      <div class="align-cell">
+        <div class="align-letter">N</div>
+        <div class="align-word">Navigation</div>
+        <p class="align-desc">Executing the path forward</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- THE 16 WEEKS -->
+<section class="band alt" id="structure">
+  <div class="wrap">
+    <div class="section-eyebrow">The 16 weeks</div>
+    <h2 class="section-title">FOUR TO FIVE HOURS <span class="gold">A WEEK.</span></h2>
+    <p class="section-desc">
+      Twelve weeks of instruction and live coaching, then four weeks of practicum where the
+      credential is actually earned. Plan on four to five hours per week across live calls,
+      module work, and real coaching practice.
+    </p>
+    <div class="phase-grid">
+      <div class="phase">
+        <div class="phase-weeks">WEEKS 1 TO 12</div>
+        <h3>Eight modules, one live call every week</h3>
+        <ul>
+          <li>Eight modules mapped to the A.L.I.G.N. framework</li>
+          <li>A live weekly coaching call on a fixed day and time</li>
+          <li>A practice assignment after every module that produces logged coaching hours</li>
+          <li>Every call recorded, so a missed week is not a lost week</li>
+        </ul>
+      </div>
+      <div class="phase">
+        <div class="phase-weeks">WEEKS 13 TO 16</div>
+        <h3>Practicum, exam, review, certification</h3>
+        <ul>
+          <li>Practicum: finish your 25 logged practice coaching hours</li>
+          <li>Written certification exam</li>
+          <li>One recorded coaching session reviewed against the published rubric</li>
+          <li>Certification issued, with your first-year license active</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MODULES -->
+<section class="band" id="modules">
+  <div class="wrap">
+    <div class="section-eyebrow">Curriculum</div>
+    <h2 class="section-title">THE EIGHT MODULES.</h2>
+    <div class="module-list">
+      <div class="module-row">
+        <div class="module-num">01</div>
+        <div>
+          <div class="module-title">Foundations of 1P Coaching</div>
+          <div class="module-sub">What coaching is, what it is not, and the stance that makes it work.</div>
+        </div>
+      </div>
+      <div class="module-row">
+        <div class="module-num">02</div>
+        <div>
+          <div class="module-title">The A.L.I.G.N. Framework</div>
+          <div class="module-sub">The full arc your clients will move through, and the map you will coach from.</div>
+        </div>
+      </div>
+      <div class="module-row">
+        <div class="module-num">03</div>
+        <div>
+          <div class="module-title">Leadership of Self and Session</div>
+          <div class="module-sub">Presence, listening, and the structure that makes a session produce movement.</div>
+        </div>
+      </div>
+      <div class="module-row">
+        <div class="module-num">04</div>
+        <div>
+          <div class="module-title">Identity Work</div>
+          <div class="module-sub">Beliefs, story rewriting, and coaching values back into alignment.</div>
+        </div>
+      </div>
+      <div class="module-row">
+        <div class="module-num">05</div>
+        <div>
+          <div class="module-title">Powerful Questions and Growth Plans</div>
+          <div class="module-sub">Question craft, and turning insight into a plan the client owns.</div>
+        </div>
+      </div>
+      <div class="module-row">
+        <div class="module-num">06</div>
+        <div>
+          <div class="module-title">Navigation and Accountability</div>
+          <div class="module-sub">Execution systems, habit design, and progress reviews that keep change alive.</div>
+        </div>
+      </div>
+      <div class="module-row">
+        <div class="module-num">07</div>
+        <div>
+          <div class="module-title">The Client Engagement</div>
+          <div class="module-sub">Discovery calls, packages, and the six-week client program you will deliver.</div>
+        </div>
+      </div>
+      <div class="module-row">
+        <div class="module-num">08</div>
+        <div>
+          <div class="module-title">Practicum Preparation</div>
+          <div class="module-sub">The rubric, the recording, and the hour log: exactly how certification works.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW CERTIFICATION WORKS -->
+<section class="band alt" id="certification">
+  <div class="wrap">
+    <div class="two-col">
+      <div>
+        <div class="section-eyebrow">How certification works</div>
+        <h2 class="section-title">FOUR THINGS <span class="gold">YOU HAVE TO DO.</span></h2>
+        <p class="section-desc">
+          The difference between a certification and a course is what it asks of you. These four
+          requirements are locked before the first cohort starts and they do not move.
+        </p>
+        <ul class="check-list">
+          <li><span><strong>Complete all eight modules.</strong> Attendance alone does not carry you through.</span></li>
+          <li><span><strong>Pass the written exam at 80 percent.</strong> Three attempts, drawn from a tagged question bank.</span></li>
+          <li><span><strong>Submit one recorded coaching session</strong> reviewed against a published rubric. You see the rubric in module 8, so nothing about the review is a surprise.</span></li>
+          <li><span><strong>Log 25 approved practice coaching hours.</strong> Real sessions with real people, logged in the portal and approved.</span></li>
+        </ul>
+      </div>
+      <div>
+        <div class="section-eyebrow">What you earn</div>
+        <h2 class="section-title">THREE THINGS <span class="gold">YOU WALK OUT WITH.</span></h2>
+        <div class="grid-2" style="grid-template-columns:1fr;margin-top:24px;">
+          <div class="card">
+            <span class="kicker">The credential</span>
+            <h3>1P Certified Life Coach</h3>
+            <p>
+              A proprietary certification in the A.L.I.G.N. framework, earned once, with your
+              track designation on the certificate.
+            </p>
+          </div>
+          <div class="card">
+            <span class="kicker">The license</span>
+            <h3>First-year A.L.I.G.N. Practitioner License</h3>
+            <p>
+              The right to deliver the A.L.I.G.N. framework commercially under The One Percent
+              name. Year one is included in your tuition and renews annually.
+            </p>
+          </div>
+          <div class="card">
+            <span class="kicker">The business</span>
+            <h3>A client-ready six-week program</h3>
+            <p>
+              The A.L.I.G.N. client program session by session, the client workbook, and the
+              Alignment Assessment. You finish with something to sell, not just something to say.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WHAT YOU GET -->
+<section class="band" id="includes">
+  <div class="wrap-narrow">
+    <div class="section-eyebrow">What you get</div>
+    <h2 class="section-title">EVERYTHING INCLUDED.</h2>
+    <ul class="check-list">
+      <li><span>Eight modules mapped to the A.L.I.G.N. framework</span></li>
+      <li><span>Live weekly coaching call for twelve weeks</span></li>
+      <li><span>Four-week practicum: exam, recorded session review, certification</span></li>
+      <li><span>Coaching hour log with 25-hour certification requirement</span></li>
+      <li><span>Written certification exam and published session rubric</span></li>
+      <li><span>Certificate: 1P Certified Life Coach, with track designation</span></li>
+      <li><span>First-year A.L.I.G.N. Practitioner License included</span></li>
+      <li><span>The client kit: a six-week A.L.I.G.N. client program, the client workbook, and the Alignment Assessment, licensed for you to deliver</span></li>
+      <li><span>Listing in the public 1P coach directory while your license is current</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="band alt" id="pricing">
+  <div class="wrap">
+    <div class="section-eyebrow">Pricing</div>
+    <h2 class="section-title">WHAT IT <span class="gold">COSTS.</span></h2>
+    <p class="section-desc">
+      One price for the certification and your first year of the license. The founding cohort is
+      capped at 20 seats and is not repeated.
+    </p>
+    <div class="price-grid">
+      <div class="price-card founding">
+        <div class="price-kicker">Founding cohort · 20 seats</div>
+        <div class="price-amount">$1,997</div>
+        <p class="price-note">
+          The first cohort, at a price that is never offered again. Same curriculum, same
+          requirements, same credential. Apply code FOUNDING at checkout, or use the button below.
+        </p>
+        <div class="price-foot">
+          <button class="btn-gold" id="clc-founding-apply" type="button">Apply the FOUNDING code</button>
+          <div class="price-note" id="clc-founding-msg" hidden></div>
+          <div class="price-note" id="clc-seats-note" hidden></div>
+        </div>
+      </div>
+      <div class="price-card">
+        <div class="price-kicker">Standard tuition</div>
+        <div class="price-amount" id="clc-price-standard">$3,497</div>
+        <p class="price-note" id="clc-price-note">
+          Includes your first-year A.L.I.G.N. Practitioner License.
+        </p>
+        <div class="price-foot">
+          <button class="btn-primary" id="clc-cta-pricing" type="button" style="width:100%;">Loading…</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="plan-box">
+      <div class="plan-title">PAYMENT PLANS</div>
+      <p class="section-desc" style="font-size:14px;">
+        Pay in full, or split tuition into fixed monthly installments. Choose your plan here and
+        it carries into checkout.
+      </p>
+      <div class="plan-options" id="clc-plan">
+        <label class="plan-option">
+          <input type="radio" name="clc-plan" value="" checked>
+          <span>Pay in full
+            <span class="po-sub">One payment. Promo codes apply to this option only.</span>
+          </span>
+        </label>
+        <label class="plan-option">
+          <input type="radio" name="clc-plan" value="6x">
+          <span>6 payments of $697
+            <span class="po-sub">Six monthly installments, then it ends.</span>
+          </span>
+        </label>
+        <label class="plan-option">
+          <input type="radio" name="clc-plan" value="10x">
+          <span>10 payments of $397
+            <span class="po-sub">Ten monthly installments, then it ends.</span>
+          </span>
+        </label>
+      </div>
+      <p class="plan-note">
+        Payment plans are billed monthly for a fixed number of payments and stop on their own.
+        A plan cannot be combined with a promo code, including FOUNDING.
+      </p>
+    </div>
+
+    <div class="renewal">
+      <h3>ANNUAL LICENSE RENEWAL · $597</h3>
+      <p>
+        Your credential is earned once. The A.L.I.G.N. Practitioner License renews every year at
+        $597. <strong>What it requires:</strong> logged coaching hours plus continuing education
+        credits, both tracked in the portal. <strong>What it gives:</strong> your listing in the
+        public 1P coach directory and the continued right to deliver A.L.I.G.N. commercially,
+        including the client program, workbook, and assessment. Year one is included in tuition.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- WHAT THIS IS AND IS NOT -->
+<section class="band" id="plain">
+  <div class="wrap">
+    <div class="section-eyebrow">Plain words</div>
+    <h2 class="section-title">WHAT THIS IS, AND <span class="gold">WHAT IT IS NOT.</span></h2>
+    <div class="truth-grid">
+      <div class="truth-col is">
+        <h3>WHAT IT IS</h3>
+        <ul>
+          <li><strong>A proprietary certification in the A.L.I.G.N. framework.</strong> Built by The One Percent Nation, earned through modules, an exam, a reviewed session, and 25 logged hours.</li>
+          <li><strong>An annual license to deliver that framework commercially,</strong> with client-facing products you are licensed to use with paying clients.</li>
+          <li><strong>A system and a client base,</strong> for coaches who want both.</li>
+        </ul>
+      </div>
+      <div class="truth-col isnt">
+        <h3>WHAT IT IS NOT</h3>
+        <ul>
+          <li><strong>Not a state license.</strong> Life coaching is unregulated in all 50 states. No state issues a life coach license. The credential is a certification. The license is the right to use the framework.</li>
+          <li><strong>Not ICF accredited.</strong> We do not imply otherwise anywhere, on this page or on the certificate.</li>
+          <li><strong>Not a weekend certificate.</strong> You cannot finish without coaching real people.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="standing-answer">
+      When people ask about ICF, here is the answer we give and the answer you can give: this is a
+      proprietary framework certification built for coaches who want a system and a client base,
+      not a credential for corporate procurement.
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="band alt" id="faq">
+  <div class="wrap-narrow">
+    <div class="section-eyebrow">Questions</div>
+    <h2 class="section-title">STRAIGHT ANSWERS.</h2>
+    <div class="faq-list">
+      <div class="faq-item">
+        <button class="faq-question" type="button">
+          <span>How much time does this take each week?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">Four to five hours per week for 16 weeks. That covers the live call, the module work, and the coaching practice that builds your 25 logged hours. The practice hours are the part people underestimate, so plan for them from week one.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" type="button">
+          <span>Do I need prior coaching experience?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">No. The program starts at the foundations: what coaching is, what it is not, and the non-advising stance. What you do need is a willingness to coach real people during the program, because your practice hours are part of certification.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" type="button">
+          <span>What is the 12-week fast track?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">A compressed cadence for existing coaches and professional leaders. The requirements are identical: all eight modules, the exam at 80 percent, the reviewed recorded session, and 25 logged hours. The price is identical too. Nothing is removed, the schedule is tighter.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" type="button">
+          <span>What counts as a practice coaching hour?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">A real coaching session with a real person who is not you, using the A.L.I.G.N. structure. Paid or unpaid both count. You log the date, the client initials, and the duration in the portal, and the hours are approved before they count toward the 25. Watching a call, reading a module, or role-playing with yourself does not count.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" type="button">
+          <span>What happens if my recorded session is returned?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">You get the scored rubric back with written notes on each of the four criteria, and you submit a new recording. A returned session is a normal part of the process, not a failure. The rubric is published in module 8, so you know exactly what is being scored before you record.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" type="button">
+          <span>How do payment plans work, and what if an installment fails?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">A plan is a fixed number of monthly payments: six at $697, or ten at $397. It stops on its own after the final payment. If an installment fails, your account is marked past due, course access pauses until the balance is current, and certification cannot be issued while the balance is past due. Update your card and everything resumes. Plans cannot be combined with a promo code.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" type="button">
+          <span>What are the refund terms?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">Terms are shown at checkout.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BOTTOM CTA -->
+<div class="bottom-cta">
+  <h2>CERTIFIED IN 16 WEEKS.<br><span class="gold">THE WORK STARTS WITH YOU.</span></h2>
+  <p>A credential, a framework license, and a client-ready program. One cohort, 20 founding seats, one fixed start date.</p>
+  <div class="bottom-cta-btns">
+    <button class="btn-primary" id="clc-cta-bottom" type="button">Loading…</button>
+    <a class="btn-ghost" href="#certification">See the certification requirements</a>
+  </div>
+  <div class="cta-msg" id="clc-cta-msg-bottom" hidden style="margin:18px auto 0;"></div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-copy">© 2025 The One Percent Nation. All rights reserved.</div>
+    <div class="footer-legal">
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/terms.html">Terms of Service</a>
+      <a href="/contact.html">Contact</a>
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="/js/clc-page.js"></script>
+<script>
+  // FAQ accordion (same behavior as bundle.html)
+  document.querySelectorAll('.faq-question').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var item = btn.parentElement;
+      var wasOpen = item.classList.contains('open');
+      document.querySelectorAll('.faq-item.open').forEach(function (el) { el.classList.remove('open'); });
+      if (!wasOpen) item.classList.add('open');
+    });
+  });
+</script>
+</body>
+</html>
