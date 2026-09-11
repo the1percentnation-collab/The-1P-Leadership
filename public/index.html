@@ -1212,7 +1212,12 @@
     }
     .beta-form textarea { resize: vertical; min-height: 70px; }
     .beta-form input:focus, .beta-form select:focus, .beta-form textarea:focus { outline: 2px solid var(--red); outline-offset: 1px; border-color: transparent; }
-    .beta-consent { display: flex; gap: 10px; align-items: flex-start; font-size: 12px; font-weight: 300; color: var(--gray-600); line-height: 1.5; cursor: pointer; }
+    /* Also a <label>, so it must undo the field-label styling above. */
+    .beta-form .beta-consent {
+      display: flex; gap: 10px; align-items: flex-start; cursor: pointer; margin-bottom: 0;
+      font-family: var(--font-body); font-size: 12px; font-weight: 300; letter-spacing: 0;
+      text-transform: none; color: var(--gray-600); line-height: 1.5;
+    }
     .beta-consent input { width: auto; margin-top: 2px; accent-color: var(--red); }
     .beta-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
     .beta-msg { font-size: 13px; line-height: 1.5; }
