@@ -1,4 +1,5 @@
-// Homepage footer: beta tester signup → portal lead capture.
+// Beta tester signup → portal lead capture. Used by the homepage footer modal
+// and by the standalone /beta page (same form ids, no modal there).
 //
 // Unlike the newsletter hook, this one is awaited: an applicant should see a
 // real confirmation or a real error, not an alert that fires regardless of

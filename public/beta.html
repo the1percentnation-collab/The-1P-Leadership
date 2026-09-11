@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beta Test I Can't: The Course | The One Percent Nation</title>
+  <meta name="description" content="Test I Can't: The Course before it launches. A small group gets early access at no cost in exchange for honest feedback. Apply here.">
+  <link rel="canonical" href="https://the1pnation.com/beta">
+  <meta property="og:title" content="Beta Test I Can't: The Course">
+  <meta property="og:description" content="Early access at no cost. Honest notes in return. Apply to be one of the first through the course.">
+  <meta property="og:url" content="https://the1pnation.com/beta">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Beta Test I Can't: The Course">
+  <meta name="twitter:description" content="Early access at no cost. Honest notes in return.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --red: #E60306; --red-dark: #B30205; --red-glow: rgba(230,3,6,0.12);
+      --black: #080808; --black-2: #0F0F0F; --charcoal: #151515;
+      --surface: #1A1A1A; --surface-2: #222222;
+      --border: rgba(255,255,255,0.08);
+      --white: #FFFFFF; --gray-400: #A0A0A0; --gray-600: #606060;
+      --gold: #C9A84C; --border-gold: rgba(201,168,76,0.35);
+      --font-display: 'Bebas Neue', Impact, sans-serif;
+      --font-body: 'Outfit', system-ui, sans-serif;
+      --font-mono: 'Space Mono', monospace;
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--black); color: var(--white); font-family: var(--font-body); overflow-x: hidden; min-height: 100vh; display: flex; flex-direction: column; }
+    a { color: inherit; text-decoration: none; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--red); border-radius: 2px; }
+
+    body::before {
+      content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 256px;
+    }
+    .hero-grid {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 80px 80px;
+      mask-image: radial-gradient(ellipse 60% 60% at 20% 30%, black 10%, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse 60% 60% at 20% 30%, black 10%, transparent 70%);
+      opacity: 0.5;
+    }
+
+    /* NAV */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      height: 68px; background: rgba(8,8,8,0.92); backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 1200px; margin: 0 auto; padding: 0 32px;
+      height: 100%; display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo-text { font-family: var(--font-display); letter-spacing: 0.06em; line-height: 1; }
+    .nav-logo-text .l1 { font-size: 11px; color: var(--gray-400); display: block; }
+    .nav-logo-text .l2 { font-size: 17px; display: block; }
+    .nav-back {
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--gray-400); transition: color 0.2s;
+    }
+    .nav-back:hover { color: var(--white); }
+
+    .tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+      letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--gold); border: 1px solid var(--border-gold);
+      padding: 5px 12px; border-radius: 2px;
+    }
+    .tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--gold); }
+
+    /* PAGE */
+    main { position: relative; z-index: 1; flex: 1; padding: 128px 32px 80px; }
+    .wrap {
+      max-width: 1100px; margin: 0 auto;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start;
+    }
+    .beta-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+    .beta-title { font-family: var(--font-display); font-size: clamp(48px, 6vw, 76px); letter-spacing: 0.03em; line-height: 0.92; margin: 18px 0 20px; }
+    .beta-title .red { color: var(--red); }
+    .beta-sub { font-size: 17px; font-weight: 300; line-height: 1.7; color: var(--gray-400); max-width: 46ch; }
+    .beta-sub em { color: var(--white); font-style: italic; }
+    .beta-points { list-style: none; margin-top: 28px; display: grid; gap: 14px; }
+    .beta-points li { display: flex; gap: 14px; align-items: flex-start; font-size: 15px; font-weight: 300; color: var(--gray-400); line-height: 1.55; }
+    .beta-points li strong { color: var(--white); font-weight: 500; }
+    .beta-points .n { font-family: var(--font-mono); font-size: 11px; color: var(--red); letter-spacing: 0.1em; padding-top: 4px; flex-shrink: 0; }
+    .beta-book { margin-top: 32px; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gray-600); }
+    .beta-book a { color: var(--gray-400); border-bottom: 1px solid var(--border); transition: color 0.2s; }
+    .beta-book a:hover { color: var(--white); }
+
+    /* FORM PANEL — same field styles and ids as the homepage modal */
+    .beta-panel {
+      background: var(--black-2); border: 1px solid var(--border); border-top: 3px solid var(--red);
+      border-radius: 12px; padding: 32px 28px 28px;
+      animation: betaIn 0.4s var(--ease-out) both;
+    }
+    @keyframes betaIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { .beta-panel { animation: none; } }
+    .eyebrow-mono { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--red); margin-bottom: 10px; }
+    .beta-panel-title { font-family: var(--font-display); font-size: 36px; letter-spacing: 0.03em; line-height: 0.95; margin-bottom: 22px; }
+    .beta-panel-title .red { color: var(--red); }
+
+    .beta-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .beta-form .full { grid-column: 1 / -1; }
+    .beta-form label {
+      display: block; font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.16em;
+      text-transform: uppercase; color: var(--gray-600); margin-bottom: 6px;
+    }
+    .beta-form input, .beta-form textarea {
+      width: 100%; background: var(--charcoal); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--white); padding: 12px 14px; font-family: var(--font-body); font-size: 14px;
+    }
+    .beta-form textarea { resize: vertical; min-height: 90px; }
+    .beta-form input:focus, .beta-form textarea:focus { outline: 2px solid var(--red); outline-offset: 1px; border-color: transparent; }
+    .beta-form .beta-consent {
+      display: flex; gap: 10px; align-items: flex-start; cursor: pointer; margin-bottom: 0;
+      font-family: var(--font-body); font-size: 12px; font-weight: 300; letter-spacing: 0;
+      text-transform: none; color: var(--gray-600); line-height: 1.5;
+    }
+    .beta-consent input { width: auto; margin-top: 2px; accent-color: var(--red); }
+    .beta-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .beta-msg { font-size: 13px; line-height: 1.5; }
+    .beta-msg.err { color: #ff6b6d; }
+    .beta-done { display: none; padding: 8px 0; }
+    .beta-done.show { display: block; }
+    .beta-done .t { font-family: var(--font-display); font-size: 28px; letter-spacing: 0.03em; margin-bottom: 8px; }
+    .beta-done .t .red { color: var(--red); }
+    .beta-done p { font-size: 14px; font-weight: 300; color: var(--gray-400); line-height: 1.65; max-width: 52ch; }
+
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: var(--font-body); font-size: 15px; font-weight: 600; letter-spacing: 0.04em;
+      padding: 14px 28px; border-radius: 6px; border: 0; cursor: pointer;
+      background: var(--red); color: var(--white);
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    }
+    .btn-primary:hover { background: var(--red-dark); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(230,3,6,0.25); }
+    .btn-primary:disabled { opacity: 0.6; cursor: wait; transform: none; box-shadow: none; }
+
+    footer { position: relative; z-index: 1; border-top: 1px solid var(--border); padding: 28px 32px; }
+    .footer-inner { max-width: 1100px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .footer-copy { font-size: 12px; color: var(--gray-600); }
+    .footer-legal { display: flex; gap: 20px; font-size: 12px; color: var(--gray-600); }
+    .footer-legal a:hover { color: var(--white); }
+
+    @media (max-width: 860px) {
+      main { padding: 104px 20px 56px; }
+      .wrap { grid-template-columns: 1fr; gap: 36px; }
+      .beta-title { font-size: 52px; }
+      .beta-sub { font-size: 15px; }
+    }
+    @media (max-width: 600px) {
+      .nav-inner { padding: 0 20px; }
+      .beta-form { grid-template-columns: 1fr; }
+      .beta-panel { padding: 26px 18px 20px; }
+      .beta-panel-title { font-size: 32px; }
+      footer { padding: 24px 20px; }
+    }
+  </style>
+</head>
+<body>
+<div class="hero-grid"></div>
+
+<nav>
+  <div class="nav-inner">
+    <a class="nav-logo-text" href="/">
+      <span class="l1">The One Percent Nation</span>
+      <span class="l2">I CAN'T: THE COURSE</span>
+    </a>
+    <a class="nav-back" href="/">← the1pnation.com</a>
+  </div>
+</nav>
+
+<main>
+  <div class="wrap">
+    <div class="beta-copy">
+      <span class="tag">Beta Testers Wanted</span>
+      <h1 class="beta-title">TEST THE COURSE<br><span class="red">BEFORE</span> IT LAUNCHES.</h1>
+      <p class="beta-sub">We're finishing <em>I Can't: The Course</em>, the companion to the book, and want a small group to go through it first. You get early access at no cost. We get honest notes on what lands and what doesn't. That's the whole deal.</p>
+      <ul class="beta-points">
+        <li><span class="n">01</span><span><strong>Early access, no charge.</strong> Every module as it's released, ahead of the public launch.</span></li>
+        <li><span class="n">02</span><span><strong>Honest feedback.</strong> What landed, what dragged, what you'd cut. Short notes are fine.</span></li>
+        <li><span class="n">03</span><span><strong>A direct line to Anthony.</strong> He reaches out personally with access and what to look at first.</span></li>
+      </ul>
+      <div class="beta-book">Haven't read the book? <a href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">Get I Can't: Is Not A Strategy →</a></div>
+    </div>
+
+    <div class="beta-panel">
+      <div class="eyebrow-mono">Beta Testers · I Can't: The Course</div>
+      <div class="beta-panel-title">APPLY TO <span class="red">BETA TEST.</span></div>
+      <div class="beta-done" id="beta-done">
+        <div class="t">YOU'RE ON <span class="red">THE LIST.</span></div>
+        <p>Anthony will reach out personally with access details and what we'd like you to look at first. Beta seats are limited, so watch your inbox.</p>
+      </div>
+      <form class="beta-form" id="beta-form" novalidate>
+        <div>
+          <label for="beta-name">Your name</label>
+          <input id="beta-name" type="text" autocomplete="name" maxlength="120" required>
+        </div>
+        <div>
+          <label for="beta-email">Email</label>
+          <input id="beta-email" type="email" autocomplete="email" maxlength="160" required>
+        </div>
+        <div class="full">
+          <label for="beta-phone">Phone (optional)</label>
+          <input id="beta-phone" type="tel" autocomplete="tel" maxlength="40">
+        </div>
+        <div class="full">
+          <label for="beta-why">Why you'd be a good tester</label>
+          <textarea id="beta-why" maxlength="600" placeholder="Have you read the book? What are you working on? A sentence or two is plenty."></textarea>
+        </div>
+        <div class="full">
+          <label class="beta-consent">
+            <input type="checkbox" id="beta-consent">
+            <span>I agree to be contacted by email, phone or text about beta access, and to share honest feedback.</span>
+          </label>
+        </div>
+        <div class="full beta-actions">
+          <button class="btn-primary" type="submit" id="beta-submit">Apply to beta test →</button>
+          <div class="beta-msg" id="beta-msg" role="status" aria-live="polite"></div>
+        </div>
+      </form>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-copy">© 2025 The One Percent Nation. All rights reserved.</div>
+    <div class="footer-legal">
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/terms.html">Terms of Service</a>
+      <a href="/contact.html">Contact</a>
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="/js/beta-lead.js"></script>
+</body>
+</html>
