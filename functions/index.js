@@ -1314,10 +1314,17 @@ async function resolveAcademyCompanyId(db) {
       if (!cSnap.empty) { _academyCompanyIdCache = cSnap.docs[0].id; return cSnap.docs[0].id; }
     }
   } catch (e) { console.warn('[resolveAcademyCompanyId]', e && e.message); }
-  // 3) Fallback: the first company that exists.
+  // 3) Fallback: the first company that exists. Deliberately NOT cached:
+  // every new member is routed through this resolver, and pinning a partner
+  // company here for the life of the instance would send signups into the
+  // wrong CRM until the next cold start, even after the owner's company is
+  // linked.
   try {
     const any = await db.collection('companies').limit(1).get();
-    if (!any.empty) { _academyCompanyIdCache = any.docs[0].id; return any.docs[0].id; }
+    if (!any.empty) {
+      console.warn(`[resolveAcademyCompanyId] owner has no company; falling back to ${any.docs[0].id}`);
+      return any.docs[0].id;
+    }
   } catch (e) {}
   return null;
 }
