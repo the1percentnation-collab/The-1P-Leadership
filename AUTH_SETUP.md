@@ -126,10 +126,39 @@ caught. Adjust the limits at the top of that file.
 > state laws, TCPA, CAN-SPAM). It does **not** constitute legal advice or certify
 > compliance — confirm with qualified counsel.
 
+## New member pipeline (welcome email + CRM contact)
+
+Every account that lands in `users/{uid}` (email signup, Google sign-in, or an
+invite) runs through `onUserCreated` in `functions/index.js`, which:
+
+1. Applies any pending course grants for that email.
+2. Upserts the member into the academy CRM (`companies/{academy}/contacts`),
+   matching on email so a lead who filled a form earlier is updated rather
+   than duplicated. The contact gets the `Member` tag, `memberUid`, and a
+   `member_signup` activity. The link is stored on the user doc as
+   `crmContactId` / `crmCompanyId`.
+3. Sends the welcome email via SendGrid and records `welcomeEmailStatus`
+   (`sent` / `failed`), `welcomeEmailSentAt` and `welcomeEmailMessageId` on the
+   user doc. SendGrid opens and clicks land on the contact's activity timeline
+   through the existing event webhook.
+
+Both steps are idempotent. `submitOnboarding` re-runs them as a safety net, so
+a member whose signup trigger failed is still linked and still welcomed the
+moment they finish onboarding. To catch up members who signed up before this
+existed, use **Sync members to CRM** on `/owner.html` (safe to re-run; tick the
+checkbox to also send the welcome email to anyone who never received one).
+
+Requirements: the academy company must exist (the owner's `companyId`, or a
+company the owner administers; falls back to the first company). Until one
+exists the CRM step logs a warning and skips, and the backfill picks those
+members up later. `SENDGRID_API_KEY` must be set for the email step.
+
 ## Data model (for reference)
 
 ```
-users/{uid}                   { email, displayName, role, companyId|null, tier, createdAt, lastActiveAt, currentModule }
+users/{uid}                   { email, displayName, role, companyId|null, tier, createdAt, lastActiveAt, currentModule,
+                                crmContactId, crmCompanyId, crmSyncedAt,
+                                welcomeEmailStatus, welcomeEmailSentAt, welcomeEmailMessageId, welcomeEmailError }
 users/{uid}/progress/{id}     { completed, completedAt, notes, noteSlots }
 users/{uid}/capstone/...      { reflection, recordingUrl, submittedAt, reviewStatus }
 companies/{companyId}         { name, adminUids[], seatCount, seatsUsed, tier, createdAt }

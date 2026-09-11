@@ -695,60 +695,29 @@ exports.onUserCreated = onDocumentCreated(
       console.error('[onUserCreated] pending grants failed:', e && e.message);
     }
 
+    const db = admin.firestore();
+    const uid = event.params.uid;
+
+    // 1) Mirror the new member into the academy CRM. Never blocks the email.
+    let crm = null;
     try {
-      sgMail.setApiKey(sendgridKey.value());
-
-      let companyName = null;
-      if (user.companyId) {
-        try {
-          const cSnap = await admin.firestore().collection('companies').doc(user.companyId).get();
-          if (cSnap.exists) companyName = cSnap.data().name || null;
-        } catch (e) {}
-      }
-
-      const firstName = (user.displayName || '').split(' ')[0] || 'there';
-      const companyLine = companyName
-        ? `You're now part of <strong>${companyName}</strong>.`
-        : `Your account is ready.`;
-      const companyLineText = companyName
-        ? `You're now part of ${companyName}.`
-        : `Your account is ready.`;
-
-      const subject = 'Welcome to 1P Leadership';
-      const textBody =
-        `Hi ${firstName},\n\n` +
-        `Welcome to The 1P Leadership dashboard. ${companyLineText}\n\n` +
-        `Jump into the community feed: ${APP_BASE_URL}/community.html\n` +
-        `Or start your coursework: ${APP_BASE_URL}/index.html\n\n` +
-        `— The One Percent Nation`;
-
-      const htmlBody = `
-        <div style="font-family:Arial,sans-serif;color:#222;max-width:560px;margin:0 auto;">
-          <h2 style="color:#CC1B1B;margin-bottom:8px;">Welcome, ${firstName}.</h2>
-          <p>${companyLine}</p>
-          <p style="margin:20px 0;">
-            <a href="${APP_BASE_URL}/community.html" style="display:inline-block;background:#CC1B1B;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none;font-weight:600;margin-right:8px;">Community feed</a>
-            <a href="${APP_BASE_URL}/index.html" style="display:inline-block;background:#222;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none;font-weight:600;">Start coursework</a>
-          </p>
-          <hr style="border:none;border-top:1px solid #eee;margin:24px 0;"/>
-          <p style="color:#999;font-size:11px;">The One Percent Nation</p>
-        </div>`;
-
-      await sgMail.send({
-        to: user.email,
-        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
-        replyTo: REPLY_TO,
-        subject,
-        text: textBody,
-        html: htmlBody,
-        customArgs: {
-          type: 'welcome',
-          uid: snap.id
+      crm = await syncMemberToCrm(db, uid, user, {
+        source: 'Member Signup',
+        activity: {
+          type: 'member_signup',
+          description: 'Created a member-portal account'
+            + (user.companyId ? ' via company invite' : ''),
+          meta: { companyId: user.companyId || null, tier: user.tier || null }
         }
       });
-    } catch (err) {
-      console.error('[onUserCreated] welcome send failed:', err && err.message);
+      if (crm) console.log(`[onUserCreated] CRM contact ${crm.contactId} for ${user.email}`);
+    } catch (e) {
+      console.error('[onUserCreated] CRM sync failed:', e && e.message);
     }
+
+    // 2) Welcome email (once; outcome recorded on the user doc).
+    const sent = await sendWelcomeEmail(db, uid, user, { crm });
+    console.log(`[onUserCreated] welcome email ${sent.status} for ${user.email}`);
   }
 );
 
@@ -1372,14 +1341,29 @@ async function resolveCompanyForSource(db, sourceKey) {
 }
 
 // Find-or-create a contact by email, merge fields, and return its ref.
-async function upsertCrmContact(db, companyId, { name, email, phone, address, companyName, source, tags }) {
+//
+// `contactId` is an optional hint (users/{uid}.crmContactId) that skips the
+// email lookup when the member is already linked to a contact. `memberUid`
+// links the contact back to the member-portal account so the CRM can tell a
+// signed-up member from a plain lead. Neither `source` nor `stage` is
+// overwritten on an existing contact: a lead who came in from a form and
+// later creates an account keeps its original attribution.
+async function upsertCrmContact(db, companyId, { name, email, phone, address, companyName, source, tags, contactId, memberUid }) {
   const colRef = db.collection('companies').doc(companyId).collection('contacts');
   const FV = admin.firestore.FieldValue;
   let ref = null;
-  try {
-    const snap = await colRef.where('email', '==', email).limit(1).get();
-    if (!snap.empty) ref = snap.docs[0].ref;
-  } catch (e) {}
+  if (contactId) {
+    try {
+      const hinted = await colRef.doc(String(contactId)).get();
+      if (hinted.exists) ref = hinted.ref;
+    } catch (e) {}
+  }
+  if (!ref) {
+    try {
+      const snap = await colRef.where('email', '==', email).limit(1).get();
+      if (!snap.empty) ref = snap.docs[0].ref;
+    } catch (e) {}
+  }
 
   if (ref) {
     const patch = { updatedAt: FV.serverTimestamp(), lastActivityAt: FV.serverTimestamp() };
@@ -1387,6 +1371,7 @@ async function upsertCrmContact(db, companyId, { name, email, phone, address, co
     if (phone) patch.phone = phone;
     if (address) patch.address = address;
     if (companyName) patch.companyName = companyName;
+    if (memberUid) patch.memberUid = memberUid;
     if (tags && tags.length) patch.tags = FV.arrayUnion(...tags);
     await ref.set(patch, { merge: true });
   } else {
@@ -1400,6 +1385,7 @@ async function upsertCrmContact(db, companyId, { name, email, phone, address, co
       stage: 'new',
       tags: tags || [],
       ownerUid: null,
+      memberUid: memberUid || null,
       createdAt: FV.serverTimestamp(),
       updatedAt: FV.serverTimestamp(),
       createdBy: 'system',
@@ -1407,6 +1393,209 @@ async function upsertCrmContact(db, companyId, { name, email, phone, address, co
     });
   }
   return ref;
+}
+
+// ────────────────────────────────────────────────────────────────
+// New member pipeline: users/{uid} created → CRM contact + welcome email
+// ────────────────────────────────────────────────────────────────
+// Every account that lands in users/{uid} (email signup, Google sign-in, or
+// an invite) is mirrored into the academy CRM immediately and sent the
+// welcome email. Both steps are idempotent and record their outcome on the
+// user doc (crmContactId / crmCompanyId, welcomeEmailStatus) so a step that
+// failed at signup can be retried from submitOnboarding or from the owner's
+// "Sync members to CRM" tool without creating a duplicate contact or sending
+// the welcome twice. The user-doc fields they write are frozen in
+// firestore.rules so a member cannot point crmContactId at someone else's
+// contact.
+
+async function syncMemberToCrm(db, uid, user, { source, activity } = {}) {
+  const email = normalizeEmail(user && user.email);
+  if (!EMAIL_RE.test(email)) return null;
+  // The owner is the CRM, not a contact in it.
+  if (email === OWNER_EMAIL) return null;
+  const companyId = await resolveAcademyCompanyId(db);
+  if (!companyId) {
+    console.warn(`[syncMemberToCrm] no academy company yet; skipping ${email}`);
+    return null;
+  }
+  const FV = admin.firestore.FieldValue;
+  const ref = await upsertCrmContact(db, companyId, {
+    name: user.displayName || null,
+    email,
+    phone: user.phone || null,
+    address: user.address || null,
+    companyName: user.company || null,
+    source: source || 'Member Signup',
+    tags: ['Member'],
+    contactId: user.crmCompanyId === companyId ? user.crmContactId : null,
+    memberUid: uid
+  });
+  if (activity) {
+    await ref.collection('activities').add({
+      type: activity.type || 'member_signup',
+      description: activity.description || 'Created a member-portal account',
+      actorUid: 'system',
+      actorName: activity.actorName || 'Member portal',
+      createdAt: FV.serverTimestamp(),
+      meta: Object.assign({ uid }, activity.meta || {})
+    });
+  }
+  await db.collection('users').doc(uid).set({
+    crmCompanyId: companyId,
+    crmContactId: ref.id,
+    crmSyncedAt: FV.serverTimestamp()
+  }, { merge: true });
+  return { companyId, contactId: ref.id, ref };
+}
+
+function welcomeEmailContent({ firstName, companyName }) {
+  const name = firstName || 'there';
+  // Names and company names are member/admin supplied: escape before they
+  // land in the HTML part.
+  const nameHtml = textToHtml(name);
+  const companyHtml = textToHtml(companyName);
+  const openingHtml = companyName
+    ? `You're now part of <strong>${companyHtml}</strong> inside The One Percent Academy.`
+    : `Your One Percent Academy account is ready.`;
+  const openingText = companyName
+    ? `You're now part of ${companyName} inside The One Percent Academy.`
+    : `Your One Percent Academy account is ready.`;
+  const onboardingUrl = `${APP_BASE_URL}/onboarding.html`;
+  const communityUrl = `${APP_BASE_URL}/community.html`;
+  const coursesUrl = `${APP_BASE_URL}/courses.html`;
+
+  const subject = firstName
+    ? `Welcome to The One Percent Academy, ${firstName}`
+    : 'Welcome to The One Percent Academy';
+  const text =
+    `Hi ${name},\n\n` +
+    `${openingText}\n\n` +
+    `Success without alignment is the tension we work on here. Every tool inside the Academy is built to help you get clear on what you're building and why, and then move on it one intentional step at a time.\n\n` +
+    `Your first step takes two minutes: finish your profile so we know who you are and what you're working toward.\n${onboardingUrl}\n\n` +
+    `Then choose where you start:\n` +
+    `Community: ${communityUrl}\n` +
+    `Courses: ${coursesUrl}\n\n` +
+    `Become one percent better every day. It starts with one clear step.\n\n` +
+    `Anthony Brown Sr.\n` +
+    `Founder, The One Percent Nation\n` +
+    `Redefining Success. Realigning Purpose. Releasing Potential.`;
+
+  const btn = (href, label, bg) =>
+    `<a href="${href}" style="display:inline-block;background:${bg};color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;margin:0 8px 8px 0;">${label}</a>`;
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:560px;margin:0 auto;line-height:1.55;">
+      <h2 style="color:#000;margin:0 0 12px;font-size:22px;">Welcome, ${nameHtml}.</h2>
+      <p style="margin:0 0 14px;">${openingHtml}</p>
+      <p style="margin:0 0 14px;">Success without alignment is the tension we work on here. Every tool inside the Academy is built to help you get clear on what you're building and why, and then move on it one intentional step at a time.</p>
+      <p style="margin:0 0 10px;"><strong>Your first step takes two minutes.</strong> Finish your profile so we know who you are and what you're working toward.</p>
+      <p style="margin:0 0 22px;">${btn(onboardingUrl, 'Complete your profile', '#e60306')}</p>
+      <p style="margin:0 0 10px;">Then choose where you start:</p>
+      <p style="margin:0 0 22px;">${btn(communityUrl, 'Community', '#000')}${btn(coursesUrl, 'Courses', '#000')}</p>
+      <p style="margin:0 0 20px;">Become one percent better every day. It starts with one clear step.</p>
+      <p style="margin:0;">Anthony Brown Sr.<br/>Founder, The One Percent Nation</p>
+      <hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0;"/>
+      <p style="color:#888;font-size:11px;margin:0;">Redefining Success. Realigning Purpose. Releasing Potential.</p>
+    </div>`;
+
+  return { subject, text, html };
+}
+
+// Sends the welcome email exactly once per member. Claims the send in a
+// transaction (welcomeEmailStatus: 'sending') so a trigger and a callable
+// racing on the same user cannot both send; a claim older than 10 minutes is
+// treated as abandoned (function crashed mid-send) and may be retried.
+// Records the outcome on users/{uid} and, when the member is linked to a CRM
+// contact, on that contact's activity timeline. Never throws.
+async function sendWelcomeEmail(db, uid, user, { crm } = {}) {
+  const email = normalizeEmail(user && user.email);
+  if (!EMAIL_RE.test(email)) return { status: 'skipped', reason: 'no-email' };
+  const userRef = db.collection('users').doc(uid);
+  const FV = admin.firestore.FieldValue;
+
+  let claimed = false;
+  try {
+    claimed = await db.runTransaction(async (tx) => {
+      const s = await tx.get(userRef);
+      const d = s.exists ? (s.data() || {}) : {};
+      if (d.welcomeEmailStatus === 'sent') return false;
+      if (d.welcomeEmailStatus === 'sending') {
+        const at = d.welcomeEmailAttemptedAt && typeof d.welcomeEmailAttemptedAt.toMillis === 'function'
+          ? d.welcomeEmailAttemptedAt.toMillis() : 0;
+        if (Date.now() - at < 10 * 60 * 1000) return false;
+      }
+      tx.set(userRef, {
+        welcomeEmailStatus: 'sending',
+        welcomeEmailAttemptedAt: FV.serverTimestamp()
+      }, { merge: true });
+      return true;
+    });
+  } catch (e) {
+    console.error('[sendWelcomeEmail] claim failed:', e && e.message);
+    return { status: 'failed', error: e && e.message };
+  }
+  if (!claimed) return { status: 'skipped', reason: 'already-sent' };
+
+  try {
+    sgMail.setApiKey(sendgridKey.value());
+
+    let companyName = null;
+    if (user.companyId) {
+      try {
+        const cSnap = await db.collection('companies').doc(user.companyId).get();
+        if (cSnap.exists) companyName = cSnap.data().name || null;
+      } catch (e) {}
+    }
+    const firstName = (user.displayName || '').trim().split(/\s+/)[0] || '';
+    const { subject, text, html } = welcomeEmailContent({ firstName, companyName });
+
+    // companyId + contactId (without campaignId) route SendGrid delivery,
+    // open and click events onto the CRM contact's timeline via the webhook.
+    const customArgs = { type: 'welcome', uid };
+    if (crm && crm.companyId && crm.contactId) {
+      customArgs.companyId = crm.companyId;
+      customArgs.contactId = crm.contactId;
+    }
+
+    const [resp] = await sgMail.send({
+      to: email,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      subject,
+      text,
+      html,
+      customArgs
+    });
+    const messageId = (resp && resp.headers && resp.headers['x-message-id']) || null;
+
+    await userRef.set({
+      welcomeEmailStatus: 'sent',
+      welcomeEmailSentAt: FV.serverTimestamp(),
+      welcomeEmailMessageId: messageId,
+      welcomeEmailError: FV.delete()
+    }, { merge: true });
+
+    if (crm && crm.ref) {
+      try {
+        await crm.ref.collection('activities').add({
+          type: 'email_sent',
+          description: `Welcome email sent: "${subject}"`,
+          actorUid: 'system',
+          actorName: 'Member portal',
+          createdAt: FV.serverTimestamp(),
+          meta: { uid, messageId, subject }
+        });
+      } catch (e) {}
+    }
+    return { status: 'sent', messageId };
+  } catch (err) {
+    const message = String((err && err.message) || err).slice(0, 500);
+    console.error('[sendWelcomeEmail] send failed:', message);
+    try {
+      await userRef.set({ welcomeEmailStatus: 'failed', welcomeEmailError: message }, { merge: true });
+    } catch (e2) {}
+    return { status: 'failed', error: message };
+  }
 }
 
 // registerCourseInterest({ slug, title }) — member taps "Notify me when live".
@@ -1463,8 +1652,10 @@ exports.registerCourseInterest = onCall(async (request) => {
 
 // submitOnboarding({ displayName, phone, address, company, industry, location, goals })
 // Required after member-portal signup. Updates the user profile and upserts
-// the member into the CRM with everything they entered.
-exports.submitOnboarding = onCall(async (request) => {
+// the member into the CRM with everything they entered. Also the safety net
+// for the signup pipeline: if onUserCreated failed to link the CRM contact
+// or send the welcome email, both are retried here.
+exports.submitOnboarding = onCall({ secrets: [sendgridKey] }, async (request) => {
   const db = admin.firestore();
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -1521,6 +1712,7 @@ exports.submitOnboarding = onCall(async (request) => {
   }
 
   // 2) Upsert into the CRM (best-effort).
+  let crm = null;
   try {
     const companyId = await resolveAcademyCompanyId(db);
     if (companyId && EMAIL_RE.test(email)) {
@@ -1535,8 +1727,18 @@ exports.submitOnboarding = onCall(async (request) => {
           'Member',
           industry ? `Industry: ${industry}`.slice(0, 40) : null,
           marketingConsent ? 'Opt-In: Calls/SMS/Email' : null
-        ].filter(Boolean)
+        ].filter(Boolean),
+        // Reuse the contact onUserCreated linked so a lead-form contact and
+        // a member never split into two records.
+        contactId: u.crmCompanyId === companyId ? u.crmContactId : null,
+        memberUid: uid
       });
+      crm = { companyId, contactId: ref.id, ref };
+      await userRef.set({
+        crmCompanyId: companyId,
+        crmContactId: ref.id,
+        crmSyncedAt: FV.serverTimestamp()
+      }, { merge: true });
       // Persist consent flags on the contact for filtering/segmenting.
       await ref.set({
         marketingConsent,
@@ -1568,7 +1770,99 @@ exports.submitOnboarding = onCall(async (request) => {
     console.warn('[submitOnboarding] CRM upsert failed:', e && e.message);
   }
 
+  // 3) Welcome email safety net. No-ops when onUserCreated already sent it.
+  if (u.welcomeEmailStatus !== 'sent') {
+    const sent = await sendWelcomeEmail(db, uid, { ...u, email, displayName: profilePatch.displayName }, { crm });
+    if (sent.status !== 'skipped') console.log(`[submitOnboarding] welcome email ${sent.status} for ${email}`);
+  }
+
   return { ok: true };
+});
+
+// syncMembersToCrm({ sendMissingWelcome, force }) — owner only.
+//
+// Backfill for members who signed up before the pipeline above existed, or
+// whose signup ran while the CRM had no company yet. Walks every users/{uid}
+// doc, links each one to a CRM contact (find-or-create by email), and
+// optionally sends the welcome email to anyone who never received one.
+// Idempotent: already-linked members are skipped unless `force` is set, and
+// the welcome send is guarded by the same once-only claim as signup.
+exports.syncMembersToCrm = onCall({ secrets: [sendgridKey], timeoutSeconds: 540 }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const isOwnerClaim = request.auth.token && request.auth.token.role === 'owner';
+  if (!isOwnerClaim) throw new HttpsError('permission-denied', 'Owner only.');
+
+  const data = request.data || {};
+  const sendMissingWelcome = data.sendMissingWelcome === true;
+  const force = data.force === true;
+
+  const db = admin.firestore();
+  const companyId = await resolveAcademyCompanyId(db);
+  if (!companyId) {
+    throw new HttpsError('failed-precondition',
+      'No company exists yet. Create the academy company in the owner console first.');
+  }
+
+  const counts = { total: 0, linked: 0, alreadyLinked: 0, skipped: 0, welcomeSent: 0, welcomeFailed: 0, errors: 0 };
+  const failures = [];
+
+  const PAGE = 300;
+  let last = null;
+  for (;;) {
+    let q = db.collection('users').orderBy(admin.firestore.FieldPath.documentId()).limit(PAGE);
+    if (last) q = q.startAfter(last);
+    const page = await q.get();
+    if (page.empty) break;
+
+    for (const d of page.docs) {
+      counts.total += 1;
+      const user = d.data() || {};
+      const email = normalizeEmail(user.email);
+      if (!EMAIL_RE.test(email) || email === OWNER_EMAIL) { counts.skipped += 1; continue; }
+
+      let crm = null;
+      try {
+        if (user.crmContactId && user.crmCompanyId === companyId && !force) {
+          counts.alreadyLinked += 1;
+          crm = {
+            companyId,
+            contactId: user.crmContactId,
+            ref: db.collection('companies').doc(companyId).collection('contacts').doc(user.crmContactId)
+          };
+        } else {
+          crm = await syncMemberToCrm(db, d.id, user, {
+            source: 'Member Signup',
+            activity: user.crmContactId ? null : {
+              type: 'member_signup',
+              description: 'Linked existing member-portal account to this contact',
+              actorName: 'CRM sync'
+            }
+          });
+          if (crm) counts.linked += 1; else counts.skipped += 1;
+        }
+      } catch (e) {
+        counts.errors += 1;
+        if (failures.length < 25) failures.push({ uid: d.id, email, error: String(e && e.message).slice(0, 160) });
+        continue;
+      }
+
+      if (sendMissingWelcome && user.welcomeEmailStatus !== 'sent') {
+        const sent = await sendWelcomeEmail(db, d.id, user, { crm });
+        if (sent.status === 'sent') counts.welcomeSent += 1;
+        else if (sent.status === 'failed') {
+          counts.welcomeFailed += 1;
+          if (failures.length < 25) failures.push({ uid: d.id, email, error: sent.error || 'welcome send failed' });
+        }
+      }
+    }
+
+    last = page.docs[page.docs.length - 1];
+    if (page.size < PAGE) break;
+  }
+
+  console.log('[syncMembersToCrm]', JSON.stringify(counts));
+  return { ok: true, companyId, ...counts, failures };
 });
 
 

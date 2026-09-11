@@ -131,6 +131,29 @@ async function main() {
     }
   });
 
+  $('btn-sync-members').addEventListener('click', async () => {
+    const out = $('sync-members-result');
+    const sendMissingWelcome = $('sync-send-welcome').checked;
+    if (sendMissingWelcome && !confirm('This will email every member who has no welcome email on record. Continue?')) return;
+    $('btn-sync-members').disabled = true;
+    out.innerHTML = '<div style="color:var(--gray-light); font-size:12px;">Running… this can take a minute on a large member list.</div>';
+    try {
+      const call = httpsCallable(functions, 'syncMembersToCrm');
+      const r = (await call({ sendMissingWelcome })).data || {};
+      const lines = [
+        `Checked ${r.total || 0} member(s): ${r.linked || 0} newly linked to CRM, ${r.alreadyLinked || 0} already linked, ${r.skipped || 0} skipped (no email / owner).`
+      ];
+      if (sendMissingWelcome) lines.push(`Welcome emails: ${r.welcomeSent || 0} sent, ${r.welcomeFailed || 0} failed.`);
+      if (r.errors) lines.push(`${r.errors} member(s) hit an error.`);
+      const fails = (r.failures || []).map((f) => `<li>${f.email || f.uid}: ${f.error}</li>`).join('');
+      out.innerHTML = `<div class="${(r.errors || r.welcomeFailed) ? 'auth-error' : 'auth-ok'}">${lines.join('<br/>')}${fails ? `<ul style="margin:8px 0 0 16px; font-size:12px;">${fails}</ul>` : ''}</div>`;
+    } catch (err) {
+      out.innerHTML = `<div class="auth-error">${err.message || err}</div>`;
+    } finally {
+      $('btn-sync-members').disabled = false;
+    }
+  });
+
   if (info.role === 'owner') {
     await loadCompanies();
   }
