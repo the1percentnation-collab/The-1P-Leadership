@@ -2,6 +2,7 @@
 
 import { db, firebaseReady, auth, functions } from './firebase.js';
 import { onAuthReady, signOut } from './auth.js';
+import { ensureOnboarded } from './onboarding-guard.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import { getRoleInfo } from './roles.js';
 import { getUserProfile, updateOwnProfile, uploadAvatar, avatarHtml, escapeHtml } from './community.js';
@@ -386,6 +387,7 @@ async function main() {
     location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
     return;
   }
+  if (!(await ensureOnboarded(u))) return;
   // Header first — it carries the Admin/Owner menu and must survive a slow or
   // failed load below.
   renderTopbarEarly({ user: u, currentPage: 'profile' });

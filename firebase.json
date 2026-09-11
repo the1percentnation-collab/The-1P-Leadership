@@ -26,10 +26,6 @@
                                               "functionId": "unsubscribe",
                                               "region": "us-central1"
                                     }
-                        },
-                        {
-                                    "source": "**",
-                                    "destination": "/index.html"
                         }
               ],
               "headers": [

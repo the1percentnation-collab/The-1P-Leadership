@@ -2,6 +2,7 @@
 
 import { firebaseReady } from './firebase.js';
 import { onAuthReady } from './auth.js';
+import { ensureOnboarded } from './onboarding-guard.js';
 import { renderTopbar } from './topbar.js';
 import { getRoleInfo } from './roles.js';
 import { listMembers, getUserProfile, avatarHtml, escapeHtml } from './community.js';
@@ -41,6 +42,7 @@ async function main() {
     location.replace('/login.html?next=' + encodeURIComponent('/members.html'));
     return;
   }
+  if (!(await ensureOnboarded(u))) return;
   const info = await getRoleInfo();
   const profile = (await getUserProfile(u.uid)) || {};
   const me = {

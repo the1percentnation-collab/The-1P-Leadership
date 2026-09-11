@@ -6,7 +6,7 @@ import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { renderTopbar } from './topbar.js';
 import {
-  collection, doc, getDoc, getDocs, query, where, setDoc, deleteDoc, serverTimestamp, limit
+  collection, doc, getDoc, getDocs, query, where, setDoc, serverTimestamp, limit
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.js';
@@ -146,18 +146,13 @@ async function deleteUser(uid, email) {
 
 async function revokeSeat(uid) {
   if (!confirm('Remove this employee from the company? Their personal progress is preserved.')) return;
-  const { companyId, company } = _state;
+  const { companyId } = _state;
   try {
-    // Remove the member roster doc. Note: we cannot clear the user's companyId on users/{uid}
-    // from an admin account (rules only allow self/owner writes on that doc). The canonical
-    // effect of revocation is: they lose their company-scoped membership view. They keep
-    // personal progress. Owner can fully reset companyId if needed.
-    await deleteDoc(doc(db, 'companies', companyId, 'members', uid));
-    const newUsed = Math.max(0, (company.seatsUsed || 0) - 1);
-    await setDoc(doc(db, 'companies', companyId), {
-      seatsUsed: newUsed
-    }, { merge: true });
-    _state.company.seatsUsed = newUsed;
+    // Server-side, in one transaction: roster doc removed, seat freed, and the
+    // member's own companyId cleared. This used to be two client writes from a
+    // stale seatsUsed and could not clear companyId at all, so a revoked member
+    // kept reading the company roster and posts.
+    await httpsCallable(functions, 'revokeSeat')({ companyId, uid });
     await loadCompany();
     await loadRoster();
   } catch (e) {

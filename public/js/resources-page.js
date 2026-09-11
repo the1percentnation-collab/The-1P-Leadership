@@ -1,6 +1,7 @@
 // Resources page — stub for now. Just renders the shared user chip.
 
 import { onAuthReady, currentUser } from './auth.js';
+import { ensureOnboarded } from './onboarding-guard.js';
 import { getRoleInfo } from './roles.js';
 import { firebaseReady } from './firebase.js';
 import { getUserProfile } from './community.js';
@@ -13,6 +14,7 @@ async function main() {
       location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
       return;
     }
+    if (!(await ensureOnboarded(user))) return;
   }
 
   // Header first — it carries the Admin/Owner menu and must survive a slow or
