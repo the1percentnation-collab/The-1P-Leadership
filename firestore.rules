@@ -176,6 +176,26 @@ service cloud.firestore {
                       || (isSelf(uid) && resource.data.get('status', '') == 'submitted');
       }
 
+      // users/{uid}/practiceRecordings — the two feedback-only recordings
+      // (after modules 4 and 6). Same submit shape as capstone; nothing here
+      // counts toward certification. The feedback (status 'reviewed',
+      // feedback, reviewedBy/At) is written ONLY by the
+      // reviewPracticeRecording callable (Admin SDK).
+      match /practiceRecordings/{docId} {
+        allow read: if isOwner() || isSelf(uid);
+        allow create: if (isOwner() || isSelf(uid))
+                      && request.resource.data.get('status', '') == 'submitted'
+                      && !('feedback' in request.resource.data)
+                      && !('reviewedBy' in request.resource.data);
+        allow update: if isOwner() || (isSelf(uid)
+                      && resource.data.get('status', '') == 'submitted'
+                      && request.resource.data.get('status', '') == 'submitted'
+                      && !('feedback' in request.resource.data)
+                      && !('reviewedBy' in request.resource.data));
+        allow delete: if isOwner()
+                      || (isSelf(uid) && resource.data.get('status', '') == 'submitted');
+      }
+
       // users/{uid}/coachingHours — the practice hour log behind the
       // 25-hour certification requirement. Members submit entries and may
       // edit or withdraw them while pending; approval (status flips to

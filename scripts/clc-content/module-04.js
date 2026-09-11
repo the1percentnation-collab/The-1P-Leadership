@@ -111,7 +111,7 @@ module.exports = {
 <h2>Practice this week</h2>
 <p>Target: <strong>5 practice coaching hours</strong> across these two weeks.</p>
 <p>The triad keeps rotating, with the observer working from the four rubric criteria and giving two minutes of specific feedback after each round. Only the coach seat counts toward logged hours. By now your log must include clients who are not classmates. Peer practice builds the mechanics; people outside the cohort are what build a coach.</p>
-<p>One more thing this week: record a short session, 15 to 20 minutes, with the client's written consent, and submit it after this week for feedback only. It is not scored and it does not affect certification. The point is that your graded capstone recording in week 13 is never the first recording anyone has reviewed.</p>
+<p>One more thing this week: record a short session, 15 to 20 minutes, with the client's written consent, and submit the link after this week in the Certification tab, under Practice recordings, for feedback only. It is not scored and it does not affect certification. The point is that your graded capstone recording in week 13 is never the first recording anyone has reviewed.</p>
 <ol>
 <li>Run the full values elicitation and the values versus behavior audit with two practice clients. Use their calendar and their spending, not their memory.</li>
 <li>In at least two sessions, take a surfaced belief through the fact and verdict split, then draft and tune a new sentence to a five or above. Write the final wording down word for word.</li>

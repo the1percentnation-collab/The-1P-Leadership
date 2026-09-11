@@ -5509,6 +5509,42 @@ exports.reviewCapstone = onCall(async (request) => {
   return { ok: true };
 });
 
+// reviewPracticeRecording — feedback on one of the two feedback-only
+// recordings (after modules 4 and 6). No score is recorded and nothing here
+// affects certification: per criterion, one strength and one specific change,
+// as the rubric doc prescribes.
+exports.reviewPracticeRecording = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const uid = String((request.data && request.data.uid) || '').trim();
+  const docId = String((request.data && request.data.docId) || '').trim();
+  const raw = (request.data && request.data.feedback) || {};
+  if (!uid || !docId) throw new HttpsError('invalid-argument', 'uid and docId are required.');
+  const clip = (v, n) => String(v || '').trim().slice(0, n);
+  const feedback = { overall: clip(raw.overall, 2000) };
+  let filled = !!feedback.overall;
+  ['presence', 'questions', 'structure', 'nonAdvising'].forEach((k) => {
+    const c = raw[k] || {};
+    const strength = clip(c.strength, 600);
+    const change = clip(c.change, 600);
+    if (strength || change) filled = true;
+    feedback[k] = { strength, change };
+  });
+  if (!filled) throw new HttpsError('invalid-argument', 'Write some feedback before sending it.');
+  const ref = db.collection('users').doc(uid).collection('practiceRecordings').doc(docId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Unknown practice recording.');
+  await ref.set({
+    status: 'reviewed',
+    feedback,
+    reviewedBy: request.auth.uid,
+    reviewedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true };
+});
+
 // listCertificationQueue — everything waiting on an admin: submitted hour
 // logs and capstone recordings, plus recent exam results for context.
 exports.listCertificationQueue = onCall(async (request) => {
@@ -5516,10 +5552,11 @@ exports.listCertificationQueue = onCall(async (request) => {
   if (!(await isAdminCaller(db, request))) {
     throw new HttpsError('permission-denied', 'Admin or owner role required.');
   }
-  const [hoursSnap, capsSnap, ceSnap] = await Promise.all([
+  const [hoursSnap, capsSnap, ceSnap, practiceSnap] = await Promise.all([
     db.collectionGroup('coachingHours').where('status', '==', 'submitted').limit(200).get(),
     db.collectionGroup('capstone').where('status', '==', 'submitted').limit(100).get(),
-    db.collectionGroup('ceCredits').where('status', '==', 'submitted').limit(200).get()
+    db.collectionGroup('ceCredits').where('status', '==', 'submitted').limit(200).get(),
+    db.collectionGroup('practiceRecordings').where('status', '==', 'submitted').limit(100).get()
   ]);
   const uidOf = (ref) => ref.path.split('/')[1];
   const uids = new Set();
@@ -5538,6 +5575,11 @@ exports.listCertificationQueue = onCall(async (request) => {
     uids.add(uid);
     return { uid, entryId: d.id, ...d.data() };
   });
+  const practice = practiceSnap.docs.map((d) => {
+    const uid = uidOf(d.ref);
+    uids.add(uid);
+    return { uid, docId: d.id, ...d.data() };
+  });
   const names = {};
   await Promise.all(Array.from(uids).map(async (uid) => {
     try {
@@ -5552,7 +5594,7 @@ exports.listCertificationQueue = onCall(async (request) => {
     });
     return out;
   });
-  return { hours: clean(hours), capstones: clean(capstones), ceCredits: clean(ceCredits) };
+  return { hours: clean(hours), capstones: clean(capstones), ceCredits: clean(ceCredits), practice: clean(practice) };
 });
 
 // getCertificationStatus — one call that tells a member (or an admin asking
@@ -5572,12 +5614,30 @@ exports.getCertificationStatus = onCall(async (request) => {
   const slug = String((request.data && request.data.slug) || '1p-clc').trim();
   const cfg = await loadCertConfig(db);
 
-  const [hoursSnap, capsSnap, attemptsSnap, certSnap] = await Promise.all([
+  const [hoursSnap, capsSnap, attemptsSnap, certSnap, practiceSnap] = await Promise.all([
     db.collection('users').doc(uid).collection('coachingHours').get(),
     db.collection('users').doc(uid).collection('capstone').get(),
     db.collection('users').doc(uid).collection('examAttempts').where('courseSlug', '==', slug).get(),
-    db.collection('certifications').doc(`${uid}_${slug}`).get()
+    db.collection('certifications').doc(`${uid}_${slug}`).get(),
+    db.collection('users').doc(uid).collection('practiceRecordings').get()
   ]);
+
+  // Feedback-only recordings (after modules 4 and 6). Informational: they
+  // never gate certification, but the member sees the feedback here.
+  const iso = (t) => (t && typeof t.toDate === 'function') ? t.toDate().toISOString() : null;
+  const practice = practiceSnap.docs
+    .map((d) => {
+      const p = d.data();
+      return {
+        docId: d.id,
+        module: Number(p.module) || null,
+        status: p.status || 'submitted',
+        submittedAt: iso(p.submittedAt),
+        reviewedAt: iso(p.reviewedAt),
+        feedback: p.status === 'reviewed' ? (p.feedback || null) : null
+      };
+    })
+    .sort((a, b) => String(a.submittedAt || '').localeCompare(String(b.submittedAt || '')));
 
   let approvedMinutes = 0;
   let pendingMinutes = 0;
@@ -5602,6 +5662,7 @@ exports.getCertificationStatus = onCall(async (request) => {
     attemptsAllowed: cfg.maxExamAttempts,
     capstoneApproved,
     capstoneSubmitted,
+    practice,
     certified: certSnap.exists && certSnap.data().status === 'active',
     certification: certSnap.exists ? {
       certNumber: certSnap.data().certNumber,
