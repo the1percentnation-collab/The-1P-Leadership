@@ -9,16 +9,30 @@ The order matters. Each step assumes the ones above it are done.
 | The Complete I Can't Experience ($197) | ✅ 11 modules | ❌ | Stripe + flip live |
 | 1P Certified Leader Coach ($497) | ✅ 7 modules | ❌ | slug fix + Stripe + flip live |
 | I Can't: The Course | ✅ 11 modules | n/a | sold only inside the bundle |
-| 1P Certified Life Coach ($3,497) | ❌ none | ❌ | 8 modules to write |
+| 1P Certified Life Coach ($3,497) | ✅ 8 modules seeded + exam bank | ❌ | status is `coming-soon`; cohort dates + Stripe |
 | Mindset Foundations, Business Alignment, Faith & Leadership, Performance & Discipline | ❌ none | ❌ | copy only, no lessons |
 | Silence The Voice | 6 modules | ❌ | superseded draft, archived by step 1 |
 
-## 1. Fix the CLC slug collision
+## 1. Fix the CLC slug collision — ALREADY DONE
 
-`courses/1p-clc` in production holds the **Leader Coach** (7 lessons, $497), but
-the code registry says that slug is the **$3,497 Life Coach**. Firestore
-overrides the registry, so the record is currently two programs at once. This
-also archives `silence-the-voice`, the superseded I Can't draft.
+**Verified against production on 2026-09-12. Nothing to do here.** Re-running
+the fix now aborts by design, with "does not look like the Leader Coach".
+
+`courses/1p-clc` is the Life Coach at $3,497. The Leader Coach lives at
+`courses/1p-clc-leader` at $497, status live, with all seven lessons published.
+`silence-the-voice` is archived as inactive. That is the finished end state.
+
+Check any of this for yourself at any time, without writing anything:
+
+```bash
+cd scripts && node inspect-clc.js
+```
+
+The original problem this step solved is kept below for context only.
+
+`courses/1p-clc` used to hold the **Leader Coach** (7 lessons, $497) while the
+code registry said that slug was the **$3,497 Life Coach**. Firestore overrides
+the registry, so the record was two programs at once.
 
 ```bash
 cd scripts
@@ -41,7 +55,19 @@ member's progress and purchase records.
 | Secret | State |
 |---|---|
 | `STRIPE_SECRET_KEY` | Set, and it is a **live** key (`sk_live_…`). Real money. |
-| `STRIPE_WEBHOOK_SECRET` | **Placeholder only** (`whsec_placeholder`, 17 chars). |
+| `STRIPE_WEBHOOK_SECRET` | **Re-checked 2026-09-12: a real value is now set** (38 chars, no longer the 17-char `whsec_placeholder`). |
+
+Verify the secret length yourself without ever printing the secret:
+
+```bash
+gcloud secrets versions access latest --secret=STRIPE_WEBHOOK_SECRET \
+  --project=the-1p-leadership | wc -c
+```
+
+A real value being stored is not the same as it working. It still has to match
+the signing secret of the live Stripe endpoint, and the functions must have
+been redeployed since it was set. Confirm with a test purchase before trusting
+it, per the end of step 3.
 
 Both secrets existed all along. Checkout never worked because no function
 *declared* them, so they were never injected at runtime. That is fixed.
@@ -76,15 +102,18 @@ Deploying happens automatically on merge to `main`
 requires a redeploy to take effect: merge something, or run the workflow by
 hand from the Actions tab.
 
-## 3. Flip the finished products live
+## 3. Flip the finished products live — MOSTLY DONE
 
-In `/manage-courses.html`:
+**Checked 2026-09-12.** These three are already `live`: `bundle-icant` at $197,
+`icant` at $197, and `1p-clc-leader` at $497. Nothing to do for them.
 
-- **The Complete I Can't Experience** — set the title (the record has none),
-  price `197`, confirm **Ships the book** is on, status **live**.
-- **I Can't: The Course** — status **live**. Nobody can buy it directly
-  (`sellable: false`), but bundle buyers need it live to open it.
-- **1P Certified Leader Coach** — status **live** at `497`.
+Still `coming-soon`: **`1p-clc`, the Life Coach at $3,497.** Set it live in
+`/manage-courses.html`, but only after the cohort dates in step 5 are filled
+in, because the `/clc` sales page reads those dates and will otherwise show a
+program with no start date.
+
+`node inspect-clc.js` prints the status of every course if you want to confirm
+before or after.
 
 Then place a real test order against Stripe test keys and confirm: the
 enrollment lands, the paperback order appears under Orders in
@@ -98,13 +127,49 @@ from `/manage-store.html` → Orders: `new` → `shipped` → `done`. A comped
 enrollment lands as `needs-address` because there was no Stripe checkout to
 collect one.
 
-## 5. Then build the Life Coach program
+## 5. Seed the Life Coach program
 
-`scripts/seed-clc.js` creates the 8 module shells, the exam bank and the
-certification config, but **it has never been run** and 7 of its 8 modules are
-drafts. Before this can sell it needs the module content written, plus a cohort
-start date, enrollment close date, weekly call day and time, and the Zoom link
-in `courses/1p-clc/private/cohort`.
+**The curriculum is written.** All eight modules are at teaching depth, the
+exam bank holds 48 questions, and the client kit and `/clc` sales page are
+done. What remains is getting that content into Firestore and setting the
+cohort details.
+
+`scripts/seed-clc.js` writes the 8 modules, the exam bank, the FOUNDING coupon
+and the certification config.
+
+**It has already been run. Verified against production on 2026-09-12:**
+`courses/1p-clc` holds all eight modules, with module 1 published and 2 through
+8 as drafts, which is exactly what this script produces. Run `node
+inspect-clc.js` to confirm the exam bank, coupon and certification config too.
+Re-running the seed is safe and idempotent, but there is no reason to.
+
+The ordering rule below still applies to any fresh environment.
+
+Run it AFTER step 1, never before. Until the slug fix has run, `courses/1p-clc`
+still holds the Leader Coach and its seven lessons; seeding first would merge
+Life Coach modules on top of them and the slug fix would then copy the
+corrupted mix to `1p-clc-leader`, destroying both programs with no undo. The
+script now refuses to run in that state and tells you to do step 1 first, so
+the order is enforced rather than remembered.
+
+```bash
+cd scripts
+export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/key.json
+node seed-clc.js
+```
+
+Then set, in `/manage-courses.html` or directly in Firestore:
+
+- `courses/1p-clc` → `cohort.enrollCloseAt`, `cohort.startAt`, `cohort.callDay`,
+  `cohort.callTime`. All four are placeholders after seeding.
+- `courses/1p-clc/private/cohort` → `joinUrl`, the Zoom link. Empty after seeding.
+
+**Modules 2 through 8 are seeded as drafts on purpose.** The program is a
+cohort with weekly module drops, so members see only module 1 until you publish
+each next one in `/manage-courses.html`. There is no automatic drip anywhere in
+the codebase: a module stays invisible until that toggle is flipped by hand. If
+you would rather ship all eight at once, publish them all in the builder after
+seeding, and drop the weekly gating from how you sell it.
 
 ## Known open items
 

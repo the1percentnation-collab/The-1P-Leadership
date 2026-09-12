@@ -129,7 +129,14 @@ service cloud.firestore {
                      && !('invitedByToken' in request.resource.data)
                      && !('invitedByUid' in request.resource.data)
                      // Coach standing is granted by issueCertification (Admin SDK).
-                     && !('coachLevel' in request.resource.data));
+                     && !('coachLevel' in request.resource.data)
+                     // CRM link + welcome-email bookkeeping are written by the
+                     // signup pipeline (onUserCreated / submitOnboarding /
+                     // syncMembersToCrm). A user who could set crmContactId
+                     // could merge their profile into someone else's contact.
+                     && !('crmContactId' in request.resource.data)
+                     && !('crmCompanyId' in request.resource.data)
+                     && !('welcomeEmailStatus' in request.resource.data));
       // On UPDATE the privilege fields must be byte-for-byte unchanged from the
       // existing doc. (Owner writes bypass; server writes use the Admin SDK.)
       allow update: if isOwner() || (isSelf(uid)
@@ -148,7 +155,11 @@ service cloud.firestore {
                      && request.resource.data.get('invitedByToken', '') == resource.data.get('invitedByToken', '')
                      && request.resource.data.get('invitedByUid', '') == resource.data.get('invitedByUid', '')
                      // Coach standing is granted by issueCertification (Admin SDK).
-                     && request.resource.data.get('coachLevel', null) == resource.data.get('coachLevel', null));
+                     && request.resource.data.get('coachLevel', null) == resource.data.get('coachLevel', null)
+                     // CRM link + welcome-email bookkeeping — server-only, same reasoning as create.
+                     && request.resource.data.get('crmContactId', null) == resource.data.get('crmContactId', null)
+                     && request.resource.data.get('crmCompanyId', null) == resource.data.get('crmCompanyId', null)
+                     && request.resource.data.get('welcomeEmailStatus', null) == resource.data.get('welcomeEmailStatus', null));
       allow delete: if isOwner();
 
       // users/{uid}/progress/{moduleId} — STRICTLY private to the user (and owner).

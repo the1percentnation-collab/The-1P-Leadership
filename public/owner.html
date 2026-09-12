@@ -70,6 +70,22 @@
         </div>
 
         <div class="card">
+          <h2>Sync members to CRM</h2>
+          <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
+            Safe to re-run. Every new signup is added to the academy CRM and sent the welcome
+            email automatically. This links any member who signed up before that pipeline
+            existed (or while no company existed yet) to a CRM contact, matching on email so
+            existing leads are updated rather than duplicated.
+          </p>
+          <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:12px; cursor:pointer;">
+            <input type="checkbox" id="sync-send-welcome" />
+            Also send the welcome email to members who never received one
+          </label>
+          <button class="btn btn-primary" id="btn-sync-members">Run member sync</button>
+          <div id="sync-members-result" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="card">
           <h2>Create a company</h2>
           <form class="inline-form" id="create-form">
             <div class="field">

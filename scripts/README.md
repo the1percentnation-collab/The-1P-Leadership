@@ -27,16 +27,24 @@ export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/key.json
 gcloud auth application-default login
 ```
 
-The project (`the-1p-leadership`) is read from `.firebaserc` automatically.
-Every script prints which project it is about to touch before doing anything,
-and checks that the credentials actually work before it writes.
+The project (`the-1p-leadership`) is read from `.firebaserc` automatically by
+`lib/init.js`. Option (b) is why that matters: an application-default
+credential carries no project id, so without it a script cannot tell which
+project it is pointed at.
+
+The two scripts you actually need to run, `fix-clc-slugs.js` and
+`seed-clc.js`, both print the project before doing anything and prove the
+credentials work before they write. The three unrun seeds
+(`seed-booking.js`, `seed-resale-products.js`, `seed-financial-partner.js`)
+still call `admin.initializeApp()` bare, so they need option (a), a service
+account key. Move them onto `lib/init.js` before running any of them.
 
 ## The scripts
 
 | Script | What it does | Run it? |
 |---|---|---|
 | `fix-clc-slugs.js` | Moves the Leader Coach off the `1p-clc` slug onto `1p-clc-leader` with its lessons, members and purchases; resets `1p-clc` to the Life Coach identity; archives the superseded `silence-the-voice` draft. | **Yes, once.** See below. |
-| `seed-clc.js` | Creates the 8 module shells, exam bank and certification config for the $3,497 Life Coach program. | Not yet. Only once its content is written. |
+| `seed-clc.js` | Writes the 8 written modules, the 48-question exam bank, the FOUNDING coupon and certification config for the $3,497 Life Coach program. | **Yes, once — but only AFTER `fix-clc-slugs.js`.** It refuses to run before that and tells you so. |
 | `seed-booking.js` | Writes `config/booking` with the Zoom scheduler URL. | Optional. `/book-a-call.html` already works from a hardcoded fallback. |
 | `seed-resale-products.js` | Creates the A.L.I.G.N. client workbook, assessment and six-week program as draft products. | Not yet. They have no content or final pricing. |
 | `seed-financial-partner.js` | Creates the financial services partner company and its waitlist products. | Not yet. The partner name is still a placeholder. |
