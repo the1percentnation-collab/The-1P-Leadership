@@ -51,6 +51,13 @@ const REFERRAL_POINTS = 10;
 // .github/workflows/firebase-deploy-backend.yml.
 const sendgridKey = defineSecret('SENDGRID_API_KEY');
 
+// Anthropic API key, for the course advisor chatbot, bug-report analysis and
+// the AI course-builder tools. Declared here and bound on each function that
+// calls the model, which is what injects it at runtime. The value lives in
+// Secret Manager under this exact name; the deploy fails if it does not exist,
+// so create it before merging a change that references it.
+const anthropicKey = defineSecret('ANTHROPIC_API_KEY');
+
 // Stripe. These MUST be declared with defineSecret and listed in each
 // function's `secrets:` option, or they are simply not present at runtime.
 // functions/.env is git-ignored, so the GitHub Actions deploy (which is the
@@ -63,10 +70,12 @@ const stripeSecretKey = defineSecret('STRIPE_SECRET_KEY');
 const stripeWebhookSecret = defineSecret('STRIPE_WEBHOOK_SECRET');
 const STRIPE_SECRETS = [stripeSecretKey, stripeWebhookSecret];
 
-// Anthropic API key — read from runtime environment so deploys never block
-// waiting for a secret value. Set via Firebase Console > Functions > Runtime
-// environment variables, or `firebase functions:secrets:set ANTHROPIC_API_KEY`
-// (then also add it to the onCall secrets array below).
+// Anthropic API key. A secret bound on a function (see `anthropicKey` above)
+// is exposed to it as an environment variable of the same name, so this reader
+// works unchanged. It used to say the value could be set as a "runtime
+// environment variable" in the console instead: on v2 functions that setting
+// is per Cloud Run service and is overwritten by every deploy, so the key kept
+// vanishing. Secret Manager is the only path that survives a deploy.
 const ANTHROPIC_API_KEY = () => (process.env.ANTHROPIC_API_KEY || '').trim();
 
 // Twilio SMS credentials are read from process.env (like Stripe), NOT via
@@ -5087,7 +5096,7 @@ exports.listKnowledgeEntries = onCall(async (request) => {
   };
 });
 
-exports.courseAdvisorChat = onCall(async (request) => {
+exports.courseAdvisorChat = onCall({ secrets: [anthropicKey] }, async (request) => {
   const db = admin.firestore();
   const { message, history } = request.data || {};
 
@@ -5133,7 +5142,7 @@ exports.courseAdvisorChat = onCall(async (request) => {
   const apiKey = ANTHROPIC_API_KEY();
   if (!apiKey) {
     throw new HttpsError('failed-precondition',
-      'ANTHROPIC_API_KEY is not configured. Add it in Firebase Console > Functions > Runtime environment variables.');
+      'ANTHROPIC_API_KEY is not configured. Create it in Secret Manager (Google Cloud Console > Security > Secret Manager) and redeploy.');
   }
   const client = new Anthropic.default({ apiKey });
 
@@ -5208,7 +5217,7 @@ exports.courseAdvisorChat = onCall(async (request) => {
 // never injected at runtime. Without it the notification threw on every
 // report, was swallowed by the try/catch around the email block, and the
 // reporter was still told "Bug report sent" while nobody was ever notified.
-exports.reportBug = onCall({ secrets: [sendgridKey] }, async (request) => {
+exports.reportBug = onCall({ secrets: [sendgridKey, anthropicKey] }, async (request) => {
   const db = admin.firestore();
 
   const { description, screenshotDataUrl, url: pageUrl, userAgent } = request.data || {};
@@ -5378,7 +5387,7 @@ function getAnthropicClient() {
   const apiKey = ANTHROPIC_API_KEY();
   if (!apiKey) {
     throw new HttpsError('failed-precondition',
-      'ANTHROPIC_API_KEY is not configured. Add it in Firebase Console > Functions > Runtime environment variables.');
+      'ANTHROPIC_API_KEY is not configured. Create it in Secret Manager (Google Cloud Console > Security > Secret Manager) and redeploy.');
   }
   return new Anthropic.default({ apiKey });
 }
@@ -5401,7 +5410,7 @@ function extractJson(text) {
 
 const clampStr = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
 
-exports.generateCourseOutline = onCall({ timeoutSeconds: 300 }, async (request) => {
+exports.generateCourseOutline = onCall({ timeoutSeconds: 300, secrets: [anthropicKey] }, async (request) => {
   const db = admin.firestore();
   if (!(await isAdminCaller(db, request))) {
     throw new HttpsError('permission-denied', 'Admin or owner role required.');
@@ -5465,7 +5474,7 @@ exports.generateCourseOutline = onCall({ timeoutSeconds: 300 }, async (request) 
   return { outline };
 });
 
-exports.generateCourseLesson = onCall({ timeoutSeconds: 300 }, async (request) => {
+exports.generateCourseLesson = onCall({ timeoutSeconds: 300, secrets: [anthropicKey] }, async (request) => {
   const db = admin.firestore();
   if (!(await isAdminCaller(db, request))) {
     throw new HttpsError('permission-denied', 'Admin or owner role required.');
