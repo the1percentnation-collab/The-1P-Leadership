@@ -49,20 +49,48 @@ const EXAM_QUESTIONS = require('./clc-content/exam.js');
 // The identity test is the same one fix-clc-slugs.js uses, so the two scripts
 // can never disagree about which program a doc holds.
 async function assertSlugFixHasRun() {
-  const snap = await db.collection('courses').doc(SLUG).get();
+  const ref = db.collection('courses').doc(SLUG);
+  const snap = await ref.get();
   if (!snap.exists) return; // Fresh project: nothing to collide with.
+
   const d = snap.data() || {};
-  const looksLikeLeader = /leader/i.test(String(d.title || '')) || d.price === 497;
-  if (!looksLikeLeader) return;
-  throw new Error(
-    `Refusing to seed: courses/${SLUG} still holds the Leader Coach ` +
-    `(title="${d.title}", price=${d.price}).\n\n` +
-    `Run the slug fix FIRST, then re-run this script:\n` +
-    `    node scripts/fix-clc-slugs.js            # dry run, writes nothing\n` +
-    `    node scripts/fix-clc-slugs.js --apply    # commits it\n\n` +
-    `See docs/launch-runbook.md step 1. Seeding before that fix would merge ` +
-    `Life Coach modules into the Leader Coach lessons and lose both programs.`
-  );
+  if (/leader/i.test(String(d.title || '')) || d.price === 497) {
+    throw new Error(
+      `Refusing to seed: courses/${SLUG} still holds the Leader Coach ` +
+      `(title="${d.title}", price=${d.price}).\n\n` +
+      `Run the slug fix FIRST, then re-run this script:\n` +
+      `    node fix-clc-slugs.js            # dry run, writes nothing\n` +
+      `    node fix-clc-slugs.js --apply    # commits it\n\n` +
+      `See docs/launch-runbook.md step 1. Seeding before that fix would merge ` +
+      `Life Coach modules into the Leader Coach lessons and lose both programs.`
+    );
+  }
+
+  // The title test above is necessary but not sufficient. A record can be
+  // renamed to the Life Coach by hand while the previous program's lessons are
+  // left behind in this same subcollection, and then the identity looks correct
+  // while the danger is still present. So check the lessons themselves.
+  //
+  // An empty subcollection is the clean post-migration state. Our own eight
+  // titles mean this is a safe re-run. Anything else belongs to another program
+  // and must not be merged with.
+  const ours = new Set(MODULES.map((m) => String(m.title)));
+  const existing = await ref.collection('modules').get();
+  const foreign = existing.docs
+    .map((doc) => ({ id: doc.id, title: String((doc.data() || {}).title || '') }))
+    .filter((m) => m.title && !ours.has(m.title));
+
+  if (foreign.length) {
+    throw new Error(
+      `Refusing to seed: courses/${SLUG} already holds ${foreign.length} lesson(s) ` +
+      `that are not Life Coach modules:\n` +
+      foreign.map((m) => `    ${String(m.id).padStart(2)}  ${m.title}`).join('\n') +
+      `\n\nThese belong to another program. Seeding would merge both programs ` +
+      `into one subcollection, and there is no undo.\n\n` +
+      `Run \`node inspect-clc.js\` first. It writes nothing and shows exactly ` +
+      `which program each record holds.`
+    );
+  }
 }
 
 async function main() {
