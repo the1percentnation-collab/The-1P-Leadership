@@ -55,7 +55,19 @@ member's progress and purchase records.
 | Secret | State |
 |---|---|
 | `STRIPE_SECRET_KEY` | Set, and it is a **live** key (`sk_live_…`). Real money. |
-| `STRIPE_WEBHOOK_SECRET` | **Placeholder only** (`whsec_placeholder`, 17 chars). |
+| `STRIPE_WEBHOOK_SECRET` | **Re-checked 2026-09-12: a real value is now set** (38 chars, no longer the 17-char `whsec_placeholder`). |
+
+Verify the secret length yourself without ever printing the secret:
+
+```bash
+gcloud secrets versions access latest --secret=STRIPE_WEBHOOK_SECRET \
+  --project=the-1p-leadership | wc -c
+```
+
+A real value being stored is not the same as it working. It still has to match
+the signing secret of the live Stripe endpoint, and the functions must have
+been redeployed since it was set. Confirm with a test purchase before trusting
+it, per the end of step 3.
 
 Both secrets existed all along. Checkout never worked because no function
 *declared* them, so they were never injected at runtime. That is fixed.
@@ -90,15 +102,18 @@ Deploying happens automatically on merge to `main`
 requires a redeploy to take effect: merge something, or run the workflow by
 hand from the Actions tab.
 
-## 3. Flip the finished products live
+## 3. Flip the finished products live — MOSTLY DONE
 
-In `/manage-courses.html`:
+**Checked 2026-09-12.** These three are already `live`: `bundle-icant` at $197,
+`icant` at $197, and `1p-clc-leader` at $497. Nothing to do for them.
 
-- **The Complete I Can't Experience** — set the title (the record has none),
-  price `197`, confirm **Ships the book** is on, status **live**.
-- **I Can't: The Course** — status **live**. Nobody can buy it directly
-  (`sellable: false`), but bundle buyers need it live to open it.
-- **1P Certified Leader Coach** — status **live** at `497`.
+Still `coming-soon`: **`1p-clc`, the Life Coach at $3,497.** Set it live in
+`/manage-courses.html`, but only after the cohort dates in step 5 are filled
+in, because the `/clc` sales page reads those dates and will otherwise show a
+program with no start date.
+
+`node inspect-clc.js` prints the status of every course if you want to confirm
+before or after.
 
 Then place a real test order against Stripe test keys and confirm: the
 enrollment lands, the paperback order appears under Orders in

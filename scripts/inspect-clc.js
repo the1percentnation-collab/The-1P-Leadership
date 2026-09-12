@@ -17,6 +17,14 @@ const { db, projectId } = initAdmin();
 
 const SLUGS = ['1p-clc', '1p-clc-leader', 'silence-the-voice'];
 
+// What seed-clc.js in THIS checkout would write. Comparing production against
+// it turns "eyeball the titles and decide" into a straight answer, and catches
+// the case where the seed ran against an older version of the content.
+const MODULES = [1, 2, 3, 4, 5, 6, 7, 8].map((n) =>
+  require(`./clc-content/module-${String(n).padStart(2, '0')}.js`));
+const EXPECTED_TITLES = new Set(MODULES.map((m) => String(m.title)));
+const EXPECTED_EXAM = require('./clc-content/exam.js').length;
+
 async function report(slug) {
   const ref = db.collection('courses').doc(slug);
   const [snap, mods] = await Promise.all([ref.get(), ref.collection('modules').get()]);
@@ -32,14 +40,16 @@ async function report(slug) {
   }
 
   console.log(`  lessons: ${mods.size}`);
+  const titles = [];
   mods.docs
     .sort((a, b) => Number(a.id) - Number(b.id))
     .forEach((m) => {
       const t = m.data() || {};
       const state = t.published === false ? 'draft' : 'published';
+      titles.push(String(t.title || ''));
       console.log(`    ${String(m.id).padStart(2)}  ${t.title || '(untitled)'}  [${state}]`);
     });
-  return { exists: snap.exists, data: snap.data() || {}, lessons: mods.size };
+  return { exists: snap.exists, data: snap.data() || {}, lessons: mods.size, titles };
 }
 
 // The module list only answers half the question. seed-clc.js also writes an
@@ -58,7 +68,9 @@ async function reportSeedArtifacts() {
   ]);
 
   console.log('\n─── Seed artifacts ───');
-  console.log(`  exam questions:      ${exam.size}`);
+  const short = exam.size < EXPECTED_EXAM
+    ? `  <-- this checkout has ${EXPECTED_EXAM}. Re-run seed-clc.js.` : '';
+  console.log(`  exam questions:      ${exam.size}${short}`);
   console.log(`  FOUNDING coupon:     ${coupon.exists ? 'present' : 'MISSING'}`);
   console.log(`  config/certification:${cert.exists ? ' present' : ' MISSING'}`);
 
@@ -132,10 +144,19 @@ async function main() {
     }
     console.log('NEXT: node seed-clc.js');
   } else {
-    console.log(`courses/1p-clc is the Life Coach but already has ${main.lessons} lesson(s).`);
-    console.log('Compare the titles above against the Life Coach modules. If they');
-    console.log('are Leader Coach lessons, DO NOT SEED. Seeding would merge the two');
-    console.log('programs together. The seed will refuse on its own in that case.');
+    // Decide by comparing titles, rather than asking a human to eyeball them.
+    const foreign = main.titles.filter((t) => t && !EXPECTED_TITLES.has(t));
+    if (foreign.length) {
+      console.log(`courses/1p-clc holds ${foreign.length} lesson(s) from another program:`);
+      foreign.forEach((t) => console.log(`  ${t}`));
+      console.log('DO NOT SEED. Seeding would merge two programs into one.');
+      console.log('The seed refuses on its own in this state.');
+    } else {
+      console.log(`The Life Coach is seeded: all ${main.lessons} modules match this`);
+      console.log('checkout, so seed-clc.js has already run. Re-running it is safe');
+      console.log('and is how you pick up edited lessons or new exam questions.');
+      console.log('It no longer overwrites cohort dates or the Zoom link once set.');
+    }
   }
 }
 

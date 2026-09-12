@@ -98,23 +98,45 @@ async function main() {
   await assertCredentials(db, projectId);
   await assertSlugFixHasRun();
 
-  // Cohort placeholders on the public course doc. Replace before launch.
-  await db.collection('courses').doc(SLUG).set({
-    cohort: {
-      label: 'Founding Cohort',
-      enrollCloseAt: null,   // TODO Anthony: set enrollment close date
-      startAt: null,         // TODO Anthony: set module 1 drop date
-      capacity: 20,
-      callDay: 'TBD',        // TODO Anthony: fixed weekly call day
-      callTime: 'TBD'        // TODO Anthony: fixed weekly call time
-    },
+  // Cohort placeholders, written ONLY where nothing real is set yet.
+  //
+  // This script is advertised as safe to re-run, and re-running it is the way
+  // to pick up new exam questions or edited lesson copy. But set(..., {merge:
+  // true}) deep-merges nested maps, which means an explicit `null` or `'TBD'`
+  // here overwrites a leaf that already holds a real value. Written the naive
+  // way, a re-run six weeks from now would silently wipe the launch dates and
+  // the Zoom link off a cohort that is already selling. So each placeholder is
+  // only included when the live value is still blank.
+  const courseRef = db.collection('courses').doc(SLUG);
+  const courseSnap = await courseRef.get();
+  const live = (courseSnap.exists && (courseSnap.data() || {}).cohort) || {};
+  const blank = (v) => v === undefined || v === null || v === '' || v === 'TBD';
+
+  const cohort = { label: live.label || 'Founding Cohort' };
+  if (typeof live.capacity !== 'number') cohort.capacity = 20;
+  if (blank(live.enrollCloseAt)) cohort.enrollCloseAt = null;
+  if (blank(live.startAt)) cohort.startAt = null;
+  if (blank(live.callDay)) cohort.callDay = 'TBD';
+  if (blank(live.callTime)) cohort.callTime = 'TBD';
+
+  const kept = ['enrollCloseAt', 'startAt', 'callDay', 'callTime', 'capacity']
+    .filter((k) => !(k in cohort));
+  if (kept.length) console.log(`Cohort: keeping your existing ${kept.join(', ')}`);
+
+  await courseRef.set({
+    cohort,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
 
   // Live-call join link lives out of public view (enrolled + admin only).
-  await db.collection('courses').doc(SLUG).collection('private').doc('cohort').set({
-    joinUrl: ''             // TODO Anthony: paste the Zoom link
-  }, { merge: true });
+  // Same rule: never blank out a link that has already been pasted in.
+  const privRef = courseRef.collection('private').doc('cohort');
+  const privSnap = await privRef.get();
+  if (!privSnap.exists || blank((privSnap.data() || {}).joinUrl)) {
+    await privRef.set({ joinUrl: '' }, { merge: true });
+  } else {
+    console.log('Cohort: keeping your existing joinUrl');
+  }
 
   for (const m of MODULES) {
     const { id, ...rest } = m;
