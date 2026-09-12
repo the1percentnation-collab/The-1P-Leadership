@@ -9,7 +9,7 @@ The order matters. Each step assumes the ones above it are done.
 | The Complete I Can't Experience ($197) | ✅ 11 modules | ❌ | Stripe + flip live |
 | 1P Certified Leader Coach ($497) | ✅ 7 modules | ❌ | slug fix + Stripe + flip live |
 | I Can't: The Course | ✅ 11 modules | n/a | sold only inside the bundle |
-| 1P Certified Life Coach ($3,497) | ❌ none | ❌ | 8 modules to write |
+| 1P Certified Life Coach ($3,497) | ✅ 8 modules + 48-question exam | ❌ | slug fix, then seed, then cohort dates + Stripe |
 | Mindset Foundations, Business Alignment, Faith & Leadership, Performance & Discipline | ❌ none | ❌ | copy only, no lessons |
 | Silence The Voice | 6 modules | ❌ | superseded draft, archived by step 1 |
 
@@ -98,13 +98,41 @@ from `/manage-store.html` → Orders: `new` → `shipped` → `done`. A comped
 enrollment lands as `needs-address` because there was no Stripe checkout to
 collect one.
 
-## 5. Then build the Life Coach program
+## 5. Seed the Life Coach program
 
-`scripts/seed-clc.js` creates the 8 module shells, the exam bank and the
-certification config, but **it has never been run** and 7 of its 8 modules are
-drafts. Before this can sell it needs the module content written, plus a cohort
-start date, enrollment close date, weekly call day and time, and the Zoom link
-in `courses/1p-clc/private/cohort`.
+**The curriculum is written.** All eight modules are at teaching depth, the
+exam bank holds 48 questions, and the client kit and `/clc` sales page are
+done. What remains is getting that content into Firestore and setting the
+cohort details.
+
+`scripts/seed-clc.js` writes the 8 modules, the exam bank, the FOUNDING coupon
+and the certification config. **It has never been run.**
+
+Run it AFTER step 1, never before. Until the slug fix has run, `courses/1p-clc`
+still holds the Leader Coach and its seven lessons; seeding first would merge
+Life Coach modules on top of them and the slug fix would then copy the
+corrupted mix to `1p-clc-leader`, destroying both programs with no undo. The
+script now refuses to run in that state and tells you to do step 1 first, so
+the order is enforced rather than remembered.
+
+```bash
+cd scripts
+export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/key.json
+node seed-clc.js
+```
+
+Then set, in `/manage-courses.html` or directly in Firestore:
+
+- `courses/1p-clc` → `cohort.enrollCloseAt`, `cohort.startAt`, `cohort.callDay`,
+  `cohort.callTime`. All four are placeholders after seeding.
+- `courses/1p-clc/private/cohort` → `joinUrl`, the Zoom link. Empty after seeding.
+
+**Modules 2 through 8 are seeded as drafts on purpose.** The program is a
+cohort with weekly module drops, so members see only module 1 until you publish
+each next one in `/manage-courses.html`. There is no automatic drip anywhere in
+the codebase: a module stays invisible until that toggle is flipped by hand. If
+you would rather ship all eight at once, publish them all in the builder after
+seeding, and drop the weekly gating from how you sell it.
 
 ## Known open items
 

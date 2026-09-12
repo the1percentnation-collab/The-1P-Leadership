@@ -28,7 +28,38 @@ const MODULES = [1, 2, 3, 4, 5, 6, 7, 8].map((n) =>
 const EXAM_QUESTIONS = require('./clc-content/exam.js');
 
 
+// Preflight: `courses/1p-clc` must already BE the Life Coach before we seed.
+//
+// ORDER MATTERS, and getting it wrong is unrecoverable. Until
+// scripts/fix-clc-slugs.js has run, `courses/1p-clc` still holds the *Leader
+// Coach* (title "1P Certified Leader Coach", $497) together with its seven
+// lessons. Seeding here first would merge Life Coach modules 1-8 straight on
+// top of Leader Coach lessons 1-7 in the same subcollection, and the slug fix
+// would then copy that corrupted mix over to `1p-clc-leader`. Both programs
+// would be destroyed at once, silently, with no undo.
+//
+// The identity test is the same one fix-clc-slugs.js uses, so the two scripts
+// can never disagree about which program a doc holds.
+async function assertSlugFixHasRun() {
+  const snap = await db.collection('courses').doc(SLUG).get();
+  if (!snap.exists) return; // Fresh project: nothing to collide with.
+  const d = snap.data() || {};
+  const looksLikeLeader = /leader/i.test(String(d.title || '')) || d.price === 497;
+  if (!looksLikeLeader) return;
+  throw new Error(
+    `Refusing to seed: courses/${SLUG} still holds the Leader Coach ` +
+    `(title="${d.title}", price=${d.price}).\n\n` +
+    `Run the slug fix FIRST, then re-run this script:\n` +
+    `    node scripts/fix-clc-slugs.js            # dry run, writes nothing\n` +
+    `    node scripts/fix-clc-slugs.js --apply    # commits it\n\n` +
+    `See docs/launch-runbook.md step 1. Seeding before that fix would merge ` +
+    `Life Coach modules into the Leader Coach lessons and lose both programs.`
+  );
+}
+
 async function main() {
+  await assertSlugFixHasRun();
+
   // Cohort placeholders on the public course doc. Replace before launch.
   await db.collection('courses').doc(SLUG).set({
     cohort: {
@@ -96,7 +127,21 @@ async function main() {
     renewalCeCredits: 10
   }, { merge: true });
   console.log('config/certification seeded');
-  console.log('Done.');
+
+  // Everything above is data this script can write. Everything below needs a
+  // decision only Anthony can make, so print it rather than leave it buried in
+  // TODO comments that nobody re-reads after the run.
+  console.log('\nSeeded. Still required before the Life Coach can sell:');
+  console.log('  1. Cohort dates on courses/1p-clc: enrollCloseAt, startAt,');
+  console.log('     callDay, callTime (all placeholders right now).');
+  console.log('  2. Zoom link on courses/1p-clc/private/cohort: joinUrl (empty).');
+  console.log('  3. Modules 2-8 are seeded as DRAFTS, so members see only');
+  console.log('     module 1. Publish each one in /manage-courses.html as its');
+  console.log('     week opens. There is no automatic drip: a module stays');
+  console.log('     invisible until that toggle is flipped.');
+  console.log('  4. STRIPE_WEBHOOK_SECRET must be a real whsec_ value, or a');
+  console.log('     purchase is charged and never enrolled. See the runbook.');
+  console.log('  5. Set the course status to live in /manage-courses.html.');
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
