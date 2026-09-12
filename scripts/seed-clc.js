@@ -10,12 +10,20 @@
 // Safe to re-run: everything writes with merge, and the coupon is only
 // created if it doesn't exist (so its redemption count is never reset).
 //
-// Run with Admin credentials:
-//   GOOGLE_APPLICATION_CREDENTIALS=... node scripts/seed-clc.js
+// Run with Admin credentials, from the scripts/ directory after `npm install`:
+//   node seed-clc.js
+//
+// Authenticate with EITHER a service account key
+// (export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/key.json) OR your
+// own Google account (gcloud auth application-default login). The second one
+// is why this uses the shared bootstrap rather than a bare initializeApp():
+// an application-default credential carries no project id, so the project has
+// to be resolved from .firebaserc or the run would target the wrong project,
+// or fail with an unhelpful error. The bootstrap also prints the project and
+// proves the credentials work before anything is written.
 
-const admin = require('firebase-admin');
-admin.initializeApp();
-const db = admin.firestore();
+const { initAdmin, assertCredentials } = require('./lib/init');
+const { admin, db, projectId } = initAdmin();
 
 const SLUG = '1p-clc';
 
@@ -58,6 +66,8 @@ async function assertSlugFixHasRun() {
 }
 
 async function main() {
+  console.log(`Project: ${projectId}`);
+  await assertCredentials(db, projectId);
   await assertSlugFixHasRun();
 
   // Cohort placeholders on the public course doc. Replace before launch.

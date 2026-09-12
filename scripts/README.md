@@ -27,9 +27,17 @@ export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/key.json
 gcloud auth application-default login
 ```
 
-The project (`the-1p-leadership`) is read from `.firebaserc` automatically.
-Every script prints which project it is about to touch before doing anything,
-and checks that the credentials actually work before it writes.
+The project (`the-1p-leadership`) is read from `.firebaserc` automatically by
+`lib/init.js`. Option (b) is why that matters: an application-default
+credential carries no project id, so without it a script cannot tell which
+project it is pointed at.
+
+The two scripts you actually need to run, `fix-clc-slugs.js` and
+`seed-clc.js`, both print the project before doing anything and prove the
+credentials work before they write. The three unrun seeds
+(`seed-booking.js`, `seed-resale-products.js`, `seed-financial-partner.js`)
+still call `admin.initializeApp()` bare, so they need option (a), a service
+account key. Move them onto `lib/init.js` before running any of them.
 
 ## The scripts
 
