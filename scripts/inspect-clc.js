@@ -42,6 +42,59 @@ async function report(slug) {
   return { exists: snap.exists, data: snap.data() || {}, lessons: mods.size };
 }
 
+// The module list only answers half the question. seed-clc.js also writes an
+// exam bank, the FOUNDING coupon and the certification config, and it leaves
+// cohort fields as placeholders that the /clc sales page reads. Report all of
+// it, so "is the seed fully applied and what is still blank" is answered by
+// looking rather than inferred from the module titles.
+async function reportSeedArtifacts() {
+  const ref = db.collection('courses').doc('1p-clc');
+  const [course, priv, exam, coupon, cert] = await Promise.all([
+    ref.get(),
+    ref.collection('private').doc('cohort').get(),
+    db.collection('examBank').doc('1p-clc').collection('questions').get(),
+    db.collection('coupons').doc('FOUNDING').get(),
+    db.collection('config').doc('certification').get()
+  ]);
+
+  console.log('\n─── Seed artifacts ───');
+  console.log(`  exam questions:      ${exam.size}`);
+  console.log(`  FOUNDING coupon:     ${coupon.exists ? 'present' : 'MISSING'}`);
+  console.log(`  config/certification:${cert.exists ? ' present' : ' MISSING'}`);
+
+  const cohort = (course.exists && (course.data() || {}).cohort) || {};
+  const joinUrl = priv.exists ? (priv.data() || {}).joinUrl : undefined;
+  const show = (v) => {
+    if (v === undefined || v === null || v === '') return 'NOT SET';
+    if (v === 'TBD') return 'TBD (placeholder)';
+    if (v && typeof v.toDate === 'function') return v.toDate().toISOString().slice(0, 10);
+    return String(v);
+  };
+
+  console.log('\n─── Cohort details the /clc page shows ───');
+  console.log(`  enrollCloseAt: ${show(cohort.enrollCloseAt)}`);
+  console.log(`  startAt:       ${show(cohort.startAt)}`);
+  console.log(`  callDay:       ${show(cohort.callDay)}`);
+  console.log(`  callTime:      ${show(cohort.callTime)}`);
+  console.log(`  capacity:      ${show(cohort.capacity)}`);
+  console.log(`  joinUrl:       ${joinUrl ? 'set' : 'NOT SET'}`);
+  console.log('\n  These are not editable in /manage-courses.html. Set them in the');
+  console.log('  Firebase Console under Firestore, on courses/1p-clc.');
+}
+
+// Every course and its status, so "what is still not live" is one glance.
+async function reportAllStatuses() {
+  const snap = await db.collection('courses').get();
+  console.log('\n─── All courses ───');
+  snap.docs
+    .map((d) => ({ id: d.id, ...(d.data() || {}) }))
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+    .forEach((c) => {
+      const price = c.price === undefined ? '' : `$${c.price}`;
+      console.log(`  ${String(c.status || '(none)').padEnd(12)} ${String(c.id).padEnd(22)} ${price}`);
+    });
+}
+
 async function main() {
   console.log(`Project: ${projectId}`);
   await assertCredentials(db, projectId);
@@ -49,6 +102,8 @@ async function main() {
 
   const out = {};
   for (const slug of SLUGS) out[slug] = await report(slug);
+  await reportSeedArtifacts();
+  await reportAllStatuses();
 
   // Plain-language verdict, so the numbers above do not have to be interpreted.
   const main = out['1p-clc'];

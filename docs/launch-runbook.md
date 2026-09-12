@@ -9,16 +9,30 @@ The order matters. Each step assumes the ones above it are done.
 | The Complete I Can't Experience ($197) | ✅ 11 modules | ❌ | Stripe + flip live |
 | 1P Certified Leader Coach ($497) | ✅ 7 modules | ❌ | slug fix + Stripe + flip live |
 | I Can't: The Course | ✅ 11 modules | n/a | sold only inside the bundle |
-| 1P Certified Life Coach ($3,497) | ✅ 8 modules + 48-question exam | ❌ | slug fix, then seed, then cohort dates + Stripe |
+| 1P Certified Life Coach ($3,497) | ✅ 8 modules seeded + exam bank | ❌ | status is `coming-soon`; cohort dates + Stripe |
 | Mindset Foundations, Business Alignment, Faith & Leadership, Performance & Discipline | ❌ none | ❌ | copy only, no lessons |
 | Silence The Voice | 6 modules | ❌ | superseded draft, archived by step 1 |
 
-## 1. Fix the CLC slug collision
+## 1. Fix the CLC slug collision — ALREADY DONE
 
-`courses/1p-clc` in production holds the **Leader Coach** (7 lessons, $497), but
-the code registry says that slug is the **$3,497 Life Coach**. Firestore
-overrides the registry, so the record is currently two programs at once. This
-also archives `silence-the-voice`, the superseded I Can't draft.
+**Verified against production on 2026-09-12. Nothing to do here.** Re-running
+the fix now aborts by design, with "does not look like the Leader Coach".
+
+`courses/1p-clc` is the Life Coach at $3,497. The Leader Coach lives at
+`courses/1p-clc-leader` at $497, status live, with all seven lessons published.
+`silence-the-voice` is archived as inactive. That is the finished end state.
+
+Check any of this for yourself at any time, without writing anything:
+
+```bash
+cd scripts && node inspect-clc.js
+```
+
+The original problem this step solved is kept below for context only.
+
+`courses/1p-clc` used to hold the **Leader Coach** (7 lessons, $497) while the
+code registry said that slug was the **$3,497 Life Coach**. Firestore overrides
+the registry, so the record was two programs at once.
 
 ```bash
 cd scripts
@@ -106,7 +120,15 @@ done. What remains is getting that content into Firestore and setting the
 cohort details.
 
 `scripts/seed-clc.js` writes the 8 modules, the exam bank, the FOUNDING coupon
-and the certification config. **It has never been run.**
+and the certification config.
+
+**It has already been run. Verified against production on 2026-09-12:**
+`courses/1p-clc` holds all eight modules, with module 1 published and 2 through
+8 as drafts, which is exactly what this script produces. Run `node
+inspect-clc.js` to confirm the exam bank, coupon and certification config too.
+Re-running the seed is safe and idempotent, but there is no reason to.
+
+The ordering rule below still applies to any fresh environment.
 
 Run it AFTER step 1, never before. Until the slug fix has run, `courses/1p-clc`
 still holds the Leader Coach and its seven lessons; seeding first would merge
