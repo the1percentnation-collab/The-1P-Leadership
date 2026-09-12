@@ -330,6 +330,48 @@
               </div>
               <div id="settings-result" style="margin-top:10px;"></div>
 
+              <div style="margin-top:28px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.12);">
+                <h4 style="margin:0 0 6px;">Cohort &amp; live calls</h4>
+                <p style="font-size:12px; color:var(--gray-light); margin:0 0 14px;">
+                  Only used by courses sold as a cohort. The sales page hides any line you leave
+                  blank, so a half-filled cohort never shows a broken half sentence.
+                </p>
+                <div class="inline-form" style="flex-wrap:wrap;">
+                  <div class="field"><label for="f-enrollclose">Enrollment closes</label><input id="f-enrollclose" type="datetime-local"></div>
+                  <div class="field"><label for="f-startat">Module 1 drops</label><input id="f-startat" type="datetime-local"></div>
+                  <div class="field" style="max-width:110px;"><label for="f-capacity">Seats</label><input id="f-capacity" type="number" step="1" min="0"></div>
+                </div>
+                <div class="inline-form" style="flex-wrap:wrap; margin-top:12px;">
+                  <div class="field" style="max-width:190px;">
+                    <label for="f-callday">Live call day</label>
+                    <select id="f-callday">
+                      <option value="">Not set</option>
+                      <option>Monday</option>
+                      <option>Tuesday</option>
+                      <option>Wednesday</option>
+                      <option>Thursday</option>
+                      <option>Friday</option>
+                      <option>Saturday</option>
+                      <option>Sunday</option>
+                    </select>
+                  </div>
+                  <div class="field" style="max-width:190px;"><label for="f-calltime">Live call time</label><input id="f-calltime" type="text" placeholder="7:00pm CT"></div>
+                </div>
+                <div class="field" style="margin-top:12px;">
+                  <label for="f-joinurl">Zoom join link</label>
+                  <input id="f-joinurl" type="url" placeholder="https://us02web.zoom.us/j/…">
+                </div>
+                <div class="mc-field-note">
+                  Use a recurring meeting link, since members keep it for the whole cohort. It is
+                  stored privately and only enrolled members and admins can read it. It never
+                  appears on the public sales page.
+                </div>
+                <div style="display:flex; gap:10px; margin-top:16px;">
+                  <button class="btn btn-primary" type="button" id="btn-save-cohort">Save cohort settings</button>
+                </div>
+                <div id="cohort-result" style="margin-top:10px;"></div>
+              </div>
+
               <div class="mc-danger">
                 <h4>Danger zone</h4>
                 <p style="font-size:12px; color:var(--gray-light); margin:0 0 10px;">

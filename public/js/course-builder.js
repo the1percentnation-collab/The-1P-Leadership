@@ -11,7 +11,7 @@
 
 import { db } from './firebase.js';
 import {
-  collection, doc, getDocs, setDoc, deleteDoc, deleteField, serverTimestamp
+  collection, doc, getDoc, getDocs, setDoc, deleteDoc, deleteField, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { COURSES } from './courses-registry.js';
 import { loadCourses, getCourses } from './courses-data.js';
@@ -981,7 +981,110 @@ function fillSettingsForm(c) {
   $('f-shipsbook').checked = ships;
   $('f-shipsbook-label').textContent = ships ? 'Ships the book' : 'No shipped item';
   $('settings-result').innerHTML = '';
+  fillCohortForm(c);
   S.suppress = false;
+}
+
+// ─── Cohort & live calls ────────────────────────────────────────────────────
+//
+// Cohort details used to be reachable only through the Firebase Console: the
+// sales page reads them, but nothing in this UI wrote them. These four fields
+// and the join link are the whole set.
+//
+// The join link deliberately lives in courses/{slug}/private/cohort rather than
+// on the course document, because the course document is world readable. The
+// rules limit that subcollection to enrolled members and admins, which is what
+// stops a meeting link from being scraped off the sales page.
+
+// <input type="datetime-local"> speaks "YYYY-MM-DDTHH:mm" in the browser's own
+// timezone, and Firestore hands back a Timestamp. Convert in both directions
+// rather than storing strings, so the sales page keeps getting a real date.
+function tsToLocalInput(value) {
+  if (!value) return '';
+  const d = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    + `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localInputToDate(s) {
+  if (!s) return null;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// 'TBD' is what the seed writes as a placeholder, and the sales page already
+// treats it as empty. Show it as empty here too, so it reads as "needs filling"
+// rather than as a value someone chose.
+function realOrBlank(v) {
+  const s = (v == null ? '' : String(v)).trim();
+  return /^(tbd|tba|n\/a|none)$/i.test(s) ? '' : s;
+}
+
+async function fillCohortForm(c) {
+  const co = (c && c.cohort) || {};
+  $('f-enrollclose').value = tsToLocalInput(co.enrollCloseAt);
+  $('f-startat').value = tsToLocalInput(co.startAt);
+  $('f-callday').value = realOrBlank(co.callDay);
+  $('f-calltime').value = realOrBlank(co.callTime);
+  $('f-capacity').value = typeof co.capacity === 'number' ? co.capacity : '';
+  $('f-joinurl').value = '';
+  $('cohort-result').innerHTML = '';
+
+  // Separate document, so it needs its own read. Failing to read it must not
+  // break the rest of the settings tab.
+  try {
+    const snap = await getDoc(doc(db, 'courses', S.slug, 'private', 'cohort'));
+    if (snap.exists()) $('f-joinurl').value = (snap.data() || {}).joinUrl || '';
+  } catch (e) {
+    console.warn('[builder] could not read the cohort join link', e);
+  }
+}
+
+async function saveCohort() {
+  const out = $('cohort-result');
+  try {
+    const url = $('f-joinurl').value.trim();
+    if (url && !/^https?:\/\//i.test(url)) {
+      throw new Error('The join link must start with http:// or https://');
+    }
+
+    const capRaw = $('f-capacity').value.trim();
+    const capacity = capRaw === '' ? null : Number(capRaw);
+    if (capacity !== null && (!Number.isFinite(capacity) || capacity < 0)) {
+      throw new Error('Seats must be a whole number.');
+    }
+
+    const enrollCloseAt = localInputToDate($('f-enrollclose').value);
+    const startAt = localInputToDate($('f-startat').value);
+    if (enrollCloseAt && startAt && enrollCloseAt > startAt) {
+      throw new Error('Enrollment closes after module 1 drops. Check the two dates.');
+    }
+
+    // Written as one map so a cleared field becomes null and actually clears,
+    // instead of leaving a stale value the sales page would keep showing.
+    await setDoc(doc(db, 'courses', S.slug), {
+      cohort: {
+        enrollCloseAt,
+        startAt,
+        callDay: $('f-callday').value || null,
+        callTime: $('f-calltime').value.trim() || null,
+        capacity
+      },
+      updatedAt: serverTimestamp(),
+      updatedBy: _userEmail
+    }, { merge: true });
+
+    await setDoc(doc(db, 'courses', S.slug, 'private', 'cohort'), {
+      joinUrl: url || null,
+      updatedAt: serverTimestamp(),
+      updatedBy: _userEmail
+    }, { merge: true });
+
+    ok(out, url ? 'Cohort settings saved, join link included.' : 'Cohort settings saved.');
+    await reloadCourse();
+  } catch (e) { err(out, e); }
 }
 
 async function saveSettings() {
@@ -1168,6 +1271,7 @@ export function initBuilder(options = {}) {
 
   // Settings tab
   $('btn-save-settings').addEventListener('click', saveSettings);
+  $('btn-save-cohort').addEventListener('click', saveCohort);
   $('btn-delete-course').addEventListener('click', () => {
     if (S.slug && cfg.onDeleteCourse) cfg.onDeleteCourse(S.slug);
   });
