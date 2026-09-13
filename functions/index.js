@@ -7038,7 +7038,12 @@ const LEAD_FORMS = {
   'book-bonus': { source: 'Book Bonus', tags: ['Book Bonus', 'Book Reader'] },
   // /contact-us — the public "get in touch" form. Someone who writes in
   // unprompted is asking for a reply, so this type always notifies.
-  'contact': { source: 'Contact Form', tags: ['Contact Form'], urgent: true }
+  'contact': { source: 'Contact Form', tags: ['Contact Form'], urgent: true },
+  // /sms — the public SMS opt-in. This is the page named on the A2P campaign
+  // registration, because the portal's opt-in is behind a login that a
+  // carrier reviewer cannot reach. Tagged on its own so the texting list is
+  // one filter in the CRM.
+  'sms-optin': { source: 'SMS Opt-In', tags: ['SMS Opt-In'] }
 };
 
 /**
@@ -7113,6 +7118,10 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
   const phone = (data.phone || '').toString().trim().slice(0, 40) || null;
   const consent = !!data.consent;
+  // The exact checkbox wording the visitor saw. Under the TCPA the record
+  // that holds up is what they actually agreed to, so it is stored verbatim
+  // rather than reconstructed from the form type later.
+  const consentText = (data.consentText || '').toString().trim().slice(0, 1000);
   if (!name) throw new HttpsError('invalid-argument', 'Please enter your name.');
   if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
 
@@ -7137,10 +7146,31 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
     name, email, phone, source: form.source, tags
   });
   if (consent) {
-    await ref.set({
+    const consentPatch = {
       marketingConsent: true, marketingConsentAt: FV.serverTimestamp(),
-      marketingConsentText: `Opted in via ${form.source.toLowerCase()} form`
-    }, { merge: true });
+      marketingConsentText: consentText || `Opted in via ${form.source.toLowerCase()} form`,
+      marketingConsentSource: form.source
+    };
+    // Deliberately does NOT clear an existing smsOptedOut. A web form is
+    // unauthenticated: anyone can type someone else's number into it, so
+    // letting it revoke a STOP would hand a stranger the power to
+    // re-subscribe a person who opted out. Only an inbound START from the
+    // handset itself clears the flag. A re-opt-in attempt on an opted-out
+    // number is recorded below for a human to look at instead.
+    if (formType === 'sms-optin') consentPatch.smsOptedInAt = FV.serverTimestamp();
+    await ref.set(consentPatch, { merge: true });
+    if (formType === 'sms-optin') {
+      const prior = await ref.get();
+      if (prior.exists && prior.data().smsOptedOut === true) {
+        await ref.collection('activities').add({
+          type: 'sms_opt_in_blocked',
+          description: 'Web SMS opt-in received for a number that previously replied STOP. '
+            + 'The opt-out still stands — the contact must text START from the handset.',
+          actorUid: 'system', actorName: 'SMS opt-in form',
+          createdAt: FV.serverTimestamp(), meta: { formType }
+        });
+      }
+    }
   }
   const summary = Object.entries(fields).map(([k, v]) => `${k}: ${v}`).join(' · ');
   await ref.collection('activities').add({
