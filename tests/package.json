@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Firestore security-rules regression tests, run against the emulator.",
   "scripts": {
-    "emulator": "firebase emulators:exec --only firestore --project demo-1p \"node firestore-rules.test.mjs\"",
+    "emulator": "cd .. && firebase emulators:exec --only firestore --project demo-1p \"node tests/firestore-rules.test.mjs\"",
     "test": "npm run emulator"
   },
   "devDependencies": {

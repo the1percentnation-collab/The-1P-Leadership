@@ -8,8 +8,8 @@
 import { auth, db, functions, firebaseReady } from './firebase.js';
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
-  collection, query, where, orderBy, getDocs,
-  serverTimestamp
+  collection, query, where, orderBy, limit, getDocs,
+  serverTimestamp, increment
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
@@ -748,4 +748,102 @@ export async function markConversationRead(companyId, contactId) {
       unreadCount: 0, updatedAt: serverTimestamp()
     });
   } catch (e) { /* best-effort */ }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Voice — call history + dispositions + power-dialer sessions.
+// Call records are written by the Twilio voice webhooks (server-side), so
+// the client only reads them. Dispositions go through the logCallOutcome
+// callable, which also handles do-not-call and the follow-up task.
+// ════════════════════════════════════════════════════════════════
+
+/** Outcome ids must match CALL_OUTCOMES in functions/index.js. */
+export const CALL_OUTCOMES = [
+  { id: 'connected',      label: 'Connected',        tone: 'good' },
+  { id: 'booked',         label: 'Booked a call',    tone: 'good' },
+  { id: 'callback',       label: 'Call back later',  tone: 'warn' },
+  { id: 'voicemail',      label: 'Left voicemail',   tone: 'warn' },
+  { id: 'no_answer',      label: 'No answer',        tone: 'mute' },
+  { id: 'busy',           label: 'Busy',             tone: 'mute' },
+  { id: 'wrong_number',   label: 'Wrong number',     tone: 'bad'  },
+  { id: 'not_interested', label: 'Not interested',   tone: 'bad'  },
+  { id: 'do_not_call',    label: 'Do not call',      tone: 'bad'  }
+];
+
+export function callOutcomeMeta(id) {
+  return CALL_OUTCOMES.find((o) => o.id === id) || { id, label: String(id || '—'), tone: 'mute' };
+}
+
+function callsCol(companyId) { return collection(db, 'companies', companyId, 'calls'); }
+
+/** Recent calls, newest first. Pass contactId to scope to one contact. */
+export async function listCalls(companyId, { contactId = null, max = 50 } = {}) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const clauses = [];
+    if (contactId) clauses.push(where('contactId', '==', contactId));
+    clauses.push(orderBy('createdAt', 'desc'), limit(max));
+    const snap = await getDocs(query(callsCol(companyId), ...clauses));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    // Missing composite index — fall back to an unordered read and sort here.
+    try {
+      const snap = contactId
+        ? await getDocs(query(callsCol(companyId), where('contactId', '==', contactId)))
+        : await getDocs(callsCol(companyId));
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0))
+        .slice(0, max);
+    } catch (e2) { console.warn('[crm] listCalls failed', e2); return []; }
+  }
+}
+
+/**
+ * Record what happened on a call: outcome, notes, and an optional follow-up
+ * task. One round trip so the power dialer can move to the next contact.
+ */
+export async function logCallOutcome(companyId, contactId, {
+  outcome, notes = '', callSid = null, followUpAt = null, followUpTitle = null, sessionId = null
+} = {}) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'logCallOutcome');
+  const res = await call({
+    companyId, contactId, outcome, notes, callSid,
+    followUpAt: followUpAt ? new Date(followUpAt).toISOString() : null,
+    followUpTitle, sessionId
+  });
+  return res.data || { ok: true };
+}
+
+function dialerSessionsCol(companyId) { return collection(db, 'companies', companyId, 'dialerSessions'); }
+
+/** Open a dialer run so its stats survive a reload and show up in reporting. */
+export async function createDialerSession(companyId, { filterLabel = 'All contacts', queueSize = 0 } = {}) {
+  if (!firebaseReady || !companyId) return null;
+  try {
+    const ref = await addDoc(dialerSessionsCol(companyId), {
+      agentUid: auth.currentUser ? auth.currentUser.uid : null,
+      filterLabel, queueSize, callsPlaced: 0, callsLogged: 0, outcomes: {},
+      status: 'active',
+      startedAt: serverTimestamp(), updatedAt: serverTimestamp()
+    });
+    return ref.id;
+  } catch (e) { console.warn('[crm] createDialerSession failed', e); return null; }
+}
+
+export async function bumpDialerSession(companyId, sessionId, patch = {}) {
+  if (!firebaseReady || !companyId || !sessionId) return;
+  try {
+    await updateDoc(doc(db, 'companies', companyId, 'dialerSessions', sessionId),
+      { ...patch, updatedAt: serverTimestamp() });
+  } catch (e) { /* best-effort telemetry */ }
+}
+
+/** One more dial attempt on this run. */
+export async function recordDialAttempt(companyId, sessionId) {
+  return bumpDialerSession(companyId, sessionId, { callsPlaced: increment(1) });
+}
+
+export async function endDialerSession(companyId, sessionId) {
+  return bumpDialerSession(companyId, sessionId, { status: 'ended', endedAt: serverTimestamp() });
 }

@@ -455,6 +455,21 @@ service cloud.firestore {
         }
       }
 
+      // Voice calls. Written by the Twilio voice webhooks (Admin SDK), so
+      // the client reads the log and history but never authors a call record;
+      // dispositions go through the logCallOutcome callable.
+      match /calls/{callId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow write: if false;
+      }
+
+      // Power-dialer sessions — the agent's own queue and run stats.
+      match /dialerSessions/{sessionId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create, update: if isOwner() || isCompanyAdmin(cid);
+        allow delete: if isOwner();
+      }
+
       // ──────────────────────────────────────────────────────────────
       // Campaigns (Phase 3): email broadcasts + per-event telemetry.
       // ──────────────────────────────────────────────────────────────

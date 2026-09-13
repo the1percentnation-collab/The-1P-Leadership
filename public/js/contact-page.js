@@ -17,8 +17,10 @@ import {
   listTasks, createTask, completeTask, reopenTask,
   listAppointments, createAppointment, setAppointmentStatus,
   listMessages, sendSms,
+  listCalls, logCallOutcome, CALL_OUTCOMES,
   escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate
 } from './crm.js';
+import { softphone, formatPhone, toE164 } from './voice.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -40,7 +42,13 @@ const state = {
   dealsLoaded: false,
   tasksLoaded: false,
   apptsLoaded: false,
-  smsLoaded: false
+  smsLoaded: false,
+  callsLoaded: false,
+  calls: [],
+  callStatus: 'idle',
+  callSid: null,
+  callDeviceError: null,
+  callTimer: null
 };
 
 function gate(msg) {
@@ -124,6 +132,12 @@ function iconFor(type) {
     case 'manual_email': return '✉';
     case 'manual_sms': return '💬';
     case 'sms_received': return '📩';
+    case 'call_placed': return '📞';
+    case 'call_received': return '📲';
+    case 'call_outcome': return '☎';
+    case 'call_recording': return '🎧';
+    case 'sms_opt_out': return '🚫';
+    case 'sms_opt_in': return '🔔';
     case 'deal_created': return '◆';
     case 'deal_won': return '🏆';
     case 'deal_lost': return '✖';
@@ -330,6 +344,149 @@ function renderSms() {
   });
 }
 
+// ────────────────────────────────────────────────────────────────
+// Call pane — click-to-call over the Twilio softphone, plus the call log.
+// The Voice SDK is only loaded when this tab is opened, so contacts without
+// a phone number never pay for it.
+// ────────────────────────────────────────────────────────────────
+function callStatusLabel() {
+  return {
+    idle: 'Ready', connecting: 'Connecting…', ringing: 'Ringing…',
+    live: 'On the call', ended: 'Call ended', error: 'Call failed'
+  }[state.callStatus] || 'Ready';
+}
+
+function fmtCallElapsed(sec) {
+  const s = Math.max(0, Math.floor(Number(sec) || 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function renderCallPane() {
+  const host = $('call-pane');
+  if (!host) return;
+  const c = state.contact || {};
+  if (!toE164(c.phone)) {
+    host.innerHTML = `<div class="crm-subpanel-empty">Add a phone number to this contact to call them.</div>`;
+    return;
+  }
+  if (c.doNotCall === true) {
+    host.innerHTML = `<div class="auth-error">This contact is marked do-not-call. Clear the flag on the contact record before dialing.</div>`;
+    return;
+  }
+  const live = softphone.inCall;
+  host.innerHTML = `
+    <div class="ct-call-row">
+      <button class="btn ${live ? 'btn-danger' : 'btn-primary'}" id="ct-call-btn">${live ? 'Hang up' : 'Call ' + escapeHtml(formatPhone(c.phone))}</button>
+      <button class="btn btn-ghost" id="ct-mute-btn" ${live ? '' : 'disabled'}>${softphone.muted ? 'Unmute' : 'Mute'}</button>
+      <a class="btn btn-ghost" href="/dialer.html?contact=${encodeURIComponent(state.contactId)}">Open in dialer</a>
+      <span class="ct-call-state" id="ct-call-state">${escapeHtml(callStatusLabel())}${live ? ' · ' + fmtCallElapsed(softphone.elapsedSec) : ''}</span>
+    </div>
+    ${state.callDeviceError ? `<div class="auth-error" style="margin-bottom:10px;">${escapeHtml(state.callDeviceError)}</div>` : ''}
+    <div class="crm-form-row"><label for="ct-call-outcome">Log an outcome</label>
+      <select class="c-input crm-select" id="ct-call-outcome">
+        <option value="">Pick an outcome…</option>
+        ${CALL_OUTCOMES.map((o) => `<option value="${o.id}">${escapeHtml(o.label)}</option>`).join('')}
+      </select></div>
+    <div class="crm-form-row"><label for="ct-call-notes">Call notes</label>
+      <textarea class="c-input" id="ct-call-notes" rows="3" placeholder="What was said, what happens next…"></textarea></div>
+    <div class="crm-note-compose-actions" style="margin-bottom:14px;">
+      <button class="btn btn-primary" id="ct-call-log">Save call log</button>
+    </div>
+    <div id="ct-call-err" class="auth-error" style="display:none;margin-bottom:10px;"></div>
+    <div class="dialer-history-head" style="padding-left:0;">Call history</div>
+    <div id="ct-call-list">${renderCallListHtml()}</div>`;
+
+  $('ct-call-btn').addEventListener('click', onContactCallButton);
+  $('ct-mute-btn').addEventListener('click', () => { softphone.toggleMute(); renderCallPane(); });
+  $('ct-call-log').addEventListener('click', onContactCallLog);
+}
+
+function renderCallListHtml() {
+  if (!state.calls.length) return `<div class="crm-subpanel-empty">No calls with this contact yet.</div>`;
+  return state.calls.map((h) => `
+    <div class="dialer-history-row">
+      <span>${escapeHtml(h.direction === 'in' ? 'Inbound' : 'Outbound')}${h.outcome ? ' · ' + escapeHtml(h.outcome.replace(/_/g, ' ')) : ''}</span>
+      <span class="crm-mini-sub">${escapeHtml(fmtDateTime(h.createdAt))}${h.durationSec ? ' · ' + fmtCallElapsed(h.durationSec) : ''}</span>
+      ${h.recordingUrl ? `<a class="crm-chip" href="${escapeHtml(h.recordingUrl)}" target="_blank" rel="noopener">Recording</a>` : ''}
+    </div>`).join('');
+}
+
+async function onContactCallButton() {
+  if (softphone.inCall) { softphone.hangup(); return; }
+  const c = state.contact || {};
+  const err = $('ct-call-err');
+  if (err) err.style.display = 'none';
+  try {
+    await softphone.init(state.companyId);
+    state.callDeviceError = null;
+    await softphone.call(c.phone, { contactId: state.contactId });
+  } catch (e) {
+    state.callDeviceError = (e && e.message) || String(e);
+    renderCallPane();
+  }
+}
+
+async function onContactCallLog() {
+  const outcome = ($('ct-call-outcome') && $('ct-call-outcome').value) || '';
+  const notes = ($('ct-call-notes') && $('ct-call-notes').value.trim()) || '';
+  const err = $('ct-call-err');
+  if (!outcome) {
+    if (err) { err.textContent = 'Pick an outcome first.'; err.style.display = 'block'; }
+    return;
+  }
+  const btn = $('ct-call-log');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await logCallOutcome(state.companyId, state.contactId, {
+      outcome, notes, callSid: state.callSid
+    });
+    state.callSid = null;
+    await Promise.all([refreshCalls(), refreshActivities(), refreshContact()]);
+    setStatus('Call logged', 'ok');
+  } catch (e) {
+    if (err) { err.textContent = (e && e.message) || String(e); err.style.display = 'block'; }
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save call log';
+  }
+}
+
+async function refreshCalls() {
+  state.calls = await listCalls(state.companyId, { contactId: state.contactId, max: 20 });
+  const list = $('ct-call-list');
+  if (list) list.innerHTML = renderCallListHtml();
+  else renderCallPane();
+}
+
+async function initCallPane() {
+  renderCallPane();
+  await refreshCalls();
+
+  softphone.on('status', (evt) => {
+    state.callStatus = evt.status;
+    if (evt.callSid) state.callSid = evt.callSid;
+    if (evt.status === 'live') {
+      if (state.callTimer) clearInterval(state.callTimer);
+      state.callTimer = setInterval(() => {
+        const el = $('ct-call-state');
+        if (el && softphone.inCall) el.textContent = `On the call · ${fmtCallElapsed(softphone.elapsedSec)}`;
+      }, 1000);
+    } else if (state.callTimer) {
+      clearInterval(state.callTimer); state.callTimer = null;
+    }
+    renderCallPane();
+    if (evt.status === 'ended') refreshCalls();
+  });
+  softphone.on('error', (e) => {
+    state.callDeviceError = (e && (e.message || e.description)) || 'Voice error';
+    renderCallPane();
+  });
+
+  // Bring the device up in the background so the first click connects fast.
+  try { await softphone.init(state.companyId); state.callDeviceError = null; }
+  catch (e) { state.callDeviceError = (e && e.message) || 'Softphone unavailable.'; }
+  renderCallPane();
+}
+
 async function refreshSms() {
   state.messages = await listMessages(state.companyId, state.contactId);
   renderSms();
@@ -425,7 +582,7 @@ async function main() {
   await Promise.all([refreshNotes(), refreshActivities()]);
 
   // Feed tabs (Notes / Deals / Tasks / Activity) with lazy loading.
-  const PANES = { notes: 'feed-notes', deals: 'feed-deals', tasks: 'feed-tasks', appts: 'feed-appts', sms: 'feed-sms', activity: 'feed-activity' };
+  const PANES = { notes: 'feed-notes', deals: 'feed-deals', tasks: 'feed-tasks', appts: 'feed-appts', sms: 'feed-sms', call: 'feed-call', activity: 'feed-activity' };
   document.querySelectorAll('.crm-tab[data-feed-tab]').forEach((b) => {
     b.addEventListener('click', async () => {
       document.querySelectorAll('.crm-tab[data-feed-tab]').forEach((x) => x.classList.toggle('active', x === b));
@@ -438,6 +595,7 @@ async function main() {
       if (state.feedTab === 'tasks' && !state.tasksLoaded) { state.tasksLoaded = true; await refreshContactTasks(); }
       if (state.feedTab === 'appts' && !state.apptsLoaded) { state.apptsLoaded = true; await refreshAppts(); }
       if (state.feedTab === 'sms' && !state.smsLoaded) { state.smsLoaded = true; await refreshSms(); }
+      if (state.feedTab === 'call' && !state.callsLoaded) { state.callsLoaded = true; await initCallPane(); }
     });
   });
 

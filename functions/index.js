@@ -4960,6 +4960,466 @@ exports.twilioStatusWebhook = onRequest(
 );
 
 // ════════════════════════════════════════════════════════════════
+// Twilio Programmable Voice — browser softphone + power dialer.
+//
+// Flow (outbound): the CRM page asks getVoiceToken for a short-lived Access
+// Token, the Twilio Voice JS SDK opens a WebRTC leg to Twilio, Twilio POSTs
+// the TwiML App Voice URL (voiceOutbound) which bridges that leg to the PSTN
+// number with our caller ID. Status + recording callbacks land on
+// voiceStatus / voiceRecording and write the call record.
+//
+// Flow (inbound): the PSTN caller hits voiceInbound, which rings every signed
+// -in admin's browser client in parallel and falls through to voicemail.
+//
+// Calls live at companies/{cid}/calls/{callSid}; every terminal state also
+// writes a contact activity so the timeline stays the single source of truth.
+//
+// Required env (functions/.env or runtime env), on top of the SMS vars:
+//   TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET  — API key pair for tokens
+//   TWILIO_TWIML_APP_SID                       — TwiML App pointing at voiceOutbound
+//   TWILIO_FROM_NUMBER                         — caller ID (shared with SMS)
+// Optional:
+//   TWILIO_RECORD_CALLS=true                   — dual-channel recording
+//   TWILIO_VOICEMAIL_TEXT                      — voicemail greeting
+// Missing any required var makes every voice endpoint return
+// failed-precondition rather than half-working.
+// ════════════════════════════════════════════════════════════════
+
+const VOICE_CLIENT_PREFIX = 'crm_';
+const VOICE_RING_SECONDS = 20;
+const VOICE_MAX_RING_CLIENTS = 5;
+
+function voiceConfig() {
+  return {
+    accountSid: (process.env.TWILIO_ACCOUNT_SID || '').trim(),
+    authToken: (process.env.TWILIO_AUTH_TOKEN || '').trim(),
+    apiKeySid: (process.env.TWILIO_API_KEY_SID || '').trim(),
+    apiKeySecret: (process.env.TWILIO_API_KEY_SECRET || '').trim(),
+    appSid: (process.env.TWILIO_TWIML_APP_SID || '').trim(),
+    fromNumber: normalizePhone(process.env.TWILIO_FROM_NUMBER || ''),
+    record: String(process.env.TWILIO_RECORD_CALLS || '').trim().toLowerCase() === 'true',
+    voicemailText: (process.env.TWILIO_VOICEMAIL_TEXT || '').trim()
+      || 'Thanks for calling The One Percent. Nobody is available right now — leave your name, number, and a short message after the tone and we will call you right back.'
+  };
+}
+
+function voiceReady(cfg) {
+  return !!(cfg.accountSid && cfg.apiKeySid && cfg.apiKeySecret && cfg.appSid && cfg.fromNumber);
+}
+
+/** uid -> Twilio client identity, and back. Identities allow [A-Za-z0-9_.-]. */
+function identityForUid(uid) { return VOICE_CLIENT_PREFIX + String(uid).replace(/[^A-Za-z0-9_.-]/g, ''); }
+function uidForIdentity(identity) {
+  const s = String(identity || '').replace(/^client:/, '');
+  return s.startsWith(VOICE_CLIENT_PREFIX) ? s.slice(VOICE_CLIENT_PREFIX.length) : null;
+}
+
+/** Escape text that gets interpolated into TwiML. */
+function xmlEscape(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+function twiml(res, body) {
+  res.set('Content-Type', 'text/xml');
+  res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><Response>${body}</Response>`);
+}
+
+/** Verify the request really came from Twilio. Returns false after replying. */
+function verifyTwilioSignature(req, res) {
+  const token = (process.env.TWILIO_AUTH_TOKEN || '').trim();
+  try {
+    const twilioLib = require('twilio');
+    const signature = req.get('X-Twilio-Signature') || '';
+    const url = `https://${req.get('host')}${req.originalUrl}`;
+    if (!token || !twilioLib.validateRequest(token, signature, url, req.body || {})) {
+      res.status(403).send('invalid signature');
+      return false;
+    }
+    return true;
+  } catch (e) {
+    res.status(403).send('signature error');
+    return false;
+  }
+}
+
+/**
+ * The https base that Twilio should call back on.
+ *
+ * Deliberately NOT derived from req.get('host'): a v2 function is reachable
+ * both at us-central1-<project>.cloudfunctions.net/<name> and at its own
+ * per-function Cloud Run host, and on the latter `${host}/voiceStatus` would
+ * resolve to the wrong service. Signature validation still uses the real
+ * request URL — Twilio signs whatever URL it actually called.
+ */
+function functionsBase(req) {
+  const explicit = (process.env.FUNCTIONS_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (explicit) return explicit;
+  const project = (process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || '').trim();
+  if (project) return `https://us-central1-${project}.cloudfunctions.net`;
+  return `https://${req.get('host')}`;
+}
+
+/**
+ * Find the CRM contact for a phone number, creating a lead if there is none.
+ * Mirrors the inbound-SMS behaviour so a cold call and a cold text land the
+ * same contact rather than two.
+ */
+async function findOrCreateContactByPhone(db, cid, phone, source) {
+  const FV = admin.firestore.FieldValue;
+  const contactsRef = db.collection('companies').doc(cid).collection('contacts');
+  const q = await contactsRef.where('phone', '==', phone).limit(1).get();
+  if (!q.empty) return q.docs[0];
+  const ref = await contactsRef.add({
+    name: phone, email: null, phone, companyName: null,
+    source: source || 'Phone', stage: 'new', tags: [], ownerUid: null,
+    createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp(),
+    createdBy: 'twilio-voice', lastActivityAt: FV.serverTimestamp()
+  });
+  return ref.get();
+}
+
+/** Locate a call doc by SID across companies (webhooks know only the SID). */
+async function findCallBySid(db, sid) {
+  try {
+    const snap = await db.collectionGroup('calls').where('twilioSid', '==', sid).limit(1).get();
+    return snap.empty ? null : snap.docs[0];
+  } catch (e) {
+    console.warn('[voice] findCallBySid (index?)', e && e.message);
+    return null;
+  }
+}
+
+function humanDuration(sec) {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  const m = Math.floor(s / 60);
+  return m ? `${m}m ${s % 60}s` : `${s}s`;
+}
+
+// ── getVoiceToken — callable ────────────────────────────────────────────────
+// Returns a 1-hour Access Token scoped to this admin's client identity. The
+// token is the only credential the browser ever sees; the account SID/secret
+// never leave the function.
+exports.getVoiceToken = onCall(async (request) => {
+  const db = admin.firestore();
+  const { companyId } = request.data || {};
+  if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+  const { uid } = await assertCompanyAdmin(db, companyId, request);
+
+  // A token per admin per minute is plenty; the SDK refreshes on expiry.
+  await rateLimitCaller(db, request, { action: 'getVoiceToken', max: 30, windowSec: 600 });
+
+  const cfg = voiceConfig();
+  if (!voiceReady(cfg)) {
+    throw new HttpsError('failed-precondition',
+      'Calling is not configured yet. Add TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, ' +
+      'TWILIO_TWIML_APP_SID and TWILIO_FROM_NUMBER, then redeploy.');
+  }
+
+  const identity = identityForUid(uid);
+  const ttl = 3600;
+  try {
+    const { AccessToken } = require('twilio').jwt;
+    const token = new AccessToken(cfg.accountSid, cfg.apiKeySid, cfg.apiKeySecret, { identity, ttl });
+    token.addGrant(new AccessToken.VoiceGrant({
+      outgoingApplicationSid: cfg.appSid,
+      incomingAllow: true
+    }));
+    return {
+      token: token.toJwt(),
+      identity,
+      callerId: cfg.fromNumber,
+      recording: cfg.record,
+      expiresInSec: ttl
+    };
+  } catch (e) {
+    console.error('[getVoiceToken]', e && e.message);
+    throw new HttpsError('internal', 'Could not mint a voice token.');
+  }
+});
+
+// ── voiceOutbound — TwiML App Voice URL ─────────────────────────────────────
+// Twilio hits this when the browser client dials. Bridges the WebRTC leg to
+// the PSTN number, records if enabled, and opens the call record so the UI can
+// show live state before the callee even answers.
+exports.voiceOutbound = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  if (!verifyTwilioSignature(req, res)) return;
+  const cfg = voiceConfig();
+  const to = normalizePhone(req.body.To);
+  if (!cfg.fromNumber || !to) {
+    twiml(res, '<Say>Sorry, that number could not be dialed.</Say><Hangup/>');
+    return;
+  }
+
+  const base = functionsBase(req);
+  const callSid = req.body.CallSid || '';
+  const companyId = (req.body.companyId || '').trim();
+  const contactId = (req.body.contactId || '').trim();
+  const sessionId = (req.body.sessionId || '').trim();
+  const uid = uidForIdentity(req.body.From || req.body.Caller || '');
+
+  // Open the call record first so a hangup mid-ring still leaves a trail.
+  try {
+    if (companyId && callSid) {
+      const db = admin.firestore();
+      const FV = admin.firestore.FieldValue;
+      await db.collection('companies').doc(companyId).collection('calls').doc(callSid).set({
+        twilioSid: callSid, direction: 'out', status: 'initiated',
+        fromNumber: cfg.fromNumber, toNumber: to,
+        contactId: contactId || null, companyId, sessionId: sessionId || null,
+        agentUid: uid || null, durationSec: 0, outcome: null,
+        recordingUrl: null, createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp()
+      }, { merge: true });
+    }
+  } catch (e) { console.warn('[voiceOutbound] open record', e && e.message); }
+
+  const recordAttrs = cfg.record
+    ? ` record="record-from-answer-dual" recordingStatusCallback="${base}/voiceRecording" recordingStatusCallbackMethod="POST"`
+    : '';
+  const statusEvents = 'initiated ringing answered completed';
+  twiml(res,
+    `<Dial callerId="${xmlEscape(cfg.fromNumber)}" answerOnBridge="true" timeout="30"${recordAttrs}>` +
+    `<Number statusCallback="${base}/voiceStatus" statusCallbackMethod="POST" ` +
+    `statusCallbackEvent="${statusEvents}">${xmlEscape(to)}</Number>` +
+    `</Dial>`);
+});
+
+// ── voiceInbound — the Twilio number's Voice URL ────────────────────────────
+// Rings every admin's browser client in parallel, then takes a voicemail.
+exports.voiceInbound = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  if (!verifyTwilioSignature(req, res)) return;
+  const db = admin.firestore();
+  const cfg = voiceConfig();
+  const base = functionsBase(req);
+  const from = normalizePhone(req.body.From);
+  const to = normalizePhone(req.body.To);
+  const callSid = req.body.CallSid || '';
+
+  let identities = [];
+  try {
+    const cid = await resolveAcademyCompanyId(db);
+    if (cid) {
+      const FV = admin.firestore.FieldValue;
+      const companySnap = await db.collection('companies').doc(cid).get();
+      const data = companySnap.exists ? (companySnap.data() || {}) : {};
+      // voiceRingUids narrows the ring group; otherwise every admin rings.
+      const ringUids = (Array.isArray(data.voiceRingUids) && data.voiceRingUids.length)
+        ? data.voiceRingUids : (data.adminUids || []);
+      identities = ringUids.slice(0, VOICE_MAX_RING_CLIENTS).map(identityForUid);
+
+      if (from) {
+        const contactDoc = await findOrCreateContactByPhone(db, cid, from, 'Inbound Call');
+        await db.collection('companies').doc(cid).collection('calls').doc(callSid || ('in_' + Date.now())).set({
+          twilioSid: callSid, direction: 'in', status: 'ringing',
+          fromNumber: from, toNumber: to, contactId: contactDoc.id, companyId: cid,
+          agentUid: null, durationSec: 0, outcome: null, recordingUrl: null,
+          createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp()
+        }, { merge: true });
+        await contactDoc.ref.set({ lastActivityAt: FV.serverTimestamp() }, { merge: true });
+      }
+    }
+  } catch (e) { console.warn('[voiceInbound]', e && e.message); }
+
+  const clients = identities
+    .map((id) => `<Client>${xmlEscape(id)}</Client>`).join('');
+  const dial = clients
+    ? `<Dial timeout="${VOICE_RING_SECONDS}" answerOnBridge="true" ` +
+      `action="${base}/voiceInboundFallback" method="POST" ` +
+      `callerId="${xmlEscape(from || cfg.fromNumber || '')}">${clients}</Dial>`
+    : '';
+  twiml(res, dial +
+    (clients ? '' :
+      `<Say>${xmlEscape(cfg.voicemailText)}</Say>` +
+      `<Record maxLength="120" playBeep="true" ` +
+      `recordingStatusCallback="${base}/voiceRecording" recordingStatusCallbackMethod="POST"/><Hangup/>`));
+});
+
+// ── voiceInboundFallback — nobody picked up ────────────────────────────────
+exports.voiceInboundFallback = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  if (!verifyTwilioSignature(req, res)) return;
+  const cfg = voiceConfig();
+  const base = functionsBase(req);
+  // DialCallStatus 'completed' means an agent answered and the call is over.
+  if (String(req.body.DialCallStatus || '') === 'completed') { twiml(res, '<Hangup/>'); return; }
+  twiml(res,
+    `<Say>${xmlEscape(cfg.voicemailText)}</Say>` +
+    `<Record maxLength="120" playBeep="true" ` +
+    `recordingStatusCallback="${base}/voiceRecording" recordingStatusCallbackMethod="POST"/><Hangup/>`);
+});
+
+// ── voiceStatus — per-leg status callbacks ─────────────────────────────────
+// Writes duration + final status onto the call record and, once the call is
+// over, a single activity onto the contact timeline.
+exports.voiceStatus = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  if (!verifyTwilioSignature(req, res)) return;
+  const db = admin.firestore();
+  // On a <Number> callback ParentCallSid is the browser leg we keyed on.
+  const sid = req.body.ParentCallSid || req.body.CallSid;
+  const status = req.body.CallStatus || '';
+  const durationSec = Number(req.body.CallDuration || 0) || 0;
+  if (!sid || !status) { res.status(200).send('ok'); return; }
+
+  try {
+    const callDoc = await findCallBySid(db, sid);
+    if (callDoc) {
+      const FV = admin.firestore.FieldValue;
+      const prev = callDoc.data() || {};
+      const patch = { status, updatedAt: FV.serverTimestamp() };
+      if (durationSec) patch.durationSec = durationSec;
+      if (status === 'in-progress' && !prev.answeredAt) patch.answeredAt = FV.serverTimestamp();
+      if (['completed', 'busy', 'no-answer', 'failed', 'canceled'].includes(status)) {
+        patch.endedAt = FV.serverTimestamp();
+      }
+      await callDoc.ref.set(patch, { merge: true });
+
+      // One timeline entry per call, written on the first terminal status.
+      const terminal = ['completed', 'busy', 'no-answer', 'failed', 'canceled'].includes(status);
+      if (terminal && !prev.loggedActivity && prev.contactId && prev.companyId) {
+        const contactRef = db.collection('companies').doc(prev.companyId)
+          .collection('contacts').doc(prev.contactId);
+        const dirWord = prev.direction === 'in' ? 'Inbound' : 'Outbound';
+        const desc = status === 'completed' && durationSec
+          ? `${dirWord} call — ${humanDuration(durationSec)}`
+          : `${dirWord} call — ${status.replace(/-/g, ' ')}`;
+        await contactRef.collection('activities').add({
+          type: prev.direction === 'in' ? 'call_received' : 'call_placed',
+          description: desc,
+          actorUid: prev.agentUid || 'twilio',
+          actorName: prev.direction === 'in' ? (prev.fromNumber || 'Caller') : 'You',
+          createdAt: FV.serverTimestamp(),
+          meta: { direction: prev.direction, status, durationSec, callSid: sid }
+        });
+        await contactRef.set({ lastActivityAt: FV.serverTimestamp() }, { merge: true });
+        await callDoc.ref.set({ loggedActivity: true }, { merge: true });
+      }
+    }
+  } catch (e) { console.warn('[voiceStatus]', e && e.message); }
+  res.status(200).send('ok');
+});
+
+// ── voiceRecording — recording + voicemail callbacks ───────────────────────
+exports.voiceRecording = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  if (!verifyTwilioSignature(req, res)) return;
+  const db = admin.firestore();
+  const sid = req.body.CallSid;
+  const url = req.body.RecordingUrl;
+  const recDuration = Number(req.body.RecordingDuration || 0) || 0;
+  if (!sid || !url) { res.status(200).send('ok'); return; }
+  try {
+    const callDoc = await findCallBySid(db, sid);
+    if (callDoc) {
+      const FV = admin.firestore.FieldValue;
+      // The bare RecordingUrl needs auth; .mp3 is the playable form.
+      await callDoc.ref.set({
+        recordingUrl: url + '.mp3', recordingSid: req.body.RecordingSid || null,
+        recordingDurationSec: recDuration, updatedAt: FV.serverTimestamp()
+      }, { merge: true });
+      const prev = callDoc.data() || {};
+      if (prev.contactId && prev.companyId) {
+        await db.collection('companies').doc(prev.companyId)
+          .collection('contacts').doc(prev.contactId).collection('activities').add({
+            type: 'call_recording',
+            description: `Recording available (${humanDuration(recDuration)}).`,
+            actorUid: 'twilio', actorName: 'Twilio',
+            createdAt: FV.serverTimestamp(),
+            meta: { callSid: sid, recordingUrl: url + '.mp3' }
+          });
+      }
+    }
+  } catch (e) { console.warn('[voiceRecording]', e && e.message); }
+  res.status(200).send('ok');
+});
+
+// ── logCallOutcome — callable ──────────────────────────────────────────────
+// The disposition an agent picks after hanging up: outcome, notes, and an
+// optional follow-up task, all in one round trip so the power dialer never
+// waits on three writes between calls.
+const CALL_OUTCOMES = [
+  'connected', 'voicemail', 'no_answer', 'busy', 'wrong_number',
+  'not_interested', 'callback', 'booked', 'do_not_call'
+];
+
+exports.logCallOutcome = onCall(async (request) => {
+  const db = admin.firestore();
+  const {
+    companyId, contactId, callSid, outcome, notes,
+    followUpAt, followUpTitle, sessionId
+  } = request.data || {};
+  if (!companyId || !contactId || !outcome) {
+    throw new HttpsError('invalid-argument', 'companyId, contactId and outcome are required.');
+  }
+  if (!CALL_OUTCOMES.includes(outcome)) {
+    throw new HttpsError('invalid-argument', 'Unknown call outcome: ' + outcome);
+  }
+  const { uid } = await assertCompanyAdmin(db, companyId, request);
+  await rateLimitCaller(db, request, { action: 'logCallOutcome', max: 300, windowSec: 600 });
+
+  const FV = admin.firestore.FieldValue;
+  const contactRef = db.collection('companies').doc(companyId).collection('contacts').doc(contactId);
+  const contactSnap = await contactRef.get();
+  if (!contactSnap.exists) throw new HttpsError('not-found', 'Contact not found.');
+
+  const label = outcome.replace(/_/g, ' ');
+  const trimmedNotes = String(notes || '').slice(0, 2000);
+
+  if (callSid) {
+    await db.collection('companies').doc(companyId).collection('calls').doc(callSid)
+      .set({ outcome, notes: trimmedNotes || null, loggedByUid: uid, updatedAt: FV.serverTimestamp() }, { merge: true });
+  }
+
+  await contactRef.collection('activities').add({
+    type: 'call_outcome',
+    description: `Call outcome: ${label}${trimmedNotes ? ' — ' + trimmedNotes.slice(0, 160) : ''}`,
+    actorUid: uid, actorName: 'You', createdAt: FV.serverTimestamp(),
+    meta: { outcome, callSid: callSid || null, sessionId: sessionId || null }
+  });
+  if (trimmedNotes) {
+    await contactRef.collection('notes').add({
+      body: trimmedNotes, authorUid: uid, createdAt: FV.serverTimestamp(), source: 'dialer'
+    });
+  }
+
+  const patch = { lastActivityAt: FV.serverTimestamp(), lastCallOutcome: outcome, lastCalledAt: FV.serverTimestamp() };
+  // A do-not-call request is a hard stop across every channel we own.
+  if (outcome === 'do_not_call') {
+    patch.doNotCall = true;
+    patch.doNotCallAt = FV.serverTimestamp();
+    patch.smsOptedOut = true;
+  }
+  await contactRef.set(patch, { merge: true });
+
+  let taskId = null;
+  if (followUpAt) {
+    const due = new Date(followUpAt);
+    if (!isNaN(due.getTime())) {
+      const taskRef = await db.collection('companies').doc(companyId).collection('tasks').add({
+        title: String(followUpTitle || `Call back ${contactSnap.data().name || 'contact'}`).slice(0, 200),
+        contactId, contactName: contactSnap.data().name || null,
+        assigneeUid: uid, status: 'open',
+        dueAt: admin.firestore.Timestamp.fromDate(due),
+        createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp(), createdBy: uid,
+        source: 'dialer'
+      });
+      taskId = taskRef.id;
+    }
+  }
+
+  if (sessionId) {
+    await db.collection('companies').doc(companyId).collection('dialerSessions').doc(sessionId).set({
+      // Nested object, not a dotted key: set() treats dots as literal
+      // field names, which would make a field called "outcomes.connected".
+      outcomes: { [outcome]: FV.increment(1) },
+      callsLogged: FV.increment(1),
+      updatedAt: FV.serverTimestamp()
+    }, { merge: true });
+  }
+
+  return { ok: true, taskId };
+});
+
+
+// ════════════════════════════════════════════════════════════════
 // Product interest / pre-order signals + early-access list.
 // Public callables (allow unauthenticated) that upsert a CRM contact and
 // tag them, so demand can be gauged and emailed via existing campaigns.

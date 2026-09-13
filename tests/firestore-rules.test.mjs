@@ -7,6 +7,10 @@
 //   cd tests && npm install
 //   npm test
 //
+// The emulator runs from the repo root (see tests/package.json): firebase-tools
+// refuses a rules path that escapes the project directory, so "../firestore.rules"
+// only resolves when the project root is the root.
+//
 // Each case below pins a rule that was found broken or dangerously open in
 // the September 2026 site audit. Before the fixes, six of these failed:
 // individual members could not post at all, any signed-in member could read
@@ -49,6 +53,11 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'companies/co1'), { name: 'Co One', adminUids: ['adm'], seatCount: 10, seatsUsed: 1 });
   await setDoc(doc(db, 'companies/co2'), { name: 'Co Two', adminUids: ['other'], seatCount: 10, seatsUsed: 1 });
   await setDoc(doc(db, 'companies/co1/invites/ABC123'), { code: 'ABC123', status: 'pending', email: 'x@y.com' });
+  // A call record written server-side by the Twilio voice webhooks.
+  await setDoc(doc(db, 'companies/co1/calls/CA123'), {
+    twilioSid: 'CA123', direction: 'out', status: 'completed',
+    contactId: 'c1', companyId: 'co1', durationSec: 42, outcome: null
+  });
   // Existing posts: one global, one per company.
   await setDoc(doc(db, 'posts/pGlobal'), { authorUid: 'solo', companyId: null, text: 'hi', category: 'general', likeCount: 0, commentCount: 0, pinned: false });
   await setDoc(doc(db, 'posts/pCo1'), { authorUid: 'emp', companyId: 'co1', text: 'hi', category: 'general', likeCount: 0, commentCount: 0, pinned: false });
@@ -133,6 +142,39 @@ await t('company admin CAN still read their own invites',
 
 await t('owner CAN still read invites',
   () => assertSucceeds(getDoc(doc(owner, 'companies/co1/invites/ABC123'))));
+
+// ── Dialer: call records are read-only to clients ─────────────────────────
+await t('company admin CAN read a call record',
+  () => assertSucceeds(getDoc(doc(adm, 'companies/co1/calls/CA123'))));
+
+await t('owner CAN read a call record',
+  () => assertSucceeds(getDoc(doc(owner, 'companies/co1/calls/CA123'))));
+
+await t('member of another company CANNOT read a call record',
+  () => assertFails(getDoc(doc(emp2, 'companies/co1/calls/CA123'))));
+
+await t('anonymous CANNOT read a call record',
+  () => assertFails(getDoc(doc(anon, 'companies/co1/calls/CA123'))));
+
+await t('company admin CANNOT forge a call record (webhooks only)',
+  () => assertFails(setDoc(doc(adm, 'companies/co1/calls/CAforged'), { twilioSid: 'CAforged', direction: 'out' })));
+
+await t('company admin CANNOT rewrite a call outcome directly',
+  () => assertFails(setDoc(doc(adm, 'companies/co1/calls/CA123'), { outcome: 'booked' }, { merge: true })));
+
+// ── Dialer sessions are the agent's own working state ─────────────────────
+await t('company admin CAN open a dialer session',
+  () => assertSucceeds(addDoc(collection(adm, 'companies/co1/dialerSessions'), {
+    agentUid: 'adm', filterLabel: 'All', queueSize: 3, callsPlaced: 0, status: 'active'
+  })));
+
+await t('member of another company CANNOT open a dialer session',
+  () => assertFails(addDoc(collection(emp2, 'companies/co1/dialerSessions'), {
+    agentUid: 'emp2', filterLabel: 'All', queueSize: 3, callsPlaced: 0, status: 'active'
+  })));
+
+await t('anonymous CANNOT read dialer sessions',
+  () => assertFails(getDocs(collection(anon, 'companies/co1/dialerSessions'))));
 
 await env.cleanup();
 
