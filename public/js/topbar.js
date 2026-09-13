@@ -591,7 +591,34 @@ export function renderTopbar({
   if (ddBtn && adminBtns.length) {
     const MENU_ID = 'c-admin-dropdown-menu';
 
+    // Dismissal is bound/unbound explicitly rather than with `{ once: true }`.
+    // The old version removed the menu on the first document `touchend`
+    // ANYWHERE, including a tap that landed on a menu item. On touch devices
+    // `touchend` fires before `click`, so the <a> was torn out of the DOM
+    // before the browser dispatched its click — the menu closed and no
+    // navigation happened. That is why tapping CRM (and every other item) did
+    // nothing on mobile while working fine with a mouse.
+    const onDocDismiss = (e) => {
+      const m = document.getElementById(MENU_ID);
+      if (!m) { unbindDismiss(); return; }
+      // Taps inside the menu or on the toggle are handled by their own
+      // handlers — never treat them as an outside click.
+      if (m.contains(e.target) || ddBtn.contains(e.target)) return;
+      closeMenu();
+    };
+
+    const bindDismiss = () => {
+      document.addEventListener('click', onDocDismiss);
+      document.addEventListener('touchend', onDocDismiss, { passive: true });
+    };
+
+    const unbindDismiss = () => {
+      document.removeEventListener('click', onDocDismiss);
+      document.removeEventListener('touchend', onDocDismiss);
+    };
+
     const closeMenu = () => {
+      unbindDismiss();
       const m = document.getElementById(MENU_ID);
       if (m) m.remove();
     };
@@ -602,17 +629,32 @@ export function renderTopbar({
       menu.className = 'c-admin-dropdown-menu';
       menu.id = MENU_ID;
       menu.style.top = (rect.bottom + 6) + 'px';
-      menu.style.right = (window.innerWidth - rect.right) + 'px';
+      menu.style.right = Math.max(8, window.innerWidth - rect.right) + 'px';
+      // Keep the menu inside the viewport on short phone screens.
+      menu.style.maxHeight = Math.max(180, window.innerHeight - rect.bottom - 20) + 'px';
+      menu.style.overflowY = 'auto';
       menu.innerHTML = adminBtns.map((b) =>
         `<a class="c-admin-dropdown-item" href="${escapeHtml(b.href)}">${escapeHtml(b.label)}</a>`
       ).join('');
       document.body.appendChild(menu);
-      // Attach outside-click dismissal after this tick so the opening tap
-      // doesn't immediately trigger it on mobile.
-      setTimeout(() => {
-        document.addEventListener('click', closeMenu, { once: true });
-        document.addEventListener('touchend', closeMenu, { once: true, passive: true });
-      }, 0);
+
+      // Navigate explicitly on tap. Relying on the anchor's default click is
+      // fragile on mobile, where a scroll-cancelled or re-targeted click can
+      // be swallowed between touchend and click.
+      menu.querySelectorAll('.c-admin-dropdown-item').forEach((a) => {
+        a.addEventListener('click', (e) => {
+          const href = a.getAttribute('href');
+          if (!href) return;
+          e.preventDefault();
+          e.stopPropagation();
+          closeMenu();
+          window.location.assign(href);
+        });
+      });
+
+      // Bind dismissal after this tick so the opening tap doesn't immediately
+      // trigger it.
+      setTimeout(bindDismiss, 0);
     };
 
     ddBtn.addEventListener('click', (e) => {
