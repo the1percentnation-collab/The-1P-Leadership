@@ -112,7 +112,11 @@ export async function createContact(companyId, data = {}) {
   const stage = STAGE_IDS.includes(data.stage) ? data.stage : 'new';
   const payload = {
     name: (data.name || '').trim() || 'Unnamed contact',
-    email: data.email ? data.email.trim() : null,
+    // Lowercased on the way in. Every other surface that matches a contact —
+    // lead forms, member sync, CSV import — normalizes before comparing, and
+    // Firestore equality is case-sensitive, so a capitalized address typed in
+    // here used to be invisible to all of them and collect a duplicate.
+    email: data.email ? data.email.trim().toLowerCase() : null,
     phone: data.phone ? data.phone.trim() : null,
     companyName: data.companyName ? data.companyName.trim() : null,
     source: SOURCES.includes(data.source) ? data.source : 'Other',
@@ -144,6 +148,9 @@ export async function updateContact(companyId, contactId, patch = {}) {
   allowed.forEach((k) => {
     if (patch[k] !== undefined) clean[k] = patch[k];
   });
+  // Same normalization as createContact — an edit must not reintroduce the
+  // mixed-case address that breaks email matching.
+  if (typeof clean.email === 'string') clean.email = clean.email.trim().toLowerCase();
   clean.updatedAt = serverTimestamp();
   clean.lastActivityAt = serverTimestamp();
   await updateDoc(contactRef(companyId, contactId), clean);
