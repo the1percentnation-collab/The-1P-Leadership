@@ -16,9 +16,11 @@ import {
   listContacts, listCompanyAdmins, listNotes, addNote, listMessages, sendSms,
   listCalls, createTask, createAppointment, getContact,
   dispositionMeta, callBlockReason, getGoogleCalendarStatus,
+  ensureDefaultSmartLists, applySmartList, listAppointments,
   escapeHtml, fmtDate, fmtDateTime
 } from './crm.js';
 import { dialer, onDialerEvent } from './dialer-core.js';
+import { mountTemplatePicker } from './merge-fields.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -32,6 +34,7 @@ const state = {
   running: false,
   autoAdvanceId: null,
   filters: { stages: [], ownerUid: null, tag: null, untouchedOnly: false },
+  smartLists: [], smartListId: null, recentCalls: [], appointments: [],
   notes: [],
   calls: [],
   messages: [],
@@ -51,6 +54,13 @@ function eligible(c) {
 
 function buildQueue() {
   const f = state.filters;
+  if (state.smartListId) {
+    const list = state.smartLists.find((l) => l.id === state.smartListId);
+    const rows = applySmartList(list, state.contacts, { calls: state.recentCalls, appointments: state.appointments }).filter(eligible);
+    state.queue = rows.map((c) => c.id);
+    state.index = 0;
+    return;
+  }
   let rows = state.contacts.filter(eligible);
   if (f.stages.length) rows = rows.filter((c) => f.stages.includes(c.stage));
   if (f.ownerUid) rows = rows.filter((c) => c.ownerUid === f.ownerUid);
@@ -93,7 +103,11 @@ function shellHtml() {
         Build a queue, then work it top to bottom. Space ends a call, number keys log the outcome.
       </div>
       <div class="crm-field" style="margin-bottom:12px;">
-        <label class="crm-field-label">Stages</label>
+        <label class="crm-field-label">Smart lists</label>
+        <div class="crm-chip-row" id="dial-list-chips"></div>
+      </div>
+      <div class="crm-field" style="margin-bottom:12px;">
+        <label class="crm-field-label">Or filter by stage</label>
         <div class="crm-chip-row" id="dial-stage-chips"></div>
       </div>
       <div class="crm-form-row-grid">
@@ -142,6 +156,16 @@ function renderStats() {
 }
 
 function renderSetup() {
+  $('dial-list-chips').innerHTML = state.smartLists.map((l) => {
+    const n = applySmartList(l, state.contacts, { calls: state.recentCalls, appointments: state.appointments }).filter(eligible).length;
+    return `<button class="crm-chip ${state.smartListId === l.id ? 'active' : ''}" data-list-chip="${escapeHtml(l.id)}">${escapeHtml(l.name)} <span class="crm-mini-sub">${n}</span></button>`;
+  }).join('') || '<span class="crm-mini-sub">No smart lists yet.</span>';
+  $('dial-list-chips').querySelectorAll('[data-list-chip]').forEach((b) => b.addEventListener('click', () => {
+    const id = b.getAttribute('data-list-chip');
+    state.smartListId = state.smartListId === id ? null : id;
+    renderSetup();
+  }));
+
   $('dial-stage-chips').innerHTML = STAGES.map((s) => `
     <button class="crm-chip ${state.filters.stages.includes(s.id) ? 'active' : ''}" data-stage-chip="${s.id}">
       ${escapeHtml(s.label)}
@@ -149,6 +173,7 @@ function renderSetup() {
   $('dial-stage-chips').querySelectorAll('[data-stage-chip]').forEach((b) => {
     b.addEventListener('click', () => {
       const id = b.getAttribute('data-stage-chip');
+      state.smartListId = null;
       const i = state.filters.stages.indexOf(id);
       if (i === -1) state.filters.stages.push(id); else state.filters.stages.splice(i, 1);
       renderSetup();
@@ -319,12 +344,18 @@ function renderSide() {
     ${smsBlocked
       ? `<div class="crm-subpanel-empty">${escapeHtml(smsBlocked)}</div>`
       : `<form class="sms-composer" id="dial-sms-form">
+           <span id="dial-sms-tpl"></span>
            <input class="c-input" id="dial-sms-input" placeholder="Send a text…" autocomplete="off" />
            <button class="btn btn-primary" type="submit">Send</button>
          </form>`}
     <div id="dial-sms-err" class="auth-error" style="display:none;margin-top:8px;"></div>`;
 
   const form = $('dial-sms-form');
+  if (form) mountTemplatePicker({
+    host: $('dial-sms-tpl'), input: $('dial-sms-input'), channel: 'sms',
+    companyId: state.companyId,
+    context: () => ({ contact: c, owner: state.admins.find((a) => a.uid === state.uid) || null })
+  });
   if (form) form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const input = $('dial-sms-input');
@@ -586,8 +617,9 @@ async function main() {
   state.companyId = companyId;
   content.innerHTML = `<div class="crm-section-sub">Loading leads…</div>`;
 
-  [state.contacts, state.admins] = await Promise.all([
-    listContacts(companyId), listCompanyAdmins(companyId)
+  [state.contacts, state.admins, state.smartLists, state.recentCalls, state.appointments] = await Promise.all([
+    listContacts(companyId), listCompanyAdmins(companyId), ensureDefaultSmartLists(companyId),
+    listCalls(companyId, { max: 500 }), listAppointments(companyId)
   ]);
 
   // Hotkeys on: this is the one page where they are unambiguous.
@@ -606,6 +638,8 @@ async function main() {
   if (stage && STAGE_IDS.includes(stage)) state.filters.stages = [stage];
   const tag = params.get('tag');
   if (tag) state.filters.tag = tag;
+  const listId = params.get('list');
+  if (listId && state.smartLists.some((l) => l.id === listId)) state.smartListId = listId;
 
   renderSetup();
   renderStats();

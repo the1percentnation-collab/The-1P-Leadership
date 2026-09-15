@@ -8,6 +8,8 @@ import { getRoleInfo } from './roles.js';
 import { renderCrmShell } from './crm-shell.js';
 import { collection, getDocs, query, where, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.js';
+import { mountTemplatePicker } from './merge-fields.js';
+import { dialer } from './dialer-core.js';
 import {
   listConversations, listMessages, sendSms, markConversationRead,
   listContacts, escapeHtml, fmtDateTime
@@ -61,6 +63,8 @@ async function openThread(convId) {
     <div class="sms-thread-head">
       <a href="/contact.html?id=${encodeURIComponent(convId)}" class="sms-thread-name">${escapeHtml(contactName(convId, conv && conv.contactPhone))}</a>
       <span class="crm-mini-sub">${escapeHtml((conv && conv.contactPhone) || '')}</span>
+      <span style="flex:1;"></span>
+      <button class="crm-quick-btn" id="sms-call" ${state.contacts[convId] ? '' : 'disabled'} title="Call this contact">&#9742; Call</button>
     </div>
     <div class="sms-messages" id="sms-messages">
       ${state.messages.length ? state.messages.map((m) => `
@@ -70,6 +74,7 @@ async function openThread(convId) {
         </div>`).join('') : '<div class="crm-subpanel-empty">No messages yet.</div>'}
     </div>
     <form class="sms-composer" id="sms-composer">
+      <span id="sms-tpl"></span>
       <input class="c-input" id="sms-input" placeholder="Type a text…" autocomplete="off" />
       <button class="btn btn-primary" type="submit" id="sms-send">Send</button>
     </form>
@@ -77,6 +82,19 @@ async function openThread(convId) {
 
   const msgs = $('sms-messages');
   if (msgs) msgs.scrollTop = msgs.scrollHeight;
+
+  mountTemplatePicker({
+    host: $('sms-tpl'), input: $('sms-input'), channel: 'sms',
+    companyId: state.companyId,
+    context: () => ({ contact: state.contacts[convId] || { phone: conv && conv.contactPhone } })
+  });
+  const callBtn = $('sms-call');
+  if (callBtn) callBtn.addEventListener('click', async () => {
+    const c = state.contacts[convId];
+    if (!c) return;
+    try { await dialer.callContact(c); }
+    catch (err) { if (err && err.message !== 'Cancelled.') alert(err.message || err); }
+  });
 
   $('sms-composer').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -133,6 +151,7 @@ async function main() {
 
   const contacts = await listContacts(companyId);
   contacts.forEach((c) => { state.contacts[c.id] = c; });
+  try { await dialer.configure({ companyId, uid: u.uid }); } catch (e) {}
   renderShellLayout();
   await refresh();
 

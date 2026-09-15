@@ -18,10 +18,11 @@ import {
   listAppointments, createAppointment, setAppointmentStatus,
   listMessages, sendSms,
   listCalls, setDoNotCall, dispositionMeta, callBlockReason,
-  getGoogleCalendarStatus,
+  getGoogleCalendarStatus, listSequences, listEnrollments, enrollContact, stopEnrollment,
   escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate
 } from './crm.js';
 import { dialer, onDialerEvent } from './dialer-core.js';
+import { mountTemplatePicker } from './merge-fields.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -169,6 +170,8 @@ function iconFor(type) {
     case 'call_inbound': return '📞';
     case 'voicemail_received': return '📨';
     case 'calendar_synced': return '🗓';
+    case 'sequence_enrolled': return '⇶';
+    case 'sequence_stopped': return '⏹';
     case 'dnc_added': return '⛔';
     case 'dnc_removed': return '✅';
     case 'appointment_created': return '📅';
@@ -327,6 +330,14 @@ async function refreshAppts() {
   renderAppts();
 }
 
+function mergeContext() {
+  return {
+    contact: state.contact,
+    owner: state.admins.find((a) => a.uid === state.uid) || null,
+    appointment: (state.appts || []).find((a) => a.status === 'scheduled') || null
+  };
+}
+
 function renderCalls() {
   const host = $('calls-list');
   if (!host) return;
@@ -403,6 +414,7 @@ function renderSms() {
           </div>`).join('') : '<div class="crm-subpanel-empty" style="margin:auto;">No texts yet. Send the first one below.</div>'}
       </div>
       <form class="sms-composer" id="ct-sms-form">
+        <span id="ct-sms-tpl"></span>
         <input class="c-input" id="ct-sms-input" placeholder="Type a text…" autocomplete="off" />
         <button class="btn btn-primary" type="submit" id="ct-sms-send">Send</button>
       </form>
@@ -410,6 +422,10 @@ function renderSms() {
     <div id="ct-sms-err" class="auth-error" style="display:none;margin-top:8px;"></div>`;
   const msgs = $('ct-sms-messages');
   if (msgs) msgs.scrollTop = msgs.scrollHeight;
+  mountTemplatePicker({
+    host: $('ct-sms-tpl'), input: $('ct-sms-input'), channel: 'sms',
+    companyId: state.companyId, context: mergeContext
+  });
   $('ct-sms-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const input = $('ct-sms-input');
@@ -667,6 +683,8 @@ async function main() {
   });
 
   $('btn-schedule-contact').addEventListener('click', openContactApptModal);
+  const seqBtn = $('btn-sequence-contact');
+  if (seqBtn) seqBtn.addEventListener('click', openSequenceModal);
 
   // Do-not-call. Saved immediately rather than waiting for Save changes:
   // a half-saved consent flag is worse than none.
@@ -683,6 +701,64 @@ async function main() {
   });
 }
 
+async function openSequenceModal() {
+  const root = $('modal-root');
+  const c = state.contact || {};
+  root.innerHTML = `<div class="crm-modal-backdrop" id="modal-bd"><div class="crm-modal auth-card"><div class="crm-subpanel-empty">Loading…</div></div></div>`;
+  const [seqs, enrollments] = await Promise.all([
+    listSequences(state.companyId),
+    listEnrollments(state.companyId, { contactId: state.contactId })
+  ]);
+  const active = enrollments.filter((e) => e.status === 'active');
+  const activeIds = new Set(active.map((e) => e.sequenceId));
+  root.innerHTML = `
+    <div class="crm-modal-backdrop" id="modal-bd">
+      <div class="crm-modal auth-card">
+        <h1>Sequences for <span>${escapeHtml((c.name || 'contact').split(' ')[0])}</span></h1>
+        ${active.length ? `
+          <label class="crm-field-label" style="display:block;margin-bottom:6px;">Running now</label>
+          ${active.map((e) => `
+            <div class="crm-mini-row">
+              <div class="crm-mini-main">
+                <div class="crm-mini-title">${escapeHtml(e.sequenceName || e.sequenceId)}</div>
+                <div class="crm-mini-sub">Step ${(Number(e.currentStep) || 0) + 1} · next ${fmtDateTime(e.nextRunAt)}</div>
+              </div>
+              <button class="crm-chip" data-seq-stop="${escapeHtml(e.id)}" data-seq-name="${escapeHtml(e.sequenceName || '')}">Stop</button>
+            </div>`).join('')}` : ''}
+        <label class="crm-field-label" style="display:block;margin:14px 0 6px;">Enroll in</label>
+        ${seqs.filter((s) => s.active !== false && !activeIds.has(s.id)).map((s) => `
+          <div class="crm-mini-row">
+            <div class="crm-mini-main">
+              <div class="crm-mini-title">${escapeHtml(s.name)}</div>
+              <div class="crm-mini-sub">${(s.steps || []).length} step${(s.steps || []).length === 1 ? '' : 's'}</div>
+            </div>
+            <button class="crm-chip" data-seq-enroll="${escapeHtml(s.id)}">Enroll</button>
+          </div>`).join('') || '<div class="crm-subpanel-empty">No other active sequences. <a href="/sequences.html" style="color:var(--red);">Build one</a>.</div>'}
+        <div id="seqm-err" class="auth-error" style="display:none;margin-top:8px;"></div>
+        <div class="crm-modal-actions"><button type="button" class="btn btn-ghost" id="seqm-close">Close</button></div>
+      </div>
+    </div>`;
+  const close = () => { root.innerHTML = ''; };
+  $('seqm-close').addEventListener('click', close);
+  $('modal-bd').addEventListener('click', (e) => { if (e.target.id === 'modal-bd') close(); });
+  root.querySelectorAll('[data-seq-enroll]').forEach((b) => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try {
+      await enrollContact(state.companyId, b.getAttribute('data-seq-enroll'), state.contact);
+      await refreshActivities();
+      openSequenceModal();
+    } catch (e) { $('seqm-err').textContent = e.message || String(e); $('seqm-err').style.display = ''; b.disabled = false; }
+  }));
+  root.querySelectorAll('[data-seq-stop]').forEach((b) => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try {
+      await stopEnrollment(state.companyId, b.getAttribute('data-seq-stop'), { reason: 'manual', contactId: state.contactId, sequenceName: b.getAttribute('data-seq-name') });
+      await refreshActivities();
+      openSequenceModal();
+    } catch (e) { $('seqm-err').textContent = e.message || String(e); $('seqm-err').style.display = ''; b.disabled = false; }
+  }));
+}
+
 function openSendEmailModal() {
   const root = $('modal-root');
   const c = state.contact || {};
@@ -697,7 +773,7 @@ function openSendEmailModal() {
         <div class="camp-from-hint" style="margin-bottom:12px;">From: the1percentnation@gmail.com · To: ${escapeHtml(c.email)}</div>
         <form id="send-email-form" class="crm-form">
           <div class="crm-form-row">
-            <label>Subject</label>
+            <label style="display:flex;justify-content:space-between;align-items:center;">Subject <span id="se-tpl"></span></label>
             <input class="c-input" id="se-subject" required placeholder="Subject line" />
           </div>
           <div class="crm-form-row">
@@ -717,6 +793,11 @@ function openSendEmailModal() {
   const close = () => { root.innerHTML = ''; };
   $('se-cancel').addEventListener('click', close);
   $('modal-bd').addEventListener('click', (e) => { if (e.target.id === 'modal-bd') close(); });
+  mountTemplatePicker({
+    host: $('se-tpl'), input: $('se-body'), channel: 'email', replace: true,
+    companyId: state.companyId, context: mergeContext,
+    onInsert: (tpl, rendered) => { if (rendered.subject && !$('se-subject').value.trim()) $('se-subject').value = rendered.subject; }
+  });
 
   $('send-email-form').addEventListener('submit', async (e) => {
     e.preventDefault();

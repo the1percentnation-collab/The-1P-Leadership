@@ -1061,3 +1061,372 @@ export async function ensureGoogleWatch(companyId) {
     return res.data;
   } catch (e) { return null; }
 }
+
+// ════════════════════════════════════════════════════════════════
+// MESSAGE TEMPLATES — saved SMS/email snippets with {{merge}} fields.
+// Rendering lives in merge-fields.js; this is just storage.
+// ════════════════════════════════════════════════════════════════
+function templatesCol(companyId) { return collection(db, 'companies', companyId, 'messageTemplates'); }
+
+export async function listTemplates(companyId, { channel = null } = {}) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const snap = await getDocs(templatesCol(companyId));
+    let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (channel) rows = rows.filter((r) => r.channel === channel);
+    // Most-used first, then by name — the picker is a speed tool.
+    rows.sort((a, b) => (b.useCount || 0) - (a.useCount || 0) || String(a.name || '').localeCompare(String(b.name || '')));
+    return rows;
+  } catch (e) { console.warn('[crm] listTemplates failed', e); return []; }
+}
+
+export async function createTemplate(companyId, data = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  const payload = {
+    name: (data.name || '').trim() || 'Untitled',
+    channel: data.channel === 'email' ? 'email' : 'sms',
+    subject: data.channel === 'email' ? ((data.subject || '').trim() || null) : null,
+    body: (data.body || '').trim(),
+    category: (data.category || '').trim() || null,
+    useCount: 0,
+    createdBy: user.uid,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  if (!payload.body) throw new Error('Template body is empty');
+  const ref = await addDoc(templatesCol(companyId), payload);
+  return { id: ref.id, ...payload };
+}
+
+export async function updateTemplate(companyId, templateId, patch = {}) {
+  const allowed = ['name', 'subject', 'body', 'category', 'channel'];
+  const clean = {};
+  allowed.forEach((k) => { if (patch[k] !== undefined) clean[k] = patch[k]; });
+  clean.updatedAt = serverTimestamp();
+  await updateDoc(doc(db, 'companies', companyId, 'messageTemplates', templateId), clean);
+}
+
+export async function deleteTemplate(companyId, templateId) {
+  await deleteDoc(doc(db, 'companies', companyId, 'messageTemplates', templateId));
+}
+
+/** Best-effort usage counter so the picker floats the real favourites. */
+export async function bumpTemplateUse(companyId, templateId) {
+  try {
+    const ref = doc(db, 'companies', companyId, 'messageTemplates', templateId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    await updateDoc(ref, { useCount: (snap.data().useCount || 0) + 1, lastUsedAt: serverTimestamp() });
+  } catch (e) { /* not worth surfacing */ }
+}
+
+/** Company display name, for {{companyName}}. Cached per page load. */
+let _companyNameCache = {};
+export async function getCompanyName(companyId) {
+  if (!firebaseReady || !companyId) return '';
+  if (_companyNameCache[companyId] !== undefined) return _companyNameCache[companyId];
+  try {
+    const snap = await getDoc(doc(db, 'companies', companyId));
+    _companyNameCache[companyId] = snap.exists() ? (snap.data().name || '') : '';
+  } catch (e) { _companyNameCache[companyId] = ''; }
+  return _companyNameCache[companyId];
+}
+
+// ════════════════════════════════════════════════════════════════
+// VOICEMAIL DROPS — prerecorded greetings for the dialer's one-click drop.
+// The audio is uploaded to Storage by the browser; the doc (and its play
+// token) is created by the registerVoicemailDrop callable so the token is
+// never chosen client-side.
+// ════════════════════════════════════════════════════════════════
+function voicemailDropsCol(companyId) { return collection(db, 'companies', companyId, 'voicemailDrops'); }
+
+export async function listVoicemailDrops(companyId) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const snap = await getDocs(voicemailDropsCol(companyId));
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    rows.sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0)
+      || ((b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0) - (a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0)));
+    return rows;
+  } catch (e) { console.warn('[crm] listVoicemailDrops failed', e); return []; }
+}
+
+export async function registerVoicemailDrop(companyId, { name, storagePath, contentType, durationSec, isDefault } = {}) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'registerVoicemailDrop');
+  const res = await call({ companyId, name, storagePath, contentType, durationSec, isDefault: !!isDefault });
+  return res.data;
+}
+
+export async function setDefaultVoicemailDrop(companyId, dropId) {
+  const rows = await listVoicemailDrops(companyId);
+  await Promise.all(rows.map((r) => updateDoc(
+    doc(db, 'companies', companyId, 'voicemailDrops', r.id),
+    { isDefault: r.id === dropId, updatedAt: serverTimestamp() }
+  )));
+}
+
+export async function deleteVoicemailDrop(companyId, dropId) {
+  await deleteDoc(doc(db, 'companies', companyId, 'voicemailDrops', dropId));
+}
+
+// ════════════════════════════════════════════════════════════════
+// SMART LISTS — saved contact filters. Evaluated client-side against the
+// already-loaded contact array: the volumes here do not justify server
+// queries, and it sidesteps a pile of composite indexes.
+// ════════════════════════════════════════════════════════════════
+function smartListsCol(companyId) { return collection(db, 'companies', companyId, 'smartLists'); }
+
+export const DEFAULT_SMART_LISTS = [
+  { name: 'Never contacted', filters: { stages: ['new'], hasPhone: true }, sort: 'coldest' },
+  { name: 'No answer 3×',    filters: { noAnswerAtLeast: 3, hasPhone: true }, sort: 'coldest' },
+  { name: 'Booked this week', filters: { bookedWithinDays: 7 }, sort: 'newest' }
+];
+
+export async function listSmartLists(companyId) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const snap = await getDocs(smartListsCol(companyId));
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    return rows;
+  } catch (e) { console.warn('[crm] listSmartLists failed', e); return []; }
+}
+
+export async function createSmartList(companyId, data = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  const payload = {
+    name: (data.name || '').trim() || 'Untitled list',
+    filters: data.filters && typeof data.filters === 'object' ? data.filters : {},
+    sort: data.sort === 'newest' ? 'newest' : 'coldest',
+    createdBy: user.uid,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  const ref = await addDoc(smartListsCol(companyId), payload);
+  return { id: ref.id, ...payload };
+}
+
+export async function updateSmartList(companyId, listId, patch = {}) {
+  const clean = {};
+  ['name', 'filters', 'sort'].forEach((k) => { if (patch[k] !== undefined) clean[k] = patch[k]; });
+  clean.updatedAt = serverTimestamp();
+  await updateDoc(doc(db, 'companies', companyId, 'smartLists', listId), clean);
+}
+
+export async function deleteSmartList(companyId, listId) {
+  await deleteDoc(doc(db, 'companies', companyId, 'smartLists', listId));
+}
+
+/** Seed the three defaults for a company that has none. Idempotent. */
+export async function ensureDefaultSmartLists(companyId) {
+  const existing = await listSmartLists(companyId);
+  if (existing.length) return existing;
+  for (const l of DEFAULT_SMART_LISTS) {
+    try { await createSmartList(companyId, l); } catch (e) {}
+  }
+  return listSmartLists(companyId);
+}
+
+/**
+ * Apply a smart list's filters. `calls` (all recent calls for the company)
+ * and `appointments` are optional; filters that need them are skipped when
+ * they are absent rather than silently matching everything.
+ */
+export function applySmartList(list, contacts, { calls = null, appointments = null } = {}) {
+  const f = (list && list.filters) || {};
+  let rows = contacts.slice();
+  if (Array.isArray(f.stages) && f.stages.length) rows = rows.filter((c) => f.stages.includes(c.stage));
+  if (Array.isArray(f.tags) && f.tags.length) rows = rows.filter((c) => f.tags.some((t) => (c.tags || []).includes(t)));
+  if (f.ownerUid) rows = rows.filter((c) => c.ownerUid === f.ownerUid);
+  if (f.source) rows = rows.filter((c) => c.source === f.source);
+  if (f.hasPhone) rows = rows.filter((c) => !!c.phone);
+  if (f.hasEmail) rows = rows.filter((c) => !!c.email);
+  if (f.excludeDoNotCall !== false) rows = rows.filter((c) => c.doNotCall !== true);
+  if (f.lastActivityOlderThanDays) {
+    const cutoff = Date.now() - Number(f.lastActivityOlderThanDays) * 86400000;
+    rows = rows.filter((c) => {
+      const t = c.lastActivityAt && c.lastActivityAt.toMillis ? c.lastActivityAt.toMillis() : 0;
+      return t < cutoff;
+    });
+  }
+  if (f.noAnswerAtLeast && Array.isArray(calls)) {
+    const counts = {};
+    calls.forEach((cl) => {
+      if (cl.disposition === 'no_answer' || cl.disposition === 'voicemail') counts[cl.contactId] = (counts[cl.contactId] || 0) + 1;
+    });
+    rows = rows.filter((c) => (counts[c.id] || 0) >= Number(f.noAnswerAtLeast));
+  }
+  if (f.bookedWithinDays && Array.isArray(appointments)) {
+    const cutoff = Date.now() - Number(f.bookedWithinDays) * 86400000;
+    const booked = new Set(appointments
+      .filter((a) => a.contactId && ((a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0) >= cutoff))
+      .map((a) => a.contactId));
+    rows = rows.filter((c) => booked.has(c.id));
+  }
+  rows.sort((a, b) => {
+    const ta = a.lastActivityAt && a.lastActivityAt.toMillis ? a.lastActivityAt.toMillis() : 0;
+    const tb = b.lastActivityAt && b.lastActivityAt.toMillis ? b.lastActivityAt.toMillis() : 0;
+    return list && list.sort === 'newest' ? tb - ta : ta - tb;
+  });
+  return rows;
+}
+
+// ════════════════════════════════════════════════════════════════
+// SEQUENCES — multi-step follow-up cadences, and per-contact enrollments.
+// Steps are executed by runAutomationTick (Admin SDK); the client creates
+// sequences, enrolls contacts, and stops enrollments, but never advances
+// currentStep/nextRunAt itself — rules refuse it.
+// ════════════════════════════════════════════════════════════════
+function sequencesCol(companyId) { return collection(db, 'companies', companyId, 'sequences'); }
+function enrollmentsCol(companyId) { return collection(db, 'companies', companyId, 'enrollments'); }
+
+export const SEQUENCE_TRIGGERS = [
+  { id: 'manual',       label: 'Manual only' },
+  { id: 'stage_change', label: 'Contact enters a stage' },
+  { id: 'disposition',  label: 'Call logged with an outcome' },
+  { id: 'tag_added',    label: 'Tag added' }
+];
+
+export async function listSequences(companyId) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const snap = await getDocs(sequencesCol(companyId));
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    return rows;
+  } catch (e) { console.warn('[crm] listSequences failed', e); return []; }
+}
+
+export async function getSequence(companyId, sequenceId) {
+  const snap = await getDoc(doc(db, 'companies', companyId, 'sequences', sequenceId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+function cleanSteps(steps) {
+  return (Array.isArray(steps) ? steps : []).map((s, i) => ({
+    order: i,
+    channel: ['sms', 'email', 'task'].includes(s.channel) ? s.channel : 'sms',
+    delayHours: Math.max(0, Number(s.delayHours) || 0),
+    templateId: s.templateId || null,
+    subject: (s.subject || '').trim() || null,
+    body: (s.body || '').trim() || null
+  }));
+}
+
+export async function createSequence(companyId, data = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  const payload = {
+    name: (data.name || '').trim() || 'Untitled sequence',
+    active: data.active !== false,
+    trigger: {
+      type: SEQUENCE_TRIGGERS.some((t) => t.id === (data.trigger && data.trigger.type)) ? data.trigger.type : 'manual',
+      value: (data.trigger && data.trigger.value) || null
+    },
+    steps: cleanSteps(data.steps),
+    stopOnReply: data.stopOnReply !== false,
+    enrolledCount: 0,
+    createdBy: user.uid,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  const ref = await addDoc(sequencesCol(companyId), payload);
+  return { id: ref.id, ...payload };
+}
+
+export async function updateSequence(companyId, sequenceId, patch = {}) {
+  const clean = {};
+  if (patch.name !== undefined) clean.name = (patch.name || '').trim() || 'Untitled sequence';
+  if (patch.active !== undefined) clean.active = !!patch.active;
+  if (patch.trigger !== undefined) clean.trigger = { type: patch.trigger.type || 'manual', value: patch.trigger.value || null };
+  if (patch.steps !== undefined) clean.steps = cleanSteps(patch.steps);
+  if (patch.stopOnReply !== undefined) clean.stopOnReply = !!patch.stopOnReply;
+  clean.updatedAt = serverTimestamp();
+  await updateDoc(doc(db, 'companies', companyId, 'sequences', sequenceId), clean);
+}
+
+export async function deleteSequence(companyId, sequenceId) {
+  await deleteDoc(doc(db, 'companies', companyId, 'sequences', sequenceId));
+}
+
+export async function listEnrollments(companyId, { sequenceId = null, contactId = null, status = null } = {}) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const snap = await getDocs(enrollmentsCol(companyId));
+    let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (sequenceId) rows = rows.filter((r) => r.sequenceId === sequenceId);
+    if (contactId) rows = rows.filter((r) => r.contactId === contactId);
+    if (status) rows = rows.filter((r) => r.status === status);
+    return rows;
+  } catch (e) { console.warn('[crm] listEnrollments failed', e); return []; }
+}
+
+/**
+ * Enroll a contact. The first step's delay is applied from now, so a
+ * sequence whose first step is "0 hours" fires on the next tick. Refuses
+ * a duplicate active enrollment in the same sequence.
+ */
+export async function enrollContact(companyId, sequenceId, contact, { source = 'manual' } = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  if (!contact || !contact.id) throw new Error('contact required');
+  const seq = await getSequence(companyId, sequenceId);
+  if (!seq) throw new Error('Sequence not found');
+  if (!seq.steps || !seq.steps.length) throw new Error('This sequence has no steps yet');
+  const dupes = await listEnrollments(companyId, { sequenceId, contactId: contact.id, status: 'active' });
+  if (dupes.length) throw new Error(`${contact.name || 'This contact'} is already in this sequence`);
+  const firstDelayMs = (Number(seq.steps[0].delayHours) || 0) * 3600 * 1000;
+  const payload = {
+    sequenceId,
+    sequenceName: seq.name || null,
+    contactId: contact.id,
+    contactName: contact.name || null,
+    status: 'active',
+    currentStep: 0,
+    nextRunAt: new Date(Date.now() + firstDelayMs),
+    source,
+    startedAt: serverTimestamp(),
+    stoppedAt: null,
+    stoppedReason: null,
+    enrolledBy: user.uid,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  const ref = await addDoc(enrollmentsCol(companyId), payload);
+  try {
+    await logActivity(companyId, contact.id, {
+      type: 'sequence_enrolled',
+      description: `Enrolled in sequence: ${seq.name}`,
+      meta: { sequenceId, enrollmentId: ref.id }
+    });
+  } catch (e) {}
+  return { id: ref.id, ...payload };
+}
+
+export async function stopEnrollment(companyId, enrollmentId, { reason = 'manual', contactId = null, sequenceName = null } = {}) {
+  await updateDoc(doc(db, 'companies', companyId, 'enrollments', enrollmentId), {
+    status: 'stopped', stoppedAt: serverTimestamp(), stoppedReason: reason, updatedAt: serverTimestamp()
+  });
+  if (contactId) {
+    try {
+      await logActivity(companyId, contactId, {
+        type: 'sequence_stopped',
+        description: `Removed from sequence${sequenceName ? ': ' + sequenceName : ''}`,
+        meta: { enrollmentId, reason }
+      });
+    } catch (e) {}
+  }
+}
+
+/** Ask the server to process due steps now (best-effort; the tick also runs on a schedule). */
+export async function runAutomationNow(companyId) {
+  if (!firebaseReady) return null;
+  try {
+    const call = httpsCallable(functions, 'runAutomationNowForCompany');
+    const res = await call({ companyId });
+    return res.data;
+  } catch (e) { return null; }
+}

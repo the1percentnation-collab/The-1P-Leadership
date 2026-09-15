@@ -164,3 +164,84 @@ users/{uid}/capstone/...      { reflection, recordingUrl, submittedAt, reviewSta
 companies/{companyId}         { name, adminUids[], seatCount, seatsUsed, tier, createdAt }
 companies/{companyId}/invites/{code}  { email, code, status, companyId, createdAt, acceptedByUid }
 ```
+
+## Dialer, calling, and Google Calendar
+
+The CRM's calling and calendar features ship dormant: every button exists,
+and each one reports "not set up yet" until its credentials are present.
+Nothing below is needed for SMS, which keeps working as before.
+
+### Twilio Voice (softphone + cell bridge)
+
+Runtime environment variables (functions/.env or the Cloud Run env), in
+addition to the existing `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and
+`TWILIO_FROM_NUMBER`:
+
+| Variable | Where it comes from |
+|---|---|
+| `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET` | Twilio Console → Account → API keys & tokens → Create API key (Standard). Needed to mint the browser softphone's access token; the account auth token cannot do this. |
+| `TWILIO_TWIML_APP_SID` | Twilio Console → Voice → TwiML Apps → Create. Set **Voice Request URL** to `https://us-central1-the-1p-leadership.cloudfunctions.net/voiceOutboundTwiml` (POST). |
+| `TWILIO_CALLER_ID` | Optional. A verified or purchased number used as outbound caller ID when it differs from `TWILIO_FROM_NUMBER`. |
+
+Then, on the Twilio phone number itself (Phone Numbers → Manage → the
+number → Voice & Fax): set **A call comes in** to the webhook
+`https://us-central1-the-1p-leadership.cloudfunctions.net/voiceInboundTwiml`
+(POST). Inbound calls ring the assigned rep's softphone (or every admin's),
+create the caller as a contact if unknown, and fall to voicemail.
+
+Each rep chooses their mode in CRM Settings → Calling: the browser softphone
+(needs microphone permission; `firebase.json` now sends
+`Permissions-Policy: microphone=(self)` for this) or "ring my cell, then the
+lead", which needs their mobile number saved on the same card.
+
+Recording is off by default. "On, with a spoken notice" prepends a consent
+announcement; silent recording is illegal in two-party-consent states, and
+the settings page says so.
+
+The Voice SDK is vendored at `public/vendor/twilio-voice-<version>.min.js`
+(see the README there) rather than loaded from a CDN.
+
+### Google Calendar (two-way sync)
+
+| Variable | Where it comes from |
+|---|---|
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID → Web application. Enable the **Google Calendar API** on the project first. |
+| `GOOGLE_OAUTH_REDIRECT_URI` | Optional override. Defaults to `https://us-central1-the-1p-leadership.cloudfunctions.net/googleOAuthCallback`, which must be listed as an **Authorized redirect URI** on that OAuth client. |
+
+Connect from CRM Settings → Google Calendar. Appointments booked anywhere in
+the CRM then create real calendar events with a Meet link, and can invite
+the contact by email; edits made in Google flow back through a push channel
+(`googleCalendarPush`). Refresh tokens are stored at
+`companies/{cid}/private/googleOAuth`, which the security rules close to
+every client including the owner.
+
+Push channels expire after 7 days. They are renewed from the calendar and
+settings pages, from every push, and from the automation tick below.
+
+### The automation tick (sequences, reminders, watch renewal)
+
+This project cannot deploy Cloud Scheduler jobs (the deploy service account
+lacks `roles/cloudscheduler.admin`; see `scripts/deploy-functions.sh`).
+Time-based work therefore runs from the `runAutomationTick` HTTP function,
+which `.github/workflows/crm-tick.yml` calls every 15 minutes.
+
+| Variable | Where it goes |
+|---|---|
+| `CRM_TICK_SECRET` | Any long random string. Set it on the functions runtime **and** as a GitHub Actions repository secret with the same name. The tick refuses requests without it. |
+
+The tick sends due sequence steps (SMS, email, or a task), renews Google
+watch channels, and sends the task/appointment reminder emails that the two
+stranded `onSchedule` functions were written for. "Run due steps now" on the
+Sequences page runs the same work for one company on demand.
+
+The proper fix remains the IAM grant: once `cloudscheduler.admin` is in
+place, export a scheduled function calling the same logic and delete the
+workflow.
+
+### Voicemail drop
+
+No credentials needed beyond Twilio Voice. Record a greeting in CRM
+Settings → Voicemail drop (the browser records and converts it to 8 kHz WAV,
+which Twilio plays natively). The audio lives in Cloud Storage under
+`companies/{cid}/voicemails/`, closed to all client reads; Twilio fetches it
+through `voicemailAudio` with a per-file token written server-side.

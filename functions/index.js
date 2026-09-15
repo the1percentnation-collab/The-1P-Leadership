@@ -5193,6 +5193,9 @@ exports.twilioInboundWebhook = onRequest(
           type: 'sms_received', description: 'SMS received: ' + String(text).slice(0, 120),
           actorUid: 'twilio', actorName: from, createdAt: FV.serverTimestamp(), meta: { direction: 'in' }
         });
+        // A reply is the lead engaging: no follow-up cadence should keep
+        // firing over the top of a live conversation.
+        try { await stopEnrollmentsForContact(db, cid, contactId, 'replied by SMS'); } catch (e) {}
 
         // ── TCPA opt-out / opt-in keyword handling ──────────────────────────
         // Carriers honor STOP at the network level, but we must also record it
@@ -5612,6 +5615,7 @@ exports.voiceInboundTwiml = onRequest({ cors: false, invoker: 'public' }, async 
       createdAt: FV.serverTimestamp(),
       meta: { callId: callRef.id, direction: 'in' }
     });
+    try { await stopEnrollmentsForContact(db, cid, contactDoc.id, 'called in'); } catch (e) {}
     await contactDoc.ref.set({ lastActivityAt: FV.serverTimestamp() }, { merge: true });
 
     const base = fnBaseUrl(req);
@@ -6504,6 +6508,513 @@ exports.onAppointmentWritten = onDocumentWritten(
     }
 
     try { await ensureGoogleWatchInternal(db, companyId, false); } catch (e) {}
+  }
+);
+
+
+// ════════════════════════════════════════════════════════════════
+// Voicemail drops — registration. The browser uploads the audio to Storage
+// (storage.rules: admins only, audio/*, 5 MB); this creates the doc with a
+// play token the browser never sees, which is what voicemailAudio checks.
+// ════════════════════════════════════════════════════════════════
+exports.registerVoicemailDrop = onCall(async (request) => {
+  const db = admin.firestore();
+  const { companyId, name, storagePath, contentType, durationSec, isDefault } = request.data || {};
+  if (!companyId || !storagePath) {
+    throw new HttpsError('invalid-argument', 'companyId and storagePath are required.');
+  }
+  const { uid } = await assertCompanyAdmin(db, companyId, request);
+
+  // The path must be this company's own voicemail folder: registering a
+  // path elsewhere in the bucket would let voicemailAudio serve it publicly.
+  const expectedPrefix = `companies/${companyId}/voicemails/`;
+  if (!String(storagePath).startsWith(expectedPrefix) || String(storagePath).includes('..')) {
+    throw new HttpsError('invalid-argument', 'storagePath must be inside this company\'s voicemails folder.');
+  }
+  const file = admin.storage().bucket().file(storagePath);
+  const [exists] = await file.exists();
+  if (!exists) throw new HttpsError('not-found', 'Upload the audio before registering it.');
+
+  const crypto = require('crypto');
+  const FV = admin.firestore.FieldValue;
+  const col = db.collection('companies').doc(companyId).collection('voicemailDrops');
+  const makeDefault = isDefault === true;
+  if (makeDefault) {
+    const others = await col.where('isDefault', '==', true).get();
+    await Promise.all(others.docs.map((d) => d.ref.set({ isDefault: false }, { merge: true })));
+  } else {
+    // First drop becomes the default automatically so "Drop VM" works at once.
+    const any = await col.limit(1).get();
+    if (any.empty) { /* handled below */ }
+  }
+  const countSnap = await col.limit(1).get();
+  const ref = await col.add({
+    name: (name || 'Voicemail').toString().slice(0, 80),
+    storagePath,
+    contentType: (contentType || 'audio/mpeg').toString().slice(0, 60),
+    durationSec: Number(durationSec) || null,
+    isDefault: makeDefault || countSnap.empty,
+    playToken: crypto.randomBytes(24).toString('base64url'),
+    createdBy: uid,
+    createdAt: FV.serverTimestamp(),
+    updatedAt: FV.serverTimestamp()
+  });
+  return { ok: true, id: ref.id };
+});
+
+// ════════════════════════════════════════════════════════════════
+// Automation tick — the cron this project cannot deploy.
+//
+// Cloud Scheduler is blocked by an IAM gap (see scripts/deploy-functions.sh),
+// so anything time-based runs from runAutomationTick, an HTTP endpoint that
+// a GitHub Actions schedule (.github/workflows/crm-tick.yml) POSTs every
+// 15 minutes with a shared secret. The same work can be kicked for one
+// company from the CRM through runAutomationNowForCompany.
+//
+// Each tick:
+//   1. sends due sequence steps (SMS via Twilio, email via SendGrid, or a
+//      task), advancing currentStep / nextRunAt, and completing enrollments
+//      that ran out of steps;
+//   2. renews Google Calendar watch channels inside their last 24 hours;
+//   3. sends task and appointment reminders — the job the two stranded
+//      onSchedule functions were written for.
+// ════════════════════════════════════════════════════════════════
+
+function renderMergeServer(text, ctx) {
+  const contact = ctx.contact || {};
+  const owner = ctx.owner || {};
+  const first = (s) => String(s || '').trim().split(/\s+/)[0] || '';
+  const fields = {
+    firstName: first(contact.name),
+    lastName: String(contact.name || '').trim().split(/\s+/).slice(1).join(' '),
+    fullName: contact.name || '',
+    company: contact.companyName || '',
+    phone: contact.phone || '',
+    email: contact.email || '',
+    ownerFirstName: first(owner.displayName || owner.name),
+    ownerName: owner.displayName || owner.name || owner.email || '',
+    companyName: ctx.companyName || '',
+    today: new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  };
+  return String(text || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (whole, token) =>
+    (fields[token] ? String(fields[token]) : whole));
+}
+
+/** Stop every active enrollment for a contact. Called on inbound SMS/call. */
+async function stopEnrollmentsForContact(db, companyId, contactId, reason) {
+  if (!companyId || !contactId) return 0;
+  const FV = admin.firestore.FieldValue;
+  let snap;
+  try {
+    snap = await db.collection('companies').doc(companyId).collection('enrollments')
+      .where('contactId', '==', contactId).where('status', '==', 'active').get();
+  } catch (e) {
+    // Index may not exist yet; fall back to a contact-only query.
+    const all = await db.collection('companies').doc(companyId).collection('enrollments')
+      .where('contactId', '==', contactId).get();
+    snap = { docs: all.docs.filter((d) => d.data().status === 'active') };
+  }
+  let n = 0;
+  for (const d of snap.docs) {
+    await d.ref.set({ status: 'stopped', stoppedAt: FV.serverTimestamp(), stoppedReason: reason, updatedAt: FV.serverTimestamp() }, { merge: true });
+    n++;
+  }
+  if (n) {
+    await db.collection('companies').doc(companyId).collection('contacts').doc(contactId)
+      .collection('activities').add({
+        type: 'sequence_stopped',
+        description: `Stopped ${n} sequence${n === 1 ? '' : 's'}: ${reason}`,
+        actorUid: 'system', actorName: 'Automation',
+        createdAt: FV.serverTimestamp(), meta: { reason, count: n }
+      }).catch(() => {});
+  }
+  return n;
+}
+
+/** Send one sequence step. Returns a short outcome string for the log. */
+async function executeSequenceStep(db, companyId, enrollment, step, seq) {
+  const FV = admin.firestore.FieldValue;
+  const cRef = db.collection('companies').doc(companyId).collection('contacts').doc(enrollment.contactId);
+  const cSnap = await cRef.get();
+  if (!cSnap.exists) return 'contact missing';
+  const contact = { id: cSnap.id, ...cSnap.data() };
+  if (contact.doNotCall === true && step.channel === 'task') { /* tasks are fine */ }
+
+  // Resolve the copy: a template wins over inline body.
+  let body = step.body || '';
+  let subject = step.subject || '';
+  if (step.templateId) {
+    const t = await db.collection('companies').doc(companyId).collection('messageTemplates').doc(step.templateId).get();
+    if (t.exists) { body = t.data().body || body; subject = t.data().subject || subject; }
+  }
+  let ownerDoc = null;
+  const ownerUid = contact.ownerUid || seq.createdBy || enrollment.enrolledBy;
+  if (ownerUid) {
+    const o = await db.collection('users').doc(ownerUid).get();
+    if (o.exists) ownerDoc = o.data();
+  }
+  const coSnap = await db.collection('companies').doc(companyId).get();
+  const ctx = { contact, owner: ownerDoc, companyName: coSnap.exists ? coSnap.data().name : '' };
+  body = renderMergeServer(body, ctx);
+  subject = renderMergeServer(subject, ctx);
+
+  if (step.channel === 'sms') {
+    if (contact.smsOptedOut === true) return 'skipped: opted out of SMS';
+    const to = normalizePhone(contact.phone);
+    if (!to) return 'skipped: no phone';
+    const client = getTwilio();
+    const from = (process.env.TWILIO_FROM_NUMBER || '').trim();
+    if (!client || !from) return 'skipped: SMS not configured';
+    if (!body) return 'skipped: empty body';
+    const msg = await client.messages.create({ to, from, body: body.slice(0, 1600) });
+    const convRef = db.collection('companies').doc(companyId).collection('conversations').doc(contact.id);
+    await convRef.set({
+      contactId: contact.id, contactPhone: to, channel: 'sms',
+      lastMessageAt: FV.serverTimestamp(), lastMessageText: body.slice(0, 200), lastDirection: 'out',
+      updatedAt: FV.serverTimestamp(), createdAt: FV.serverTimestamp()
+    }, { merge: true });
+    await convRef.collection('messages').doc(msg.sid).set({
+      direction: 'out', body, fromNumber: from, toNumber: to,
+      status: msg.status || 'sent', twilioSid: msg.sid, sentByUid: 'sequence',
+      sequenceId: enrollment.sequenceId, createdAt: FV.serverTimestamp()
+    });
+    await cRef.collection('activities').add({
+      type: 'manual_sms', description: `Sequence SMS (${seq.name}): ${body.slice(0, 120)}`,
+      actorUid: 'system', actorName: 'Automation', createdAt: FV.serverTimestamp(),
+      meta: { direction: 'out', sequenceId: enrollment.sequenceId, step: step.order }
+    });
+    return 'sms sent';
+  }
+
+  if (step.channel === 'email') {
+    if (!contact.email) return 'skipped: no email';
+    if (contact.emailUnsubscribed === true || contact.unsubscribed === true) return 'skipped: unsubscribed';
+    if (!body) return 'skipped: empty body';
+    const key = sendgridKey.value();
+    if (!key) return 'skipped: email not configured';
+    sgMail.setApiKey(key);
+    const fromName = (ownerDoc && (ownerDoc.displayName || ownerDoc.name)) || FROM_NAME_DEFAULT;
+    await sgMail.send({
+      to: contact.email,
+      from: { email: FROM_EMAIL, name: fromName },
+      replyTo: (ownerDoc && ownerDoc.email) || REPLY_TO,
+      subject: subject || `A note from ${fromName}`,
+      text: body,
+      html: textToHtml(body)
+    });
+    await cRef.collection('activities').add({
+      type: 'manual_email', description: `Sequence email (${seq.name}): ${subject || body.slice(0, 80)}`,
+      actorUid: 'system', actorName: 'Automation', createdAt: FV.serverTimestamp(),
+      meta: { sequenceId: enrollment.sequenceId, step: step.order }
+    });
+    return 'email sent';
+  }
+
+  if (step.channel === 'task') {
+    const assignee = contact.ownerUid || seq.createdBy || enrollment.enrolledBy || null;
+    await db.collection('companies').doc(companyId).collection('tasks').add({
+      title: (subject || body || `Follow up with ${contact.name || 'contact'}`).slice(0, 160),
+      description: body || null,
+      contactId: contact.id, contactName: contact.name || null,
+      assigneeUid: assignee,
+      status: 'open', priority: 'normal',
+      dueAt: admin.firestore.Timestamp.fromMillis(Date.now() + 24 * 3600 * 1000),
+      remindedAt: null,
+      sequenceId: enrollment.sequenceId,
+      createdBy: 'sequence',
+      createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp()
+    });
+    await cRef.collection('activities').add({
+      type: 'task_created', description: `Sequence task (${seq.name}): ${(subject || body || 'Follow up').slice(0, 120)}`,
+      actorUid: 'system', actorName: 'Automation', createdAt: FV.serverTimestamp(),
+      meta: { sequenceId: enrollment.sequenceId, step: step.order }
+    });
+    return 'task created';
+  }
+  return 'skipped: unknown channel';
+}
+
+async function processDueEnrollments(db, { companyId = null, limitN = 200 } = {}) {
+  const FV = admin.firestore.FieldValue;
+  const now = admin.firestore.Timestamp.now();
+  let docs = [];
+  try {
+    let q = companyId
+      ? db.collection('companies').doc(companyId).collection('enrollments')
+      : db.collectionGroup('enrollments');
+    q = q.where('status', '==', 'active').where('nextRunAt', '<=', now).limit(limitN);
+    docs = (await q.get()).docs;
+  } catch (e) {
+    console.warn('[tick] enrollments query failed (index?):', e && e.message);
+    return { processed: 0, error: e && e.message };
+  }
+
+  let processed = 0;
+  const log = [];
+  for (const d of docs) {
+    const en = d.data();
+    const cid = d.ref.parent.parent.id;
+    // Claim it first so two overlapping ticks cannot both send the step.
+    const claimed = await db.runTransaction(async (tx) => {
+      const fresh = await tx.get(d.ref);
+      if (!fresh.exists || fresh.data().status !== 'active') return false;
+      const nra = fresh.data().nextRunAt;
+      if (!nra || nra.toMillis() > now.toMillis()) return false;
+      tx.set(d.ref, { nextRunAt: admin.firestore.Timestamp.fromMillis(now.toMillis() + 10 * 60 * 1000), lockedAt: FV.serverTimestamp() }, { merge: true });
+      return true;
+    });
+    if (!claimed) continue;
+
+    try {
+      const seqSnap = await db.collection('companies').doc(cid).collection('sequences').doc(en.sequenceId).get();
+      if (!seqSnap.exists || seqSnap.data().active === false) {
+        await d.ref.set({ status: 'stopped', stoppedReason: 'sequence inactive', stoppedAt: FV.serverTimestamp() }, { merge: true });
+        continue;
+      }
+      const seq = { id: seqSnap.id, ...seqSnap.data() };
+      const steps = seq.steps || [];
+      const idx = Number(en.currentStep) || 0;
+      const step = steps[idx];
+      if (!step) {
+        await d.ref.set({ status: 'completed', completedAt: FV.serverTimestamp() }, { merge: true });
+        continue;
+      }
+      const outcome = await executeSequenceStep(db, cid, { id: d.id, ...en }, step, seq);
+      log.push(`${cid}/${d.id} step ${idx}: ${outcome}`);
+      const next = steps[idx + 1];
+      if (next) {
+        await d.ref.set({
+          currentStep: idx + 1,
+          nextRunAt: admin.firestore.Timestamp.fromMillis(now.toMillis() + (Number(next.delayHours) || 0) * 3600 * 1000),
+          lastOutcome: outcome, lastStepAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp()
+        }, { merge: true });
+      } else {
+        await d.ref.set({
+          currentStep: idx + 1, status: 'completed', lastOutcome: outcome,
+          completedAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp()
+        }, { merge: true });
+      }
+      processed++;
+    } catch (e) {
+      console.warn('[tick] step failed', d.id, e && e.message);
+      // Retry in an hour rather than hammering a broken step every tick.
+      await d.ref.set({
+        nextRunAt: admin.firestore.Timestamp.fromMillis(now.toMillis() + 3600 * 1000),
+        lastOutcome: 'error: ' + (e && e.message), updatedAt: FV.serverTimestamp()
+      }, { merge: true });
+    }
+  }
+  return { processed, considered: docs.length, log };
+}
+
+async function renewAllGoogleWatches(db) {
+  let renewed = 0, checked = 0;
+  try {
+    const snap = await db.collectionGroup('integrations').where('connected', '==', true).limit(100).get();
+    for (const d of snap.docs) {
+      if (d.id !== 'google') continue;
+      const cid = d.ref.parent.parent.id;
+      checked++;
+      try {
+        const r = await ensureGoogleWatchInternal(db, cid, false);
+        if (r && r.renewed) renewed++;
+      } catch (e) { console.warn('[tick] watch renew failed', cid, e && e.message); }
+    }
+  } catch (e) { console.warn('[tick] integrations query failed', e && e.message); }
+  return { checked, renewed };
+}
+
+/**
+ * The reminder work that _disabled_taskReminders / _disabled_appointmentReminders
+ * were written for, run from the tick instead of Cloud Scheduler.
+ */
+async function sendReminders(db) {
+  const now = admin.firestore.Timestamp.now();
+  const horizon = admin.firestore.Timestamp.fromMillis(now.toMillis() + 24 * 3600 * 1000);
+  const key = sendgridKey.value();
+  if (!key) return { tasks: 0, appointments: 0, skipped: 'email not configured' };
+  sgMail.setApiKey(key);
+  let tasks = 0, appts = 0;
+
+  try {
+    const snap = await db.collectionGroup('tasks').where('status', '==', 'open').where('dueAt', '<=', horizon).limit(200).get();
+    for (const d of snap.docs) {
+      const t = d.data();
+      if (t.remindedAt || !t.dueAt) continue;
+      const email = await emailForUid(db, t.assigneeUid);
+      if (email) {
+        const due = t.dueAt.toDate ? t.dueAt.toDate() : new Date(t.dueAt);
+        try {
+          await sgMail.send({
+            to: email, from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
+            subject: `Reminder: ${t.title}`,
+            html: reminderHtml('Task reminder', [
+              `<strong>${t.title}</strong>`, t.contactName ? `Contact: ${t.contactName}` : '',
+              `Due: ${due.toLocaleString()}`, `<a href="${APP_BASE_URL}/tasks.html" style="color:#E60306;">Open Tasks →</a>`
+            ].filter(Boolean)),
+            text: `Task reminder: ${t.title} — due ${due.toLocaleString()}`
+          });
+          tasks++;
+        } catch (e) { console.warn('[tick] task reminder failed', e && e.message); }
+      }
+      await d.ref.set({ remindedAt: now }, { merge: true });
+    }
+  } catch (e) { console.warn('[tick] task reminders query failed', e && e.message); }
+
+  try {
+    const snap = await db.collectionGroup('appointments').where('status', '==', 'scheduled').where('startAt', '<=', horizon).limit(200).get();
+    for (const d of snap.docs) {
+      const a = d.data();
+      if (a.remindedAt || !a.startAt) continue;
+      if (a.startAt.toMillis && a.startAt.toMillis() < now.toMillis()) { await d.ref.set({ remindedAt: now }, { merge: true }); continue; }
+      const email = await emailForUid(db, a.ownerUid);
+      if (email) {
+        const start = a.startAt.toDate ? a.startAt.toDate() : new Date(a.startAt);
+        try {
+          await sgMail.send({
+            to: email, from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
+            subject: `Upcoming: ${a.title}`,
+            html: reminderHtml('Appointment reminder', [
+              `<strong>${a.title}</strong>`, a.contactName ? `With: ${a.contactName}` : '',
+              `When: ${start.toLocaleString()}`, a.location ? `Where: ${a.location}` : '',
+              a.meetLink ? `<a href="${a.meetLink}" style="color:#E60306;">Join Google Meet →</a>` : '',
+              `<a href="${APP_BASE_URL}/calendar.html" style="color:#E60306;">Open Calendar →</a>`
+            ].filter(Boolean)),
+            text: `Appointment: ${a.title} at ${start.toLocaleString()}`
+          });
+          appts++;
+        } catch (e) { console.warn('[tick] appointment reminder failed', e && e.message); }
+      }
+      await d.ref.set({ remindedAt: now }, { merge: true });
+    }
+  } catch (e) { console.warn('[tick] appointment reminders query failed', e && e.message); }
+
+  return { tasks, appointments: appts };
+}
+
+/**
+ * runAutomationTick — POST with header `X-Tick-Secret: $CRM_TICK_SECRET`.
+ * Driven by .github/workflows/crm-tick.yml. Returns a summary for the log.
+ */
+exports.runAutomationTick = onRequest({ cors: false, invoker: 'public', secrets: [sendgridKey], timeoutSeconds: 300 }, async (req, res) => {
+  const expected = (process.env.CRM_TICK_SECRET || '').trim();
+  const given = (req.get('X-Tick-Secret') || '').trim();
+  if (!expected) { res.status(503).json({ ok: false, error: 'CRM_TICK_SECRET is not set' }); return; }
+  if (req.method !== 'POST' || !given || given.length !== expected.length || given !== expected) {
+    res.status(403).json({ ok: false, error: 'forbidden' });
+    return;
+  }
+  const db = admin.firestore();
+  const startedAt = Date.now();
+  const [sequences, watches, reminders] = await Promise.all([
+    processDueEnrollments(db, {}),
+    renewAllGoogleWatches(db),
+    sendReminders(db)
+  ]);
+  const summary = { ok: true, ms: Date.now() - startedAt, sequences, watches, reminders };
+  console.log('[tick]', JSON.stringify(summary));
+  res.status(200).json(summary);
+});
+
+/** The same sequence work for one company, from the CRM UI. */
+exports.runAutomationNowForCompany = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const db = admin.firestore();
+  const { companyId } = request.data || {};
+  if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+  await assertCompanyAdmin(db, companyId, request);
+  await rateLimitCaller(db, request, { action: 'runAutomationNow', max: 20, windowSec: 600 });
+  const sequences = await processDueEnrollments(db, { companyId, limitN: 50 });
+  let watch = null;
+  try { watch = await ensureGoogleWatchInternal(db, companyId, false); } catch (e) {}
+  return { ok: true, sequences, watch };
+});
+
+// ── Auto-enrollment triggers ─────────────────────────────────────────────
+// Event-driven, so enrolling needs no cron: a stage change or a tag added on
+// a contact, or a disposition on a call, enrolls into any active sequence
+// whose trigger matches. Inbound SMS/calls stop sequences (wired into the
+// Twilio webhooks via stopEnrollmentsForContact).
+
+async function autoEnroll(db, companyId, contact, triggerType, value, source) {
+  if (!contact || !contact.id) return 0;
+  let seqs;
+  try {
+    seqs = await db.collection('companies').doc(companyId).collection('sequences')
+      .where('active', '==', true).where('trigger.type', '==', triggerType).get();
+  } catch (e) { return 0; }
+  const FV = admin.firestore.FieldValue;
+  let n = 0;
+  for (const s of seqs.docs) {
+    const seq = s.data();
+    const want = (seq.trigger && seq.trigger.value) || null;
+    if (want && String(want) !== String(value)) continue;
+    if (!seq.steps || !seq.steps.length) continue;
+    const dupe = await db.collection('companies').doc(companyId).collection('enrollments')
+      .where('contactId', '==', contact.id).where('sequenceId', '==', s.id).get();
+    if (dupe.docs.some((d) => d.data().status === 'active')) continue;
+    const firstDelayMs = (Number(seq.steps[0].delayHours) || 0) * 3600 * 1000;
+    await db.collection('companies').doc(companyId).collection('enrollments').add({
+      sequenceId: s.id, sequenceName: seq.name || null,
+      contactId: contact.id, contactName: contact.name || null,
+      status: 'active', currentStep: 0,
+      nextRunAt: admin.firestore.Timestamp.fromMillis(Date.now() + firstDelayMs),
+      source, startedAt: FV.serverTimestamp(), stoppedAt: null, stoppedReason: null,
+      enrolledBy: 'auto', createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp()
+    });
+    await db.collection('companies').doc(companyId).collection('contacts').doc(contact.id)
+      .collection('activities').add({
+        type: 'sequence_enrolled', description: `Enrolled in sequence: ${seq.name} (${source})`,
+        actorUid: 'system', actorName: 'Automation', createdAt: FV.serverTimestamp(),
+        meta: { sequenceId: s.id, trigger: triggerType, value }
+      }).catch(() => {});
+    n++;
+  }
+  return n;
+}
+
+exports.onContactWrittenForSequences = onDocumentWritten(
+  'companies/{companyId}/contacts/{contactId}',
+  async (event) => {
+    const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+    const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+    if (!after) return;
+    const db = admin.firestore();
+    const { companyId, contactId } = event.params;
+    const contact = { id: contactId, ...after };
+
+    if (!before || before.stage !== after.stage) {
+      await autoEnroll(db, companyId, contact, 'stage_change', after.stage, `stage → ${after.stage}`);
+    }
+    const oldTags = new Set((before && before.tags) || []);
+    for (const t of (after.tags || [])) {
+      if (!oldTags.has(t)) await autoEnroll(db, companyId, contact, 'tag_added', t, `tag #${t}`);
+    }
+    // Consent revoked mid-sequence: stop everything that would text or call.
+    if (after.smsOptedOut === true && !(before && before.smsOptedOut === true)) {
+      await stopEnrollmentsForContact(db, companyId, contactId, 'opted out of SMS');
+    }
+    if (after.doNotCall === true && !(before && before.doNotCall === true)) {
+      await stopEnrollmentsForContact(db, companyId, contactId, 'added to do-not-call');
+    }
+  }
+);
+
+exports.onCallWrittenForSequences = onDocumentWritten(
+  'companies/{companyId}/calls/{callId}',
+  async (event) => {
+    const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+    const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+    if (!after || !after.disposition || (before && before.disposition === after.disposition)) return;
+    if (!after.contactId) return;
+    const db = admin.firestore();
+    const { companyId } = event.params;
+    const c = await db.collection('companies').doc(companyId).collection('contacts').doc(after.contactId).get();
+    if (!c.exists) return;
+    // A connected call is the lead engaging — that ends any cadence.
+    if (['connected', 'booked'].includes(after.disposition)) {
+      await stopEnrollmentsForContact(db, companyId, after.contactId, `call ${after.disposition}`);
+    }
+    await autoEnroll(db, companyId, { id: c.id, ...c.data() }, 'disposition', after.disposition, `call: ${after.disposition}`);
   }
 );
 

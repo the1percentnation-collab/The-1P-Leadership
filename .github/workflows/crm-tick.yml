@@ -1,0 +1,60 @@
+# The CRM's clock.
+#
+# This project cannot deploy Cloud Scheduler jobs: the deploy service account
+# lacks roles/cloudscheduler.admin, which is why taskReminders and
+# appointmentReminders were un-exported (see scripts/deploy-functions.sh).
+# Until that IAM grant lands, anything time-based — sequence steps, Google
+# Calendar watch renewal, task/appointment reminders — runs from the
+# runAutomationTick function, and this workflow is what calls it.
+#
+# Setup (once):
+#   1. Pick a long random string and set it as CRM_TICK_SECRET on the
+#      functions runtime (functions/.env or the Cloud Run env), then redeploy.
+#   2. Add the same value as a GitHub Actions secret named CRM_TICK_SECRET.
+#
+# The real fix is still the IAM grant. Once cloudscheduler.admin is in place,
+# export a scheduled function that calls the same tick logic and delete this
+# workflow.
+name: CRM automation tick
+
+on:
+  schedule:
+    # Every 15 minutes. GitHub delays scheduled runs under load; sequence
+    # steps tolerate that, so nothing here depends on the minute.
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: crm-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Call runAutomationTick
+        env:
+          TICK_URL: https://us-central1-the-1p-leadership.cloudfunctions.net/runAutomationTick
+          CRM_TICK_SECRET: ${{ secrets.CRM_TICK_SECRET }}
+        run: |
+          if [ -z "$CRM_TICK_SECRET" ]; then
+            echo "CRM_TICK_SECRET is not set as a repository secret; nothing to do." >&2
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/tick.json -w '%{http_code}' \
+            -X POST "$TICK_URL" \
+            -H "X-Tick-Secret: $CRM_TICK_SECRET" \
+            -H 'Content-Length: 0' \
+            --max-time 300 || true)
+          echo "HTTP $code"
+          cat /tmp/tick.json 2>/dev/null || true
+          echo
+          # 503 = the function exists but has no secret configured yet; that
+          # is a setup gap, not an outage, so it does not fail the run.
+          case "$code" in
+            200|503) exit 0 ;;
+            *) exit 1 ;;
+          esac
