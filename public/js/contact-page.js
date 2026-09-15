@@ -18,6 +18,7 @@ import {
   listAppointments, createAppointment, setAppointmentStatus,
   listMessages, sendSms,
   listCalls, setDoNotCall, dispositionMeta, callBlockReason,
+  getGoogleCalendarStatus,
   escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate
 } from './crm.js';
 import { dialer, onDialerEvent } from './dialer-core.js';
@@ -41,6 +42,7 @@ const state = {
   messages: [],
   calls: [],
   callsLoaded: false,
+  google: { connected: false },
   dealsLoaded: false,
   tasksLoaded: false,
   apptsLoaded: false,
@@ -163,6 +165,10 @@ function iconFor(type) {
     case 'task_created': return '✓';
     case 'task_completed': return '☑';
     case 'call_logged': return '☎';
+    case 'call_completed': return '☎';
+    case 'call_inbound': return '📞';
+    case 'voicemail_received': return '📨';
+    case 'calendar_synced': return '🗓';
     case 'dnc_added': return '⛔';
     case 'dnc_removed': return '✅';
     case 'appointment_created': return '📅';
@@ -302,6 +308,8 @@ function renderAppts() {
         <div class="crm-mini-main">
           <div class="crm-mini-title">${escapeHtml(a.title)}</div>
           <div class="crm-mini-sub">${d ? d.toLocaleString() : '—'}${a.location ? ' · ' + escapeHtml(a.location) : ''}${escapeHtml(statusLabel)}</div>
+          ${a.meetLink ? `<div class="crm-mini-sub"><a href="${escapeHtml(a.meetLink)}" target="_blank" rel="noopener" class="crm-meet-link">Join Google Meet</a>${a.googleEventId ? ' · on Google Calendar' : ''}</div>` : (a.googleEventId ? '<div class="crm-mini-sub">On Google Calendar</div>' : '')}
+          ${a.googleSyncError ? `<div class="crm-mini-sub" style="color:var(--red);">Calendar sync failed: ${escapeHtml(a.googleSyncError)}</div>` : ''}
         </div>
         ${a.status === 'scheduled' ? `<button class="crm-chip" data-appt-done="${a.id}">Done</button>` : ''}
       </div>`;
@@ -507,7 +515,9 @@ async function main() {
   state.companyId = companyId;
 
   try {
-    state.admins = await listCompanyAdmins(companyId);
+    [state.admins, state.google] = await Promise.all([
+      listCompanyAdmins(companyId), getGoogleCalendarStatus(companyId)
+    ]);
   } catch (e) { state.admins = []; }
 
   state.contact = await getContact(companyId, contactId);
@@ -867,7 +877,14 @@ function openContactApptModal() {
               <input class="c-input" id="ca-dur" type="number" min="5" step="5" value="30" /></div>
           </div>
           <div class="crm-form-row"><label>Location / link</label>
-            <input class="c-input" id="ca-loc" placeholder="Zoom, address, or phone" /></div>
+            <input class="c-input" id="ca-loc" placeholder="${state.google.connected ? 'Leave blank for a Google Meet link' : 'Zoom, address, or phone'}" /></div>
+          ${state.google.connected ? `
+          <div class="crm-form-row">
+            <label class="crm-consent-check">
+              <input type="checkbox" id="ca-invite" ${c.email ? 'checked' : 'disabled'} />
+              ${c.email ? `Send a calendar invite to ${escapeHtml(c.email)}` : 'Add an email to this contact to send an invite'}
+            </label>
+          </div>` : ''}
           <div id="ca-err" class="auth-error" style="display:none;"></div>
           <div class="crm-modal-actions">
             <button type="button" class="btn btn-ghost" id="ca-cancel">Cancel</button>
@@ -889,7 +906,8 @@ function openContactApptModal() {
         durationMin: $('ca-dur').value,
         location: $('ca-loc').value || null,
         ownerUid: c.ownerUid || state.uid,
-        contactId: state.contactId, contactName: c.name || null
+        contactId: state.contactId, contactName: c.name || null,
+        inviteContact: !!($('ca-invite') && $('ca-invite').checked)
       });
       close();
       await Promise.all([refreshAppts(), refreshActivities()]);

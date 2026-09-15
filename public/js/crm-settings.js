@@ -1,5 +1,5 @@
-// CRM Settings — pipeline & stage editor. Edit stage labels/colors/probability,
-// reorder, add stages, and (safely) delete unused ones. Admin/owner only.
+// CRM Settings — pipeline & stage editor, calling preferences, and the
+// Google Calendar connection. Admin/owner only.
 
 import { db, firebaseReady } from './firebase.js';
 import { onAuthReady } from './auth.js';
@@ -9,13 +9,22 @@ import { collection, getDocs, query, where, limit } from 'https://www.gstatic.co
 import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.js';
 import {
   DEFAULT_PIPELINE_STAGES, ensureDefaultPipeline, updatePipeline,
-  listOpportunities, escapeHtml
+  listOpportunities, escapeHtml,
+  DEFAULT_DIALER_SETTINGS, getDialerSettings, updateDialerSettings,
+  getAgentPrefs, updateAgentPrefs,
+  getGoogleCalendarStatus, startGoogleCalendarConnect, disconnectGoogleCalendar,
+  fmtDateTime
 } from './crm.js';
 
 const $ = (id) => document.getElementById(id);
 const PROTECTED = new Set(DEFAULT_PIPELINE_STAGES.map((s) => s.id)); // referenced by contacts
 
-const state = { uid: null, companyId: null, pipeline: null, stages: [], oppCountByStage: {} };
+const state = {
+  uid: null, companyId: null, pipeline: null, stages: [], oppCountByStage: {},
+  dialer: { ...DEFAULT_DIALER_SETTINGS },
+  prefs: { callMode: 'softphone', mobilePhone: null },
+  google: { connected: false }
+};
 
 function slug(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 24) || 'stage';
@@ -52,8 +61,119 @@ function render() {
         <a class="btn btn-ghost" href="/crm.html">Export from Contacts</a>
       </div>
     </div>
+
+    ${callingCardHtml()}
+    ${googleCardHtml()}
   `;
   wire();
+}
+
+// ── Calling ──────────────────────────────────────────────────────────────
+function callingCardHtml() {
+  const d = state.dialer;
+  const p = state.prefs;
+  const hours = Array.from({ length: 24 }, (_, h) => h);
+  const hourOpts = (sel) => hours.map((h) =>
+    `<option value="${h}" ${Number(sel) === h ? 'selected' : ''}>${h === 0 ? '12 am' : h < 12 ? h + ' am' : h === 12 ? '12 pm' : (h - 12) + ' pm'}</option>`).join('');
+  return `
+    <div class="card" style="max-width:760px;">
+      <label class="crm-field-label" style="display:block;margin-bottom:4px;">Calling</label>
+      <div class="crm-import-note" style="margin-top:0;">
+        How your own calls connect. The softphone talks through this browser; cell bridge rings
+        your phone first and then dials the lead, which works from anywhere and needs no microphone here.
+      </div>
+
+      <div class="crm-form-row-grid" style="margin-top:14px;">
+        <div class="crm-field">
+          <label>My call mode</label>
+          <select class="c-input crm-select" id="set-call-mode">
+            <option value="softphone" ${p.callMode !== 'bridge' ? 'selected' : ''}>Browser softphone</option>
+            <option value="bridge" ${p.callMode === 'bridge' ? 'selected' : ''}>Ring my cell, then the lead</option>
+          </select>
+        </div>
+        <div class="crm-field">
+          <label>My mobile number</label>
+          <input class="c-input" id="set-mobile" placeholder="+1 555 555 0100" value="${escapeHtml(p.mobilePhone || '')}" />
+        </div>
+      </div>
+
+      <label class="crm-field-label" style="display:block;margin:18px 0 6px;">Company-wide</label>
+      <div class="crm-form-row-grid">
+        <div class="crm-field">
+          <label>Call recording</label>
+          <select class="c-input crm-select" id="set-recording">
+            <option value="off" ${d.recordingMode === 'off' ? 'selected' : ''}>Off</option>
+            <option value="announce" ${d.recordingMode === 'announce' ? 'selected' : ''}>On, with a spoken notice (recommended)</option>
+            <option value="on" ${d.recordingMode === 'on' ? 'selected' : ''}>On, silent</option>
+          </select>
+        </div>
+        <div class="crm-field">
+          <label>Auto-advance after a call</label>
+          <select class="c-input crm-select" id="set-advance">
+            ${[0, 3, 5, 10].map((n) => `<option value="${n}" ${Number(d.autoAdvanceSec) === n ? 'selected' : ''}>${n === 0 ? 'Wait for me' : n + ' seconds'}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="crm-import-note" id="set-recording-note" style="margin-top:8px;">
+        ${d.recordingMode === 'on'
+          ? 'Silent recording is illegal in two-party-consent states (California, Florida, Illinois, and others). Use the spoken notice unless you have checked the rules for every state you call.'
+          : 'Recordings appear on the contact timeline once the call ends.'}
+      </div>
+
+      <div class="crm-form-row-grid" style="margin-top:14px;">
+        <div class="crm-field">
+          <label class="crm-consent-check"><input type="checkbox" id="set-qh-on" ${d.quietHoursEnabled ? 'checked' : ''} /> Warn before dialing during quiet hours</label>
+        </div>
+        <div class="crm-field" style="display:flex;gap:8px;align-items:end;">
+          <div style="flex:1;"><label>From</label><select class="c-input crm-select" id="set-qh-start">${hourOpts(d.quietHoursStart)}</select></div>
+          <div style="flex:1;"><label>Until</label><select class="c-input crm-select" id="set-qh-end">${hourOpts(d.quietHoursEnd)}</select></div>
+        </div>
+      </div>
+
+      <div class="crm-save-row" style="margin-top:18px;">
+        <span id="set-call-status" class="crm-save-status"></span>
+        <button class="btn btn-primary" id="save-calling">Save calling settings</button>
+      </div>
+    </div>`;
+}
+
+// ── Google Calendar ──────────────────────────────────────────────────────
+function googleCardHtml() {
+  const g = state.google;
+  const flash = new URLSearchParams(location.search).get('google');
+  const flashHtml = flash === 'connected'
+    ? '<div class="crm-save-status ok" style="margin-bottom:10px;">Google Calendar connected.</div>'
+    : (flash === 'error'
+      ? `<div class="auth-error" style="margin-bottom:10px;">Google did not complete the connection: ${escapeHtml(new URLSearchParams(location.search).get('reason') || 'unknown error')}.</div>`
+      : '');
+  return `
+    <div class="card" style="max-width:760px;">
+      <label class="crm-field-label" style="display:block;margin-bottom:4px;">Google Calendar</label>
+      ${flashHtml}
+      ${g.connected ? `
+        <div class="crm-import-note" style="margin-top:0;">
+          Connected as <strong>${escapeHtml(g.googleEmail || 'your Google account')}</strong>.
+          Appointments booked here create calendar events with a Meet link and invite the contact;
+          changes made in Google flow back within seconds.
+          ${g.lastSyncAt ? `<br>Last sync ${fmtDateTime(g.lastSyncAt)}.` : ''}
+          ${g.watchExpiry ? `<br>Live updates active until ${fmtDateTime(g.watchExpiry)} (renewed automatically).` : ''}
+        </div>
+        <div class="crm-save-row" style="margin-top:16px;">
+          <span id="set-google-status" class="crm-save-status"></span>
+          <button class="btn btn-ghost" id="google-disconnect">Disconnect</button>
+        </div>
+      ` : `
+        <div class="crm-import-note" style="margin-top:0;">
+          Connect your Google account so appointments booked from a contact card land on your real
+          calendar with a Meet link, and so bookings made in Google show up here. You will be asked to
+          allow calendar access once.
+        </div>
+        <div class="crm-save-row" style="margin-top:16px;">
+          <span id="set-google-status" class="crm-save-status"></span>
+          <button class="btn btn-primary" id="google-connect">Connect Google Calendar</button>
+        </div>
+      `}
+    </div>`;
 }
 
 function stageRowHtml(s, i, total) {
@@ -117,6 +237,68 @@ function wire() {
     render();
   }));
   $('save-pipeline').addEventListener('click', save);
+
+  $('save-calling').addEventListener('click', saveCalling);
+  $('set-recording').addEventListener('change', (e) => {
+    $('set-recording-note').textContent = e.target.value === 'on'
+      ? 'Silent recording is illegal in two-party-consent states (California, Florida, Illinois, and others). Use the spoken notice unless you have checked the rules for every state you call.'
+      : 'Recordings appear on the contact timeline once the call ends.';
+  });
+
+  const connect = $('google-connect');
+  if (connect) connect.addEventListener('click', async () => {
+    const st = $('set-google-status');
+    connect.disabled = true;
+    st.textContent = 'Opening Google…'; st.className = 'crm-save-status';
+    try {
+      const url = await startGoogleCalendarConnect(state.companyId);
+      if (!url) throw new Error('No consent URL returned.');
+      location.href = url;
+    } catch (e) {
+      connect.disabled = false;
+      st.textContent = e.message || String(e); st.className = 'crm-save-status err';
+    }
+  });
+  const disconnect = $('google-disconnect');
+  if (disconnect) disconnect.addEventListener('click', async () => {
+    if (!confirm('Disconnect Google Calendar? Existing appointments stay; they just stop syncing.')) return;
+    const st = $('set-google-status');
+    disconnect.disabled = true;
+    try {
+      await disconnectGoogleCalendar(state.companyId);
+      state.google = { connected: false };
+      history.replaceState(null, '', location.pathname);
+      render();
+    } catch (e) {
+      disconnect.disabled = false;
+      st.textContent = e.message || String(e); st.className = 'crm-save-status err';
+    }
+  });
+}
+
+async function saveCalling() {
+  const st = $('set-call-status');
+  try {
+    await Promise.all([
+      updateAgentPrefs(state.uid, {
+        callMode: $('set-call-mode').value,
+        mobilePhone: $('set-mobile').value
+      }),
+      updateDialerSettings(state.companyId, {
+        recordingMode: $('set-recording').value,
+        autoAdvanceSec: Number($('set-advance').value),
+        quietHoursEnabled: $('set-qh-on').checked,
+        quietHoursStart: Number($('set-qh-start').value),
+        quietHoursEnd: Number($('set-qh-end').value)
+      })
+    ]);
+    [state.dialer, state.prefs] = await Promise.all([
+      getDialerSettings(state.companyId), getAgentPrefs(state.uid)
+    ]);
+    st.textContent = 'Saved'; st.className = 'crm-save-status ok';
+  } catch (e) {
+    st.textContent = 'Error: ' + (e.message || e); st.className = 'crm-save-status err';
+  }
 }
 
 function move(id, dir) {
@@ -175,9 +357,17 @@ async function main() {
 
   state.pipeline = await ensureDefaultPipeline(companyId);
   state.stages = (state.pipeline.stages || DEFAULT_PIPELINE_STAGES).map((s) => ({ ...s }));
-  const opps = await listOpportunities(companyId, { pipelineId: state.pipeline.id });
+  const [opps, dialer, prefs, google] = await Promise.all([
+    listOpportunities(companyId, { pipelineId: state.pipeline.id }),
+    getDialerSettings(companyId),
+    getAgentPrefs(u.uid),
+    getGoogleCalendarStatus(companyId)
+  ]);
   state.oppCountByStage = {};
   opps.forEach((o) => { state.oppCountByStage[o.stageId] = (state.oppCountByStage[o.stageId] || 0) + 1; });
+  state.dialer = dialer;
+  state.prefs = prefs;
+  state.google = google;
   render();
 }
 

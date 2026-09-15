@@ -687,6 +687,9 @@ export async function createAppointment(companyId, data = {}) {
     status: 'scheduled',
     ownerUid: data.ownerUid || user.uid,
     notes: data.notes || null,
+    // When Google Calendar is connected, onAppointmentWritten reads this to
+    // decide whether the contact gets a calendar invite (an email to them).
+    inviteContact: data.inviteContact === true,
     remindedAt: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -706,7 +709,7 @@ export async function createAppointment(companyId, data = {}) {
 }
 
 export async function updateAppointment(companyId, apptId, patch = {}) {
-  const allowed = ['title', 'startAt', 'durationMin', 'location', 'notes', 'contactId', 'contactName', 'ownerUid'];
+  const allowed = ['title', 'startAt', 'durationMin', 'location', 'notes', 'contactId', 'contactName', 'ownerUid', 'inviteContact'];
   const clean = {};
   allowed.forEach((k) => { if (patch[k] !== undefined) clean[k] = patch[k]; });
   // Rescheduling re-arms the reminder.
@@ -1018,4 +1021,43 @@ export function callBlockReason(contact) {
   if (contact.doNotCall === true) return 'This contact is on your do-not-call list.';
   if (!contact.phone) return 'This contact has no phone number.';
   return null;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Google Calendar integration. Tokens never reach the client: the status
+// mirror at companies/{cid}/integrations/google is all the browser can read,
+// and connecting/disconnecting go through callables on the Admin SDK.
+// ────────────────────────────────────────────────────────────────
+
+export async function getGoogleCalendarStatus(companyId) {
+  if (!firebaseReady || !companyId) return { connected: false };
+  try {
+    const snap = await getDoc(doc(db, 'companies', companyId, 'integrations', 'google'));
+    return snap.exists() ? { connected: false, ...snap.data() } : { connected: false };
+  } catch (e) { return { connected: false }; }
+}
+
+/** Returns the Google consent URL to send the browser to. */
+export async function startGoogleCalendarConnect(companyId) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'googleOAuthStart');
+  const res = await call({ companyId, returnTo: location.pathname + location.search });
+  return res.data && res.data.url;
+}
+
+export async function disconnectGoogleCalendar(companyId) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'googleDisconnect');
+  const res = await call({ companyId });
+  return res.data;
+}
+
+/** Best-effort: renew the push channel if it is close to expiring. */
+export async function ensureGoogleWatch(companyId) {
+  if (!firebaseReady || !companyId) return null;
+  try {
+    const call = httpsCallable(functions, 'ensureGoogleWatch');
+    const res = await call({ companyId });
+    return res.data;
+  } catch (e) { return null; }
 }

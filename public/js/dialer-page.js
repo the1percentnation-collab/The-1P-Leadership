@@ -15,7 +15,7 @@ import {
   STAGES, STAGE_IDS, stageMeta,
   listContacts, listCompanyAdmins, listNotes, addNote, listMessages, sendSms,
   listCalls, createTask, createAppointment, getContact,
-  dispositionMeta, callBlockReason,
+  dispositionMeta, callBlockReason, getGoogleCalendarStatus,
   escapeHtml, fmtDate, fmtDateTime
 } from './crm.js';
 import { dialer, onDialerEvent } from './dialer-core.js';
@@ -35,6 +35,8 @@ const state = {
   notes: [],
   calls: [],
   messages: [],
+  google: { connected: false },
+  autoAdvanceSec: 3,
   session: { dialed: 0, connected: 0, booked: 0, talkSec: 0 }
 };
 
@@ -399,8 +401,9 @@ async function dialCurrent() {
 }
 
 function scheduleAdvance() {
-  const secs = 3;
+  const secs = Number(state.autoAdvanceSec);
   renderStats();
+  if (!secs) return; // "Wait for me": the rep presses Skip or S.
   let left = secs;
   const main = $('dial-main');
   const banner = document.createElement('div');
@@ -472,7 +475,14 @@ function openApptModal(contact) {
               <input class="c-input" id="da-dur" type="number" min="5" step="5" value="30" /></div>
           </div>
           <div class="crm-form-row"><label>Location / link</label>
-            <input class="c-input" id="da-loc" placeholder="Zoom, address, or phone" /></div>
+            <input class="c-input" id="da-loc" placeholder="${state.google.connected ? 'Leave blank for a Google Meet link' : 'Zoom, address, or phone'}" /></div>
+          ${state.google.connected ? `
+          <div class="crm-form-row">
+            <label class="crm-consent-check">
+              <input type="checkbox" id="da-invite" ${contact.email ? 'checked' : 'disabled'} />
+              ${contact.email ? `Send a calendar invite to ${escapeHtml(contact.email)}` : 'No email on this contact to invite'}
+            </label>
+          </div>` : ''}
           <div id="da-err" class="auth-error" style="display:none;"></div>
           <div class="crm-modal-actions">
             <button type="button" class="btn btn-ghost" id="da-skip">Skip</button>
@@ -494,7 +504,8 @@ function openApptModal(contact) {
         location: $('da-loc').value || null,
         contactId: contact.id,
         contactName: contact.name || null,
-        ownerUid: contact.ownerUid || state.uid
+        ownerUid: contact.ownerUid || state.uid,
+        inviteContact: !!($('da-invite') && $('da-invite').checked)
       });
       close();
       advance();
@@ -580,7 +591,12 @@ async function main() {
   ]);
 
   // Hotkeys on: this is the one page where they are unambiguous.
-  await dialer.configure({ companyId, uid: u.uid, hotkeys: true });
+  const [{ settings }, google] = await Promise.all([
+    dialer.configure({ companyId, uid: u.uid, hotkeys: true }),
+    getGoogleCalendarStatus(companyId)
+  ]);
+  state.autoAdvanceSec = Number(settings.autoAdvanceSec);
+  state.google = google;
   dialer.prewarm();
 
   content.innerHTML = shellHtml();

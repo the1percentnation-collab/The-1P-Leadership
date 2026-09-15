@@ -83,6 +83,20 @@ const ANTHROPIC_API_KEY = () => (process.env.ANTHROPIC_API_KEY || '').trim();
 // (functions/.env or runtime env), sendSms returns "not configured" and the
 // inbound webhook rejects unsigned traffic. Provide: TWILIO_ACCOUNT_SID,
 // TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER.
+//
+// Voice needs three MORE values, because minting a Voice access token cannot
+// be done with the account auth token:
+//   TWILIO_API_KEY_SID / TWILIO_API_KEY_SECRET — a Standard API key, used to
+//     sign the short-lived JWT the browser softphone registers with.
+//   TWILIO_TWIML_APP_SID — the TwiML App whose Voice URL points at
+//     voiceOutboundTwiml. Outbound softphone calls route through it.
+// Optional: TWILIO_CALLER_ID overrides TWILIO_FROM_NUMBER for outbound
+// caller ID, for when the SMS number and the voice number differ.
+//
+// These stay on process.env rather than defineSecret for the same reason as
+// the SMS trio, and because a defineSecret value read from a function that
+// does not declare it in `secrets:` comes back empty — the trap that broke
+// ANTHROPIC_API_KEY in 277162f.
 let _twilioClient = null;
 function getTwilio() {
   const sid = (process.env.TWILIO_ACCOUNT_SID || '').trim();
@@ -90,6 +104,99 @@ function getTwilio() {
   if (!sid || !token) return null;
   if (!_twilioClient) _twilioClient = require('twilio')(sid, token);
   return _twilioClient;
+}
+
+/** The number leads see when we call them. */
+function voiceCallerId() {
+  return (process.env.TWILIO_CALLER_ID || process.env.TWILIO_FROM_NUMBER || '').trim();
+}
+
+/**
+ * Which voice pieces are configured. Every voice endpoint checks this and
+ * returns a readable "not set up yet" rather than a 500, so the CRM can ship
+ * the buttons before the Twilio project exists.
+ */
+function voiceConfig() {
+  const accountSid = (process.env.TWILIO_ACCOUNT_SID || '').trim();
+  const apiKeySid = (process.env.TWILIO_API_KEY_SID || '').trim();
+  const apiKeySecret = (process.env.TWILIO_API_KEY_SECRET || '').trim();
+  const twimlAppSid = (process.env.TWILIO_TWIML_APP_SID || '').trim();
+  const callerId = voiceCallerId();
+  const missing = [];
+  if (!accountSid) missing.push('TWILIO_ACCOUNT_SID');
+  if (!apiKeySid) missing.push('TWILIO_API_KEY_SID');
+  if (!apiKeySecret) missing.push('TWILIO_API_KEY_SECRET');
+  if (!twimlAppSid) missing.push('TWILIO_TWIML_APP_SID');
+  if (!callerId) missing.push('TWILIO_CALLER_ID or TWILIO_FROM_NUMBER');
+  return { accountSid, apiKeySid, apiKeySecret, twimlAppSid, callerId, missing, ok: missing.length === 0 };
+}
+
+/**
+ * Reject anything not signed by Twilio. Shared by every voice webhook; the
+ * SMS webhooks predate this and inline the same check.
+ *
+ * The signed URL must match byte-for-byte what Twilio called, query string
+ * included — hence originalUrl rather than path.
+ */
+function twilioSignatureOk(req) {
+  const token = (process.env.TWILIO_AUTH_TOKEN || '').trim();
+  if (!token) return false;
+  try {
+    const twilioLib = require('twilio');
+    const signature = req.get('X-Twilio-Signature') || '';
+    const url = `https://${req.get('host')}${req.originalUrl}`;
+    return twilioLib.validateRequest(token, signature, url, req.body || {});
+  } catch (e) {
+    console.warn('[twilio] signature check threw', e && e.message);
+    return false;
+  }
+}
+
+/** The absolute https base for this function's own region/project. */
+function fnBaseUrl(req) {
+  return `https://${req.get('host')}`;
+}
+
+/**
+ * The same base for code paths that have no incoming request to read the
+ * host from (callables that hand Twilio a URL to call back). Cloud Functions
+ * sets GCLOUD_PROJECT at runtime; FUNCTIONS_BASE_URL overrides it for a
+ * custom domain or an emulator run.
+ */
+function functionsBaseUrl() {
+  const override = (process.env.FUNCTIONS_BASE_URL || '').trim();
+  if (override) return override.replace(/\/+$/, '');
+  const project = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'the-1p-leadership';
+  return `https://us-central1-${project}.cloudfunctions.net`;
+}
+
+/**
+ * A Voice SDK client identity is `agent_<uid>`. Parsing it back out of the
+ * TwiML request's From field is how we verify that the browser asking us to
+ * dial is actually an admin of the company it named — device.connect params
+ * come from the client, so they are a request, not a fact.
+ */
+function uidFromClientIdentity(from) {
+  const m = /^client:agent_(.+)$/.exec(String(from || ''));
+  return m ? m[1] : null;
+}
+
+function voiceIdentityFor(uid) {
+  return 'agent_' + uid;
+}
+
+/** Is `uid` an admin (or the owner) of this company? Rules-free equivalent
+ *  of assertCompanyAdmin, for webhook paths that have no request.auth. */
+async function uidAdminsCompany(db, companyId, uid) {
+  if (!companyId || !uid) return false;
+  try {
+    const snap = await db.collection('companies').doc(companyId).get();
+    if (!snap.exists) return false;
+    const adminUids = (snap.data() && snap.data().adminUids) || [];
+    if (adminUids.includes(uid)) return true;
+    const userSnap = await db.collection('users').doc(uid).get();
+    return userSnap.exists && userSnap.data().role === 'owner';
+  } catch (e) { return false; }
 }
 
 // Best-effort E.164 normalization (defaults to US +1 for 10-digit numbers).
@@ -5144,6 +5251,1259 @@ exports.twilioStatusWebhook = onRequest(
       } catch (e) { console.warn('[twilioStatus] (index?)', e && e.message); }
     }
     res.status(200).send('ok');
+  }
+);
+
+
+// ════════════════════════════════════════════════════════════════
+// Twilio Voice — browser softphone, cell bridge, inbound routing, call
+// status/recording webhooks, and one-click voicemail drop.
+//
+// Two ways out:
+//   softphone — the browser registers as client:agent_<uid> against the TwiML
+//     App; device.connect() hits voiceOutboundTwiml, which <Dial>s the lead.
+//   bridge — startBridgeCall rings the rep's own cell from Twilio; when they
+//     pick up, voiceBridgeTwiml <Dial>s the lead. No WebRTC, works on mobile.
+//
+// Every path writes back to companies/{cid}/calls/{callId}, created by the
+// client the moment dialing starts, so one call has one row no matter which
+// mode placed it.
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Load the company's dialer settings, which live on the company doc (admins
+ * can already write it, so this needs no extra collection or rules).
+ */
+async function dialerSettings(db, companyId) {
+  const defaults = { recordingMode: 'off', quietHoursEnabled: true, quietHoursStart: 21, quietHoursEnd: 8 };
+  try {
+    const snap = await db.collection('companies').doc(companyId).get();
+    return { ...defaults, ...((snap.exists && snap.data().dialer) || {}) };
+  } catch (e) { return defaults; }
+}
+
+/**
+ * getVoiceToken({ companyId }) — a short-lived JWT for the browser softphone.
+ *
+ * Identity is pinned to the caller's own uid: a token cannot be minted for
+ * someone else, so inbound routing to client:agent_<uid> is trustworthy.
+ */
+exports.getVoiceToken = onCall(async (request) => {
+  const db = admin.firestore();
+  const { companyId } = request.data || {};
+  if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+  const { uid } = await assertCompanyAdmin(db, companyId, request);
+
+  // Tokens are cheap but not free, and a loop that re-mints on every render
+  // would be invisible without this.
+  await rateLimitCaller(db, request, { action: 'getVoiceToken', max: 60, windowSec: 600 });
+
+  const cfg = voiceConfig();
+  if (!cfg.ok) {
+    throw new HttpsError('failed-precondition',
+      'Calling is not set up yet. Missing: ' + cfg.missing.join(', ') + '.');
+  }
+
+  const twilioLib = require('twilio');
+  const AccessToken = twilioLib.jwt.AccessToken;
+  const identity = voiceIdentityFor(uid);
+  const token = new AccessToken(cfg.accountSid, cfg.apiKeySid, cfg.apiKeySecret, {
+    identity,
+    ttl: 3600
+  });
+  token.addGrant(new AccessToken.VoiceGrant({
+    outgoingApplicationSid: cfg.twimlAppSid,
+    incomingAllow: true
+  }));
+
+  return {
+    token: token.toJwt(),
+    identity,
+    expiresAt: Date.now() + 3600 * 1000,
+    callerId: cfg.callerId
+  };
+});
+
+/**
+ * voiceOutboundTwiml — the TwiML App's Voice URL. Twilio calls this when the
+ * softphone dials, with the params device.connect() passed through.
+ *
+ * Those params come from a browser, so they are verified here rather than
+ * trusted: the client identity in `From` must really admin the companyId it
+ * claims, and the lead's number is read from Firestore rather than from the
+ * request, so a tampered client cannot use our caller ID to dial anywhere.
+ */
+exports.voiceOutboundTwiml = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  const VoiceResponse = require('twilio').twiml.VoiceResponse;
+  const twiml = new VoiceResponse();
+
+  if (!twilioSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
+
+  const db = admin.firestore();
+  const companyId = (req.body.companyId || '').toString();
+  const contactId = (req.body.contactId || '').toString();
+  const callId = (req.body.callId || '').toString();
+  const agentUid = uidFromClientIdentity(req.body.From);
+
+  const say = (msg) => {
+    twiml.say({ voice: 'alice' }, msg);
+    twiml.hangup();
+    res.set('Content-Type', 'text/xml');
+    res.status(200).send(twiml.toString());
+  };
+
+  try {
+    if (!companyId || !contactId) return say('This call is missing its contact details.');
+    if (!agentUid || !(await uidAdminsCompany(db, companyId, agentUid))) {
+      console.warn('[voiceOutbound] identity/company mismatch', req.body.From, companyId);
+      return say('You are not authorized to place calls for this account.');
+    }
+
+    const cRef = db.collection('companies').doc(companyId).collection('contacts').doc(contactId);
+    const cSnap = await cRef.get();
+    if (!cSnap.exists) return say('That contact no longer exists.');
+    const contact = cSnap.data();
+
+    // The do-not-call guard is enforced here as well as in the browser: the
+    // server is the only place it cannot be skipped.
+    if (contact.doNotCall === true) {
+      console.warn('[voiceOutbound] blocked do-not-call contact', contactId);
+      return say('This contact is on the do-not-call list.');
+    }
+    const to = normalizePhone(contact.phone);
+    if (!to) return say('This contact has no phone number.');
+
+    const cfg = voiceConfig();
+    const settings = await dialerSettings(db, companyId);
+
+    // Two-party-consent states make the announcement the only defensible
+    // default when recording is on at all.
+    if (settings.recordingMode === 'announce') {
+      twiml.say({ voice: 'alice' }, 'This call may be recorded for quality purposes.');
+    }
+
+    const base = fnBaseUrl(req);
+    const dialAttrs = {
+      callerId: cfg.callerId,
+      answerOnBridge: true,
+      action: `${base}/voiceStatusWebhook?companyId=${encodeURIComponent(companyId)}&callId=${encodeURIComponent(callId)}`,
+      method: 'POST'
+    };
+    if (settings.recordingMode === 'announce' || settings.recordingMode === 'on') {
+      dialAttrs.record = 'record-from-answer-dual';
+      dialAttrs.recordingStatusCallback =
+        `${base}/voiceRecordingWebhook?companyId=${encodeURIComponent(companyId)}&callId=${encodeURIComponent(callId)}`;
+      dialAttrs.recordingStatusCallbackMethod = 'POST';
+    }
+    twiml.dial(dialAttrs).number(to);
+
+    res.set('Content-Type', 'text/xml');
+    res.status(200).send(twiml.toString());
+  } catch (e) {
+    console.error('[voiceOutbound]', e && e.message);
+    return say('Something went wrong placing this call.');
+  }
+});
+
+/**
+ * startBridgeCall({ companyId, contactId, callId }) — cell-bridge mode.
+ * Twilio rings the rep's own mobile; voiceBridgeTwiml dials the lead once
+ * they answer. The rep never needs a working microphone in the browser.
+ */
+exports.startBridgeCall = onCall(async (request) => {
+  const db = admin.firestore();
+  const { companyId, contactId, callId } = request.data || {};
+  if (!companyId || !contactId) {
+    throw new HttpsError('invalid-argument', 'companyId and contactId are required.');
+  }
+  const { uid } = await assertCompanyAdmin(db, companyId, request);
+  await rateLimitCaller(db, request, { action: 'startBridgeCall', max: 120, windowSec: 600 });
+
+  const client = getTwilio();
+  const cfg = voiceConfig();
+  if (!client || !cfg.callerId) {
+    throw new HttpsError('failed-precondition',
+      'Calling is not set up yet. Add the Twilio voice settings first.');
+  }
+
+  const meSnap = await db.collection('users').doc(uid).get();
+  const agentCell = normalizePhone(meSnap.exists && meSnap.data().mobilePhone);
+  if (!agentCell) {
+    throw new HttpsError('failed-precondition',
+      'Add your mobile number in CRM Settings to use cell-bridge mode.');
+  }
+
+  const cSnap = await db.collection('companies').doc(companyId)
+    .collection('contacts').doc(contactId).get();
+  if (!cSnap.exists) throw new HttpsError('not-found', 'Contact not found.');
+  if (cSnap.data().doNotCall === true) {
+    throw new HttpsError('failed-precondition', 'This contact is on the do-not-call list.');
+  }
+  if (!normalizePhone(cSnap.data().phone)) {
+    throw new HttpsError('failed-precondition', 'Contact has no phone number.');
+  }
+
+  const base = functionsBaseUrl();
+  const bridgeUrl = `${base}/voiceBridgeTwiml`
+    + `?companyId=${encodeURIComponent(companyId)}`
+    + `&contactId=${encodeURIComponent(contactId)}`
+    + `&callId=${encodeURIComponent(callId || '')}`
+    + `&agentUid=${encodeURIComponent(uid)}`;
+
+  let call;
+  try {
+    call = await client.calls.create({
+      to: agentCell,
+      from: cfg.callerId,
+      url: bridgeUrl,
+      method: 'POST',
+      statusCallback: `${base}/voiceStatusWebhook`
+        + `?companyId=${encodeURIComponent(companyId)}&callId=${encodeURIComponent(callId || '')}`,
+      statusCallbackMethod: 'POST',
+      statusCallbackEvent: ['answered', 'completed']
+    });
+  } catch (e) {
+    throw new HttpsError('internal', 'Twilio could not start the call: ' + (e && e.message));
+  }
+
+  if (callId) {
+    try {
+      await db.collection('companies').doc(companyId).collection('calls').doc(callId).set({
+        twilioCallSid: call.sid, mode: 'bridge', status: 'ringing',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch (e) { /* the client also writes this; losing the mirror is survivable */ }
+  }
+
+  return { ok: true, sid: call.sid, ringing: agentCell };
+});
+
+/**
+ * voiceBridgeTwiml — answered by the rep's cell in bridge mode. Reads the
+ * lead's number from Firestore (never the query string) and dials it.
+ */
+exports.voiceBridgeTwiml = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  const VoiceResponse = require('twilio').twiml.VoiceResponse;
+  const twiml = new VoiceResponse();
+  const send = () => {
+    res.set('Content-Type', 'text/xml');
+    res.status(200).send(twiml.toString());
+  };
+
+  if (!twilioSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
+
+  const db = admin.firestore();
+  const companyId = (req.query.companyId || '').toString();
+  const contactId = (req.query.contactId || '').toString();
+  const callId = (req.query.callId || '').toString();
+  const agentUid = (req.query.agentUid || '').toString();
+
+  try {
+    if (!(await uidAdminsCompany(db, companyId, agentUid))) {
+      twiml.say({ voice: 'alice' }, 'This call is no longer authorized.');
+      twiml.hangup();
+      return send();
+    }
+    const cSnap = await db.collection('companies').doc(companyId)
+      .collection('contacts').doc(contactId).get();
+    const contact = cSnap.exists ? cSnap.data() : null;
+    const to = contact && contact.doNotCall !== true ? normalizePhone(contact.phone) : null;
+    if (!to) {
+      twiml.say({ voice: 'alice' }, 'That contact can no longer be called.');
+      twiml.hangup();
+      return send();
+    }
+
+    const cfg = voiceConfig();
+    const settings = await dialerSettings(db, companyId);
+    twiml.say({ voice: 'alice' },
+      `Connecting you to ${(contact.name || 'your contact').toString().slice(0, 60)}.`);
+    if (settings.recordingMode === 'announce') {
+      twiml.say({ voice: 'alice' }, 'This call may be recorded for quality purposes.');
+    }
+
+    const base = fnBaseUrl(req);
+    const dialAttrs = { callerId: cfg.callerId, answerOnBridge: true };
+    if (settings.recordingMode === 'announce' || settings.recordingMode === 'on') {
+      dialAttrs.record = 'record-from-answer-dual';
+      dialAttrs.recordingStatusCallback =
+        `${base}/voiceRecordingWebhook?companyId=${encodeURIComponent(companyId)}&callId=${encodeURIComponent(callId)}`;
+      dialAttrs.recordingStatusCallbackMethod = 'POST';
+    }
+    twiml.dial(dialAttrs).number(to);
+    return send();
+  } catch (e) {
+    console.error('[voiceBridge]', e && e.message);
+    twiml.say({ voice: 'alice' }, 'Something went wrong connecting this call.');
+    twiml.hangup();
+    return send();
+  }
+});
+
+/**
+ * voiceInboundTwiml — point the Twilio number's Voice webhook here. Rings the
+ * owning rep's softphone, falls back to voicemail, and makes sure a returning
+ * lead lands on a real contact record rather than a mystery number.
+ */
+exports.voiceInboundTwiml = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  const VoiceResponse = require('twilio').twiml.VoiceResponse;
+  const twiml = new VoiceResponse();
+  const send = () => {
+    res.set('Content-Type', 'text/xml');
+    res.status(200).send(twiml.toString());
+  };
+
+  if (!twilioSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
+
+  const db = admin.firestore();
+  const FV = admin.firestore.FieldValue;
+  const from = normalizePhone(req.body.From);
+  const to = normalizePhone(req.body.To);
+  const sid = req.body.CallSid || null;
+
+  try {
+    const cid = await resolveAcademyCompanyId(db);
+    if (!cid || !from) {
+      twiml.say({ voice: 'alice' }, 'Thanks for calling. Please try again later.');
+      twiml.hangup();
+      return send();
+    }
+
+    // Same upsert-by-phone the inbound SMS webhook does, so a lead who texts
+    // and then calls is one contact, not two.
+    const contactsRef = db.collection('companies').doc(cid).collection('contacts');
+    let contactDoc = null;
+    const q1 = await contactsRef.where('phone', '==', from).limit(1).get();
+    if (!q1.empty) contactDoc = q1.docs[0];
+    if (!contactDoc) {
+      const newRef = await contactsRef.add({
+        name: from, email: null, phone: from, companyName: null,
+        source: 'Inbound call', stage: 'new', tags: [], ownerUid: null,
+        createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp(),
+        createdBy: 'twilio', lastActivityAt: FV.serverTimestamp()
+      });
+      contactDoc = await newRef.get();
+    }
+    const contact = contactDoc.data();
+
+    const callRef = db.collection('companies').doc(cid).collection('calls').doc();
+    await callRef.set({
+      contactId: contactDoc.id,
+      contactName: contact.name || from,
+      contactPhone: from,
+      direction: 'in',
+      mode: 'softphone',
+      status: 'ringing',
+      disposition: null,
+      dispositionNote: null,
+      twilioCallSid: sid,
+      durationSec: null,
+      agentUid: contact.ownerUid || null,
+      agentName: null,
+      startedAt: FV.serverTimestamp(),
+      endedAt: null,
+      createdAt: FV.serverTimestamp(),
+      updatedAt: FV.serverTimestamp()
+    });
+    await contactDoc.ref.collection('activities').add({
+      type: 'call_inbound',
+      description: 'Inbound call from ' + from,
+      actorUid: 'twilio', actorName: from,
+      createdAt: FV.serverTimestamp(),
+      meta: { callId: callRef.id, direction: 'in' }
+    });
+    await contactDoc.ref.set({ lastActivityAt: FV.serverTimestamp() }, { merge: true });
+
+    const base = fnBaseUrl(req);
+    const statusUrl = `${base}/voiceStatusWebhook?companyId=${encodeURIComponent(cid)}&callId=${encodeURIComponent(callRef.id)}`;
+
+    // Ring the assigned rep if there is one; otherwise every admin at once,
+    // because an unassigned inbound lead going to voicemail is a lost lead.
+    const targets = [];
+    if (contact.ownerUid) targets.push(contact.ownerUid);
+    else {
+      const coSnap = await db.collection('companies').doc(cid).get();
+      ((coSnap.exists && coSnap.data().adminUids) || []).slice(0, 5).forEach((u) => targets.push(u));
+    }
+
+    if (targets.length) {
+      const dial = twiml.dial({
+        timeout: 20,
+        answerOnBridge: true,
+        action: statusUrl,
+        method: 'POST'
+      });
+      targets.forEach((u) => dial.client(voiceIdentityFor(u)));
+    }
+
+    // Reached when nobody answers (or nobody is registered).
+    twiml.say({ voice: 'alice' },
+      'Sorry we missed you. Please leave a message after the tone and we will call you right back.');
+    twiml.record({
+      maxLength: 120,
+      playBeep: true,
+      recordingStatusCallback:
+        `${base}/voiceRecordingWebhook?companyId=${encodeURIComponent(cid)}&callId=${encodeURIComponent(callRef.id)}&voicemail=1`,
+      recordingStatusCallbackMethod: 'POST'
+    });
+    twiml.hangup();
+    return send();
+  } catch (e) {
+    console.error('[voiceInbound]', e && e.message);
+    twiml.say({ voice: 'alice' }, 'Thanks for calling. Please try again later.');
+    twiml.hangup();
+    return send();
+  }
+});
+
+/**
+ * voiceStatusWebhook — call lifecycle. Used both as a <Dial action> and as a
+ * statusCallback, which post different field names, so both are read.
+ *
+ * Looks the row up by the callId we threaded through the query string, and
+ * falls back to a collectionGroup lookup by SID for calls we did not originate
+ * (inbound legs, or a callId that never made it).
+ */
+exports.voiceStatusWebhook = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  // Always answer Twilio with valid TwiML: this doubles as a <Dial action>,
+  // and a non-TwiML body there drops the call.
+  const respond = () => {
+    res.set('Content-Type', 'text/xml');
+    res.status(200).send('<Response></Response>');
+  };
+
+  if (!twilioSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
+
+  const db = admin.firestore();
+  const companyId = (req.query.companyId || '').toString();
+  const callId = (req.query.callId || '').toString();
+  const sid = req.body.DialCallSid || req.body.CallSid || null;
+  const status = req.body.DialCallStatus || req.body.CallStatus || null;
+  const durationRaw = req.body.DialCallDuration || req.body.CallDuration || req.body.RecordingDuration;
+  const durationSec = durationRaw != null ? Number(durationRaw) : null;
+
+  try {
+    let ref = null;
+    if (companyId && callId) {
+      ref = db.collection('companies').doc(companyId).collection('calls').doc(callId);
+      const snap = await ref.get();
+      if (!snap.exists) ref = null;
+    }
+    if (!ref && sid) {
+      const found = await db.collectionGroup('calls').where('twilioCallSid', '==', sid).limit(1).get();
+      if (!found.empty) ref = found.docs[0].ref;
+    }
+    if (!ref) { respond(); return; }
+
+    const patch = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+    if (status) patch.status = status;
+    if (sid) patch.twilioCallSid = sid;
+    if (Number.isFinite(durationSec)) patch.durationSec = durationSec;
+    if (status && ['completed', 'busy', 'no-answer', 'failed', 'canceled'].includes(status)) {
+      patch.endedAt = admin.firestore.FieldValue.serverTimestamp();
+    }
+    await ref.set(patch, { merge: true });
+
+    // A completed call is worth a timeline entry even if the rep closes the
+    // tab before picking a disposition — otherwise the attempt disappears.
+    const snap = await ref.get();
+    const data = snap.data() || {};
+    if (status === 'completed' && data.contactId && !data.statusActivityAt) {
+      const cRef = db.collection('companies').doc(companyId || snap.ref.parent.parent.id)
+        .collection('contacts').doc(data.contactId);
+      await cRef.collection('activities').add({
+        type: 'call_completed',
+        description: Number.isFinite(durationSec) && durationSec > 0
+          ? `Call ended after ${durationSec}s`
+          : 'Call ended with no answer',
+        actorUid: 'twilio', actorName: 'Twilio',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        meta: { callId: snap.id, status, durationSec: durationSec || 0 }
+      }).catch(() => {});
+      await ref.set({ statusActivityAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      await cRef.set({ lastActivityAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(() => {});
+    }
+  } catch (e) {
+    console.warn('[voiceStatus]', e && e.message);
+  }
+  respond();
+});
+
+/**
+ * voiceRecordingWebhook — the recording (or inbound voicemail) is ready.
+ * Stores Twilio's own URL rather than re-hosting the audio; playback in the
+ * CRM is an <audio src> against it.
+ */
+exports.voiceRecordingWebhook = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  if (!twilioSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
+
+  const db = admin.firestore();
+  const FV = admin.firestore.FieldValue;
+  const companyId = (req.query.companyId || '').toString();
+  const callId = (req.query.callId || '').toString();
+  const isVoicemail = req.query.voicemail === '1';
+  const url = req.body.RecordingUrl ? String(req.body.RecordingUrl) + '.mp3' : null;
+  const durationSec = req.body.RecordingDuration != null ? Number(req.body.RecordingDuration) : null;
+
+  try {
+    if (companyId && callId && url) {
+      const ref = db.collection('companies').doc(companyId).collection('calls').doc(callId);
+      await ref.set({
+        recordingUrl: url,
+        recordingStatus: 'ready',
+        recordingIsVoicemail: isVoicemail,
+        ...(Number.isFinite(durationSec) ? { recordingDurationSec: durationSec } : {}),
+        updatedAt: FV.serverTimestamp()
+      }, { merge: true });
+
+      // An inbound voicemail is a lead asking to be called back, so it earns
+      // its own timeline entry rather than sitting silently on the call row.
+      if (isVoicemail) {
+        const snap = await ref.get();
+        const contactId = (snap.data() || {}).contactId;
+        if (contactId) {
+          await db.collection('companies').doc(companyId).collection('contacts').doc(contactId)
+            .collection('activities').add({
+              type: 'voicemail_received',
+              description: `Voicemail left (${durationSec || '?'}s)`,
+              actorUid: 'twilio', actorName: 'Twilio',
+              createdAt: FV.serverTimestamp(),
+              meta: { callId, durationSec: durationSec || null }
+            }).catch(() => {});
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[voiceRecording]', e && e.message);
+  }
+  res.status(200).send('ok');
+});
+
+/**
+ * dropVoicemail({ companyId, callSid, dropId }) — redirect a live call into a
+ * prerecorded greeting. The point is speed: the rep hears the voicemail beep,
+ * hits one button, and moves to the next lead instead of talking.
+ */
+exports.dropVoicemail = onCall(async (request) => {
+  const db = admin.firestore();
+  const { companyId, callSid, dropId } = request.data || {};
+  if (!companyId || !callSid) {
+    throw new HttpsError('invalid-argument', 'companyId and callSid are required.');
+  }
+  await assertCompanyAdmin(db, companyId, request);
+  await rateLimitCaller(db, request, { action: 'dropVoicemail', max: 200, windowSec: 600 });
+
+  const client = getTwilio();
+  if (!client) throw new HttpsError('failed-precondition', 'Calling is not set up yet.');
+
+  // Named drop, else the one marked default, else the most recent.
+  const dropsCol = db.collection('companies').doc(companyId).collection('voicemailDrops');
+  let drop = null;
+  if (dropId) {
+    const snap = await dropsCol.doc(dropId).get();
+    if (snap.exists) drop = { id: snap.id, ...snap.data() };
+  }
+  if (!drop) {
+    const snap = await dropsCol.where('isDefault', '==', true).limit(1).get();
+    if (!snap.empty) drop = { id: snap.docs[0].id, ...snap.docs[0].data() };
+  }
+  if (!drop) {
+    const snap = await dropsCol.orderBy('createdAt', 'desc').limit(1).get().catch(() => null);
+    if (snap && !snap.empty) drop = { id: snap.docs[0].id, ...snap.docs[0].data() };
+  }
+  if (!drop || !drop.playToken) {
+    throw new HttpsError('failed-precondition',
+      'Record a voicemail greeting in CRM Settings first.');
+  }
+
+  const audioUrl = `${functionsBaseUrl()}/voicemailAudio`
+    + `?cid=${encodeURIComponent(companyId)}`
+    + `&id=${encodeURIComponent(drop.id)}`
+    + `&token=${encodeURIComponent(drop.playToken)}`;
+
+  const VoiceResponse = require('twilio').twiml.VoiceResponse;
+  const twiml = new VoiceResponse();
+  twiml.play(audioUrl);
+  twiml.hangup();
+
+  try {
+    await client.calls(callSid).update({ twiml: twiml.toString() });
+  } catch (e) {
+    throw new HttpsError('internal', 'Could not drop the voicemail: ' + (e && e.message));
+  }
+  return { ok: true, dropId: drop.id };
+});
+
+/**
+ * voicemailAudio — serves a recorded greeting to Twilio, which fetches it
+ * unauthenticated. Gated by the per-drop playToken rather than being open:
+ * the token is written server-side and never exposed to the browser.
+ */
+exports.voicemailAudio = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  const db = admin.firestore();
+  const cid = (req.query.cid || '').toString();
+  const id = (req.query.id || '').toString();
+  const token = (req.query.token || '').toString();
+  if (!cid || !id || !token) { res.status(400).send('bad request'); return; }
+
+  try {
+    const snap = await db.collection('companies').doc(cid).collection('voicemailDrops').doc(id).get();
+    if (!snap.exists) { res.status(404).send('not found'); return; }
+    const drop = snap.data();
+    // Constant-time-ish compare is overkill for a random 32-char token, but a
+    // length check first avoids leaking via early exit on short guesses.
+    if (!drop.playToken || drop.playToken.length !== token.length || drop.playToken !== token) {
+      res.status(403).send('forbidden');
+      return;
+    }
+    if (!drop.storagePath) { res.status(404).send('no audio'); return; }
+
+    const file = admin.storage().bucket().file(drop.storagePath);
+    const [exists] = await file.exists();
+    if (!exists) { res.status(404).send('no audio'); return; }
+
+    res.set('Content-Type', drop.contentType || 'audio/mpeg');
+    res.set('Cache-Control', 'private, max-age=300');
+    file.createReadStream()
+      .on('error', (e) => {
+        console.warn('[voicemailAudio] stream failed', e && e.message);
+        if (!res.headersSent) res.status(500).send('stream error');
+      })
+      .pipe(res);
+  } catch (e) {
+    console.warn('[voicemailAudio]', e && e.message);
+    if (!res.headersSent) res.status(500).send('error');
+  }
+});
+
+
+// ════════════════════════════════════════════════════════════════
+// Google Calendar — two-way sync for companies/{cid}/appointments.
+//
+// No googleapis dependency: the OAuth token endpoint and the Calendar v3 REST
+// surface used here are a handful of JSON calls, and Node 20 has fetch.
+//
+// Where things live:
+//   companies/{cid}/private/googleOAuth   — refresh token, sync cursor, watch
+//                                           channel. Rules: nobody, ever.
+//   companies/{cid}/integrations/google   — client-readable status mirror.
+//   oauthStates/{state}                   — single-use CSRF tokens.
+//
+// Loop prevention, which is the one part of two-way sync that bites:
+// every appointment carries googleSyncHash, a hash of the fields we mirror.
+// onAppointmentWritten pushes to Google only when the doc's content hash
+// differs from googleSyncHash, then stores the new hash. Inbound sync writes
+// the fields AND the matching hash in one write, so the trigger it fires
+// sees hash == content and does nothing. No flags to clear, no bouncing.
+// ════════════════════════════════════════════════════════════════
+
+const GOOGLE_SCOPES = [
+  'https://www.googleapis.com/auth/calendar.events',
+  'openid', 'email'
+].join(' ');
+
+function googleConfig() {
+  const clientId = (process.env.GOOGLE_OAUTH_CLIENT_ID || '').trim();
+  const clientSecret = (process.env.GOOGLE_OAUTH_CLIENT_SECRET || '').trim();
+  const redirectUri = (process.env.GOOGLE_OAUTH_REDIRECT_URI || '').trim()
+    || `${functionsBaseUrl()}/googleOAuthCallback`;
+  return { clientId, clientSecret, redirectUri, ok: !!(clientId && clientSecret) };
+}
+
+function privateGoogleRef(db, companyId) {
+  return db.collection('companies').doc(companyId).collection('private').doc('googleOAuth');
+}
+function googleStatusRef(db, companyId) {
+  return db.collection('companies').doc(companyId).collection('integrations').doc('google');
+}
+
+/** The fields that round-trip to Google, hashed for change detection. */
+function appointmentSyncHash(a) {
+  const crypto = require('crypto');
+  const start = a.startAt && a.startAt.toMillis ? a.startAt.toMillis()
+    : (a.startAt instanceof Date ? a.startAt.getTime() : (a.startAt || null));
+  const basis = JSON.stringify({
+    t: (a.title || '').trim(),
+    s: start,
+    d: Number(a.durationMin) || 30,
+    l: (a.location || '').trim(),
+    n: (a.notes || '').trim(),
+    st: a.status || 'scheduled'
+  });
+  return crypto.createHash('sha1').update(basis).digest('hex');
+}
+
+/**
+ * A valid access token for the company's connected account, refreshing
+ * through the stored refresh token when the cached one is within a minute of
+ * expiry. Returns null when the company is not connected.
+ */
+async function googleAccessToken(db, companyId) {
+  const ref = privateGoogleRef(db, companyId);
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+  const d = snap.data();
+  if (!d.refreshToken) return null;
+  if (d.accessToken && d.accessTokenExpiry && d.accessTokenExpiry - Date.now() > 60 * 1000) {
+    return d.accessToken;
+  }
+  const cfg = googleConfig();
+  const body = new URLSearchParams({
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+    refresh_token: d.refreshToken,
+    grant_type: 'refresh_token'
+  });
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString()
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.access_token) {
+    // A revoked grant surfaces here. Flip the mirror so the UI offers
+    // reconnect instead of silently failing every push.
+    if (json.error === 'invalid_grant') {
+      await googleStatusRef(db, companyId).set({
+        connected: false, error: 'Google access was revoked. Reconnect in CRM Settings.',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+    throw new Error('Google token refresh failed: ' + (json.error_description || json.error || res.status));
+  }
+  await ref.set({
+    accessToken: json.access_token,
+    accessTokenExpiry: Date.now() + (Number(json.expires_in) || 3600) * 1000
+  }, { merge: true });
+  return json.access_token;
+}
+
+/** Thin Calendar v3 caller. Throws on non-2xx with the API's message. */
+async function gcal(db, companyId, method, path, { query, body } = {}) {
+  const token = await googleAccessToken(db, companyId);
+  if (!token) throw new Error('Google Calendar is not connected.');
+  const qs = query ? '?' + new URLSearchParams(query).toString() : '';
+  const res = await fetch(`https://www.googleapis.com/calendar/v3${path}${qs}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {})
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (res.status === 204) return { status: 204 };
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error((json.error && json.error.message) || `Google Calendar ${res.status}`);
+    err.status = res.status;
+    err.reason = json.error && json.error.errors && json.error.errors[0] && json.error.errors[0].reason;
+    throw err;
+  }
+  return json;
+}
+
+/**
+ * googleOAuthStart({ companyId, returnTo }) — mints a single-use state and
+ * returns the consent URL. access_type=offline + prompt=consent is what makes
+ * Google hand back a refresh token, and it only does so on a consent screen.
+ */
+exports.googleOAuthStart = onCall(async (request) => {
+  const db = admin.firestore();
+  const { companyId, returnTo } = request.data || {};
+  if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+  const { uid } = await assertCompanyAdmin(db, companyId, request);
+  await rateLimitCaller(db, request, { action: 'googleOAuthStart', max: 10, windowSec: 600 });
+
+  const cfg = googleConfig();
+  if (!cfg.ok) {
+    throw new HttpsError('failed-precondition',
+      'Google Calendar is not set up yet. Add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET first.');
+  }
+
+  const crypto = require('crypto');
+  const state = crypto.randomBytes(24).toString('base64url');
+  const safeReturn = typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//')
+    ? returnTo.split('?')[0] : '/crm-settings.html';
+  await db.collection('oauthStates').doc(state).set({
+    companyId, uid, returnTo: safeReturn,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+    client_id: cfg.clientId,
+    redirect_uri: cfg.redirectUri,
+    response_type: 'code',
+    scope: GOOGLE_SCOPES,
+    access_type: 'offline',
+    prompt: 'consent',
+    include_granted_scopes: 'true',
+    state
+  }).toString();
+  return { url };
+});
+
+/**
+ * googleOAuthCallback — Google redirects here with ?code&state. Exchanges the
+ * code, stores the refresh token where no client can read it, starts the push
+ * channel, runs the first sync, and bounces back to the CRM.
+ */
+exports.googleOAuthCallback = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  const db = admin.firestore();
+  const FV = admin.firestore.FieldValue;
+  const back = (path, params) => {
+    const qs = new URLSearchParams(params).toString();
+    res.redirect(302, `${APP_BASE_URL}${path}?${qs}`);
+  };
+
+  const code = (req.query.code || '').toString();
+  const state = (req.query.state || '').toString();
+  const oauthError = (req.query.error || '').toString();
+  if (!state) { res.status(400).send('missing state'); return; }
+
+  const stateRef = db.collection('oauthStates').doc(state);
+  const stateSnap = await stateRef.get();
+  if (!stateSnap.exists) { res.status(400).send('unknown or already-used state'); return; }
+  const st = stateSnap.data();
+  await stateRef.delete();   // single use, success or not
+  const returnTo = st.returnTo || '/crm-settings.html';
+  const createdMs = st.createdAt && st.createdAt.toMillis ? st.createdAt.toMillis() : 0;
+  if (Date.now() - createdMs > 10 * 60 * 1000) return back(returnTo, { google: 'error', reason: 'the link expired' });
+  if (oauthError || !code) return back(returnTo, { google: 'error', reason: oauthError || 'no code' });
+
+  const cfg = googleConfig();
+  try {
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code, client_id: cfg.clientId, client_secret: cfg.clientSecret,
+        redirect_uri: cfg.redirectUri, grant_type: 'authorization_code'
+      }).toString()
+    });
+    const tok = await tokenRes.json().catch(() => ({}));
+    if (!tokenRes.ok || !tok.access_token) {
+      return back(returnTo, { google: 'error', reason: tok.error_description || tok.error || 'token exchange failed' });
+    }
+    if (!tok.refresh_token) {
+      // Happens when the user has previously granted and Google skipped the
+      // consent screen despite prompt=consent (rare, but real).
+      return back(returnTo, { google: 'error', reason: 'Google did not return a refresh token; remove the app at myaccount.google.com/permissions and connect again' });
+    }
+
+    let email = null;
+    try {
+      const me = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+        headers: { Authorization: `Bearer ${tok.access_token}` }
+      }).then((r) => r.json());
+      email = me && me.email ? String(me.email) : null;
+    } catch (e) {}
+
+    await privateGoogleRef(db, st.companyId).set({
+      refreshToken: tok.refresh_token,
+      accessToken: tok.access_token,
+      accessTokenExpiry: Date.now() + (Number(tok.expires_in) || 3600) * 1000,
+      calendarId: 'primary',
+      googleEmail: email,
+      connectedBy: st.uid,
+      syncToken: null,
+      watchChannelId: null, watchResourceId: null, watchExpiry: null,
+      connectedAt: FV.serverTimestamp()
+    }, { merge: true });
+
+    await googleStatusRef(db, st.companyId).set({
+      connected: true, googleEmail: email, calendarId: 'primary', error: null,
+      connectedAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp()
+    }, { merge: true });
+
+    // Push channel + first sync are best-effort: a failure here should not
+    // undo a successful connection, it just means the next tick retries.
+    try { await ensureGoogleWatchInternal(db, st.companyId, true); } catch (e) { console.warn('[googleOAuthCallback] watch', e && e.message); }
+    try { await syncFromGoogle(db, st.companyId); } catch (e) { console.warn('[googleOAuthCallback] sync', e && e.message); }
+
+    return back(returnTo, { google: 'connected' });
+  } catch (e) {
+    console.error('[googleOAuthCallback]', e && e.message);
+    return back(returnTo, { google: 'error', reason: 'unexpected error' });
+  }
+});
+
+/** googleDisconnect({ companyId }) — stop the channel, forget the tokens. */
+exports.googleDisconnect = onCall(async (request) => {
+  const db = admin.firestore();
+  const { companyId } = request.data || {};
+  if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+  await assertCompanyAdmin(db, companyId, request);
+
+  const ref = privateGoogleRef(db, companyId);
+  const snap = await ref.get();
+  if (snap.exists) {
+    const d = snap.data();
+    if (d.watchChannelId && d.watchResourceId) {
+      try {
+        await gcal(db, companyId, 'POST', '/channels/stop', {
+          body: { id: d.watchChannelId, resourceId: d.watchResourceId }
+        });
+      } catch (e) { /* already expired or revoked; nothing to keep */ }
+    }
+    if (d.refreshToken) {
+      try {
+        await fetch('https://oauth2.googleapis.com/revoke?' + new URLSearchParams({ token: d.refreshToken }), { method: 'POST' });
+      } catch (e) {}
+    }
+    await ref.delete();
+  }
+  await googleStatusRef(db, companyId).set({
+    connected: false, googleEmail: null, error: null,
+    watchExpiry: null, lastSyncAt: null,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true };
+});
+
+/**
+ * Create or renew the push notification channel. Calendar channels live at
+ * most a week; with no cron in this project, renewal is opportunistic —
+ * every push, every appointment write, every settings page load, and the
+ * GitHub Actions tick all call this and it only acts inside the last 24h.
+ */
+async function ensureGoogleWatchInternal(db, companyId, force = false) {
+  const ref = privateGoogleRef(db, companyId);
+  const snap = await ref.get();
+  if (!snap.exists || !snap.data().refreshToken) return { connected: false };
+  const d = snap.data();
+  const expiry = Number(d.watchExpiry) || 0;
+  const DAY = 24 * 3600 * 1000;
+  if (!force && d.watchChannelId && expiry - Date.now() > DAY) {
+    return { connected: true, renewed: false, watchExpiry: expiry };
+  }
+
+  // Stop the old one first so Google does not deliver to two channels.
+  if (d.watchChannelId && d.watchResourceId) {
+    try {
+      await gcal(db, companyId, 'POST', '/channels/stop', {
+        body: { id: d.watchChannelId, resourceId: d.watchResourceId }
+      });
+    } catch (e) { /* expired channels 404; fine */ }
+  }
+
+  const crypto = require('crypto');
+  const channelId = crypto.randomUUID();
+  const calendarId = d.calendarId || 'primary';
+  const out = await gcal(db, companyId, 'POST', `/calendars/${encodeURIComponent(calendarId)}/events/watch`, {
+    body: {
+      id: channelId,
+      type: 'web_hook',
+      address: `${functionsBaseUrl()}/googleCalendarPush`,
+      token: companyId,
+      params: { ttl: String(7 * 24 * 3600) }
+    }
+  });
+  const newExpiry = Number(out.expiration) || (Date.now() + 7 * DAY);
+  await ref.set({
+    watchChannelId: channelId,
+    watchResourceId: out.resourceId || null,
+    watchExpiry: newExpiry
+  }, { merge: true });
+  await googleStatusRef(db, companyId).set({
+    watchExpiry: admin.firestore.Timestamp.fromMillis(newExpiry),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { connected: true, renewed: true, watchExpiry: newExpiry };
+}
+
+exports.ensureGoogleWatch = onCall(async (request) => {
+  const db = admin.firestore();
+  const { companyId } = request.data || {};
+  if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+  await assertCompanyAdmin(db, companyId, request);
+  await rateLimitCaller(db, request, { action: 'ensureGoogleWatch', max: 30, windowSec: 600 });
+  try {
+    return await ensureGoogleWatchInternal(db, companyId, false);
+  } catch (e) {
+    return { connected: true, renewed: false, error: e && e.message };
+  }
+});
+
+/**
+ * Pull changes from Google into Firestore. Incremental via syncToken; a 410
+ * from Google means the token is stale and a bounded full resync is done.
+ */
+async function syncFromGoogle(db, companyId) {
+  const ref = privateGoogleRef(db, companyId);
+  const snap = await ref.get();
+  if (!snap.exists || !snap.data().refreshToken) return { synced: 0 };
+  const d = snap.data();
+  const calendarId = d.calendarId || 'primary';
+  const FV = admin.firestore.FieldValue;
+  const apptsCol = db.collection('companies').doc(companyId).collection('appointments');
+
+  let pageToken = null;
+  let syncToken = d.syncToken || null;
+  let nextSyncToken = null;
+  let touched = 0;
+  const path = `/calendars/${encodeURIComponent(calendarId)}/events`;
+
+  const listPage = async () => {
+    const query = { maxResults: '250', singleEvents: 'true', showDeleted: 'true' };
+    if (pageToken) query.pageToken = pageToken;
+    else if (syncToken) query.syncToken = syncToken;
+    else {
+      // First sync: a bounded window. Wider than this and a busy calendar
+      // floods the CRM with every recurring standup for a year.
+      const now = Date.now();
+      query.timeMin = new Date(now - 7 * 24 * 3600 * 1000).toISOString();
+      query.timeMax = new Date(now + 90 * 24 * 3600 * 1000).toISOString();
+    }
+    return gcal(db, companyId, 'GET', path, { query });
+  };
+
+  for (let guard = 0; guard < 40; guard++) {
+    let page;
+    try {
+      page = await listPage();
+    } catch (e) {
+      if (e.status === 410 && syncToken) {
+        // Stale cursor: drop it and start a fresh bounded sync.
+        syncToken = null; pageToken = null;
+        await ref.set({ syncToken: null }, { merge: true });
+        continue;
+      }
+      throw e;
+    }
+
+    for (const ev of (page.items || [])) {
+      if (!ev.id) continue;
+      const found = await apptsCol.where('googleEventId', '==', ev.id).limit(1).get();
+      const existing = found.empty ? null : found.docs[0];
+
+      if (ev.status === 'cancelled') {
+        if (existing && existing.data().status !== 'canceled') {
+          const next = { ...existing.data(), status: 'canceled' };
+          await existing.ref.set({
+            status: 'canceled', googleSyncHash: appointmentSyncHash(next),
+            updatedAt: FV.serverTimestamp()
+          }, { merge: true });
+          touched++;
+        }
+        continue;
+      }
+
+      // All-day events have `date` not `dateTime`; treat them as 9am local-ish
+      // for an hour rather than dropping them, since they may still be a
+      // booking someone made on the calendar side.
+      const startIso = (ev.start && (ev.start.dateTime || (ev.start.date ? ev.start.date + 'T09:00:00Z' : null)));
+      const endIso = (ev.end && (ev.end.dateTime || (ev.end.date ? ev.end.date + 'T10:00:00Z' : null)));
+      if (!startIso) continue;
+      const startMs = Date.parse(startIso);
+      const endMs = endIso ? Date.parse(endIso) : startMs + 30 * 60 * 1000;
+      const durationMin = Math.max(5, Math.round((endMs - startMs) / 60000));
+      const meetLink = ev.hangoutLink || null;
+      const fields = {
+        title: (ev.summary || 'Untitled event').slice(0, 200),
+        startAt: admin.firestore.Timestamp.fromMillis(startMs),
+        durationMin,
+        location: ev.location || meetLink || null,
+        notes: ev.description ? String(ev.description).slice(0, 2000) : null,
+        status: existing && existing.data().status === 'completed' ? 'completed' : 'scheduled',
+        meetLink,
+        googleEventId: ev.id,
+        googleEtag: ev.etag || null,
+        syncSource: 'google',
+        updatedAt: FV.serverTimestamp()
+      };
+      fields.googleSyncHash = appointmentSyncHash(fields);
+
+      if (existing) {
+        // Skip a no-op to keep the trigger quiet.
+        if (existing.data().googleSyncHash === fields.googleSyncHash && existing.data().googleEtag === fields.googleEtag) continue;
+        await existing.ref.set(fields, { merge: true });
+      } else {
+        // A booking that originated in Google. Try to attach it to a contact
+        // by attendee email, so it shows on their timeline.
+        let contactId = null, contactName = null;
+        const attendees = (ev.attendees || []).map((a) => (a.email || '').toLowerCase()).filter(Boolean);
+        for (const em of attendees) {
+          const c = await db.collection('companies').doc(companyId).collection('contacts')
+            .where('email', '==', em).limit(1).get();
+          if (!c.empty) { contactId = c.docs[0].id; contactName = c.docs[0].data().name || null; break; }
+        }
+        await apptsCol.add({
+          ...fields,
+          contactId, contactName,
+          ownerUid: d.connectedBy || null,
+          remindedAt: null,
+          createdAt: FV.serverTimestamp(),
+          createdBy: 'google'
+        });
+      }
+      touched++;
+    }
+
+    if (page.nextPageToken) { pageToken = page.nextPageToken; continue; }
+    nextSyncToken = page.nextSyncToken || null;
+    break;
+  }
+
+  await ref.set({ syncToken: nextSyncToken || syncToken || null }, { merge: true });
+  await googleStatusRef(db, companyId).set({
+    lastSyncAt: FV.serverTimestamp(), error: null, updatedAt: FV.serverTimestamp()
+  }, { merge: true });
+  return { synced: touched };
+}
+
+/**
+ * googleCalendarPush — Google's webhook. Validates the channel against what
+ * we stored, then runs an incremental sync. The `sync` message Google sends
+ * on channel creation carries no changes and is acknowledged only.
+ */
+exports.googleCalendarPush = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  const db = admin.firestore();
+  const channelId = req.get('X-Goog-Channel-ID') || '';
+  const resourceId = req.get('X-Goog-Resource-ID') || '';
+  const companyId = req.get('X-Goog-Channel-Token') || '';
+  const resourceState = req.get('X-Goog-Resource-State') || '';
+
+  if (!channelId || !companyId) { res.status(400).send('bad request'); return; }
+  try {
+    const snap = await privateGoogleRef(db, companyId).get();
+    const d = snap.exists ? snap.data() : null;
+    if (!d || d.watchChannelId !== channelId || (d.watchResourceId && d.watchResourceId !== resourceId)) {
+      // Not a channel we own (stale, or forged). 404 tells Google to stop.
+      res.status(404).send('unknown channel');
+      return;
+    }
+    if (resourceState !== 'sync') {
+      await syncFromGoogle(db, companyId);
+    }
+    // Renew here too: a busy calendar renews itself without any tick at all.
+    try { await ensureGoogleWatchInternal(db, companyId, false); } catch (e) {}
+  } catch (e) {
+    console.warn('[googleCalendarPush]', e && e.message);
+  }
+  res.status(200).send('ok');
+});
+
+/**
+ * onAppointmentWritten — the outbound half. Creates, updates or deletes the
+ * Google event to match Firestore, with a Meet link and the contact invited
+ * when the booking asked for it. See the hash note at the top of this section
+ * for why this cannot loop with googleCalendarPush.
+ */
+exports.onAppointmentWritten = onDocumentWritten(
+  'companies/{companyId}/appointments/{apptId}',
+  async (event) => {
+    const db = admin.firestore();
+    const FV = admin.firestore.FieldValue;
+    const { companyId, apptId } = event.params;
+    const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+    const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+
+    const priv = await privateGoogleRef(db, companyId).get();
+    if (!priv.exists || !priv.data().refreshToken) return;
+    const calendarId = priv.data().calendarId || 'primary';
+    const evPath = (id) => `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(id)}`;
+
+    // Deleted in the CRM → delete in Google.
+    if (before && !after) {
+      if (before.googleEventId) {
+        try { await gcal(db, companyId, 'DELETE', evPath(before.googleEventId), { query: { sendUpdates: 'all' } }); }
+        catch (e) { if (e.status !== 404 && e.status !== 410) console.warn('[onAppointmentWritten] delete', e.message); }
+      }
+      return;
+    }
+    if (!after) return;
+
+    // Already mirrored: the content hash matches what we last synced.
+    const hash = appointmentSyncHash(after);
+    if (after.googleSyncHash === hash) return;
+
+    const ref = event.data.after.ref;
+
+    // Canceled in the CRM → cancel in Google, keep the row.
+    if (after.status === 'canceled' || after.status === 'noshow') {
+      if (after.googleEventId) {
+        try { await gcal(db, companyId, 'DELETE', evPath(after.googleEventId), { query: { sendUpdates: 'all' } }); }
+        catch (e) { if (e.status !== 404 && e.status !== 410) console.warn('[onAppointmentWritten] cancel', e.message); }
+      }
+      await ref.set({ googleSyncHash: hash }, { merge: true });
+      return;
+    }
+
+    const startMs = after.startAt && after.startAt.toMillis ? after.startAt.toMillis() : null;
+    if (!startMs) { await ref.set({ googleSyncHash: hash }, { merge: true }); return; }
+    const endMs = startMs + (Number(after.durationMin) || 30) * 60 * 1000;
+
+    // Invite the contact only when the booking asked to, and only with a real
+    // address: an invite is an email to the lead, not a side effect.
+    const attendees = [];
+    if (after.inviteContact && after.contactId) {
+      try {
+        const c = await db.collection('companies').doc(companyId).collection('contacts').doc(after.contactId).get();
+        const em = c.exists && c.data().email;
+        if (em) attendees.push({ email: em, displayName: c.data().name || undefined });
+      } catch (e) {}
+    }
+
+    const body = {
+      summary: after.title || 'Appointment',
+      description: after.notes || undefined,
+      location: after.location && !/^https?:\/\/meet\.google\.com/.test(after.location) ? after.location : undefined,
+      start: { dateTime: new Date(startMs).toISOString() },
+      end: { dateTime: new Date(endMs).toISOString() },
+      attendees: attendees.length ? attendees : undefined,
+      extendedProperties: { private: { onePCrmAppointmentId: apptId, onePCrmCompanyId: companyId } }
+    };
+
+    try {
+      let ev;
+      if (after.googleEventId) {
+        ev = await gcal(db, companyId, 'PATCH', evPath(after.googleEventId), {
+          query: { sendUpdates: attendees.length ? 'all' : 'none', conferenceDataVersion: '1' },
+          body
+        });
+      } else {
+        const crypto = require('crypto');
+        body.conferenceData = {
+          createRequest: { requestId: crypto.randomUUID(), conferenceSolutionKey: { type: 'hangoutsMeet' } }
+        };
+        ev = await gcal(db, companyId, 'POST', `/calendars/${encodeURIComponent(calendarId)}/events`, {
+          query: { sendUpdates: attendees.length ? 'all' : 'none', conferenceDataVersion: '1' },
+          body
+        });
+      }
+      const meetLink = ev.hangoutLink || after.meetLink || null;
+      const patch = {
+        googleEventId: ev.id,
+        googleEtag: ev.etag || null,
+        meetLink,
+        syncSource: 'crm',
+        googleSyncedAt: FV.serverTimestamp()
+      };
+      // A brand-new booking with no location gets the Meet link as its
+      // location, which is what the reminder email and the calendar show.
+      if (!after.location && meetLink) patch.location = meetLink;
+      const next = { ...after, ...patch };
+      patch.googleSyncHash = appointmentSyncHash(next);
+      await ref.set(patch, { merge: true });
+
+      if (after.contactId && !after.googleEventId) {
+        await db.collection('companies').doc(companyId).collection('contacts').doc(after.contactId)
+          .collection('activities').add({
+            type: 'calendar_synced',
+            description: `Added to Google Calendar${attendees.length ? ' and invited ' + attendees[0].email : ''}${meetLink ? ' · Meet link ready' : ''}`,
+            actorUid: 'google', actorName: 'Google Calendar',
+            createdAt: FV.serverTimestamp(),
+            meta: { appointmentId: apptId, googleEventId: ev.id, meetLink }
+          }).catch(() => {});
+      }
+    } catch (e) {
+      console.warn('[onAppointmentWritten] push failed', e && e.message);
+      // Record the failure on the row so the UI can show it, and store the
+      // hash so a failing event does not retry on every unrelated write.
+      await ref.set({ googleSyncError: (e && e.message) || 'sync failed', googleSyncHash: hash }, { merge: true });
+    }
+
+    try { await ensureGoogleWatchInternal(db, companyId, false); } catch (e) {}
   }
 );
 

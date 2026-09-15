@@ -9,7 +9,8 @@ import { collection, getDocs, query, where, limit } from 'https://www.gstatic.co
 import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.js';
 import {
   listAppointments, createAppointment, setAppointmentStatus, deleteAppointment,
-  listContacts, listCompanyAdmins, escapeHtml, toDate
+  listContacts, listCompanyAdmins, escapeHtml, toDate,
+  getGoogleCalendarStatus, ensureGoogleWatch
 } from './crm.js';
 
 const $ = (id) => document.getElementById(id);
@@ -18,6 +19,7 @@ const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 const state = {
   uid: null, companyId: null, appts: [], contacts: [], admins: [],
+  google: { connected: false },
   view: new Date() // first-of-month anchor
 };
 
@@ -53,7 +55,7 @@ function render() {
       <div class="cal-cell ${isToday ? 'cal-today' : ''}" data-day="${day}">
         <div class="cal-daynum">${day}</div>
         ${list.slice(0, 3).map((a) => `
-          <button class="cal-appt" data-appt="${a.id}" title="${escapeHtml(a.title)}" style="--stage-color:${a.status === 'completed' ? '#56D4A8' : (a.status === 'canceled' || a.status === 'noshow' ? '#8B4A4A' : '#E60306')}">
+          <button class="cal-appt ${a.googleEventId ? 'cal-appt-google' : ''}" data-appt="${a.id}" title="${escapeHtml(a.title)}${a.googleEventId ? ' · on Google Calendar' : ''}" style="--stage-color:${a.status === 'completed' ? '#56D4A8' : (a.status === 'canceled' || a.status === 'noshow' ? '#8B4A4A' : '#E60306')}">
             ${fmtTime(a._d)} ${escapeHtml(a.title)}
           </button>`).join('')}
         ${list.length > 3 ? `<div class="cal-more">+${list.length - 3} more</div>` : ''}
@@ -127,12 +129,21 @@ function openApptModal(appt, prefillDate) {
               <input class="c-input" id="ap-dur" type="number" min="5" step="5" value="${editing ? (appt.durationMin || 30) : 30}" /></div>
           </div>
           <div class="crm-form-row"><label>Location / link</label>
-            <input class="c-input" id="ap-loc" value="${editing ? escapeHtml(appt.location || '') : ''}" placeholder="Zoom link, address, or phone" /></div>
+            <input class="c-input" id="ap-loc" value="${editing ? escapeHtml(appt.location || '') : ''}" placeholder="${state.google.connected ? 'Leave blank for a Google Meet link' : 'Zoom link, address, or phone'}" /></div>
           <div class="crm-form-row"><label>Contact</label>
             <select class="c-input crm-select" id="ap-contact">
               <option value="">— none —</option>
               ${state.contacts.map((c) => `<option value="${c.id}" ${editing && appt.contactId === c.id ? 'selected' : ''}>${escapeHtml(c.name || 'Unnamed')}</option>`).join('')}
             </select></div>
+          ${state.google.connected ? `
+          <div class="crm-form-row">
+            <label class="crm-consent-check">
+              <input type="checkbox" id="ap-invite" ${editing && appt.inviteContact ? 'checked' : ''} />
+              <span id="ap-invite-label">Send a calendar invite to the contact</span>
+            </label>
+          </div>
+          ${editing && appt.meetLink ? `<div class="crm-mini-sub"><a class="crm-meet-link" href="${escapeHtml(appt.meetLink)}" target="_blank" rel="noopener">Join Google Meet</a></div>` : ''}
+          ${editing && appt.googleSyncError ? `<div class="crm-mini-sub" style="color:var(--red);">Calendar sync failed: ${escapeHtml(appt.googleSyncError)}</div>` : ''}` : ''}
           <div id="ap-err" class="auth-error" style="display:none;"></div>
           <div class="crm-modal-actions">
             ${editing ? `<button type="button" class="btn btn-ghost" id="ap-del" style="margin-right:auto;">Delete</button>
@@ -146,6 +157,20 @@ function openApptModal(appt, prefillDate) {
     </div>`;
   const close = () => { root.innerHTML = ''; };
   $('ap-close').addEventListener('click', close);
+
+  const inviteBox = $('ap-invite');
+  if (inviteBox) {
+    const syncInvite = () => {
+      const c = state.contacts.find((x) => x.id === $('ap-contact').value);
+      const label = $('ap-invite-label');
+      if (!c) { inviteBox.disabled = true; inviteBox.checked = false; label.textContent = 'Pick a contact to send an invite'; return; }
+      if (!c.email) { inviteBox.disabled = true; inviteBox.checked = false; label.textContent = `${c.name || 'This contact'} has no email to invite`; return; }
+      inviteBox.disabled = false;
+      label.textContent = `Send a calendar invite to ${c.email}`;
+    };
+    $('ap-contact').addEventListener('change', syncInvite);
+    syncInvite();
+  }
   $('modal-bd').addEventListener('click', (e) => { if (e.target.id === 'modal-bd') close(); });
 
   if (editing) {
@@ -172,7 +197,8 @@ function openApptModal(appt, prefillDate) {
         startAt: startStr ? new Date(startStr) : null,
         durationMin: $('ap-dur').value,
         location: $('ap-loc').value || null,
-        contactId, contactName: contact ? (contact.name || null) : null
+        contactId, contactName: contact ? (contact.name || null) : null,
+        inviteContact: !!($('ap-invite') && $('ap-invite').checked && contact && contact.email)
       };
       if (editing) {
         const { updateAppointment } = await import('./crm.js');
@@ -218,8 +244,13 @@ async function main() {
   }
   state.companyId = companyId;
   content.innerHTML = `<div class="crm-section-sub">Loading calendar…</div>`;
-  [state.contacts, state.admins] = await Promise.all([listContacts(companyId), listCompanyAdmins(companyId)]);
+  [state.contacts, state.admins, state.google] = await Promise.all([
+    listContacts(companyId), listCompanyAdmins(companyId), getGoogleCalendarStatus(companyId)
+  ]);
   await reload();
+  // With no cron in this project, the Google push channel is renewed from
+  // wherever people already are. This page is the most natural place.
+  if (state.google.connected) ensureGoogleWatch(companyId);
 }
 
 main();

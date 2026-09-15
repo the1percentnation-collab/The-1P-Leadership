@@ -10227,3 +10227,11 @@ body.has-call-dock .crm-content { padding-bottom: 190px; }
   .dial-queue, .dial-side { position: static; max-height: 300px; height: auto; }
   .dial-side { min-height: 320px; }
 }
+
+/* Google Calendar affordances. */
+.crm-meet-link { color: var(--red); text-decoration: none; font-weight: 600; }
+.crm-meet-link:hover { text-decoration: underline; }
+.cal-appt-google::after {
+  content: 'G'; margin-left: 5px; font-family: var(--font-mono); font-size: 9px;
+  opacity: .7; border: 1px solid currentColor; border-radius: 3px; padding: 0 3px;
+}
