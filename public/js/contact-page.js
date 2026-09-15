@@ -17,8 +17,12 @@ import {
   listTasks, createTask, completeTask, reopenTask,
   listAppointments, createAppointment, setAppointmentStatus,
   listMessages, sendSms,
+  listCalls, setDoNotCall, dispositionMeta, callBlockReason,
+  getGoogleCalendarStatus, listSequences, listEnrollments, enrollContact, stopEnrollment,
   escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate
 } from './crm.js';
+import { dialer, onDialerEvent } from './dialer-core.js';
+import { mountTemplatePicker } from './merge-fields.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -37,6 +41,9 @@ const state = {
   tasks: [],
   appts: [],
   messages: [],
+  calls: [],
+  callsLoaded: false,
+  google: { connected: false },
   dealsLoaded: false,
   tasksLoaded: false,
   apptsLoaded: false,
@@ -84,6 +91,34 @@ function renderContactHeader() {
   $('ct-phone').value = c.phone || '';
   $('ct-company').value = c.companyName || '';
 
+  // Consent controls. The SMS side is read-only here: smsOptedOut is set by
+  // the inbound webhook when a lead replies STOP, and an admin un-ticking it
+  // in the CRM would not be consent.
+  const dnc = $('ct-dnc');
+  if (dnc) dnc.checked = c.doNotCall === true;
+  const smsNote = $('ct-sms-consent');
+  if (smsNote) {
+    smsNote.textContent = c.smsOptedOut === true
+      ? 'This contact replied STOP — texting is blocked.'
+      : '';
+  }
+
+  // Comms buttons are only live when there is something to reach.
+  const blocked = callBlockReason(c);
+  const callBtn = $('btn-call-contact');
+  if (callBtn) {
+    callBtn.disabled = !!blocked;
+    callBtn.title = blocked || 'Call this contact';
+  }
+  const textBtn = $('btn-text-contact');
+  if (textBtn) {
+    const smsBlocked = !c.phone
+      ? 'This contact has no phone number.'
+      : (c.smsOptedOut === true ? 'This contact opted out of SMS.' : null);
+    textBtn.disabled = !!smsBlocked;
+    textBtn.title = smsBlocked || 'Text this contact';
+  }
+
   // Tags
   renderTags();
 }
@@ -130,6 +165,15 @@ function iconFor(type) {
     case 'deal_stage_changed': return '⇨';
     case 'task_created': return '✓';
     case 'task_completed': return '☑';
+    case 'call_logged': return '☎';
+    case 'call_completed': return '☎';
+    case 'call_inbound': return '📞';
+    case 'voicemail_received': return '📨';
+    case 'calendar_synced': return '🗓';
+    case 'sequence_enrolled': return '⇶';
+    case 'sequence_stopped': return '⏹';
+    case 'dnc_added': return '⛔';
+    case 'dnc_removed': return '✅';
     case 'appointment_created': return '📅';
     case 'appointment_status': return '📅';
     case 'email_sent': return '✉';
@@ -267,6 +311,8 @@ function renderAppts() {
         <div class="crm-mini-main">
           <div class="crm-mini-title">${escapeHtml(a.title)}</div>
           <div class="crm-mini-sub">${d ? d.toLocaleString() : '—'}${a.location ? ' · ' + escapeHtml(a.location) : ''}${escapeHtml(statusLabel)}</div>
+          ${a.meetLink ? `<div class="crm-mini-sub"><a href="${escapeHtml(a.meetLink)}" target="_blank" rel="noopener" class="crm-meet-link">Join Google Meet</a>${a.googleEventId ? ' · on Google Calendar' : ''}</div>` : (a.googleEventId ? '<div class="crm-mini-sub">On Google Calendar</div>' : '')}
+          ${a.googleSyncError ? `<div class="crm-mini-sub" style="color:var(--red);">Calendar sync failed: ${escapeHtml(a.googleSyncError)}</div>` : ''}
         </div>
         ${a.status === 'scheduled' ? `<button class="crm-chip" data-appt-done="${a.id}">Done</button>` : ''}
       </div>`;
@@ -282,6 +328,72 @@ function renderAppts() {
 async function refreshAppts() {
   state.appts = await listAppointments(state.companyId, { contactId: state.contactId });
   renderAppts();
+}
+
+function mergeContext() {
+  return {
+    contact: state.contact,
+    owner: state.admins.find((a) => a.uid === state.uid) || null,
+    appointment: (state.appts || []).find((a) => a.status === 'scheduled') || null
+  };
+}
+
+function renderCalls() {
+  const host = $('calls-list');
+  if (!host) return;
+  if (!state.calls.length) {
+    host.innerHTML = `<div class="crm-subpanel-empty">No calls logged for this contact yet.</div>`;
+    return;
+  }
+  host.innerHTML = state.calls.map((cl) => {
+    const meta = dispositionMeta(cl.disposition);
+    const dur = cl.durationSec
+      ? `${Math.floor(cl.durationSec / 60)}m ${cl.durationSec % 60}s`
+      : (cl.status === 'no-answer' ? 'no answer' : '—');
+    const bits = [
+      cl.direction === 'in' ? 'Inbound' : 'Outbound',
+      dur,
+      cl.agentName ? escapeHtml(cl.agentName) : null,
+      cl.mode === 'manual' ? 'logged manually' : null
+    ].filter(Boolean);
+    return `
+      <div class="crm-mini-row">
+        <div class="crm-mini-main">
+          <div class="crm-mini-title">
+            ${meta ? escapeHtml(meta.label) : escapeHtml(cl.status || 'Call')}
+            <span class="crm-mini-sub">${fmtDateTime(cl.createdAt)}</span>
+          </div>
+          <div class="crm-mini-sub">${bits.join(' · ')}</div>
+          ${cl.dispositionNote ? `<div class="crm-mini-sub">${escapeHtml(cl.dispositionNote)}</div>` : ''}
+          ${cl.recordingUrl && cl.recordingStatus === 'ready'
+            ? `<audio class="call-recording" controls preload="none" src="${escapeHtml(cl.recordingUrl)}"></audio>`
+            : (cl.recordingStatus === 'pending' ? '<div class="crm-mini-sub">Recording processing…</div>' : '')}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function refreshCalls() {
+  state.calls = await listCalls(state.companyId, { contactId: state.contactId });
+  renderCalls();
+}
+
+/**
+ * Dial this contact. The dock owns the call and the disposition prompt; all
+ * this needs to do is act on the outcome — a booked call should open the
+ * appointment modal while the agent still has the context in their head.
+ */
+async function startCall() {
+  try {
+    const result = await dialer.callContact(state.contact);
+    if (result && result.followUp === 'appointment') openContactApptModal();
+    if (result && result.followUp === 'task') openContactTaskModal();
+  } catch (e) {
+    const msg = e && e.message;
+    if (msg && msg !== 'Cancelled.') alert(msg);
+    return;
+  }
+  await Promise.all([refreshCalls(), refreshActivities(), refreshContact()]);
 }
 
 function renderSms() {
@@ -302,6 +414,7 @@ function renderSms() {
           </div>`).join('') : '<div class="crm-subpanel-empty" style="margin:auto;">No texts yet. Send the first one below.</div>'}
       </div>
       <form class="sms-composer" id="ct-sms-form">
+        <span id="ct-sms-tpl"></span>
         <input class="c-input" id="ct-sms-input" placeholder="Type a text…" autocomplete="off" />
         <button class="btn btn-primary" type="submit" id="ct-sms-send">Send</button>
       </form>
@@ -309,6 +422,10 @@ function renderSms() {
     <div id="ct-sms-err" class="auth-error" style="display:none;margin-top:8px;"></div>`;
   const msgs = $('ct-sms-messages');
   if (msgs) msgs.scrollTop = msgs.scrollHeight;
+  mountTemplatePicker({
+    host: $('ct-sms-tpl'), input: $('ct-sms-input'), channel: 'sms',
+    companyId: state.companyId, context: mergeContext
+  });
   $('ct-sms-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const input = $('ct-sms-input');
@@ -414,18 +531,32 @@ async function main() {
   state.companyId = companyId;
 
   try {
-    state.admins = await listCompanyAdmins(companyId);
+    [state.admins, state.google] = await Promise.all([
+      listCompanyAdmins(companyId), getGoogleCalendarStatus(companyId)
+    ]);
   } catch (e) { state.admins = []; }
 
   state.contact = await getContact(companyId, contactId);
   if (!state.contact) { gate('Contact not found.'); return; }
+
+  // Configure the softphone. This does not build the Twilio Device or ask for
+  // the microphone — that happens on the first actual call.
+  try {
+    await dialer.configure({ companyId, uid: u.uid });
+  } catch (e) { console.warn('[contact] dialer configure failed', e); }
+
+  // A call placed from anywhere on this page refreshes the panes it affects.
+  onDialerEvent('disposition', () => {
+    refreshCalls().catch(() => {});
+    refreshActivities().catch(() => {});
+  });
 
   $('panel').style.display = 'block';
   renderContactHeader();
   await Promise.all([refreshNotes(), refreshActivities()]);
 
   // Feed tabs (Notes / Deals / Tasks / Activity) with lazy loading.
-  const PANES = { notes: 'feed-notes', deals: 'feed-deals', tasks: 'feed-tasks', appts: 'feed-appts', sms: 'feed-sms', activity: 'feed-activity' };
+  const PANES = { notes: 'feed-notes', deals: 'feed-deals', tasks: 'feed-tasks', appts: 'feed-appts', calls: 'feed-calls', sms: 'feed-sms', activity: 'feed-activity' };
   document.querySelectorAll('.crm-tab[data-feed-tab]').forEach((b) => {
     b.addEventListener('click', async () => {
       document.querySelectorAll('.crm-tab[data-feed-tab]').forEach((x) => x.classList.toggle('active', x === b));
@@ -437,6 +568,7 @@ async function main() {
       if (state.feedTab === 'deals' && !state.dealsLoaded) { state.dealsLoaded = true; await refreshDeals(); }
       if (state.feedTab === 'tasks' && !state.tasksLoaded) { state.tasksLoaded = true; await refreshContactTasks(); }
       if (state.feedTab === 'appts' && !state.apptsLoaded) { state.apptsLoaded = true; await refreshAppts(); }
+      if (state.feedTab === 'calls' && !state.callsLoaded) { state.callsLoaded = true; await refreshCalls(); }
       if (state.feedTab === 'sms' && !state.smsLoaded) { state.smsLoaded = true; await refreshSms(); }
     });
   });
@@ -534,6 +666,97 @@ async function main() {
 
   // Send Email
   $('btn-send-email').addEventListener('click', openSendEmailModal);
+
+  // ── Comms: call, text, schedule ────────────────────────────────────────
+  $('btn-call-contact').addEventListener('click', startCall);
+  const paneCallBtn = $('btn-call-from-pane');
+  if (paneCallBtn) paneCallBtn.addEventListener('click', startCall);
+
+  // Text jumps to the thread that is already on this page rather than
+  // navigating away — the point of the button is to stay in context.
+  $('btn-text-contact').addEventListener('click', async () => {
+    const tab = document.querySelector('.crm-tab[data-feed-tab="sms"]');
+    if (tab) tab.click();
+    if (!state.smsLoaded) { state.smsLoaded = true; await refreshSms(); }
+    const input = $('ct-sms-input');
+    if (input) input.focus();
+  });
+
+  $('btn-schedule-contact').addEventListener('click', openContactApptModal);
+  const seqBtn = $('btn-sequence-contact');
+  if (seqBtn) seqBtn.addEventListener('click', openSequenceModal);
+
+  // Do-not-call. Saved immediately rather than waiting for Save changes:
+  // a half-saved consent flag is worse than none.
+  $('ct-dnc').addEventListener('change', async (e) => {
+    const on = e.target.checked;
+    try {
+      await setDoNotCall(state.companyId, state.contactId, on);
+      await Promise.all([refreshContact(), refreshActivities()]);
+      setStatus(on ? 'Added to do-not-call' : 'Removed from do-not-call', 'ok');
+    } catch (err) {
+      e.target.checked = !on;
+      setStatus('Could not save: ' + (err.message || err), 'err');
+    }
+  });
+}
+
+async function openSequenceModal() {
+  const root = $('modal-root');
+  const c = state.contact || {};
+  root.innerHTML = `<div class="crm-modal-backdrop" id="modal-bd"><div class="crm-modal auth-card"><div class="crm-subpanel-empty">Loading…</div></div></div>`;
+  const [seqs, enrollments] = await Promise.all([
+    listSequences(state.companyId),
+    listEnrollments(state.companyId, { contactId: state.contactId })
+  ]);
+  const active = enrollments.filter((e) => e.status === 'active');
+  const activeIds = new Set(active.map((e) => e.sequenceId));
+  root.innerHTML = `
+    <div class="crm-modal-backdrop" id="modal-bd">
+      <div class="crm-modal auth-card">
+        <h1>Sequences for <span>${escapeHtml((c.name || 'contact').split(' ')[0])}</span></h1>
+        ${active.length ? `
+          <label class="crm-field-label" style="display:block;margin-bottom:6px;">Running now</label>
+          ${active.map((e) => `
+            <div class="crm-mini-row">
+              <div class="crm-mini-main">
+                <div class="crm-mini-title">${escapeHtml(e.sequenceName || e.sequenceId)}</div>
+                <div class="crm-mini-sub">Step ${(Number(e.currentStep) || 0) + 1} · next ${fmtDateTime(e.nextRunAt)}</div>
+              </div>
+              <button class="crm-chip" data-seq-stop="${escapeHtml(e.id)}" data-seq-name="${escapeHtml(e.sequenceName || '')}">Stop</button>
+            </div>`).join('')}` : ''}
+        <label class="crm-field-label" style="display:block;margin:14px 0 6px;">Enroll in</label>
+        ${seqs.filter((s) => s.active !== false && !activeIds.has(s.id)).map((s) => `
+          <div class="crm-mini-row">
+            <div class="crm-mini-main">
+              <div class="crm-mini-title">${escapeHtml(s.name)}</div>
+              <div class="crm-mini-sub">${(s.steps || []).length} step${(s.steps || []).length === 1 ? '' : 's'}</div>
+            </div>
+            <button class="crm-chip" data-seq-enroll="${escapeHtml(s.id)}">Enroll</button>
+          </div>`).join('') || '<div class="crm-subpanel-empty">No other active sequences. <a href="/sequences.html" style="color:var(--red);">Build one</a>.</div>'}
+        <div id="seqm-err" class="auth-error" style="display:none;margin-top:8px;"></div>
+        <div class="crm-modal-actions"><button type="button" class="btn btn-ghost" id="seqm-close">Close</button></div>
+      </div>
+    </div>`;
+  const close = () => { root.innerHTML = ''; };
+  $('seqm-close').addEventListener('click', close);
+  $('modal-bd').addEventListener('click', (e) => { if (e.target.id === 'modal-bd') close(); });
+  root.querySelectorAll('[data-seq-enroll]').forEach((b) => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try {
+      await enrollContact(state.companyId, b.getAttribute('data-seq-enroll'), state.contact);
+      await refreshActivities();
+      openSequenceModal();
+    } catch (e) { $('seqm-err').textContent = e.message || String(e); $('seqm-err').style.display = ''; b.disabled = false; }
+  }));
+  root.querySelectorAll('[data-seq-stop]').forEach((b) => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try {
+      await stopEnrollment(state.companyId, b.getAttribute('data-seq-stop'), { reason: 'manual', contactId: state.contactId, sequenceName: b.getAttribute('data-seq-name') });
+      await refreshActivities();
+      openSequenceModal();
+    } catch (e) { $('seqm-err').textContent = e.message || String(e); $('seqm-err').style.display = ''; b.disabled = false; }
+  }));
 }
 
 function openSendEmailModal() {
@@ -550,7 +773,7 @@ function openSendEmailModal() {
         <div class="camp-from-hint" style="margin-bottom:12px;">From: the1percentnation@gmail.com · To: ${escapeHtml(c.email)}</div>
         <form id="send-email-form" class="crm-form">
           <div class="crm-form-row">
-            <label>Subject</label>
+            <label style="display:flex;justify-content:space-between;align-items:center;">Subject <span id="se-tpl"></span></label>
             <input class="c-input" id="se-subject" required placeholder="Subject line" />
           </div>
           <div class="crm-form-row">
@@ -570,6 +793,11 @@ function openSendEmailModal() {
   const close = () => { root.innerHTML = ''; };
   $('se-cancel').addEventListener('click', close);
   $('modal-bd').addEventListener('click', (e) => { if (e.target.id === 'modal-bd') close(); });
+  mountTemplatePicker({
+    host: $('se-tpl'), input: $('se-body'), channel: 'email', replace: true,
+    companyId: state.companyId, context: mergeContext,
+    onInsert: (tpl, rendered) => { if (rendered.subject && !$('se-subject').value.trim()) $('se-subject').value = rendered.subject; }
+  });
 
   $('send-email-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -730,7 +958,14 @@ function openContactApptModal() {
               <input class="c-input" id="ca-dur" type="number" min="5" step="5" value="30" /></div>
           </div>
           <div class="crm-form-row"><label>Location / link</label>
-            <input class="c-input" id="ca-loc" placeholder="Zoom, address, or phone" /></div>
+            <input class="c-input" id="ca-loc" placeholder="${state.google.connected ? 'Leave blank for a Google Meet link' : 'Zoom, address, or phone'}" /></div>
+          ${state.google.connected ? `
+          <div class="crm-form-row">
+            <label class="crm-consent-check">
+              <input type="checkbox" id="ca-invite" ${c.email ? 'checked' : 'disabled'} />
+              ${c.email ? `Send a calendar invite to ${escapeHtml(c.email)}` : 'Add an email to this contact to send an invite'}
+            </label>
+          </div>` : ''}
           <div id="ca-err" class="auth-error" style="display:none;"></div>
           <div class="crm-modal-actions">
             <button type="button" class="btn btn-ghost" id="ca-cancel">Cancel</button>
@@ -752,7 +987,8 @@ function openContactApptModal() {
         durationMin: $('ca-dur').value,
         location: $('ca-loc').value || null,
         ownerUid: c.ownerUid || state.uid,
-        contactId: state.contactId, contactName: c.name || null
+        contactId: state.contactId, contactName: c.name || null,
+        inviteContact: !!($('ca-invite') && $('ca-invite').checked)
       });
       close();
       await Promise.all([refreshAppts(), refreshActivities()]);

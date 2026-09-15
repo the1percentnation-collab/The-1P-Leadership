@@ -39,6 +39,18 @@ service firebase.storage {
                    && request.resource.contentType.matches('video/(mp4|webm)');
     }
 
+    // companies/{cid}/voicemails/{fileName} — prerecorded voicemail greetings
+    // for the dialer's one-click drop. Never read by the browser: Twilio
+    // fetches the audio through the voicemailAudio function, which checks a
+    // server-written token. So reads are closed outright and only admins
+    // (the same role that can use the CRM) may upload.
+    match /companies/{cid}/voicemails/{fileName} {
+      allow read: if false;
+      allow write: if isCourseAdmin()
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('audio/.*');
+    }
+
     // avatars/{uid}/{filename} — readable by any signed-in user, writable only by that uid.
     match /avatars/{uid}/{filename} {
       allow read: if request.auth != null;

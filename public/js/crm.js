@@ -8,7 +8,7 @@
 import { auth, db, functions, firebaseReady } from './firebase.js';
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
-  collection, query, where, orderBy, getDocs,
+  collection, query, where, orderBy, limit, getDocs,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
@@ -144,6 +144,8 @@ export async function updateContact(companyId, contactId, patch = {}) {
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
   const allowed = ['name', 'email', 'phone', 'companyName', 'source', 'ownerUid'];
+  // doNotCall is deliberately NOT here — it goes through setDoNotCall so the
+  // consent change always lands in the activity trail.
   const clean = {};
   allowed.forEach((k) => {
     if (patch[k] !== undefined) clean[k] = patch[k];
@@ -211,6 +213,28 @@ export async function removeTag(companyId, contactId, tag) {
 
 // Delete via Cloud Function (recursive cascade). Falls back to client-side
 // recursion if the callable isn't available.
+/**
+ * Do-not-call flag. Kept out of the generic updateContact whitelist on purpose:
+ * this is a consent decision, and "who turned it off and when" is exactly the
+ * question asked after a complaint. Mirrors how smsOptedOut is recorded by the
+ * inbound SMS webhook.
+ */
+export async function setDoNotCall(companyId, contactId, value) {
+  const on = value === true;
+  await updateDoc(contactRef(companyId, contactId), {
+    doNotCall: on,
+    doNotCallAt: on ? serverTimestamp() : null,
+    updatedAt: serverTimestamp()
+  });
+  await logActivity(companyId, contactId, {
+    type: on ? 'dnc_added' : 'dnc_removed',
+    description: on
+      ? 'Added to the do-not-call list.'
+      : 'Removed from the do-not-call list.',
+    meta: { doNotCall: on }
+  });
+}
+
 export async function deleteContact(companyId, contactId) {
   if (!firebaseReady) throw new Error('Offline');
   try {
@@ -663,6 +687,9 @@ export async function createAppointment(companyId, data = {}) {
     status: 'scheduled',
     ownerUid: data.ownerUid || user.uid,
     notes: data.notes || null,
+    // When Google Calendar is connected, onAppointmentWritten reads this to
+    // decide whether the contact gets a calendar invite (an email to them).
+    inviteContact: data.inviteContact === true,
     remindedAt: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -682,7 +709,7 @@ export async function createAppointment(companyId, data = {}) {
 }
 
 export async function updateAppointment(companyId, apptId, patch = {}) {
-  const allowed = ['title', 'startAt', 'durationMin', 'location', 'notes', 'contactId', 'contactName', 'ownerUid'];
+  const allowed = ['title', 'startAt', 'durationMin', 'location', 'notes', 'contactId', 'contactName', 'ownerUid', 'inviteContact'];
   const clean = {};
   allowed.forEach((k) => { if (patch[k] !== undefined) clean[k] = patch[k]; });
   // Rescheduling re-arms the reminder.
@@ -755,4 +782,651 @@ export async function markConversationRead(companyId, contactId) {
       unreadCount: 0, updatedAt: serverTimestamp()
     });
   } catch (e) { /* best-effort */ }
+}
+
+// ════════════════════════════════════════════════════════════════
+// CALLS — dialer call logs. A call doc is created client-side the moment
+// dialing starts (the softphone knows the state before any webhook fires)
+// and is then enriched server-side by voiceStatusWebhook with the duration
+// and recording URL. Every completed call also lands in the contact's
+// activity feed, so the timeline stays the one place to read a lead's
+// history regardless of which surface the call was placed from.
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Dispositions are required — a call with no outcome is a call that didn't
+ * happen as far as the pipeline is concerned. `advanceTo` moves the contact's
+ * stage when the outcome implies it; `followUp` asks the UI to open the task
+ * or appointment modal straight after logging.
+ */
+export const CALL_DISPOSITIONS = [
+  { id: 'connected',      label: 'Connected',      key: '1', advanceTo: 'contacted' },
+  { id: 'booked',         label: 'Booked',         key: '2', advanceTo: 'qualified', followUp: 'appointment' },
+  { id: 'callback',       label: 'Callback',       key: '3', advanceTo: 'contacted', followUp: 'task' },
+  { id: 'voicemail',      label: 'Voicemail',      key: '4', advanceTo: 'contacted' },
+  { id: 'no_answer',      label: 'No answer',      key: '5' },
+  { id: 'not_interested', label: 'Not interested', key: '6', advanceTo: 'lost' },
+  { id: 'bad_number',     label: 'Bad number',     key: '7' }
+];
+export const DISPOSITION_IDS = CALL_DISPOSITIONS.map((d) => d.id);
+
+export function dispositionMeta(id) {
+  return CALL_DISPOSITIONS.find((d) => d.id === id) || null;
+}
+
+function callsCol(companyId) { return collection(db, 'companies', companyId, 'calls'); }
+function callRef(companyId, callId) { return doc(db, 'companies', companyId, 'calls', callId); }
+
+export async function listCalls(companyId, { contactId = null, agentUid = null, max = 50 } = {}) {
+  if (!firebaseReady || !companyId) return [];
+  const parts = [callsCol(companyId)];
+  if (contactId) parts.push(where('contactId', '==', contactId));
+  if (agentUid) parts.push(where('agentUid', '==', agentUid));
+  parts.push(orderBy('createdAt', 'desc'), limit(max));
+  try {
+    const snap = await getDocs(query(...parts));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    // Same fallback the rest of this module uses: the composite index may not
+    // be built yet, and createdAt is null for a call still being written.
+    try {
+      const snap = await getDocs(callsCol(companyId));
+      let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (contactId) rows = rows.filter((r) => r.contactId === contactId);
+      if (agentUid) rows = rows.filter((r) => r.agentUid === agentUid);
+      rows.sort((a, b) => {
+        const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+        const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+        return tb - ta;
+      });
+      return rows.slice(0, max);
+    } catch (e2) { console.warn('[crm] listCalls failed', e2); return []; }
+  }
+}
+
+export async function createCallLog(companyId, data = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  if (!companyId) throw new Error('companyId required');
+  const payload = {
+    contactId: data.contactId || null,
+    contactName: data.contactName || null,
+    contactPhone: data.contactPhone || null,
+    direction: data.direction === 'in' ? 'in' : 'out',
+    mode: ['softphone', 'bridge', 'manual'].includes(data.mode) ? data.mode : 'manual',
+    status: data.status || 'queued',
+    disposition: null,
+    dispositionNote: null,
+    twilioCallSid: data.twilioCallSid || null,
+    durationSec: null,
+    agentUid: user.uid,
+    agentName: user.displayName || user.email || 'Unknown',
+    startedAt: data.startedAt || serverTimestamp(),
+    endedAt: null,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  const ref = await addDoc(callsCol(companyId), payload);
+  return { id: ref.id, ...payload };
+}
+
+export async function updateCallLog(companyId, callId, patch = {}) {
+  // recordingUrl / recordingStatus are deliberately absent: the rules reject
+  // them from a client, because they end up in an <audio src> on the timeline.
+  const allowed = ['status', 'twilioCallSid', 'durationSec', 'endedAt', 'mode', 'contactPhone'];
+  const clean = {};
+  allowed.forEach((k) => { if (patch[k] !== undefined) clean[k] = patch[k]; });
+  if (!Object.keys(clean).length) return;
+  clean.updatedAt = serverTimestamp();
+  await updateDoc(callRef(companyId, callId), clean);
+}
+
+/**
+ * Close out a call. Writes the outcome onto the call doc and mirrors it into
+ * the contact's activity feed via the same logActivity path every other
+ * mutation uses, so `lastActivityAt` stays honest and the dialer's "coldest
+ * first" ordering keeps working.
+ */
+export async function setCallDisposition(companyId, callId, { disposition, note, contactId, durationSec } = {}) {
+  if (!DISPOSITION_IDS.includes(disposition)) throw new Error('Unknown disposition');
+  const patch = {
+    disposition,
+    dispositionNote: (note || '').trim() || null,
+    updatedAt: serverTimestamp()
+  };
+  if (durationSec != null) patch.durationSec = Number(durationSec) || 0;
+  await updateDoc(callRef(companyId, callId), patch);
+  if (contactId) {
+    const meta = dispositionMeta(disposition);
+    const mins = durationSec ? ` (${Math.floor(durationSec / 60)}m ${durationSec % 60}s)` : '';
+    try {
+      await logActivity(companyId, contactId, {
+        type: 'call_logged',
+        description: `Call — ${meta ? meta.label : disposition}${mins}${patch.dispositionNote ? ': ' + patch.dispositionNote : ''}`,
+        meta: { callId, disposition, durationSec: durationSec || null }
+      });
+    } catch (e) { /* the contact may have been deleted mid-call */ }
+  }
+}
+
+export async function deleteCallLog(companyId, callId) {
+  await deleteDoc(callRef(companyId, callId));
+}
+
+// ────────────────────────────────────────────────────────────────
+// Voice callables. Each one throws a readable error when Twilio Voice is not
+// configured yet; dialer-core.js turns that into the "not set up" dock state
+// rather than letting it surface as an unhandled rejection.
+// ────────────────────────────────────────────────────────────────
+
+export async function getVoiceToken(companyId) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'getVoiceToken');
+  const res = await call({ companyId });
+  return res.data;
+}
+
+export async function startBridgeCall(companyId, contactId, callId) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'startBridgeCall');
+  const res = await call({ companyId, contactId, callId });
+  return res.data;
+}
+
+export async function dropVoicemail(companyId, callSid, dropId) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'dropVoicemail');
+  const res = await call({ companyId, callSid, dropId });
+  return res.data;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Dialer configuration. Company-wide settings (recording mode, quiet hours,
+// caller ID) live on the company doc — admins can already update it, so this
+// needs no new rules and no extra read on every page. Per-agent preferences
+// (softphone vs. cell bridge, and the cell number) live on users/{uid},
+// which the user may already self-update.
+// ────────────────────────────────────────────────────────────────
+
+export const DEFAULT_DIALER_SETTINGS = {
+  recordingMode: 'off',        // 'off' | 'announce' | 'on'
+  quietHoursEnabled: true,
+  quietHoursStart: 21,         // local hour after which calling is discouraged
+  quietHoursEnd: 8,            // local hour before which calling is discouraged
+  autoAdvanceSec: 3
+};
+
+export async function getDialerSettings(companyId) {
+  if (!firebaseReady || !companyId) return { ...DEFAULT_DIALER_SETTINGS };
+  try {
+    const snap = await getDoc(doc(db, 'companies', companyId));
+    const d = snap.exists() ? (snap.data().dialer || {}) : {};
+    return { ...DEFAULT_DIALER_SETTINGS, ...d };
+  } catch (e) { return { ...DEFAULT_DIALER_SETTINGS }; }
+}
+
+export async function updateDialerSettings(companyId, patch = {}) {
+  const clean = {};
+  Object.keys(DEFAULT_DIALER_SETTINGS).forEach((k) => {
+    if (patch[k] !== undefined) clean[`dialer.${k}`] = patch[k];
+  });
+  if (!Object.keys(clean).length) return;
+  await updateDoc(doc(db, 'companies', companyId), clean);
+}
+
+export async function getAgentPrefs(uid) {
+  if (!firebaseReady || !uid) return { callMode: 'softphone', mobilePhone: null };
+  try {
+    const snap = await getDoc(doc(db, 'users', uid));
+    const d = snap.exists() ? snap.data() : {};
+    return {
+      callMode: d.callMode === 'bridge' ? 'bridge' : 'softphone',
+      mobilePhone: d.mobilePhone || null
+    };
+  } catch (e) { return { callMode: 'softphone', mobilePhone: null }; }
+}
+
+export async function updateAgentPrefs(uid, patch = {}) {
+  const clean = {};
+  if (patch.callMode !== undefined) clean.callMode = patch.callMode === 'bridge' ? 'bridge' : 'softphone';
+  if (patch.mobilePhone !== undefined) clean.mobilePhone = (patch.mobilePhone || '').trim() || null;
+  if (!Object.keys(clean).length) return;
+  await setDoc(doc(db, 'users', uid), clean, { merge: true });
+}
+
+/**
+ * TCPA quiet hours. Returns a reason string when the given time is outside
+ * the allowed window, or null when it is fine to dial. The UI asks for an
+ * explicit confirm rather than blocking outright — the rule is about consent,
+ * and a returned call the lead asked for at 9pm is legitimate.
+ *
+ * Note this uses the AGENT's local clock. Per-contact timezone would be more
+ * correct, but the contact record has no timezone field today and guessing one
+ * from an area code is worse than being honest about the limitation.
+ */
+export function quietHoursWarning(settings, when = new Date()) {
+  const s = { ...DEFAULT_DIALER_SETTINGS, ...(settings || {}) };
+  if (!s.quietHoursEnabled) return null;
+  const h = when.getHours();
+  const start = Number(s.quietHoursStart);
+  const end = Number(s.quietHoursEnd);
+  const inside = start > end ? (h >= start || h < end) : (h >= start && h < end);
+  if (!inside) return null;
+  return `It is ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} locally, inside your quiet hours (${start}:00–${end}:00).`;
+}
+
+/** Can this contact be called at all? Mirrors the smsOptedOut guard. */
+export function callBlockReason(contact) {
+  if (!contact) return 'No contact selected.';
+  if (contact.doNotCall === true) return 'This contact is on your do-not-call list.';
+  if (!contact.phone) return 'This contact has no phone number.';
+  return null;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Google Calendar integration. Tokens never reach the client: the status
+// mirror at companies/{cid}/integrations/google is all the browser can read,
+// and connecting/disconnecting go through callables on the Admin SDK.
+// ────────────────────────────────────────────────────────────────
+
+export async function getGoogleCalendarStatus(companyId) {
+  if (!firebaseReady || !companyId) return { connected: false };
+  try {
+    const snap = await getDoc(doc(db, 'companies', companyId, 'integrations', 'google'));
+    return snap.exists() ? { connected: false, ...snap.data() } : { connected: false };
+  } catch (e) { return { connected: false }; }
+}
+
+/** Returns the Google consent URL to send the browser to. */
+export async function startGoogleCalendarConnect(companyId) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'googleOAuthStart');
+  const res = await call({ companyId, returnTo: location.pathname + location.search });
+  return res.data && res.data.url;
+}
+
+export async function disconnectGoogleCalendar(companyId) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'googleDisconnect');
+  const res = await call({ companyId });
+  return res.data;
+}
+
+/** Best-effort: renew the push channel if it is close to expiring. */
+export async function ensureGoogleWatch(companyId) {
+  if (!firebaseReady || !companyId) return null;
+  try {
+    const call = httpsCallable(functions, 'ensureGoogleWatch');
+    const res = await call({ companyId });
+    return res.data;
+  } catch (e) { return null; }
+}
+
+// ════════════════════════════════════════════════════════════════
+// MESSAGE TEMPLATES — saved SMS/email snippets with {{merge}} fields.
+// Rendering lives in merge-fields.js; this is just storage.
+// ════════════════════════════════════════════════════════════════
+function templatesCol(companyId) { return collection(db, 'companies', companyId, 'messageTemplates'); }
+
+export async function listTemplates(companyId, { channel = null } = {}) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const snap = await getDocs(templatesCol(companyId));
+    let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (channel) rows = rows.filter((r) => r.channel === channel);
+    // Most-used first, then by name — the picker is a speed tool.
+    rows.sort((a, b) => (b.useCount || 0) - (a.useCount || 0) || String(a.name || '').localeCompare(String(b.name || '')));
+    return rows;
+  } catch (e) { console.warn('[crm] listTemplates failed', e); return []; }
+}
+
+export async function createTemplate(companyId, data = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  const payload = {
+    name: (data.name || '').trim() || 'Untitled',
+    channel: data.channel === 'email' ? 'email' : 'sms',
+    subject: data.channel === 'email' ? ((data.subject || '').trim() || null) : null,
+    body: (data.body || '').trim(),
+    category: (data.category || '').trim() || null,
+    useCount: 0,
+    createdBy: user.uid,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  if (!payload.body) throw new Error('Template body is empty');
+  const ref = await addDoc(templatesCol(companyId), payload);
+  return { id: ref.id, ...payload };
+}
+
+export async function updateTemplate(companyId, templateId, patch = {}) {
+  const allowed = ['name', 'subject', 'body', 'category', 'channel'];
+  const clean = {};
+  allowed.forEach((k) => { if (patch[k] !== undefined) clean[k] = patch[k]; });
+  clean.updatedAt = serverTimestamp();
+  await updateDoc(doc(db, 'companies', companyId, 'messageTemplates', templateId), clean);
+}
+
+export async function deleteTemplate(companyId, templateId) {
+  await deleteDoc(doc(db, 'companies', companyId, 'messageTemplates', templateId));
+}
+
+/** Best-effort usage counter so the picker floats the real favourites. */
+export async function bumpTemplateUse(companyId, templateId) {
+  try {
+    const ref = doc(db, 'companies', companyId, 'messageTemplates', templateId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    await updateDoc(ref, { useCount: (snap.data().useCount || 0) + 1, lastUsedAt: serverTimestamp() });
+  } catch (e) { /* not worth surfacing */ }
+}
+
+/** Company display name, for {{companyName}}. Cached per page load. */
+let _companyNameCache = {};
+export async function getCompanyName(companyId) {
+  if (!firebaseReady || !companyId) return '';
+  if (_companyNameCache[companyId] !== undefined) return _companyNameCache[companyId];
+  try {
+    const snap = await getDoc(doc(db, 'companies', companyId));
+    _companyNameCache[companyId] = snap.exists() ? (snap.data().name || '') : '';
+  } catch (e) { _companyNameCache[companyId] = ''; }
+  return _companyNameCache[companyId];
+}
+
+// ════════════════════════════════════════════════════════════════
+// VOICEMAIL DROPS — prerecorded greetings for the dialer's one-click drop.
+// The audio is uploaded to Storage by the browser; the doc (and its play
+// token) is created by the registerVoicemailDrop callable so the token is
+// never chosen client-side.
+// ════════════════════════════════════════════════════════════════
+function voicemailDropsCol(companyId) { return collection(db, 'companies', companyId, 'voicemailDrops'); }
+
+export async function listVoicemailDrops(companyId) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const snap = await getDocs(voicemailDropsCol(companyId));
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    rows.sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0)
+      || ((b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0) - (a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0)));
+    return rows;
+  } catch (e) { console.warn('[crm] listVoicemailDrops failed', e); return []; }
+}
+
+export async function registerVoicemailDrop(companyId, { name, storagePath, contentType, durationSec, isDefault } = {}) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'registerVoicemailDrop');
+  const res = await call({ companyId, name, storagePath, contentType, durationSec, isDefault: !!isDefault });
+  return res.data;
+}
+
+export async function setDefaultVoicemailDrop(companyId, dropId) {
+  const rows = await listVoicemailDrops(companyId);
+  await Promise.all(rows.map((r) => updateDoc(
+    doc(db, 'companies', companyId, 'voicemailDrops', r.id),
+    { isDefault: r.id === dropId, updatedAt: serverTimestamp() }
+  )));
+}
+
+export async function deleteVoicemailDrop(companyId, dropId) {
+  await deleteDoc(doc(db, 'companies', companyId, 'voicemailDrops', dropId));
+}
+
+// ════════════════════════════════════════════════════════════════
+// SMART LISTS — saved contact filters. Evaluated client-side against the
+// already-loaded contact array: the volumes here do not justify server
+// queries, and it sidesteps a pile of composite indexes.
+// ════════════════════════════════════════════════════════════════
+function smartListsCol(companyId) { return collection(db, 'companies', companyId, 'smartLists'); }
+
+export const DEFAULT_SMART_LISTS = [
+  { name: 'Never contacted', filters: { stages: ['new'], hasPhone: true }, sort: 'coldest' },
+  { name: 'No answer 3×',    filters: { noAnswerAtLeast: 3, hasPhone: true }, sort: 'coldest' },
+  { name: 'Booked this week', filters: { bookedWithinDays: 7 }, sort: 'newest' }
+];
+
+export async function listSmartLists(companyId) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const snap = await getDocs(smartListsCol(companyId));
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    return rows;
+  } catch (e) { console.warn('[crm] listSmartLists failed', e); return []; }
+}
+
+export async function createSmartList(companyId, data = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  const payload = {
+    name: (data.name || '').trim() || 'Untitled list',
+    filters: data.filters && typeof data.filters === 'object' ? data.filters : {},
+    sort: data.sort === 'newest' ? 'newest' : 'coldest',
+    createdBy: user.uid,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  const ref = await addDoc(smartListsCol(companyId), payload);
+  return { id: ref.id, ...payload };
+}
+
+export async function updateSmartList(companyId, listId, patch = {}) {
+  const clean = {};
+  ['name', 'filters', 'sort'].forEach((k) => { if (patch[k] !== undefined) clean[k] = patch[k]; });
+  clean.updatedAt = serverTimestamp();
+  await updateDoc(doc(db, 'companies', companyId, 'smartLists', listId), clean);
+}
+
+export async function deleteSmartList(companyId, listId) {
+  await deleteDoc(doc(db, 'companies', companyId, 'smartLists', listId));
+}
+
+/** Seed the three defaults for a company that has none. Idempotent. */
+export async function ensureDefaultSmartLists(companyId) {
+  const existing = await listSmartLists(companyId);
+  if (existing.length) return existing;
+  for (const l of DEFAULT_SMART_LISTS) {
+    try { await createSmartList(companyId, l); } catch (e) {}
+  }
+  return listSmartLists(companyId);
+}
+
+/**
+ * Apply a smart list's filters. `calls` (all recent calls for the company)
+ * and `appointments` are optional; filters that need them are skipped when
+ * they are absent rather than silently matching everything.
+ */
+export function applySmartList(list, contacts, { calls = null, appointments = null } = {}) {
+  const f = (list && list.filters) || {};
+  let rows = contacts.slice();
+  if (Array.isArray(f.stages) && f.stages.length) rows = rows.filter((c) => f.stages.includes(c.stage));
+  if (Array.isArray(f.tags) && f.tags.length) rows = rows.filter((c) => f.tags.some((t) => (c.tags || []).includes(t)));
+  if (f.ownerUid) rows = rows.filter((c) => c.ownerUid === f.ownerUid);
+  if (f.source) rows = rows.filter((c) => c.source === f.source);
+  if (f.hasPhone) rows = rows.filter((c) => !!c.phone);
+  if (f.hasEmail) rows = rows.filter((c) => !!c.email);
+  if (f.excludeDoNotCall !== false) rows = rows.filter((c) => c.doNotCall !== true);
+  if (f.lastActivityOlderThanDays) {
+    const cutoff = Date.now() - Number(f.lastActivityOlderThanDays) * 86400000;
+    rows = rows.filter((c) => {
+      const t = c.lastActivityAt && c.lastActivityAt.toMillis ? c.lastActivityAt.toMillis() : 0;
+      return t < cutoff;
+    });
+  }
+  if (f.noAnswerAtLeast && Array.isArray(calls)) {
+    const counts = {};
+    calls.forEach((cl) => {
+      if (cl.disposition === 'no_answer' || cl.disposition === 'voicemail') counts[cl.contactId] = (counts[cl.contactId] || 0) + 1;
+    });
+    rows = rows.filter((c) => (counts[c.id] || 0) >= Number(f.noAnswerAtLeast));
+  }
+  if (f.bookedWithinDays && Array.isArray(appointments)) {
+    const cutoff = Date.now() - Number(f.bookedWithinDays) * 86400000;
+    const booked = new Set(appointments
+      .filter((a) => a.contactId && ((a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0) >= cutoff))
+      .map((a) => a.contactId));
+    rows = rows.filter((c) => booked.has(c.id));
+  }
+  rows.sort((a, b) => {
+    const ta = a.lastActivityAt && a.lastActivityAt.toMillis ? a.lastActivityAt.toMillis() : 0;
+    const tb = b.lastActivityAt && b.lastActivityAt.toMillis ? b.lastActivityAt.toMillis() : 0;
+    return list && list.sort === 'newest' ? tb - ta : ta - tb;
+  });
+  return rows;
+}
+
+// ════════════════════════════════════════════════════════════════
+// SEQUENCES — multi-step follow-up cadences, and per-contact enrollments.
+// Steps are executed by runAutomationTick (Admin SDK); the client creates
+// sequences, enrolls contacts, and stops enrollments, but never advances
+// currentStep/nextRunAt itself — rules refuse it.
+// ════════════════════════════════════════════════════════════════
+function sequencesCol(companyId) { return collection(db, 'companies', companyId, 'sequences'); }
+function enrollmentsCol(companyId) { return collection(db, 'companies', companyId, 'enrollments'); }
+
+export const SEQUENCE_TRIGGERS = [
+  { id: 'manual',       label: 'Manual only' },
+  { id: 'stage_change', label: 'Contact enters a stage' },
+  { id: 'disposition',  label: 'Call logged with an outcome' },
+  { id: 'tag_added',    label: 'Tag added' }
+];
+
+export async function listSequences(companyId) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const snap = await getDocs(sequencesCol(companyId));
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    return rows;
+  } catch (e) { console.warn('[crm] listSequences failed', e); return []; }
+}
+
+export async function getSequence(companyId, sequenceId) {
+  const snap = await getDoc(doc(db, 'companies', companyId, 'sequences', sequenceId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+function cleanSteps(steps) {
+  return (Array.isArray(steps) ? steps : []).map((s, i) => ({
+    order: i,
+    channel: ['sms', 'email', 'task'].includes(s.channel) ? s.channel : 'sms',
+    delayHours: Math.max(0, Number(s.delayHours) || 0),
+    templateId: s.templateId || null,
+    subject: (s.subject || '').trim() || null,
+    body: (s.body || '').trim() || null
+  }));
+}
+
+export async function createSequence(companyId, data = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  const payload = {
+    name: (data.name || '').trim() || 'Untitled sequence',
+    active: data.active !== false,
+    trigger: {
+      type: SEQUENCE_TRIGGERS.some((t) => t.id === (data.trigger && data.trigger.type)) ? data.trigger.type : 'manual',
+      value: (data.trigger && data.trigger.value) || null
+    },
+    steps: cleanSteps(data.steps),
+    stopOnReply: data.stopOnReply !== false,
+    enrolledCount: 0,
+    createdBy: user.uid,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  const ref = await addDoc(sequencesCol(companyId), payload);
+  return { id: ref.id, ...payload };
+}
+
+export async function updateSequence(companyId, sequenceId, patch = {}) {
+  const clean = {};
+  if (patch.name !== undefined) clean.name = (patch.name || '').trim() || 'Untitled sequence';
+  if (patch.active !== undefined) clean.active = !!patch.active;
+  if (patch.trigger !== undefined) clean.trigger = { type: patch.trigger.type || 'manual', value: patch.trigger.value || null };
+  if (patch.steps !== undefined) clean.steps = cleanSteps(patch.steps);
+  if (patch.stopOnReply !== undefined) clean.stopOnReply = !!patch.stopOnReply;
+  clean.updatedAt = serverTimestamp();
+  await updateDoc(doc(db, 'companies', companyId, 'sequences', sequenceId), clean);
+}
+
+export async function deleteSequence(companyId, sequenceId) {
+  await deleteDoc(doc(db, 'companies', companyId, 'sequences', sequenceId));
+}
+
+export async function listEnrollments(companyId, { sequenceId = null, contactId = null, status = null } = {}) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const snap = await getDocs(enrollmentsCol(companyId));
+    let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (sequenceId) rows = rows.filter((r) => r.sequenceId === sequenceId);
+    if (contactId) rows = rows.filter((r) => r.contactId === contactId);
+    if (status) rows = rows.filter((r) => r.status === status);
+    return rows;
+  } catch (e) { console.warn('[crm] listEnrollments failed', e); return []; }
+}
+
+/**
+ * Enroll a contact. The first step's delay is applied from now, so a
+ * sequence whose first step is "0 hours" fires on the next tick. Refuses
+ * a duplicate active enrollment in the same sequence.
+ */
+export async function enrollContact(companyId, sequenceId, contact, { source = 'manual' } = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  if (!contact || !contact.id) throw new Error('contact required');
+  const seq = await getSequence(companyId, sequenceId);
+  if (!seq) throw new Error('Sequence not found');
+  if (!seq.steps || !seq.steps.length) throw new Error('This sequence has no steps yet');
+  const dupes = await listEnrollments(companyId, { sequenceId, contactId: contact.id, status: 'active' });
+  if (dupes.length) throw new Error(`${contact.name || 'This contact'} is already in this sequence`);
+  const firstDelayMs = (Number(seq.steps[0].delayHours) || 0) * 3600 * 1000;
+  const payload = {
+    sequenceId,
+    sequenceName: seq.name || null,
+    contactId: contact.id,
+    contactName: contact.name || null,
+    status: 'active',
+    currentStep: 0,
+    nextRunAt: new Date(Date.now() + firstDelayMs),
+    source,
+    startedAt: serverTimestamp(),
+    stoppedAt: null,
+    stoppedReason: null,
+    enrolledBy: user.uid,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  const ref = await addDoc(enrollmentsCol(companyId), payload);
+  try {
+    await logActivity(companyId, contact.id, {
+      type: 'sequence_enrolled',
+      description: `Enrolled in sequence: ${seq.name}`,
+      meta: { sequenceId, enrollmentId: ref.id }
+    });
+  } catch (e) {}
+  return { id: ref.id, ...payload };
+}
+
+export async function stopEnrollment(companyId, enrollmentId, { reason = 'manual', contactId = null, sequenceName = null } = {}) {
+  await updateDoc(doc(db, 'companies', companyId, 'enrollments', enrollmentId), {
+    status: 'stopped', stoppedAt: serverTimestamp(), stoppedReason: reason, updatedAt: serverTimestamp()
+  });
+  if (contactId) {
+    try {
+      await logActivity(companyId, contactId, {
+        type: 'sequence_stopped',
+        description: `Removed from sequence${sequenceName ? ': ' + sequenceName : ''}`,
+        meta: { enrollmentId, reason }
+      });
+    } catch (e) {}
+  }
+}
+
+/** Ask the server to process due steps now (best-effort; the tick also runs on a schedule). */
+export async function runAutomationNow(companyId) {
+  if (!firebaseReady) return null;
+  try {
+    const call = httpsCallable(functions, 'runAutomationNowForCompany');
+    const res = await call({ companyId });
+    return res.data;
+  } catch (e) { return null; }
 }
