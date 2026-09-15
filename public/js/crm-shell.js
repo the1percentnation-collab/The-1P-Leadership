@@ -23,6 +23,7 @@ function esc(s) {
 const NAV = [
   { key: 'dashboard',     href: '/crm-dashboard.html', label: 'Dashboard',     icon: '◧' },
   { key: 'contacts',      href: '/crm.html',           label: 'Contacts',      icon: '☷' },
+  { key: 'dialer',        href: '/dialer.html',        label: 'Dialer',        icon: '☎' },
   { key: 'opportunities', href: '/opportunities.html', label: 'Opportunities', icon: '◆' },
   { key: 'tasks',         href: '/tasks.html',         label: 'Tasks',         icon: '✓' },
   { key: 'conversations', href: '/conversations.html', label: 'Conversations', icon: '✉' },

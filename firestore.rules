@@ -456,6 +456,77 @@ service cloud.firestore {
       }
 
       // ──────────────────────────────────────────────────────────────
+      // Dialer: call logs. Created and updated from the client as a call
+      // progresses (the softphone knows the state before any webhook fires),
+      // but the facts only Twilio can vouch for — the recording URL and its
+      // status — are Admin-SDK-only. A client-supplied recordingUrl would be
+      // rendered straight into an <audio src> on the contact timeline, so it
+      // is never taken from the client.
+      // ──────────────────────────────────────────────────────────────
+      match /calls/{callId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create: if (isOwner() || isCompanyAdmin(cid))
+                       && !request.resource.data.keys().hasAny(['recordingUrl', 'recordingStatus']);
+        allow update: if (isOwner() || isCompanyAdmin(cid))
+                       && !request.resource.data.diff(resource.data)
+                             .affectedKeys().hasAny(['recordingUrl', 'recordingStatus']);
+        // Deletes only by owner — call history is a compliance record.
+        allow delete: if isOwner();
+      }
+
+      // Saved voicemail greetings for one-click drop. The audio itself lives
+      // in Cloud Storage; playToken gates the public audio endpoint Twilio
+      // fetches, so it is written server-side only.
+      match /voicemailDrops/{dropId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create, update: if (isOwner() || isCompanyAdmin(cid))
+                               && !request.resource.data.keys().hasAny(['playToken']);
+        allow delete: if isOwner() || isCompanyAdmin(cid);
+      }
+
+      // SMS/email templates with merge fields, and saved contact filters.
+      match /messageTemplates/{templateId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
+      }
+      match /smartLists/{listId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
+      }
+
+      // Follow-up sequences and per-contact enrollments. Enrollments are
+      // advanced by the automation tick (Admin SDK); the client may create
+      // and stop them but never move currentStep/nextRunAt, so a stale tab
+      // cannot re-fire a step that already went out.
+      match /sequences/{sequenceId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
+      }
+      match /enrollments/{enrollmentId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow create: if isOwner() || isCompanyAdmin(cid);
+        allow update: if (isOwner() || isCompanyAdmin(cid))
+                       && !request.resource.data.diff(resource.data)
+                             .affectedKeys().hasAny(['currentStep', 'nextRunAt']);
+        allow delete: if isOwner() || isCompanyAdmin(cid);
+      }
+
+      // Third-party integration status (Google Calendar). Client-readable
+      // mirror only — written by the OAuth callables on the Admin SDK.
+      match /integrations/{integrationId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow write: if false;
+      }
+
+      // OAuth refresh tokens and calendar sync cursors. No client, admin or
+      // owner included, ever reads these: a leaked refresh token is standing
+      // access to the connected Google account. Only the Admin SDK, which
+      // bypasses rules entirely, touches this path.
+      match /private/{docId} {
+        allow read, write: if false;
+      }
+
+      // ──────────────────────────────────────────────────────────────
       // Campaigns (Phase 3): email broadcasts + per-event telemetry.
       // ──────────────────────────────────────────────────────────────
       match /campaigns/{campaignId} {
@@ -1105,5 +1176,12 @@ service cloud.firestore {
       allow delete: if isOwner();
     }
 
+
+    // OAuth CSRF state tokens, written by googleOAuthStart and consumed once
+    // by googleOAuthCallback, both on the Admin SDK. A readable state token
+    // would let anyone replay a consent redirect against another company.
+    match /oauthStates/{state} {
+      allow read, write: if false;
+    }
   }
 }

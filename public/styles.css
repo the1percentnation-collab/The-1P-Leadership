@@ -10029,3 +10029,201 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
     print-color-adjust: exact;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   CRM DIALER — quick call/text actions, the docked call bar, the
+   disposition prompt, and the dialer queue page.
+   ════════════════════════════════════════════════════════════════ */
+
+/* Quick actions on a kanban card. The card itself is now a div wrapper so
+   these buttons are clickable without fighting the card's own link. */
+.crm-card-main { display: block; color: inherit; text-decoration: none; }
+.crm-card-actions {
+  display: flex; gap: 6px; margin-top: 10px; padding-top: 9px;
+  border-top: 1px solid var(--border);
+}
+.crm-row-actions { display: flex; gap: 6px; }
+.crm-quick-btn {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  background: var(--surface2); color: var(--white-dim);
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: 5px 8px; font-size: 11px; font-family: var(--font-mono);
+  letter-spacing: .04em; text-transform: uppercase;
+  cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+}
+.crm-quick-btn:hover:not(:disabled) {
+  background: var(--red); border-color: var(--red); color: #fff;
+}
+.crm-quick-btn:disabled { opacity: .35; cursor: not-allowed; }
+.crm-row-actions .crm-quick-btn { flex: 0 0 auto; padding: 4px 9px; }
+
+/* Header actions on the contact card. */
+.crm-contact-comms { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── The docked call bar ───────────────────────────────────────── */
+.call-dock {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 900;
+  background: var(--charcoal);
+  border-top: 2px solid var(--red);
+  box-shadow: 0 -8px 28px rgba(0,0,0,.55);
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+.call-dock-inner { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.call-dock-id { min-width: 0; flex: 1; }
+.call-dock-name {
+  font-family: var(--font-display); font-size: 21px; letter-spacing: .02em;
+  color: var(--white); line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.call-dock-sub { font-size: 12px; color: var(--gray-light); margin-top: 2px; }
+.call-dock-timer {
+  font-family: var(--font-mono); font-size: 22px; color: var(--red);
+  font-variant-numeric: tabular-nums;
+}
+.call-dock-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+.call-dock-btn {
+  background: var(--surface2); color: var(--white);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 9px 15px; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.call-dock-btn:hover { background: var(--gray-dark); }
+.call-dock-btn.active { background: var(--red); border-color: var(--red); color: #fff; }
+.call-dock-btn-end { background: var(--red); border-color: var(--red); color: #fff; }
+.call-dock-btn-end:hover { background: var(--red-dark); }
+.call-dock-btn-accept { background: #1F8A5B; border-color: #1F8A5B; color: #fff; }
+.call-dock-btn-accept:hover { background: #176F49; }
+.call-dock-status {
+  margin-top: 8px; font-size: 12px; color: var(--gray-light);
+  font-family: var(--font-mono);
+}
+
+.call-keypad {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;
+  margin-top: 10px; max-width: 420px;
+}
+.call-keypad-key {
+  background: var(--surface2); color: var(--white); border: 1px solid var(--border);
+  border-radius: 6px; padding: 9px 0; font-family: var(--font-mono); font-size: 15px;
+  cursor: pointer;
+}
+.call-keypad-key:hover { background: var(--red); border-color: var(--red); }
+
+/* ── Disposition prompt (required before the dock releases) ────── */
+.call-dock-disposition { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+.call-dock-disp-head {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--gray-light); margin-bottom: 9px;
+}
+.call-dock-disp-head span { color: var(--red); }
+.disp-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 7px;
+}
+.disp-btn {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface2); color: var(--white);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 9px 11px; font-size: 13px; cursor: pointer; text-align: left;
+  transition: background .15s, border-color .15s;
+}
+.disp-btn:hover, .disp-btn.active { background: var(--red); border-color: var(--red); color: #fff; }
+.disp-key {
+  font-family: var(--font-mono); font-size: 10px; color: var(--gray-light);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; flex-shrink: 0;
+}
+.disp-btn:hover .disp-key, .disp-btn.active .disp-key { color: #fff; border-color: rgba(255,255,255,.5); }
+.call-dock-note { margin-top: 9px; }
+
+/* Keep the dock from covering the last row of any scrolling CRM surface. */
+body.has-call-dock .crm-content { padding-bottom: 190px; }
+
+@media (max-width: 720px) {
+  .call-dock-inner { gap: 10px; }
+  .call-dock-name { font-size: 18px; }
+  .call-dock-timer { font-size: 18px; }
+  .call-dock-btn { padding: 8px 12px; font-size: 12px; }
+  .call-keypad { grid-template-columns: repeat(3, 1fr); max-width: 240px; }
+}
+
+/* Consent controls on the contact card. */
+.crm-consent-row {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.crm-consent-check {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 13px; color: var(--white-dim); cursor: pointer;
+}
+.crm-consent-check input { accent-color: var(--red); width: 15px; height: 15px; cursor: pointer; }
+.crm-consent-note { font-size: 12px; color: var(--red); font-family: var(--font-mono); }
+
+/* Call recording playback in the contact timeline. */
+.call-recording { display: block; width: 100%; max-width: 340px; margin-top: 8px; height: 32px; }
+
+/* ── Dialer queue page ─────────────────────────────────────────── */
+.dial-setup { max-width: 760px; }
+.dial-wrap {
+  display: grid; grid-template-columns: 260px minmax(0, 1fr) 320px; gap: 16px;
+  align-items: start;
+}
+.dial-queue {
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  overflow: hidden; max-height: calc(100vh - 340px); overflow-y: auto;
+  position: sticky; top: 0;
+}
+.dial-queue-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--gray-light);
+}
+.dial-queue-head span { color: var(--red); }
+.dial-queue-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: transparent; border: 0; border-bottom: 1px solid var(--border);
+  padding: 10px 14px; cursor: pointer; color: var(--white); min-width: 0;
+}
+.dial-queue-item:hover { background: var(--surface2); }
+.dial-queue-item.active { background: color-mix(in srgb, var(--red) 16%, transparent); }
+.dial-queue-name {
+  font-size: 13px; font-weight: 600; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;
+}
+.dial-queue-sub { font-family: var(--font-mono); font-size: 11px; color: var(--gray-light); flex-shrink: 0; }
+
+.dial-lead-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.dial-lead-name {
+  font-family: var(--font-display); font-size: 30px; letter-spacing: .02em;
+  color: var(--white); text-decoration: none; line-height: 1.05;
+}
+.dial-lead-name:hover { color: var(--red); }
+.dial-lead-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.dial-notes .crm-mini-row:last-child { border-bottom: 0; }
+
+.dial-side {
+  display: flex; flex-direction: column; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--surface);
+  height: calc(100vh - 340px); min-height: 380px; position: sticky; top: 0;
+}
+.dial-side-head {
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--gray-light);
+}
+.dial-side .sms-messages { flex: 1; }
+
+.dial-advance {
+  display: flex; align-items: center; gap: 12px;
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  border: 1px solid var(--border-red); border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 14px;
+  font-family: var(--font-mono); font-size: 12px; color: var(--white);
+}
+.dial-advance strong { color: var(--red); font-size: 15px; }
+
+@media (max-width: 1100px) {
+  .dial-wrap { grid-template-columns: minmax(0, 1fr); }
+  .dial-queue, .dial-side { position: static; max-height: 300px; height: auto; }
+  .dial-side { min-height: 320px; }
+}

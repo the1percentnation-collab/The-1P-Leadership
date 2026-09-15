@@ -8,7 +8,7 @@
 import { auth, db, functions, firebaseReady } from './firebase.js';
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
-  collection, query, where, orderBy, getDocs,
+  collection, query, where, orderBy, limit, getDocs,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
@@ -144,6 +144,8 @@ export async function updateContact(companyId, contactId, patch = {}) {
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
   const allowed = ['name', 'email', 'phone', 'companyName', 'source', 'ownerUid'];
+  // doNotCall is deliberately NOT here — it goes through setDoNotCall so the
+  // consent change always lands in the activity trail.
   const clean = {};
   allowed.forEach((k) => {
     if (patch[k] !== undefined) clean[k] = patch[k];
@@ -211,6 +213,28 @@ export async function removeTag(companyId, contactId, tag) {
 
 // Delete via Cloud Function (recursive cascade). Falls back to client-side
 // recursion if the callable isn't available.
+/**
+ * Do-not-call flag. Kept out of the generic updateContact whitelist on purpose:
+ * this is a consent decision, and "who turned it off and when" is exactly the
+ * question asked after a complaint. Mirrors how smsOptedOut is recorded by the
+ * inbound SMS webhook.
+ */
+export async function setDoNotCall(companyId, contactId, value) {
+  const on = value === true;
+  await updateDoc(contactRef(companyId, contactId), {
+    doNotCall: on,
+    doNotCallAt: on ? serverTimestamp() : null,
+    updatedAt: serverTimestamp()
+  });
+  await logActivity(companyId, contactId, {
+    type: on ? 'dnc_added' : 'dnc_removed',
+    description: on
+      ? 'Added to the do-not-call list.'
+      : 'Removed from the do-not-call list.',
+    meta: { doNotCall: on }
+  });
+}
+
 export async function deleteContact(companyId, contactId) {
   if (!firebaseReady) throw new Error('Offline');
   try {
@@ -755,4 +779,243 @@ export async function markConversationRead(companyId, contactId) {
       unreadCount: 0, updatedAt: serverTimestamp()
     });
   } catch (e) { /* best-effort */ }
+}
+
+// ════════════════════════════════════════════════════════════════
+// CALLS — dialer call logs. A call doc is created client-side the moment
+// dialing starts (the softphone knows the state before any webhook fires)
+// and is then enriched server-side by voiceStatusWebhook with the duration
+// and recording URL. Every completed call also lands in the contact's
+// activity feed, so the timeline stays the one place to read a lead's
+// history regardless of which surface the call was placed from.
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Dispositions are required — a call with no outcome is a call that didn't
+ * happen as far as the pipeline is concerned. `advanceTo` moves the contact's
+ * stage when the outcome implies it; `followUp` asks the UI to open the task
+ * or appointment modal straight after logging.
+ */
+export const CALL_DISPOSITIONS = [
+  { id: 'connected',      label: 'Connected',      key: '1', advanceTo: 'contacted' },
+  { id: 'booked',         label: 'Booked',         key: '2', advanceTo: 'qualified', followUp: 'appointment' },
+  { id: 'callback',       label: 'Callback',       key: '3', advanceTo: 'contacted', followUp: 'task' },
+  { id: 'voicemail',      label: 'Voicemail',      key: '4', advanceTo: 'contacted' },
+  { id: 'no_answer',      label: 'No answer',      key: '5' },
+  { id: 'not_interested', label: 'Not interested', key: '6', advanceTo: 'lost' },
+  { id: 'bad_number',     label: 'Bad number',     key: '7' }
+];
+export const DISPOSITION_IDS = CALL_DISPOSITIONS.map((d) => d.id);
+
+export function dispositionMeta(id) {
+  return CALL_DISPOSITIONS.find((d) => d.id === id) || null;
+}
+
+function callsCol(companyId) { return collection(db, 'companies', companyId, 'calls'); }
+function callRef(companyId, callId) { return doc(db, 'companies', companyId, 'calls', callId); }
+
+export async function listCalls(companyId, { contactId = null, agentUid = null, max = 50 } = {}) {
+  if (!firebaseReady || !companyId) return [];
+  const parts = [callsCol(companyId)];
+  if (contactId) parts.push(where('contactId', '==', contactId));
+  if (agentUid) parts.push(where('agentUid', '==', agentUid));
+  parts.push(orderBy('createdAt', 'desc'), limit(max));
+  try {
+    const snap = await getDocs(query(...parts));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    // Same fallback the rest of this module uses: the composite index may not
+    // be built yet, and createdAt is null for a call still being written.
+    try {
+      const snap = await getDocs(callsCol(companyId));
+      let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (contactId) rows = rows.filter((r) => r.contactId === contactId);
+      if (agentUid) rows = rows.filter((r) => r.agentUid === agentUid);
+      rows.sort((a, b) => {
+        const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+        const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+        return tb - ta;
+      });
+      return rows.slice(0, max);
+    } catch (e2) { console.warn('[crm] listCalls failed', e2); return []; }
+  }
+}
+
+export async function createCallLog(companyId, data = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  if (!companyId) throw new Error('companyId required');
+  const payload = {
+    contactId: data.contactId || null,
+    contactName: data.contactName || null,
+    contactPhone: data.contactPhone || null,
+    direction: data.direction === 'in' ? 'in' : 'out',
+    mode: ['softphone', 'bridge', 'manual'].includes(data.mode) ? data.mode : 'manual',
+    status: data.status || 'queued',
+    disposition: null,
+    dispositionNote: null,
+    twilioCallSid: data.twilioCallSid || null,
+    durationSec: null,
+    agentUid: user.uid,
+    agentName: user.displayName || user.email || 'Unknown',
+    startedAt: data.startedAt || serverTimestamp(),
+    endedAt: null,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  const ref = await addDoc(callsCol(companyId), payload);
+  return { id: ref.id, ...payload };
+}
+
+export async function updateCallLog(companyId, callId, patch = {}) {
+  // recordingUrl / recordingStatus are deliberately absent: the rules reject
+  // them from a client, because they end up in an <audio src> on the timeline.
+  const allowed = ['status', 'twilioCallSid', 'durationSec', 'endedAt', 'mode', 'contactPhone'];
+  const clean = {};
+  allowed.forEach((k) => { if (patch[k] !== undefined) clean[k] = patch[k]; });
+  if (!Object.keys(clean).length) return;
+  clean.updatedAt = serverTimestamp();
+  await updateDoc(callRef(companyId, callId), clean);
+}
+
+/**
+ * Close out a call. Writes the outcome onto the call doc and mirrors it into
+ * the contact's activity feed via the same logActivity path every other
+ * mutation uses, so `lastActivityAt` stays honest and the dialer's "coldest
+ * first" ordering keeps working.
+ */
+export async function setCallDisposition(companyId, callId, { disposition, note, contactId, durationSec } = {}) {
+  if (!DISPOSITION_IDS.includes(disposition)) throw new Error('Unknown disposition');
+  const patch = {
+    disposition,
+    dispositionNote: (note || '').trim() || null,
+    updatedAt: serverTimestamp()
+  };
+  if (durationSec != null) patch.durationSec = Number(durationSec) || 0;
+  await updateDoc(callRef(companyId, callId), patch);
+  if (contactId) {
+    const meta = dispositionMeta(disposition);
+    const mins = durationSec ? ` (${Math.floor(durationSec / 60)}m ${durationSec % 60}s)` : '';
+    try {
+      await logActivity(companyId, contactId, {
+        type: 'call_logged',
+        description: `Call — ${meta ? meta.label : disposition}${mins}${patch.dispositionNote ? ': ' + patch.dispositionNote : ''}`,
+        meta: { callId, disposition, durationSec: durationSec || null }
+      });
+    } catch (e) { /* the contact may have been deleted mid-call */ }
+  }
+}
+
+export async function deleteCallLog(companyId, callId) {
+  await deleteDoc(callRef(companyId, callId));
+}
+
+// ────────────────────────────────────────────────────────────────
+// Voice callables. Each one throws a readable error when Twilio Voice is not
+// configured yet; dialer-core.js turns that into the "not set up" dock state
+// rather than letting it surface as an unhandled rejection.
+// ────────────────────────────────────────────────────────────────
+
+export async function getVoiceToken(companyId) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'getVoiceToken');
+  const res = await call({ companyId });
+  return res.data;
+}
+
+export async function startBridgeCall(companyId, contactId, callId) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'startBridgeCall');
+  const res = await call({ companyId, contactId, callId });
+  return res.data;
+}
+
+export async function dropVoicemail(companyId, callSid, dropId) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'dropVoicemail');
+  const res = await call({ companyId, callSid, dropId });
+  return res.data;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Dialer configuration. Company-wide settings (recording mode, quiet hours,
+// caller ID) live on the company doc — admins can already update it, so this
+// needs no new rules and no extra read on every page. Per-agent preferences
+// (softphone vs. cell bridge, and the cell number) live on users/{uid},
+// which the user may already self-update.
+// ────────────────────────────────────────────────────────────────
+
+export const DEFAULT_DIALER_SETTINGS = {
+  recordingMode: 'off',        // 'off' | 'announce' | 'on'
+  quietHoursEnabled: true,
+  quietHoursStart: 21,         // local hour after which calling is discouraged
+  quietHoursEnd: 8,            // local hour before which calling is discouraged
+  autoAdvanceSec: 3
+};
+
+export async function getDialerSettings(companyId) {
+  if (!firebaseReady || !companyId) return { ...DEFAULT_DIALER_SETTINGS };
+  try {
+    const snap = await getDoc(doc(db, 'companies', companyId));
+    const d = snap.exists() ? (snap.data().dialer || {}) : {};
+    return { ...DEFAULT_DIALER_SETTINGS, ...d };
+  } catch (e) { return { ...DEFAULT_DIALER_SETTINGS }; }
+}
+
+export async function updateDialerSettings(companyId, patch = {}) {
+  const clean = {};
+  Object.keys(DEFAULT_DIALER_SETTINGS).forEach((k) => {
+    if (patch[k] !== undefined) clean[`dialer.${k}`] = patch[k];
+  });
+  if (!Object.keys(clean).length) return;
+  await updateDoc(doc(db, 'companies', companyId), clean);
+}
+
+export async function getAgentPrefs(uid) {
+  if (!firebaseReady || !uid) return { callMode: 'softphone', mobilePhone: null };
+  try {
+    const snap = await getDoc(doc(db, 'users', uid));
+    const d = snap.exists() ? snap.data() : {};
+    return {
+      callMode: d.callMode === 'bridge' ? 'bridge' : 'softphone',
+      mobilePhone: d.mobilePhone || null
+    };
+  } catch (e) { return { callMode: 'softphone', mobilePhone: null }; }
+}
+
+export async function updateAgentPrefs(uid, patch = {}) {
+  const clean = {};
+  if (patch.callMode !== undefined) clean.callMode = patch.callMode === 'bridge' ? 'bridge' : 'softphone';
+  if (patch.mobilePhone !== undefined) clean.mobilePhone = (patch.mobilePhone || '').trim() || null;
+  if (!Object.keys(clean).length) return;
+  await setDoc(doc(db, 'users', uid), clean, { merge: true });
+}
+
+/**
+ * TCPA quiet hours. Returns a reason string when the given time is outside
+ * the allowed window, or null when it is fine to dial. The UI asks for an
+ * explicit confirm rather than blocking outright — the rule is about consent,
+ * and a returned call the lead asked for at 9pm is legitimate.
+ *
+ * Note this uses the AGENT's local clock. Per-contact timezone would be more
+ * correct, but the contact record has no timezone field today and guessing one
+ * from an area code is worse than being honest about the limitation.
+ */
+export function quietHoursWarning(settings, when = new Date()) {
+  const s = { ...DEFAULT_DIALER_SETTINGS, ...(settings || {}) };
+  if (!s.quietHoursEnabled) return null;
+  const h = when.getHours();
+  const start = Number(s.quietHoursStart);
+  const end = Number(s.quietHoursEnd);
+  const inside = start > end ? (h >= start || h < end) : (h >= start && h < end);
+  if (!inside) return null;
+  return `It is ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} locally, inside your quiet hours (${start}:00–${end}:00).`;
+}
+
+/** Can this contact be called at all? Mirrors the smsOptedOut guard. */
+export function callBlockReason(contact) {
+  if (!contact) return 'No contact selected.';
+  if (contact.doNotCall === true) return 'This contact is on your do-not-call list.';
+  if (!contact.phone) return 'This contact has no phone number.';
+  return null;
 }

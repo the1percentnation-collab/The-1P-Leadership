@@ -17,8 +17,10 @@ import {
   listTasks, createTask, completeTask, reopenTask,
   listAppointments, createAppointment, setAppointmentStatus,
   listMessages, sendSms,
+  listCalls, setDoNotCall, dispositionMeta, callBlockReason,
   escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate
 } from './crm.js';
+import { dialer, onDialerEvent } from './dialer-core.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -37,6 +39,8 @@ const state = {
   tasks: [],
   appts: [],
   messages: [],
+  calls: [],
+  callsLoaded: false,
   dealsLoaded: false,
   tasksLoaded: false,
   apptsLoaded: false,
@@ -84,6 +88,34 @@ function renderContactHeader() {
   $('ct-phone').value = c.phone || '';
   $('ct-company').value = c.companyName || '';
 
+  // Consent controls. The SMS side is read-only here: smsOptedOut is set by
+  // the inbound webhook when a lead replies STOP, and an admin un-ticking it
+  // in the CRM would not be consent.
+  const dnc = $('ct-dnc');
+  if (dnc) dnc.checked = c.doNotCall === true;
+  const smsNote = $('ct-sms-consent');
+  if (smsNote) {
+    smsNote.textContent = c.smsOptedOut === true
+      ? 'This contact replied STOP — texting is blocked.'
+      : '';
+  }
+
+  // Comms buttons are only live when there is something to reach.
+  const blocked = callBlockReason(c);
+  const callBtn = $('btn-call-contact');
+  if (callBtn) {
+    callBtn.disabled = !!blocked;
+    callBtn.title = blocked || 'Call this contact';
+  }
+  const textBtn = $('btn-text-contact');
+  if (textBtn) {
+    const smsBlocked = !c.phone
+      ? 'This contact has no phone number.'
+      : (c.smsOptedOut === true ? 'This contact opted out of SMS.' : null);
+    textBtn.disabled = !!smsBlocked;
+    textBtn.title = smsBlocked || 'Text this contact';
+  }
+
   // Tags
   renderTags();
 }
@@ -130,6 +162,9 @@ function iconFor(type) {
     case 'deal_stage_changed': return '⇨';
     case 'task_created': return '✓';
     case 'task_completed': return '☑';
+    case 'call_logged': return '☎';
+    case 'dnc_added': return '⛔';
+    case 'dnc_removed': return '✅';
     case 'appointment_created': return '📅';
     case 'appointment_status': return '📅';
     case 'email_sent': return '✉';
@@ -284,6 +319,64 @@ async function refreshAppts() {
   renderAppts();
 }
 
+function renderCalls() {
+  const host = $('calls-list');
+  if (!host) return;
+  if (!state.calls.length) {
+    host.innerHTML = `<div class="crm-subpanel-empty">No calls logged for this contact yet.</div>`;
+    return;
+  }
+  host.innerHTML = state.calls.map((cl) => {
+    const meta = dispositionMeta(cl.disposition);
+    const dur = cl.durationSec
+      ? `${Math.floor(cl.durationSec / 60)}m ${cl.durationSec % 60}s`
+      : (cl.status === 'no-answer' ? 'no answer' : '—');
+    const bits = [
+      cl.direction === 'in' ? 'Inbound' : 'Outbound',
+      dur,
+      cl.agentName ? escapeHtml(cl.agentName) : null,
+      cl.mode === 'manual' ? 'logged manually' : null
+    ].filter(Boolean);
+    return `
+      <div class="crm-mini-row">
+        <div class="crm-mini-main">
+          <div class="crm-mini-title">
+            ${meta ? escapeHtml(meta.label) : escapeHtml(cl.status || 'Call')}
+            <span class="crm-mini-sub">${fmtDateTime(cl.createdAt)}</span>
+          </div>
+          <div class="crm-mini-sub">${bits.join(' · ')}</div>
+          ${cl.dispositionNote ? `<div class="crm-mini-sub">${escapeHtml(cl.dispositionNote)}</div>` : ''}
+          ${cl.recordingUrl && cl.recordingStatus === 'ready'
+            ? `<audio class="call-recording" controls preload="none" src="${escapeHtml(cl.recordingUrl)}"></audio>`
+            : (cl.recordingStatus === 'pending' ? '<div class="crm-mini-sub">Recording processing…</div>' : '')}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function refreshCalls() {
+  state.calls = await listCalls(state.companyId, { contactId: state.contactId });
+  renderCalls();
+}
+
+/**
+ * Dial this contact. The dock owns the call and the disposition prompt; all
+ * this needs to do is act on the outcome — a booked call should open the
+ * appointment modal while the agent still has the context in their head.
+ */
+async function startCall() {
+  try {
+    const result = await dialer.callContact(state.contact);
+    if (result && result.followUp === 'appointment') openContactApptModal();
+    if (result && result.followUp === 'task') openContactTaskModal();
+  } catch (e) {
+    const msg = e && e.message;
+    if (msg && msg !== 'Cancelled.') alert(msg);
+    return;
+  }
+  await Promise.all([refreshCalls(), refreshActivities(), refreshContact()]);
+}
+
 function renderSms() {
   const host = $('sms-pane');
   if (!host) return;
@@ -420,12 +513,24 @@ async function main() {
   state.contact = await getContact(companyId, contactId);
   if (!state.contact) { gate('Contact not found.'); return; }
 
+  // Configure the softphone. This does not build the Twilio Device or ask for
+  // the microphone — that happens on the first actual call.
+  try {
+    await dialer.configure({ companyId, uid: u.uid });
+  } catch (e) { console.warn('[contact] dialer configure failed', e); }
+
+  // A call placed from anywhere on this page refreshes the panes it affects.
+  onDialerEvent('disposition', () => {
+    refreshCalls().catch(() => {});
+    refreshActivities().catch(() => {});
+  });
+
   $('panel').style.display = 'block';
   renderContactHeader();
   await Promise.all([refreshNotes(), refreshActivities()]);
 
   // Feed tabs (Notes / Deals / Tasks / Activity) with lazy loading.
-  const PANES = { notes: 'feed-notes', deals: 'feed-deals', tasks: 'feed-tasks', appts: 'feed-appts', sms: 'feed-sms', activity: 'feed-activity' };
+  const PANES = { notes: 'feed-notes', deals: 'feed-deals', tasks: 'feed-tasks', appts: 'feed-appts', calls: 'feed-calls', sms: 'feed-sms', activity: 'feed-activity' };
   document.querySelectorAll('.crm-tab[data-feed-tab]').forEach((b) => {
     b.addEventListener('click', async () => {
       document.querySelectorAll('.crm-tab[data-feed-tab]').forEach((x) => x.classList.toggle('active', x === b));
@@ -437,6 +542,7 @@ async function main() {
       if (state.feedTab === 'deals' && !state.dealsLoaded) { state.dealsLoaded = true; await refreshDeals(); }
       if (state.feedTab === 'tasks' && !state.tasksLoaded) { state.tasksLoaded = true; await refreshContactTasks(); }
       if (state.feedTab === 'appts' && !state.apptsLoaded) { state.apptsLoaded = true; await refreshAppts(); }
+      if (state.feedTab === 'calls' && !state.callsLoaded) { state.callsLoaded = true; await refreshCalls(); }
       if (state.feedTab === 'sms' && !state.smsLoaded) { state.smsLoaded = true; await refreshSms(); }
     });
   });
@@ -534,6 +640,37 @@ async function main() {
 
   // Send Email
   $('btn-send-email').addEventListener('click', openSendEmailModal);
+
+  // ── Comms: call, text, schedule ────────────────────────────────────────
+  $('btn-call-contact').addEventListener('click', startCall);
+  const paneCallBtn = $('btn-call-from-pane');
+  if (paneCallBtn) paneCallBtn.addEventListener('click', startCall);
+
+  // Text jumps to the thread that is already on this page rather than
+  // navigating away — the point of the button is to stay in context.
+  $('btn-text-contact').addEventListener('click', async () => {
+    const tab = document.querySelector('.crm-tab[data-feed-tab="sms"]');
+    if (tab) tab.click();
+    if (!state.smsLoaded) { state.smsLoaded = true; await refreshSms(); }
+    const input = $('ct-sms-input');
+    if (input) input.focus();
+  });
+
+  $('btn-schedule-contact').addEventListener('click', openContactApptModal);
+
+  // Do-not-call. Saved immediately rather than waiting for Save changes:
+  // a half-saved consent flag is worse than none.
+  $('ct-dnc').addEventListener('change', async (e) => {
+    const on = e.target.checked;
+    try {
+      await setDoNotCall(state.companyId, state.contactId, on);
+      await Promise.all([refreshContact(), refreshActivities()]);
+      setStatus(on ? 'Added to do-not-call' : 'Removed from do-not-call', 'ok');
+    } catch (err) {
+      e.target.checked = !on;
+      setStatus('Could not save: ' + (err.message || err), 'err');
+    }
+  });
 }
 
 function openSendEmailModal() {

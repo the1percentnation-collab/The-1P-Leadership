@@ -10,8 +10,10 @@ import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.j
 import {
   STAGES, STAGE_IDS, SOURCES, stageMeta,
   listContacts, createContact, changeStage, listCompanyAdmins,
+  callBlockReason,
   escapeHtml, fmtDate, toDate
 } from './crm.js';
+import { dialer, onDialerEvent } from './dialer-core.js';
 import { toCsv, downloadCsv } from './csv.js';
 
 const $ = (id) => document.getElementById(id);
@@ -192,16 +194,69 @@ function contactCardHtml(c) {
   const owner = state.admins.find((a) => a.uid === c.ownerUid);
   if (owner) subparts.push(escapeHtml(owner.displayName || owner.email || 'Owner'));
   return `
-    <a class="crm-card" href="/contact.html?id=${encodeURIComponent(c.id)}" draggable="true" data-contact-id="${c.id}" data-stage="${c.stage}">
-      <div class="crm-card-head">
-        <span class="crm-dot" style="background:${meta.color}"></span>
-        <span class="crm-card-name">${escapeHtml(c.name || 'Unnamed')}</span>
-      </div>
-      ${subparts.length ? `<div class="crm-card-sub">${subparts.join(' · ')}</div>` : ''}
-      ${tags.length ? `<div class="crm-card-tags">${tags.map((t) => `<span class="crm-tag">#${escapeHtml(t)}</span>`).join('')}${moreTags ? `<span class="crm-tag crm-tag-more">+${moreTags}</span>` : ''}</div>` : ''}
-      <div class="crm-card-foot">${fmtDate(c.lastActivityAt)}</div>
-    </a>
+    <div class="crm-card" draggable="true" data-contact-id="${c.id}" data-stage="${c.stage}">
+      <a class="crm-card-main" href="/contact.html?id=${encodeURIComponent(c.id)}">
+        <div class="crm-card-head">
+          <span class="crm-dot" style="background:${meta.color}"></span>
+          <span class="crm-card-name">${escapeHtml(c.name || 'Unnamed')}</span>
+        </div>
+        ${subparts.length ? `<div class="crm-card-sub">${subparts.join(' · ')}</div>` : ''}
+        ${tags.length ? `<div class="crm-card-tags">${tags.map((t) => `<span class="crm-tag">#${escapeHtml(t)}</span>`).join('')}${moreTags ? `<span class="crm-tag crm-tag-more">+${moreTags}</span>` : ''}</div>` : ''}
+        <div class="crm-card-foot">${fmtDate(c.lastActivityAt)}</div>
+      </a>
+      <div class="crm-card-actions">${quickActionsHtml(c)}</div>
+    </div>
   `;
+}
+
+/**
+ * Call / Text buttons shared by the kanban card and the list row. Each is
+ * disabled with the reason in its tooltip rather than hidden, so a missing
+ * phone number or an opt-out is visible instead of mysterious.
+ */
+function quickActionsHtml(c) {
+  const callBlock = callBlockReason(c);
+  const smsBlock = !c.phone
+    ? 'No phone number'
+    : (c.smsOptedOut === true ? 'Opted out of SMS' : null);
+  return `
+    <button class="crm-quick-btn" draggable="false" data-quick-call="${c.id}"
+            ${callBlock ? 'disabled' : ''} title="${escapeHtml(callBlock || 'Call ' + (c.name || 'contact'))}">&#9742; Call</button>
+    <button class="crm-quick-btn" draggable="false" data-quick-text="${c.id}"
+            ${smsBlock ? 'disabled' : ''} title="${escapeHtml(smsBlock || 'Text ' + (c.name || 'contact'))}">&#128172; Text</button>`;
+}
+
+/**
+ * Wire the quick actions inside `host`. Calls happen in place via the docked
+ * call bar; texting hands off to the Conversations thread for that contact,
+ * which is already a real two-way inbox.
+ */
+function wireQuickActions(host) {
+  host.querySelectorAll('[data-quick-call]').forEach((b) => {
+    b.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const c = state.contacts.find((x) => x.id === b.getAttribute('data-quick-call'));
+      if (!c) return;
+      try {
+        await dialer.callContact(c);
+      } catch (err) {
+        const msg = err && err.message;
+        if (msg && msg !== 'Cancelled.') alert(msg);
+        return;
+      }
+      await refreshContacts();
+    });
+  });
+  host.querySelectorAll('[data-quick-text]').forEach((b) => {
+    b.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = b.getAttribute('data-quick-text');
+      location.href = '/conversations.html?contact=' + encodeURIComponent(id)
+        + '&companyId=' + encodeURIComponent(state.companyId);
+    });
+  });
 }
 
 function renderKanban() {
@@ -229,6 +284,8 @@ function renderKanban() {
       `).join('')}
     </div>
   `;
+
+  wireQuickActions(host);
 
   // Drag & drop — HTML5 native.
   host.querySelectorAll('.crm-card').forEach((el) => {
@@ -323,6 +380,7 @@ function renderList() {
             ${hdr('owner', 'Owner')}
             <th>Tags</th>
             ${hdr('lastActivityAt', 'Last Activity')}
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -339,9 +397,10 @@ function renderList() {
                 <td>${escapeHtml(ownerLabel(c.ownerUid))}</td>
                 <td>${tags.map((t) => `<span class="crm-tag">#${escapeHtml(t)}</span>`).join('') || '—'}</td>
                 <td>${fmtDate(c.lastActivityAt)}</td>
+                <td><div class="crm-row-actions">${quickActionsHtml(c)}</div></td>
               </tr>
             `;
-          }).join('') : `<tr><td colspan="8" style="color:var(--gray-mid);">No contacts yet.</td></tr>`}
+          }).join('') : `<tr><td colspan="9" style="color:var(--gray-mid);">No contacts yet.</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -358,10 +417,13 @@ function renderList() {
       renderList();
     });
   });
+  wireQuickActions(host);
+
   host.querySelectorAll('.crm-list-row').forEach((tr) => {
     tr.addEventListener('click', (e) => {
-      // Let link clicks handle themselves.
+      // Let link clicks, and the row's own Call/Text buttons, handle themselves.
       if (e.target.tagName === 'A') return;
+      if (e.target.closest('.crm-row-actions')) return;
       const id = tr.dataset.contactId;
       location.href = '/contact.html?id=' + encodeURIComponent(id);
     });
@@ -568,6 +630,14 @@ async function main() {
   try {
     state.admins = await listCompanyAdmins(companyId);
   } catch (e) { state.admins = []; }
+
+  // The softphone is shared with the contact page and the dialer queue; the
+  // Twilio Device is only built on the first real call.
+  try {
+    await dialer.configure({ companyId, uid: u.uid });
+  } catch (e) { console.warn('[crm] dialer configure failed', e); }
+  // A logged call bumps lastActivityAt, which reorders both views.
+  onDialerEvent('disposition', () => { refreshContacts().catch(() => {}); });
 
   renderOwnerChips();
   renderStageChips();

@@ -51,8 +51,13 @@
                 <label>Owner</label>
                 <select id="ct-owner" class="c-input crm-select"></select>
               </div>
-              <button class="btn btn-primary" id="btn-send-email">Send Email</button>
-              <button class="btn btn-ghost" id="btn-delete-contact">Delete</button>
+              <div class="crm-contact-comms">
+                <button class="btn btn-primary" id="btn-call-contact">&#9742; Call</button>
+                <button class="btn btn-outline" id="btn-text-contact">&#128172; Text</button>
+                <button class="btn btn-outline" id="btn-schedule-contact">&#128197; Schedule</button>
+                <button class="btn btn-ghost" id="btn-send-email">Email</button>
+                <button class="btn btn-ghost" id="btn-delete-contact">Delete</button>
+              </div>
             </div>
           </div>
 
@@ -75,6 +80,13 @@
             </div>
           </div>
 
+          <div class="crm-consent-row">
+            <label class="crm-consent-check">
+              <input type="checkbox" id="ct-dnc" /> Do not call
+            </label>
+            <span class="crm-consent-note" id="ct-sms-consent"></span>
+          </div>
+
           <div class="crm-tags-block">
             <label class="crm-field-label">Tags</label>
             <div id="ct-tags" class="crm-tags"></div>
@@ -95,6 +107,7 @@
             <button class="crm-tab" data-feed-tab="deals">Deals</button>
             <button class="crm-tab" data-feed-tab="tasks">Tasks</button>
             <button class="crm-tab" data-feed-tab="appts">Appointments</button>
+            <button class="crm-tab" data-feed-tab="calls">Calls</button>
             <button class="crm-tab" data-feed-tab="sms">Text</button>
             <button class="crm-tab" data-feed-tab="activity">Activity</button>
           </div>
@@ -104,6 +117,13 @@
               <button class="btn btn-primary" id="btn-add-appt">+ New Appointment</button>
             </div>
             <div id="appts-list"></div>
+          </div>
+
+          <div id="feed-calls" class="crm-feed-pane" style="display:none;">
+            <div class="crm-note-compose-actions" style="margin-bottom:12px;">
+              <button class="btn btn-primary" id="btn-call-from-pane">&#9742; Call now</button>
+            </div>
+            <div id="calls-list"></div>
           </div>
 
           <div id="feed-sms" class="crm-feed-pane" style="display:none;">

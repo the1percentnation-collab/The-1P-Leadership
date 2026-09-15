@@ -17,7 +17,7 @@ import {
   initializeTestEnvironment, assertSucceeds, assertFails
 } from '@firebase/rules-unit-testing';
 import {
-  doc, getDoc, setDoc, addDoc, collection, query, where, getDocs, serverTimestamp
+  doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, getDocs, serverTimestamp
 } from 'firebase/firestore';
 
 const env = await initializeTestEnvironment({
@@ -53,6 +53,16 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'posts/pGlobal'), { authorUid: 'solo', companyId: null, text: 'hi', category: 'general', likeCount: 0, commentCount: 0, pinned: false });
   await setDoc(doc(db, 'posts/pCo1'), { authorUid: 'emp', companyId: 'co1', text: 'hi', category: 'general', likeCount: 0, commentCount: 0, pinned: false });
   await setDoc(doc(db, 'posts/pCo2'), { authorUid: 'emp2', companyId: 'co2', text: 'secret', category: 'general', likeCount: 0, commentCount: 0, pinned: false });
+  // Dialer + integration fixtures.
+  await setDoc(doc(db, 'companies/co1/contacts/c1'), { name: 'Lead One', phone: '+15555550100', stage: 'new', tags: [] });
+  await setDoc(doc(db, 'companies/co1/calls/call1'), {
+    contactId: 'c1', direction: 'out', mode: 'softphone', status: 'completed',
+    agentUid: 'adm', recordingUrl: 'https://api.twilio.com/real.mp3', recordingStatus: 'ready'
+  });
+  await setDoc(doc(db, 'companies/co1/private/googleOAuth'), { refreshToken: 'super-secret-token' });
+  await setDoc(doc(db, 'companies/co1/integrations/google'), { connected: true, googleEmail: 'a@b.com' });
+  await setDoc(doc(db, 'companies/co1/enrollments/e1'), { sequenceId: 's1', contactId: 'c1', status: 'active', currentStep: 0 });
+  await setDoc(doc(db, 'oauthStates/st1'), { companyId: 'co1', uid: 'adm' });
 });
 
 const solo = env.authenticatedContext('solo').firestore();
@@ -133,6 +143,65 @@ await t('company admin CAN still read their own invites',
 
 await t('owner CAN still read invites',
   () => assertSucceeds(getDoc(doc(owner, 'companies/co1/invites/ABC123'))));
+
+// ── Dialer: call logs are company-scoped, recordings are server-only ──────
+await t('company admin CAN read their own call logs',
+  () => assertSucceeds(getDocs(collection(adm, 'companies/co1/calls'))));
+
+await t('another company member CANNOT read call logs',
+  () => assertFails(getDocs(collection(emp2, 'companies/co1/calls'))));
+
+await t('anonymous CANNOT read call logs',
+  () => assertFails(getDoc(doc(anon, 'companies/co1/calls/call1'))));
+
+await t('company admin CAN create a call log',
+  () => assertSucceeds(addDoc(collection(adm, 'companies/co1/calls'), {
+    contactId: 'c1', direction: 'out', mode: 'softphone', status: 'queued', agentUid: 'adm'
+  })));
+
+await t('admin CANNOT forge a recordingUrl on create',
+  () => assertFails(addDoc(collection(adm, 'companies/co1/calls'), {
+    contactId: 'c1', direction: 'out', status: 'completed', agentUid: 'adm',
+    recordingUrl: 'https://evil.example/x.mp3'
+  })));
+
+await t('admin CANNOT overwrite a recordingUrl on update',
+  () => assertFails(updateDoc(doc(adm, 'companies/co1/calls/call1'), {
+    recordingUrl: 'https://evil.example/x.mp3'
+  })));
+
+await t('admin CAN still update a call status',
+  () => assertSucceeds(updateDoc(doc(adm, 'companies/co1/calls/call1'), { status: 'completed' })));
+
+// ── OAuth refresh tokens are readable by nobody, owner included ───────────
+await t('company admin CANNOT read the Google refresh token',
+  () => assertFails(getDoc(doc(adm, 'companies/co1/private/googleOAuth'))));
+
+await t('OWNER CANNOT read the Google refresh token either',
+  () => assertFails(getDoc(doc(owner, 'companies/co1/private/googleOAuth'))));
+
+await t('nobody can write the private OAuth doc',
+  () => assertFails(setDoc(doc(adm, 'companies/co1/private/googleOAuth'), { refreshToken: 'mine' })));
+
+await t('nobody can read an OAuth state token',
+  () => assertFails(getDoc(doc(adm, 'oauthStates/st1'))));
+
+// ── Integration status is a read-only mirror ──────────────────────────────
+await t('company admin CAN read integration status',
+  () => assertSucceeds(getDoc(doc(adm, 'companies/co1/integrations/google'))));
+
+await t('company admin CANNOT write integration status',
+  () => assertFails(setDoc(doc(adm, 'companies/co1/integrations/google'), { connected: false })));
+
+await t('another company CANNOT read integration status',
+  () => assertFails(getDoc(doc(emp2, 'companies/co1/integrations/google'))));
+
+// ── Sequence enrollments: the tick owns step advancement ──────────────────
+await t('admin CAN stop an enrollment',
+  () => assertSucceeds(updateDoc(doc(adm, 'companies/co1/enrollments/e1'), { status: 'stopped' })));
+
+await t('admin CANNOT advance an enrollment step',
+  () => assertFails(updateDoc(doc(adm, 'companies/co1/enrollments/e1'), { currentStep: 5 })));
 
 await env.cleanup();
 
