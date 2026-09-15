@@ -9818,6 +9818,192 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 /* ── Print ─────────────────────────────────────────────────────────────────
    Landscape, sheet only. Everything else on the page is chrome. */
 
+/* ── CRM CSV import ─────────────────────────────────────────────────────
+   Upload / mapping / preview UI for /crm-import.html. Shares the card and
+   field chrome with the rest of the CRM; everything here is the parts that
+   surface has no equivalent for — the drop zone, the mapping grid, the
+   preview table and the progress bar. */
+
+.crm-import-drop {
+  border: 1.5px dashed var(--border);
+  border-radius: 10px;
+  padding: 34px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.crm-import-drop:hover,
+.crm-import-drop.over {
+  border-color: var(--red);
+  background: var(--red-glow);
+}
+.crm-import-drop-icon {
+  font-size: 26px;
+  color: var(--red);
+  margin-bottom: 10px;
+}
+.crm-import-drop-main {
+  font-size: 14px;
+  color: var(--white);
+  margin-bottom: 6px;
+}
+.crm-import-drop-sub {
+  font-size: 12px;
+  color: var(--gray-light);
+}
+
+.crm-linkish {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--red);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.crm-linkish:hover { color: var(--white); }
+
+.crm-import-paste {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--gray-light);
+}
+.crm-import-paste summary {
+  cursor: pointer;
+  padding: 6px 0;
+}
+.crm-import-paste textarea {
+  width: 100%;
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  resize: vertical;
+}
+
+.crm-import-foot {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+
+/* Mapping grid — label beside a column picker, stacking under 560px. */
+.crm-import-map {
+  display: grid;
+  gap: 10px;
+}
+.crm-import-map-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+.crm-import-map-label {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+}
+.crm-import-select { max-width: 360px; }
+
+.crm-import-note {
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--gray-light);
+}
+.crm-import-note code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--surface2);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.crm-import-opts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.crm-import-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.crm-import-stat {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  padding: 5px 10px;
+  border-radius: 4px;
+  background: var(--surface2);
+  color: var(--white-dim);
+  border: 1px solid var(--border);
+}
+.crm-import-stat.ok   { color: #56D4A8; border-color: rgba(86, 212, 168, 0.35); }
+.crm-import-stat.warn { color: #E8C547; border-color: rgba(232, 197, 71, 0.35); }
+.crm-import-stat.err  { color: var(--red); border-color: var(--border-red); }
+
+/* The preview can be wider than a phone; it scrolls on its own rather than
+   pushing the page sideways. */
+.crm-import-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.crm-import-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.crm-import-table th {
+  text-align: left;
+  padding: 9px 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+.crm-import-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--white-dim);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.crm-import-table tr:last-child td { border-bottom: none; }
+.crm-import-table tr.bad td { background: rgba(230, 3, 6, 0.07); }
+.crm-import-rownum { color: var(--gray-mid); font-family: var(--font-mono); }
+.crm-import-bad { color: var(--red); }
+
+.crm-import-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface2);
+  overflow: hidden;
+}
+.crm-import-bar-fill {
+  height: 100%;
+  background: var(--red);
+  transition: width 0.25s ease;
+}
+
+@media (max-width: 560px) {
+  .crm-import-map-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .crm-import-select { max-width: none; }
+  .crm-import-drop { padding: 26px 14px; }
+}
+
 @media print {
   @page { size: landscape; margin: 0.35in; }
 

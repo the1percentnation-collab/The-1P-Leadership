@@ -41,6 +41,17 @@ function render() {
         <button class="btn btn-primary" id="save-pipeline">Save pipeline</button>
       </div>
     </div>
+    <div class="card" style="max-width:760px;">
+      <label class="crm-field-label" style="display:block;margin-bottom:8px;">Contact data</label>
+      <div class="crm-import-note" style="margin-top:0;">
+        Bulk-add contacts from a spreadsheet, or download the current list.
+        Imports match on email, so an updated list tops up what is already here.
+      </div>
+      <div class="crm-save-row" style="margin-top:16px;">
+        <a class="btn btn-ghost" href="/crm-import.html?companyId=${encodeURIComponent(state.companyId)}">Import contacts from CSV</a>
+        <a class="btn btn-ghost" href="/crm.html">Export from Contacts</a>
+      </div>
+    </div>
   `;
   wire();
 }

@@ -350,6 +350,194 @@ exports.deleteContact = onCall(async (request) => {
 });
 
 /**
+ * importContacts({ companyId, rows, duplicateMode, importTag })
+ *
+ * Bulk-creates CRM contacts from a parsed CSV. The client parses and maps
+ * columns, then sends rows here in chunks — this endpoint owns validation,
+ * de-duplication and the writes, so a hand-built payload cannot bypass them.
+ *
+ * Email is required per row and is the dedupe key. A contact list without
+ * addresses cannot be mailed, matched to a member, or merged on the next
+ * import, so a row without one is reported back as an error rather than
+ * written as an orphan.
+ *
+ * duplicateMode decides what happens when the email already exists:
+ *   'update' (default) — merge the non-empty incoming fields, union the tags
+ *   'skip'             — leave the existing contact untouched
+ * Creating a second contact with the same email is deliberately not offered:
+ * duplicates are the thing an import most often breaks, and every other
+ * surface (lead forms, member sync) already upserts on email.
+ *
+ * Chunked by the caller: MAX_ROWS per call keeps each invocation inside the
+ * function timeout and the batch limits, and lets the UI show real progress.
+ */
+const IMPORT_MAX_ROWS = 250;
+const IMPORT_STAGES = ['new', 'contacted', 'qualified', 'negotiating', 'customer', 'lost'];
+
+exports.importContacts = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const data = request.data || {};
+  const companyId = (data.companyId || '').toString().trim();
+  if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+
+  const rows = Array.isArray(data.rows) ? data.rows : null;
+  if (!rows || !rows.length) throw new HttpsError('invalid-argument', 'No rows to import.');
+  if (rows.length > IMPORT_MAX_ROWS) {
+    throw new HttpsError('invalid-argument', `Send at most ${IMPORT_MAX_ROWS} rows per call.`);
+  }
+
+  const duplicateMode = data.duplicateMode === 'skip' ? 'skip' : 'update';
+  const importTag = (data.importTag || '').toString().trim().slice(0, 40) || null;
+
+  const db = admin.firestore();
+  await assertCompanyAdmin(db, companyId, request);
+  // 40 calls / 10 min = 10k contacts, well past any real list, while still
+  // bounding what a compromised admin session can shovel in.
+  await rateLimitCaller(db, request, { action: 'importContacts', max: 40, windowSec: 600 });
+
+  const FV = admin.firestore.FieldValue;
+  const colRef = db.collection('companies').doc(companyId).collection('contacts');
+
+  // ── Normalize + validate, and collapse duplicates inside this chunk ──
+  const errors = [];
+  const byEmail = new Map();   // email → normalized row (last one wins)
+  rows.forEach((raw, i) => {
+    const r = raw && typeof raw === 'object' ? raw : {};
+    // rowNum is the caller's line number in the original file, so an error
+    // points the user at the row they can actually go and fix.
+    const rowNum = Number(r.rowNum) || (i + 1);
+    const email = (r.email || '').toString().trim().toLowerCase().slice(0, 160);
+    if (!email) { errors.push({ rowNum, email: '', message: 'No email address' }); return; }
+    if (!EMAIL_RE.test(email)) { errors.push({ rowNum, email, message: 'Invalid email address' }); return; }
+
+    const tags = Array.isArray(r.tags)
+      ? r.tags.map((t) => String(t).trim().slice(0, 40)).filter(Boolean).slice(0, 20)
+      : [];
+    if (importTag) tags.push(importTag);
+
+    // The address exactly as the file spelled it, for the case-sensitive
+    // lookup below. Only the normalized form is ever written.
+    const emailRaw = (r.email || '').toString().trim().slice(0, 160);
+
+    byEmail.set(email, {
+      rowNum,
+      email,
+      emailRaw,
+      name: (r.name || '').toString().trim().slice(0, 120),
+      phone: (r.phone || '').toString().trim().slice(0, 40),
+      companyName: (r.companyName || '').toString().trim().slice(0, 120),
+      source: (r.source || '').toString().trim().slice(0, 40) || 'Import',
+      stage: IMPORT_STAGES.includes(r.stage) ? r.stage : 'new',
+      tags: Array.from(new Set(tags))
+    });
+  });
+
+  const items = Array.from(byEmail.values());
+  if (!items.length) return { ok: true, created: 0, updated: 0, skipped: 0, errors };
+
+  // ── Look up existing contacts by email (10 per 'in' query) ──
+  //
+  // Firestore equality is case-sensitive and contacts typed into the CRM
+  // modal are stored as the admin typed them, so a lowercased lookup alone
+  // would miss "Jane@Example.com" and create a second record for her. Each
+  // row is therefore looked up under both its normalized form and the exact
+  // string the file carried, and matches are keyed by the normalized email.
+  const lookups = [];
+  const seenLookup = new Set();
+  items.forEach((it) => {
+    [it.email, it.emailRaw].forEach((v) => {
+      if (v && !seenLookup.has(v)) { seenLookup.add(v); lookups.push(v); }
+    });
+  });
+
+  const existing = new Map();  // normalized email → doc ref
+  for (let i = 0; i < lookups.length; i += 10) {
+    const slice = lookups.slice(i, i + 10);
+    try {
+      const snap = await colRef.where('email', 'in', slice).get();
+      snap.docs.forEach((d) => {
+        const e = (d.data() && d.data().email || '').toLowerCase();
+        if (e && !existing.has(e)) existing.set(e, d.ref);
+      });
+    } catch (e) {
+      // A failed lookup must not turn into silent duplicates, so the whole
+      // chunk stops here and the caller can retry it.
+      throw new HttpsError('internal', 'Could not check for existing contacts. Nothing was imported from this batch.');
+    }
+  }
+
+  // ── Write ──
+  let created = 0, updated = 0, skipped = 0;
+  let batch = db.batch();
+  let ops = 0;
+  const commit = async () => {
+    if (ops === 0) return;
+    await batch.commit();
+    batch = db.batch();
+    ops = 0;
+  };
+
+  for (const it of items) {
+    const ref = existing.get(it.email);
+
+    if (ref && duplicateMode === 'skip') { skipped++; continue; }
+
+    if (ref) {
+      // Merge: only overwrite a field the file actually carries a value for,
+      // so a sparse export cannot blank out data already in the CRM.
+      const patch = { updatedAt: FV.serverTimestamp(), lastActivityAt: FV.serverTimestamp() };
+      if (it.name) patch.name = it.name;
+      if (it.phone) patch.phone = it.phone;
+      if (it.companyName) patch.companyName = it.companyName;
+      if (it.tags.length) patch.tags = FV.arrayUnion(...it.tags);
+      batch.set(ref, patch, { merge: true });
+      batch.set(ref.collection('activities').doc(), {
+        type: 'import',
+        description: `Updated by CSV import${importTag ? ` (${importTag})` : ''}`,
+        actorUid: uid, actorName: 'CSV import',
+        createdAt: FV.serverTimestamp()
+      });
+      ops += 2;
+      updated++;
+    } else {
+      const newRef = colRef.doc();
+      batch.set(newRef, {
+        name: it.name || it.email,
+        email: it.email,
+        phone: it.phone || null,
+        companyName: it.companyName || null,
+        address: null,
+        source: it.source,
+        stage: it.stage,
+        tags: it.tags,
+        ownerUid: null,
+        memberUid: null,
+        createdAt: FV.serverTimestamp(),
+        updatedAt: FV.serverTimestamp(),
+        createdBy: uid,
+        lastActivityAt: FV.serverTimestamp()
+      });
+      batch.set(newRef.collection('activities').doc(), {
+        type: 'import',
+        description: `Imported from CSV${importTag ? ` (${importTag})` : ''}`,
+        actorUid: uid, actorName: 'CSV import',
+        createdAt: FV.serverTimestamp()
+      });
+      ops += 2;
+      created++;
+    }
+
+    // Firestore caps a batch at 500 writes; commit well short of it.
+    if (ops >= 400) await commit();
+  }
+  await commit();
+
+  return { ok: true, created, updated, skipped, errors };
+});
+
+/**
  * deleteUser({ uid })
  *
  * Fully removes a user from the platform — Firestore user doc + subcollections

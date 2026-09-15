@@ -10,8 +10,9 @@ import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.j
 import {
   STAGES, STAGE_IDS, SOURCES, stageMeta,
   listContacts, createContact, changeStage, listCompanyAdmins,
-  escapeHtml, fmtDate
+  escapeHtml, fmtDate, toDate
 } from './crm.js';
+import { toCsv, downloadCsv } from './csv.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -24,6 +25,8 @@ const PANEL_HTML = `
     </div>
     <div class="crm-toolbar-spacer"></div>
     <input id="crm-search" class="c-input crm-search" placeholder="Search name or email…" />
+    <button class="btn btn-ghost" id="btn-export-csv" title="Download the contacts currently shown">Export CSV</button>
+    <a class="btn btn-ghost" id="btn-import-csv" href="/crm-import.html">Import CSV</a>
     <button class="btn btn-primary" id="btn-new-contact">+ New Contact</button>
   </div>
   <div class="crm-filters">
@@ -81,6 +84,46 @@ function filteredContacts() {
     });
   }
   return rows;
+}
+
+/**
+ * Download the contacts currently in view as CSV.
+ *
+ * Exports the filtered set rather than everything, so what lands in the file
+ * matches what the user is looking at. The column order is the same one the
+ * importer reads, which makes an export a valid input for a re-import — the
+ * practical way to bulk-edit a list in a spreadsheet and push it back.
+ */
+function exportVisibleContacts() {
+  const rows = filteredContacts();
+  if (!rows.length) return;
+  const stageLabel = (id) => (stageMeta(id) || {}).label || id || '';
+  const iso = (ts) => {
+    const d = toDate(ts);
+    return d ? d.toISOString().slice(0, 10) : '';
+  };
+  const ownerName = (uid) => {
+    if (!uid) return '';
+    const a = state.admins.find((x) => x.uid === uid);
+    return a ? (a.displayName || a.email || '') : '';
+  };
+  const csv = toCsv(
+    ['Name', 'Email', 'Phone', 'Company', 'Tags', 'Stage', 'Source', 'Owner', 'Created', 'Last activity'],
+    rows.map((c) => [
+      c.name || '',
+      c.email || '',
+      c.phone || '',
+      c.companyName || '',
+      Array.isArray(c.tags) ? c.tags.join('; ') : '',
+      stageLabel(c.stage),
+      c.source || '',
+      ownerName(c.ownerUid),
+      iso(c.createdAt),
+      iso(c.lastActivityAt)
+    ])
+  );
+  const stamp = new Date().toISOString().slice(0, 10);
+  downloadCsv(`contacts-${stamp}.csv`, csv);
 }
 
 function renderStageChips() {
@@ -508,6 +551,18 @@ async function main() {
 
   // Wire new contact
   $('btn-new-contact').addEventListener('click', openNewContactModal);
+
+  // Export what the user is actually looking at, filters and all — an export
+  // that ignores the filters is a different list from the one on screen.
+  $('btn-export-csv').addEventListener('click', exportVisibleContacts);
+
+  // Carry the company through to the import page. An admin of two companies
+  // who switched here would otherwise land on the import resolving to their
+  // default company and load the list into the wrong CRM.
+  const imp = $('btn-import-csv');
+  if (imp && state.companyId) {
+    imp.href = '/crm-import.html?companyId=' + encodeURIComponent(state.companyId);
+  }
 
   // Load data
   try {
