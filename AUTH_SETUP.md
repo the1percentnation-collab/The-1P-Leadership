@@ -201,6 +201,26 @@ the settings page says so.
 The Voice SDK is vendored at `public/vendor/twilio-voice-<version>.min.js`
 (see the README there) rather than loaded from a CDN.
 
+### Texting: toll-free, no EIN needed
+
+A2P 10DLC brand registration wants a federal Tax ID. Toll-free verification
+does not — Twilio exempts sole proprietors from the business-registration-number
+requirement — so toll-free is the path for a practice without an EIN, and it
+reaches every major US carrier plus most major Canadian ones.
+
+Changing provider does not avoid 10DLC: it is enforced by The Campaign Registry
+for the carriers, so Telnyx, Plivo, SignalWire and the rest all require the
+identical registration.
+
+The full submission — the opt-in URL to give them, the use-case wording, the
+workflow description and the message samples — is in
+[`docs/toll-free-verification.md`](docs/toll-free-verification.md). Note that
+`TWILIO_FROM_NUMBER` must not be pointed at the toll-free number until
+verification is approved, because a toll-free number cannot send to the US or
+Canada before then.
+
+Voice is unaffected by any of this and needs no registration.
+
 ### Google Calendar (two-way sync)
 
 | Variable | Where it comes from |
