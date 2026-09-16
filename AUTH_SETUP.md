@@ -218,10 +218,10 @@ registering — Telnyx, Plivo, SignalWire and the rest all require the identical
 Campaign Registry process. Voice is completely exempt.
 
 Without an EIN, **Sole Proprietor 10DLC** is the lightest path and keeps a
-local area code: name, address, mobile, last four of SSN, and a one-time code.
-No EIN, no business documents. Capped at one number and roughly a message per
-second, which is far above what one-to-one follow-up uses. Toll-free
-verification is the alternative if you need full throughput.
+local area code: name, email, address, and a one-time code to your personal
+mobile. No EIN, no SSN, no business documents. Capped at one number and roughly
+a message per second, which is far above what one-to-one follow-up uses.
+Toll-free verification is the alternative if you need full throughput.
 
 The full submission — the opt-in URL to give them, the use-case wording, the
 workflow description and the message samples — is in

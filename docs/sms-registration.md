@@ -22,14 +22,15 @@ local number and the Twilio Voice credentials in
 
 | | Number | Verification | Limits |
 |---|---|---|---|
-| **Sole Proprietor 10DLC** *(recommended)* | Local area code | Name, address, mobile, last 4 of SSN, one-time code. No EIN, no business documents. | 1 campaign, 1 number, ~1 msg/sec, ~1,000/day T-Mobile, 15/min AT&T |
+| **Sole Proprietor 10DLC** *(recommended)* | Local area code | Name, email, address, and a one-time code to your personal mobile. No EIN, **no SSN**, no business documents. | 1 campaign, 1 number, ~1 msg/sec, ~1,000/day T-Mobile, 15/min AT&T |
 | **Toll-free verification** | 800-style | Business details form, no EIN required for sole proprietors | Full throughput |
 | **Phone handoff** *(already live)* | Your own cell | None | No CRM capture at all |
 
 **Sole Proprietor is the right default here**: it is the local number, the
-lightest identity check of the three, and the throughput ceiling is far above
-what one coach sends in a day. Cost is about $4 once plus $2/month to The
-Campaign Registry.
+lightest identity check of the three — no tax number of any kind, just a code
+texted to your phone — and the throughput ceiling is far above what one coach
+sends in a day. Expect a small Campaign Registry brand fee plus a low monthly
+campaign fee; Twilio shows the current amounts at registration.
 
 **Toll-free** is the fallback if you want unlimited throughput or a second
 number. Its approval window is the one thing to watch — estimates range from
@@ -46,34 +47,49 @@ call logging and dispositions, because the CRM prompts you after the handoff.
 ## Sole Proprietor 10DLC — what you actually submit
 
 Twilio Console → Messaging → Regulatory Compliance → A2P 10DLC → register, and
-choose the **Sole Proprietor** brand type.
+choose the **Sole Proprietor** brand type. Twilio states this path is "available
+to individuals or small business that have no Tax ID."
 
+**No SSN and no EIN.** Identity is proved by a one-time code, not a tax number.
 What it asks for:
 
-- Your legal name and personal address
-- Your mobile phone number — a one-time code is texted to it to prove you
-  control it
-- The last four digits of your SSN
-- Business name (`The One Percent Nation`) and website (`https://the1pnation.com`)
-- One campaign: use case, sample messages, and the opt-in description
+- Business name (`The One Percent Nation`)
+- Your first and last name
+- Email address
+- Physical address
+- A mobile phone number, which Twilio verifies by **OTP**
 
-That is the whole identity check. No EIN, no incorporation documents, no
-articles of organisation, no bank verification.
+Then one campaign: use case, sample messages, and the opt-in description — all
+drafted for you under **Campaign content** below.
 
-For the campaign itself — the use-case summary, the opt-in URL, the opt-in
-workflow description and the message samples — use the content in the
-**Campaign content** section below. It is written for either path; the same
-wording works for a sole proprietor campaign and for toll-free verification.
+### The OTP gotchas
+
+These are the details that waste a day if you miss them:
+
+- **The mobile number must be a real mobile**, US or Canadian. Twilio is
+  explicit that you cannot use a number acquired from a CPaaS provider,
+  including Twilio itself. Use your personal cell.
+- **Answer the code within 24 hours** or the registration expires and you start
+  over.
+- **That mobile number can be used at most 3 times** across Sole Proprietor
+  brand registrations with The Campaign Registry.
+- **The physical address can be used at most 10 times** across all brand
+  registrations with TCR.
+
+The verified mobile does not have to be, and generally should not be, the
+number you send from. It is identity proof only; the sending number is the
+10DLC number you attach to the campaign.
 
 ### What to expect after approval
 
-One number, one campaign, and throttling at roughly a message per second. The
-CRM's sequence tick sends serially and the dialer is one-to-one, so neither
-brushes the ceiling. What *would* hit it is a broadcast to hundreds of contacts
-at once — if you ever want that, register toll-free as a second number and send
-campaigns from it.
+A Sole Proprietor campaign takes **one 10DLC phone number**, and throughput is
+throttled to roughly a message per second, with carrier-level daily caps around
+1,000/day on T-Mobile and 15/minute on AT&T.
 
----
+The CRM's sequence tick sends serially and the dialer is one-to-one, so neither
+brushes that ceiling. What would hit it is a broadcast to hundreds of contacts
+at once — if you ever want that, verify a toll-free number as a second sender
+and send campaigns from it while keeping the local number for conversations.
 
 ## Campaign content
 
