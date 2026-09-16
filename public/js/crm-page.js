@@ -253,8 +253,7 @@ function wireQuickActions(host) {
       e.preventDefault();
       e.stopPropagation();
       const id = b.getAttribute('data-quick-text');
-      location.href = '/conversations.html?contact=' + encodeURIComponent(id)
-        + '&companyId=' + encodeURIComponent(state.companyId);
+      location.href = '/contact.html?id=' + encodeURIComponent(id) + '&compose=sms';
     });
   });
 }

@@ -10294,3 +10294,124 @@ body.has-call-dock .crm-content { padding-bottom: 190px; }
   font-family: var(--font-display); font-size: 18px; color: var(--red); width: 24px; text-align: center;
 }
 @media (max-width: 960px) { .seq-wrap { grid-template-columns: minmax(0, 1fr); } }
+
+/* ════════════════════════════════════════════════════════════════
+   CONTACT RECORD — Follow-Up-Boss-style: profile + actions + inline
+   call panel on the left, one filtered timeline with the composer on
+   the right. Nothing leaves the screen while a call is live.
+   ════════════════════════════════════════════════════════════════ */
+.crm-contact-header { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.ct-layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px; align-items: start; }
+.ct-left { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 12px; }
+.ct-left .card { margin: 0; padding: 16px; }
+.ct-profile .crm-contact-name-input { font-size: 24px; }
+.ct-profile .crm-contact-sub { margin-bottom: 12px; }
+
+.ct-actions { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 4px 0 12px; }
+.ct-action {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: var(--surface2); color: var(--white-dim); border: 1px solid var(--border);
+  border-radius: 9px; padding: 8px 2px; font-size: 10px; font-family: var(--font-mono);
+  letter-spacing: .05em; text-transform: uppercase; cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.ct-action-ico { font-size: 16px; line-height: 1; }
+.ct-action:hover:not(:disabled) { background: var(--gray-dark); color: var(--white); }
+.ct-action-primary { background: var(--red); border-color: var(--red); color: #fff; }
+.ct-action-primary:hover:not(:disabled) { background: var(--red-dark); color: #fff; }
+.ct-action:disabled { opacity: .35; cursor: not-allowed; }
+
+.ct-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+.ct-fields .crm-field label { font-size: 10px; }
+.ct-fields .c-input { padding: 7px 9px; font-size: 13px; }
+.ct-profile .crm-tags-block { margin-top: 12px; }
+.ct-profile .crm-consent-row { margin-top: 10px; padding-top: 10px; }
+.ct-profile .crm-save-row { margin-top: 12px; display: flex; justify-content: space-between; }
+.btn-sm { padding: 7px 12px; font-size: 12px; }
+
+.ct-side-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--gray-light); margin-bottom: 8px;
+}
+.ct-side .crm-mini-row { padding: 8px 0; }
+.ct-side .crm-mini-row:last-child { border-bottom: 0; }
+
+/* Inline call panel: same dock, compact, inside the profile card. */
+.call-dock-inline {
+  position: static; z-index: auto; box-shadow: none;
+  border: 1px solid var(--border-red); border-top: 2px solid var(--red); border-radius: 10px;
+  background: color-mix(in srgb, var(--red) 8%, var(--surface2));
+  padding: 10px 12px; margin: 0 0 12px;
+}
+.call-dock-inline .call-dock-name { font-size: 16px; }
+.call-dock-inline .call-dock-timer { font-size: 17px; }
+.call-dock-inline .call-dock-btn { padding: 6px 10px; font-size: 12px; }
+.call-dock-inline .call-dock-inner { gap: 10px; }
+.call-dock-inline .disp-grid { grid-template-columns: repeat(2, 1fr); gap: 5px; }
+.call-dock-inline .disp-btn { padding: 7px 9px; font-size: 12px; }
+.call-dock-inline .call-keypad { grid-template-columns: repeat(3, 1fr); max-width: 210px; }
+
+/* ── Timeline ─────────────────────────────────────────────────── */
+.ct-right .card.ct-timeline { margin: 0; padding: 0; overflow: hidden; }
+.tl-compose { padding: 14px 16px 12px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+.tl-compose-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+.tl-tab {
+  background: transparent; border: 1px solid transparent; color: var(--gray-light);
+  padding: 5px 12px; border-radius: 999px; font-size: 12px; font-family: var(--font-mono);
+  letter-spacing: .06em; text-transform: uppercase; cursor: pointer;
+}
+.tl-tab.active { background: var(--charcoal); border-color: var(--border); color: var(--white); }
+.tl-compose-row { display: flex; gap: 8px; align-items: flex-end; }
+.tl-compose-row .c-textarea { flex: 1; min-height: 44px; resize: vertical; }
+.tl-compose-meta { display: flex; align-items: center; gap: 10px; margin-top: 7px; font-size: 11px; color: var(--gray-mid); font-family: var(--font-mono); }
+.tl-compose-meta .spacer { flex: 1; }
+
+.tl-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+.tl-count { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--gray-mid); }
+.tl-feed { padding: 6px 0 12px; }
+.tl-day {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--gray-mid); padding: 14px 16px 4px; position: sticky; top: 0; background: var(--surface); z-index: 1;
+}
+.tl-item { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; padding: 9px 16px; border-bottom: 1px solid var(--border); }
+.tl-item:last-child { border-bottom: 0; }
+.tl-ico { font-size: 15px; text-align: center; line-height: 1.4; }
+.tl-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.tl-title { font-size: 13px; font-weight: 600; color: var(--white); }
+.tl-time { font-family: var(--font-mono); font-size: 11px; color: var(--gray-mid); margin-left: auto; white-space: nowrap; }
+.tl-body { font-size: 14px; color: var(--white-dim); margin-top: 3px; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
+.tl-meta { font-size: 11px; color: var(--gray-light); margin-top: 3px; }
+.tl-actions { display: flex; gap: 6px; margin-top: 6px; }
+.tl-item-system { padding: 5px 16px; }
+.tl-item-system .tl-body { font-size: 12px; color: var(--gray-light); margin-top: 0; }
+.tl-item-sms .tl-body {
+  display: inline-block; max-width: 85%; padding: 8px 12px; border-radius: 12px;
+  background: var(--surface2); color: var(--white); border-bottom-left-radius: 3px;
+}
+.tl-item-sms.tl-out .tl-body { background: var(--red); color: #fff; border-bottom-left-radius: 12px; border-bottom-right-radius: 3px; }
+.tl-item-sms.tl-out { grid-template-columns: minmax(0, 1fr) 28px; }
+.tl-item-sms.tl-out .tl-ico { order: 2; }
+.tl-item-sms.tl-out .tl-main { text-align: right; }
+.tl-item-sms.tl-out .tl-head { justify-content: flex-end; }
+.tl-item-sms.tl-out .tl-time { margin-left: 0; }
+.tl-item-call.tl-in .tl-ico { color: #56D4A8; }
+.tl-item-note { background: color-mix(in srgb, #E8C547 6%, transparent); }
+.tl-empty { padding: 36px 16px; text-align: center; color: var(--gray-mid); font-size: 13px; }
+.tl-del { background: transparent; border: 0; color: var(--gray-mid); cursor: pointer; font-size: 14px; }
+.tl-del:hover { color: var(--red); }
+
+@media (max-width: 960px) {
+  .ct-layout { grid-template-columns: minmax(0, 1fr); }
+  .ct-left { position: static; }
+  .ct-actions { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Contact subheader: the stage badge sits on its own line when space runs
+   out, so it is not joined into the text with a separator. */
+.ct-sub-text { display: block; margin-top: 4px; }
+.ct-profile .crm-contact-sub .crm-stage-badge { vertical-align: middle; }
+/* Keep a long deal or appointment title from pushing its value off the card. */
+.ct-trunc { min-width: 0; }
+.ct-trunc .crm-mini-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ct-side .crm-mini-val { flex-shrink: 0; margin-left: 8px; }
