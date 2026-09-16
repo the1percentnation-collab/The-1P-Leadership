@@ -173,9 +173,18 @@ Nothing below is needed for SMS, which keeps working as before.
 
 ### Twilio Voice (softphone + cell bridge)
 
-Runtime environment variables (functions/.env or the Cloud Run env), in
-addition to the existing `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and
-`TWILIO_FROM_NUMBER`:
+**Step-by-step walkthrough: [`docs/twilio-setup.md`](docs/twilio-setup.md)** —
+which console pages, which URLs, and how to test. The summary below is the
+variable reference.
+
+Every value goes in as a **GitHub repository secret**, not a local file: the
+deploy workflow writes `functions/.env` from those secrets, so CI is the single
+source of truth and a later merge cannot silently un-configure calling. See
+`functions/.env.example` for the full list. Redeploy the functions after any
+change.
+
+Runtime environment variables, in addition to the existing
+`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM_NUMBER`:
 
 | Variable | Where it comes from |
 |---|---|
