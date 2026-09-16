@@ -41,7 +41,8 @@ const state = {
   muted: false,
   keypadOpen: false,
   resolve: null,          // resolves callContact() once a disposition is recorded
-  hotkeys: false
+  hotkeys: false,
+  dockHost: null          // element to render the call panel into; null = fixed bottom bar
 };
 
 const listeners = new Map();
@@ -135,10 +136,13 @@ export function softphoneReady() {
  * agent's own mode preference. Does NOT build the Twilio Device — that happens
  * on the first actual call, so a page view costs nothing.
  */
-export async function configure({ companyId, uid, hotkeys = false } = {}) {
+export async function configure({ companyId, uid, hotkeys = false, dockHost = null } = {}) {
   state.companyId = companyId || state.companyId;
   state.uid = uid || state.uid;
   state.hotkeys = !!hotkeys;
+  // A page can host the call panel inline (the contact record does, so the
+  // record stays readable during the call). Anything else gets the fixed bar.
+  state.dockHost = typeof dockHost === 'string' ? document.getElementById(dockHost) : (dockHost || null);
   const [settings, prefs] = await Promise.all([
     getDialerSettings(state.companyId),
     getAgentPrefs(state.uid)
@@ -408,14 +412,23 @@ function setStatus(status, message) {
 
 function ensureDock() {
   let dock = document.getElementById('call-dock');
+  const inline = !!(state.dockHost && document.body.contains(state.dockHost));
+  // If the host changed (page re-rendered), move or rebuild the dock.
+  if (dock && inline && dock.parentElement !== state.dockHost) { dock.remove(); dock = null; }
+  if (dock && !inline && dock.parentElement !== document.body) { dock.remove(); dock = null; }
   if (!dock) {
     dock = document.createElement('div');
     dock.id = 'call-dock';
-    dock.className = 'call-dock';
+    dock.className = inline ? 'call-dock call-dock-inline' : 'call-dock';
     dock.hidden = true;
-    document.body.appendChild(dock);
+    (inline ? state.dockHost : document.body).appendChild(dock);
   }
   return dock;
+}
+
+function dockIsInline() {
+  const dock = document.getElementById('call-dock');
+  return !!(dock && dock.classList.contains('call-dock-inline'));
 }
 
 function resetDock() {
@@ -450,7 +463,7 @@ function renderDock(message) {
     return;
   }
   dock.hidden = false;
-  document.body.classList.add('has-call-dock');
+  if (!dockIsInline()) document.body.classList.add('has-call-dock');
 
   const c = state.contact || {};
   const name = escapeHtml(c.name || c.phone || 'Unknown');

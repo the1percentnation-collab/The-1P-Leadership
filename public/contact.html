@@ -33,138 +33,94 @@
       <div id="gate-msg"></div>
       <div id="panel" style="display:none;">
         <div class="crm-contact-header">
-          <a href="/crm.html" class="crm-back-link">← Back to CRM</a>
+          <a href="/crm.html" class="crm-back-link">&larr; Back to CRM</a>
+          <span id="ct-save-status" class="crm-save-status"></span>
         </div>
 
-        <div class="card">
-          <div class="crm-contact-top">
-            <div class="crm-contact-name-wrap">
+        <div class="ct-layout">
+          <!-- ── Left: who they are, and every way to reach them ── -->
+          <aside class="ct-left">
+            <div class="card ct-profile">
               <input id="ct-name" class="crm-contact-name-input" placeholder="Name" />
               <div class="crm-contact-sub" id="ct-sub"></div>
-            </div>
-            <div class="crm-contact-actions">
-              <div class="crm-field">
-                <label>Stage</label>
-                <select id="ct-stage" class="c-input crm-select"></select>
+
+              <div class="ct-actions">
+                <button class="ct-action ct-action-primary" id="btn-call-contact"><span class="ct-action-ico">&#9742;</span>Call</button>
+                <button class="ct-action" id="btn-text-contact"><span class="ct-action-ico">&#128172;</span>Text</button>
+                <button class="ct-action" id="btn-send-email"><span class="ct-action-ico">&#9993;</span>Email</button>
+                <button class="ct-action" id="btn-schedule-contact"><span class="ct-action-ico">&#128197;</span>Book</button>
+                <button class="ct-action" id="btn-add-task"><span class="ct-action-ico">&#10003;</span>Task</button>
+                <button class="ct-action" id="btn-sequence-contact"><span class="ct-action-ico">&#8694;</span>Seq</button>
               </div>
-              <div class="crm-field">
-                <label>Owner</label>
-                <select id="ct-owner" class="c-input crm-select"></select>
+
+              <!-- The softphone renders here while a call is live, so the
+                   record stays on screen the whole time. -->
+              <div id="ct-call-panel"></div>
+
+              <div class="ct-fields">
+                <div class="crm-field"><label>Phone</label><input id="ct-phone" class="c-input" placeholder="+1 555…" /></div>
+                <div class="crm-field"><label>Email</label><input id="ct-email" class="c-input" placeholder="name@example.com" /></div>
+                <div class="crm-field"><label>Stage</label><select id="ct-stage" class="c-input crm-select"></select></div>
+                <div class="crm-field"><label>Owner</label><select id="ct-owner" class="c-input crm-select"></select></div>
+                <div class="crm-field"><label>Company</label><input id="ct-company" class="c-input" placeholder="Acme Inc." /></div>
+                <div class="crm-field"><label>Source</label><select id="ct-source" class="c-input crm-select"></select></div>
               </div>
-              <div class="crm-contact-comms">
-                <button class="btn btn-primary" id="btn-call-contact">&#9742; Call</button>
-                <button class="btn btn-outline" id="btn-text-contact">&#128172; Text</button>
-                <button class="btn btn-outline" id="btn-schedule-contact">&#128197; Schedule</button>
-                <button class="btn btn-ghost" id="btn-sequence-contact" title="Enroll in a follow-up sequence">&#8694; Sequence</button>
-                <button class="btn btn-ghost" id="btn-send-email">Email</button>
-                <button class="btn btn-ghost" id="btn-delete-contact">Delete</button>
+
+              <div class="crm-tags-block">
+                <div id="ct-tags" class="crm-tags"></div>
+                <form class="crm-add-tag" id="ct-add-tag-form">
+                  <input id="ct-add-tag" class="c-input" placeholder="Add tag, press Enter" />
+                </form>
               </div>
-            </div>
-          </div>
 
-          <div class="crm-contact-grid">
-            <div class="crm-field">
-              <label>Email</label>
-              <input id="ct-email" class="c-input" placeholder="name@example.com" />
-            </div>
-            <div class="crm-field">
-              <label>Phone</label>
-              <input id="ct-phone" class="c-input" placeholder="+1 555…" />
-            </div>
-            <div class="crm-field">
-              <label>Company</label>
-              <input id="ct-company" class="c-input" placeholder="Acme Inc." />
-            </div>
-            <div class="crm-field">
-              <label>Source</label>
-              <select id="ct-source" class="c-input crm-select"></select>
-            </div>
-          </div>
+              <div class="crm-consent-row">
+                <label class="crm-consent-check"><input type="checkbox" id="ct-dnc" /> Do not call</label>
+                <span class="crm-consent-note" id="ct-sms-consent"></span>
+              </div>
 
-          <div class="crm-consent-row">
-            <label class="crm-consent-check">
-              <input type="checkbox" id="ct-dnc" /> Do not call
-            </label>
-            <span class="crm-consent-note" id="ct-sms-consent"></span>
-          </div>
-
-          <div class="crm-tags-block">
-            <label class="crm-field-label">Tags</label>
-            <div id="ct-tags" class="crm-tags"></div>
-            <form class="crm-add-tag" id="ct-add-tag-form">
-              <input id="ct-add-tag" class="c-input" placeholder="Add a tag and press Enter" />
-            </form>
-          </div>
-
-          <div class="crm-save-row">
-            <span id="ct-save-status" class="crm-save-status"></span>
-            <button class="btn btn-primary" id="btn-save-contact">Save changes</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="crm-feed-tabs">
-            <button class="crm-tab active" data-feed-tab="notes">Notes</button>
-            <button class="crm-tab" data-feed-tab="deals">Deals</button>
-            <button class="crm-tab" data-feed-tab="tasks">Tasks</button>
-            <button class="crm-tab" data-feed-tab="appts">Appointments</button>
-            <button class="crm-tab" data-feed-tab="calls">Calls</button>
-            <button class="crm-tab" data-feed-tab="sms">Text</button>
-            <button class="crm-tab" data-feed-tab="activity">Activity</button>
-          </div>
-
-          <div id="feed-appts" class="crm-feed-pane" style="display:none;">
-            <div class="crm-note-compose-actions" style="margin-bottom:12px;">
-              <button class="btn btn-primary" id="btn-add-appt">+ New Appointment</button>
-            </div>
-            <div id="appts-list"></div>
-          </div>
-
-          <div id="feed-calls" class="crm-feed-pane" style="display:none;">
-            <div class="crm-note-compose-actions" style="margin-bottom:12px;">
-              <button class="btn btn-primary" id="btn-call-from-pane">&#9742; Call now</button>
-            </div>
-            <div id="calls-list"></div>
-          </div>
-
-          <div id="feed-sms" class="crm-feed-pane" style="display:none;">
-            <div id="sms-pane"></div>
-          </div>
-
-          <div id="feed-deals" class="crm-feed-pane" style="display:none;">
-            <div class="crm-note-compose-actions" style="margin-bottom:12px;">
-              <button class="btn btn-primary" id="btn-add-deal">+ New Deal</button>
-            </div>
-            <div id="deals-list"></div>
-          </div>
-
-          <div id="feed-tasks" class="crm-feed-pane" style="display:none;">
-            <div class="crm-note-compose-actions" style="margin-bottom:12px;">
-              <button class="btn btn-primary" id="btn-add-task">+ New Task</button>
-            </div>
-            <div id="tasks-list"></div>
-          </div>
-
-          <div id="feed-notes" class="crm-feed-pane">
-            <div class="crm-note-compose">
-              <textarea id="note-body" class="c-textarea" rows="3" placeholder="Add a note (deal context, conversation summary, follow-up next step)…"></textarea>
-              <div class="crm-note-compose-actions">
-                <button class="btn btn-primary" id="btn-add-note">Add note</button>
+              <div class="crm-save-row">
+                <button class="btn btn-ghost btn-sm" id="btn-delete-contact">Delete</button>
+                <button class="btn btn-primary btn-sm" id="btn-save-contact">Save changes</button>
               </div>
             </div>
-            <div id="notes-list" class="crm-notes-list"></div>
-          </div>
 
-          <div id="feed-activity" class="crm-feed-pane" style="display:none;">
-            <div class="crm-activity-actions">
-              <span class="crm-activity-label">Log:</span>
-              <button class="crm-chip" data-manual="manual_call">Call</button>
-              <button class="crm-chip" data-manual="manual_meeting">Meeting</button>
-              <button class="crm-chip" data-manual="manual_email">Email</button>
-              <button class="crm-chip" data-manual="manual_sms">SMS</button>
+            <div class="card ct-side">
+              <div class="ct-side-head">Upcoming <button class="crm-chip" id="btn-add-appt">+ Book</button></div>
+              <div id="side-upcoming"></div>
             </div>
-            <div id="activity-list" class="crm-activity-list"></div>
-          </div>
+
+            <div class="card ct-side">
+              <div class="ct-side-head">Deals <button class="crm-chip" id="btn-add-deal">+ Deal</button></div>
+              <div id="side-deals"></div>
+            </div>
+          </aside>
+
+          <!-- ── Right: one timeline of every touch, newest first ── -->
+          <section class="ct-right">
+            <div class="card ct-timeline">
+              <div class="tl-compose" id="tl-compose">
+                <div class="tl-compose-tabs">
+                  <button class="tl-tab active" data-compose="sms">Text</button>
+                  <button class="tl-tab" data-compose="note">Note</button>
+                  <button class="tl-tab" data-compose="email">Email</button>
+                </div>
+                <div id="tl-compose-body"></div>
+              </div>
+
+              <div class="tl-filters" id="tl-filters">
+                <button class="crm-chip active" data-tl="all">All</button>
+                <button class="crm-chip" data-tl="sms">Texts</button>
+                <button class="crm-chip" data-tl="call">Calls</button>
+                <button class="crm-chip" data-tl="email">Emails</button>
+                <button class="crm-chip" data-tl="note">Notes</button>
+                <button class="crm-chip" data-tl="appointment">Appointments</button>
+                <button class="crm-chip" data-tl="task">Tasks</button>
+                <button class="crm-chip" data-tl="system">System</button>
+                <span class="tl-count" id="tl-count"></span>
+              </div>
+              <div id="tl-feed" class="tl-feed"></div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
