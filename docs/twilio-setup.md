@@ -2,7 +2,7 @@
 
 Two independent tracks. **Voice needs no registration and can be done in about
 fifteen minutes.** Texting waits on toll-free verification (1-3 business days),
-covered in [`toll-free-verification.md`](toll-free-verification.md).
+covered in [`sms-registration.md`](sms-registration.md).
 
 Do voice first. It is the part that works today.
 

@@ -210,20 +210,22 @@ the settings page says so.
 The Voice SDK is vendored at `public/vendor/twilio-voice-<version>.min.js`
 (see the README there) rather than loaded from a CDN.
 
-### Texting: toll-free, no EIN needed
+### Texting: registration is unavoidable, but there is a light door
 
-A2P 10DLC brand registration wants a federal Tax ID. Toll-free verification
-does not — Twilio exempts sole proprietors from the business-registration-number
-requirement — so toll-free is the path for a practice without an EIN, and it
-reaches every major US carrier plus most major Canadian ones.
+Since 1 February 2025 the carriers block 100% of unregistered A2P long-code
+traffic, so there is no provider that will text from a US local number without
+registering — Telnyx, Plivo, SignalWire and the rest all require the identical
+Campaign Registry process. Voice is completely exempt.
 
-Changing provider does not avoid 10DLC: it is enforced by The Campaign Registry
-for the carriers, so Telnyx, Plivo, SignalWire and the rest all require the
-identical registration.
+Without an EIN, **Sole Proprietor 10DLC** is the lightest path and keeps a
+local area code: name, address, mobile, last four of SSN, and a one-time code.
+No EIN, no business documents. Capped at one number and roughly a message per
+second, which is far above what one-to-one follow-up uses. Toll-free
+verification is the alternative if you need full throughput.
 
 The full submission — the opt-in URL to give them, the use-case wording, the
 workflow description and the message samples — is in
-[`docs/toll-free-verification.md`](docs/toll-free-verification.md). Note that
+[`docs/sms-registration.md`](docs/sms-registration.md). Note that
 `TWILIO_FROM_NUMBER` must not be pointed at the toll-free number until
 verification is approved, because a toll-free number cannot send to the US or
 Canada before then.

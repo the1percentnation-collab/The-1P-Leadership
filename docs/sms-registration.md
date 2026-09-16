@@ -1,36 +1,101 @@
-# Toll-free SMS verification — submission content
+# Getting texting switched on
 
-Everything needed to get the CRM's texting approved, without an EIN.
+## The wall, stated plainly
 
-**Why toll-free and not 10DLC:** A2P 10DLC brand registration normally wants a
-federal Tax ID. Toll-free verification runs under a different compliance model,
-and Twilio exempts sole proprietors from the business-registration-number
-requirement — their documentation states an EIN or Tax ID is not required for
-sole proprietor registration. Approval is typically 1-3 business days, and
-toll-free reaches every major US carrier plus most major Canadian ones.
+There is no provider that will send business texts from a US local number
+without registration. Since 1 February 2025 the carriers block **100% of
+unregistered A2P 10DLC traffic** — not throttled, blocked — and bill sender
+fees for the attempt. AT&T, T-Mobile and Verizon enforce this at the network,
+through The Campaign Registry.
 
-Switching carriers does not avoid this. 10DLC is enforced by The Campaign
-Registry on behalf of the carriers, so Telnyx, Plivo, SignalWire, Vonage and
-Bandwidth all require the identical registration. Toll-free is the shortcut,
-not a different vendor.
+So Twilio, Telnyx, Plivo, SignalWire, Vonage, Bandwidth: identical requirement.
+Changing vendor changes who hands you the same form. Anyone advertising
+"no 10DLC needed" for US local-number business texting is either routing
+person-to-person traffic that carriers actively filter, or about to have their
+route shut off.
 
-**Calling needs none of this.** Voice has no 10DLC or verification requirement.
-The softphone, dialer queue, recordings and voicemail drop work as soon as the
-Twilio Voice variables in `AUTH_SETUP.md` are set, whatever texting is doing.
+**Voice is completely exempt.** No 10DLC, no verification, no registration. A
+local number and the Twilio Voice credentials in
+[`twilio-setup.md`](twilio-setup.md) and the softphone works today.
+
+## Three doors, pick one
+
+| | Number | Verification | Limits |
+|---|---|---|---|
+| **Sole Proprietor 10DLC** *(recommended)* | Local area code | Name, address, mobile, last 4 of SSN, one-time code. No EIN, no business documents. | 1 campaign, 1 number, ~1 msg/sec, ~1,000/day T-Mobile, 15/min AT&T |
+| **Toll-free verification** | 800-style | Business details form, no EIN required for sole proprietors | Full throughput |
+| **Phone handoff** *(already live)* | Your own cell | None | No CRM capture at all |
+
+**Sole Proprietor is the right default here**: it is the local number, the
+lightest identity check of the three, and the throughput ceiling is far above
+what one coach sends in a day. Cost is about $4 once plus $2/month to The
+Campaign Registry.
+
+**Toll-free** is the fallback if you want unlimited throughput or a second
+number. Its approval window is the one thing to watch — estimates range from
+1-3 business days to 3-6 weeks depending on who you ask, so do not plan a
+launch around it.
+
+**Phone handoff** needs no setup and is what the Call and Text buttons already
+do when no credentials exist. Your own number, your own carrier plan, nothing
+to register. You lose message capture, inbound texts, and recordings; you keep
+call logging and dispositions, because the CRM prompts you after the handoff.
 
 ---
 
-## Before you submit
+## Sole Proprietor 10DLC — what you actually submit
+
+Twilio Console → Messaging → Regulatory Compliance → A2P 10DLC → register, and
+choose the **Sole Proprietor** brand type.
+
+What it asks for:
+
+- Your legal name and personal address
+- Your mobile phone number — a one-time code is texted to it to prove you
+  control it
+- The last four digits of your SSN
+- Business name (`The One Percent Nation`) and website (`https://the1pnation.com`)
+- One campaign: use case, sample messages, and the opt-in description
+
+That is the whole identity check. No EIN, no incorporation documents, no
+articles of organisation, no bank verification.
+
+For the campaign itself — the use-case summary, the opt-in URL, the opt-in
+workflow description and the message samples — use the content in the
+**Campaign content** section below. It is written for either path; the same
+wording works for a sole proprietor campaign and for toll-free verification.
+
+### What to expect after approval
+
+One number, one campaign, and throttling at roughly a message per second. The
+CRM's sequence tick sends serially and the dialer is one-to-one, so neither
+brushes the ceiling. What *would* hit it is a broadcast to hundreds of contacts
+at once — if you ever want that, register toll-free as a second number and send
+campaigns from it.
+
+---
+
+## Campaign content
+
+Use this for a Sole Proprietor 10DLC campaign or for toll-free verification.
+The fields are named slightly differently between the two flows but ask for the
+same things.
+
+---
+
+## If you go the toll-free route instead
 
 1. **Buy a toll-free number.** Twilio Console → Phone Numbers → Buy a number →
-   check *Toll-free*, with SMS and Voice capability.
+   tick *Toll-free*, with SMS and Voice capability.
 2. **Start verification.** Messaging → Regulatory Compliance → Toll-Free
    Verification → the new number.
 3. **Do not set `TWILIO_FROM_NUMBER` to it yet.** A toll-free number cannot
-   send to the US or Canada until verification is approved. Point the env var
-   at it only after the approval email, or sends will fail.
+   send to the US or Canada until verification is approved, so every send would
+   fail. Point the env var at it only after the approval email.
 
----
+Twilio exempts sole proprietors from the business-registration-number
+requirement on this flow, and states an EIN or Tax ID is not required for sole
+proprietor registration.
 
 ## The opt-in URL to submit
 
@@ -158,14 +223,22 @@ later.)*
 
 ## After approval
 
-1. Set `TWILIO_FROM_NUMBER` to the toll-free number on the functions runtime
-   and redeploy.
-2. Set the number's **Messaging** webhook to `twilioInboundWebhook` and its
-   status callback to `twilioStatusWebhook`, so inbound texts and delivery
-   receipts land on the contact timeline. Both URLs are in `AUTH_SETUP.md`.
+1. Set `TWILIO_FROM_NUMBER` to the approved number as a **GitHub repository
+   secret** (Settings → Secrets and variables → Actions), not in a local file —
+   see [`twilio-setup.md`](twilio-setup.md) for why — and re-run the backend
+   deploy workflow.
+2. Set the number's **Messaging** webhook to
+   `https://us-central1-the-1p-leadership.cloudfunctions.net/twilioInboundWebhook`
+   (HTTP POST) and its status callback to
+   `https://us-central1-the-1p-leadership.cloudfunctions.net/twilioStatusWebhook`,
+   so inbound texts and delivery receipts reach the contact timeline.
 3. Send one text to your own phone from a contact record and confirm it appears
-   on the timeline. Reply STOP from that phone and confirm the contact shows
+   on the timeline. Reply STOP from that phone, then confirm the contact shows
    "Replied STOP — texting blocked" and that sending is refused.
+
+If you registered a *local* number for SMS and also bought a separate number
+for voice, set `TWILIO_CALLER_ID` to the voice number so outbound calls show
+the right caller ID.
 
 ## Staying approved
 
