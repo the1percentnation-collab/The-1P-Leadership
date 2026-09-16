@@ -5932,6 +5932,9 @@ function appointmentSyncHash(a) {
     d: Number(a.durationMin) || 30,
     l: (a.location || '').trim(),
     n: (a.notes || '').trim(),
+    // Turning the invite on after booking has to re-push, otherwise the
+    // attendee is never added and no invite email goes out.
+    i: a.inviteContact === true,
     st: a.status || 'scheduled'
   });
   return crypto.createHash('sha1').update(basis).digest('hex');
@@ -6026,8 +6029,13 @@ exports.googleOAuthStart = onCall(async (request) => {
 
   const crypto = require('crypto');
   const state = crypto.randomBytes(24).toString('base64url');
-  const safeReturn = typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//')
-    ? returnTo.split('?')[0] : '/crm-settings.html';
+  // Keep the query string (a contact page is /contact.html?id=…, and dropping
+  // the id would land the admin back on a blank record after consent), but
+  // only a plain same-origin path with safe characters.
+  const safeReturn = typeof returnTo === 'string'
+    && /^\/[A-Za-z0-9._~\-\/]*(\?[A-Za-z0-9._~\-\/=&%]*)?$/.test(returnTo)
+    && !returnTo.startsWith('//')
+    ? returnTo.slice(0, 300) : '/crm-settings.html';
   await db.collection('oauthStates').doc(state).set({
     companyId, uid, returnTo: safeReturn,
     createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -6056,7 +6064,9 @@ exports.googleOAuthCallback = onRequest({ cors: false, invoker: 'public' }, asyn
   const FV = admin.firestore.FieldValue;
   const back = (path, params) => {
     const qs = new URLSearchParams(params).toString();
-    res.redirect(302, `${APP_BASE_URL}${path}?${qs}`);
+    // returnTo may already carry a query (e.g. /contact.html?id=…).
+    const sep = path.includes('?') ? '&' : '?';
+    res.redirect(302, `${APP_BASE_URL}${path}${sep}${qs}`);
   };
 
   const code = (req.query.code || '').toString();

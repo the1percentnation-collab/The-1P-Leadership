@@ -27,10 +27,11 @@ import {
   listCompanyAdmins,
   ensureDefaultPipeline, listOpportunities, createOpportunity,
   listTasks, createTask, completeTask,
-  listAppointments, createAppointment, setAppointmentStatus,
+  listAppointments, createAppointment, setAppointmentStatus, getAppointment,
   listMessages, sendSms,
   listCalls, setDoNotCall, dispositionMeta, callBlockReason,
-  getGoogleCalendarStatus, listSequences, listEnrollments, enrollContact, stopEnrollment,
+  getGoogleCalendarStatus, startGoogleCalendarConnect,
+  listSequences, listEnrollments, enrollContact, stopEnrollment,
   escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate
 } from './crm.js';
 import { dialer, onDialerEvent } from './dialer-core.js';
@@ -771,6 +772,31 @@ function openContactApptModal() {
   const c = state.contact || {};
   const now = new Date(); now.setMinutes(0, 0, 0); now.setHours(now.getHours() + 1);
   const localVal = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const connected = !!state.google.connected;
+  const email = (c.email || '').trim();
+
+  // The Google block is always visible: when the calendar is connected it is
+  // where the invite is switched on, and when it is not it is the one-click
+  // way to connect without leaving the booking.
+  const googleBlock = connected ? `
+      <div class="crm-gcal-card">
+        <div class="crm-gcal-head">
+          <span class="crm-gcal-dot"></span>
+          Google Calendar connected${state.google.googleEmail ? ` · ${escapeHtml(state.google.googleEmail)}` : ''}
+        </div>
+        <div class="crm-gcal-note">This books on your calendar and adds a Google Meet link when you leave Location blank.</div>
+        <label class="crm-consent-check">
+          <input type="checkbox" id="ca-invite" ${email ? 'checked' : 'disabled'} />
+          ${email ? `Email a calendar invite to ${escapeHtml(email)}` : 'Add an email to this contact to send an invite'}
+        </label>
+      </div>` : `
+      <div class="crm-gcal-card crm-gcal-off">
+        <div class="crm-gcal-head"><span class="crm-gcal-dot"></span>${state.google.error ? 'Google Calendar needs reconnecting' : 'Google Calendar not connected'}</div>
+        <div class="crm-gcal-note">${state.google.error ? escapeHtml(state.google.error) + ' ' : ''}Connect it to put this on your calendar, generate a Meet link, and email the invite to ${email ? escapeHtml(email) : 'the lead'}. Booking now saves to the CRM only.</div>
+        <button type="button" class="btn btn-ghost btn-sm" id="ca-connect">Connect Google Calendar</button>
+        <div id="ca-connect-err" class="crm-gcal-note crm-gcal-err" style="display:none;"></div>
+      </div>`;
+
   modalShell('<h1>New <span>Appointment</span></h1>', `
     <form id="ca-form" class="crm-form">
       <div class="crm-form-row"><label>Title *</label>
@@ -782,42 +808,115 @@ function openContactApptModal() {
           <input class="c-input" id="ca-dur" type="number" min="5" step="5" value="30" /></div>
       </div>
       <div class="crm-form-row"><label>Location / link</label>
-        <input class="c-input" id="ca-loc" placeholder="${state.google.connected ? 'Leave blank for a Google Meet link' : 'Zoom, address, or phone'}" /></div>
-      ${state.google.connected ? `
-      <div class="crm-form-row">
-        <label class="crm-consent-check">
-          <input type="checkbox" id="ca-invite" ${c.email ? 'checked' : 'disabled'} />
-          ${c.email ? `Send a calendar invite to ${escapeHtml(c.email)}` : 'Add an email to this contact to send an invite'}
-        </label>
-      </div>` : ''}
+        <input class="c-input" id="ca-loc" placeholder="${connected ? 'Leave blank for a Google Meet link' : 'Zoom, address, or phone'}" /></div>
+      <div class="crm-form-row"><label>Agenda / notes</label>
+        <textarea class="c-textarea" id="ca-notes" rows="2" placeholder="Shown on the calendar event and in the invite"></textarea></div>
+      ${googleBlock}
       <div id="ca-err" class="auth-error" style="display:none;"></div>
       <div class="crm-modal-actions">
         <button type="button" class="btn btn-ghost" id="ca-cancel">Cancel</button>
-        <button type="submit" class="btn btn-primary">Book</button>
+        <button type="submit" class="btn btn-primary" id="ca-submit">Book</button>
       </div>
     </form>`);
   $('ca-cancel').addEventListener('click', closeModal);
+
+  const connectBtn = $('ca-connect');
+  if (connectBtn) connectBtn.addEventListener('click', async () => {
+    const err = $('ca-connect-err');
+    connectBtn.disabled = true;
+    connectBtn.textContent = 'Opening Google…';
+    try {
+      const url = await startGoogleCalendarConnect(state.companyId);
+      if (!url) throw new Error('No consent URL returned.');
+      location.href = url;
+    } catch (e) {
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect Google Calendar';
+      err.textContent = e.message || String(e);
+      err.style.display = '';
+    }
+  });
+
   $('ca-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const submit = $('ca-submit');
+    const invite = !!($('ca-invite') && $('ca-invite').checked && email);
     try {
+      submit.disabled = true;
+      submit.textContent = 'Booking…';
       const startStr = $('ca-start').value;
-      await createAppointment(state.companyId, {
+      const appt = await createAppointment(state.companyId, {
         title: $('ca-title').value,
         startAt: startStr ? new Date(startStr) : null,
         durationMin: $('ca-dur').value,
         location: $('ca-loc').value || null,
+        notes: $('ca-notes').value.trim() || null,
         ownerUid: c.ownerUid || state.uid,
         contactId: state.contactId,
         contactName: c.name || null,
-        inviteContact: !!($('ca-invite') && $('ca-invite').checked)
+        inviteContact: invite
       });
-      closeModal();
-      await Promise.all([refreshSide(), refreshTimeline()]);
+      if (!connected) {
+        closeModal();
+        await Promise.all([refreshSide(), refreshTimeline()]);
+        return;
+      }
+      await showApptSyncResult(appt.id, { invite, email });
     } catch (err) {
+      submit.disabled = false;
+      submit.textContent = 'Book';
       $('ca-err').textContent = err.message || String(err);
       $('ca-err').style.display = '';
     }
   });
+}
+
+/**
+ * The Google push happens in a Cloud Function after the write, so the modal
+ * waits on the appointment row for the event id (or the sync error) instead of
+ * closing on a promise the user cannot see the result of.
+ */
+async function showApptSyncResult(apptId, { invite, email }) {
+  const body = () => document.querySelector('#modal-bd .crm-modal');
+  const host = body();
+  if (!host) return;
+  host.innerHTML = `
+    <h1>Booked · <span>syncing</span></h1>
+    <div class="crm-gcal-card">
+      <div class="crm-gcal-note" id="ca-sync-msg">Adding it to your Google Calendar${invite ? ` and inviting ${escapeHtml(email)}` : ''}…</div>
+    </div>
+    <div class="crm-modal-actions">
+      <button type="button" class="btn btn-primary" id="ca-done">Done</button>
+    </div>`;
+  const finish = async () => {
+    closeModal();
+    await Promise.all([refreshSide(), refreshTimeline()]);
+  };
+  $('ca-done').addEventListener('click', finish);
+
+  const deadline = Date.now() + 15000;
+  let row = null;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1200));
+    row = await getAppointment(state.companyId, apptId);
+    if (row && (row.googleEventId || row.googleSyncError)) break;
+  }
+  const head = body() && body().querySelector('h1');
+  const msg = $('ca-sync-msg');
+  if (!msg) return; // modal already closed
+  if (row && row.googleEventId) {
+    if (head) head.innerHTML = 'Booked · <span>on Google</span>';
+    msg.innerHTML = [
+      'On your Google Calendar.',
+      invite ? `Invite emailed to ${escapeHtml(email)}.` : 'No invite sent.',
+      row.meetLink ? `<a class="crm-meet-link" href="${escapeHtml(row.meetLink)}" target="_blank" rel="noopener">Join Meet</a>` : ''
+    ].filter(Boolean).join(' ');
+  } else if (row && row.googleSyncError) {
+    if (head) head.innerHTML = 'Booked · <span>sync failed</span>';
+    msg.innerHTML = `Saved in the CRM, but Google rejected it: ${escapeHtml(row.googleSyncError)}. Reconnect Google Calendar in CRM settings and edit the appointment to retry.`;
+  } else {
+    msg.textContent = 'Saved. Google is still catching up — it will appear on your calendar shortly.';
+  }
 }
 
 async function openSequenceModal() {
@@ -1015,6 +1114,20 @@ async function main() {
   wire();
 
   await Promise.all([refreshTimeline(), refreshSide()]);
+
+  // Coming back from Google consent that was started inside the booking modal:
+  // drop the flag from the URL and reopen the booking where they left it.
+  const gflash = new URLSearchParams(location.search).get('google');
+  if (gflash) {
+    const reason = new URLSearchParams(location.search).get('reason');
+    const clean = new URLSearchParams(location.search);
+    clean.delete('google'); clean.delete('reason');
+    history.replaceState(null, '', location.pathname + '?' + clean.toString());
+    if (gflash === 'error') {
+      state.google = { ...state.google, connected: false, error: `Google connection failed: ${reason || 'unexpected error'}.` };
+    }
+    openContactApptModal();
+  }
 
   // The pipeline is only needed for deal labels, so it loads last.
   try {

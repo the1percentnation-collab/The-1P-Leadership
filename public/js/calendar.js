@@ -10,7 +10,7 @@ import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.j
 import {
   listAppointments, createAppointment, setAppointmentStatus, deleteAppointment,
   listContacts, listCompanyAdmins, escapeHtml, toDate,
-  getGoogleCalendarStatus, ensureGoogleWatch
+  getGoogleCalendarStatus, startGoogleCalendarConnect, ensureGoogleWatch
 } from './crm.js';
 
 const $ = (id) => document.getElementById(id);
@@ -136,14 +136,25 @@ function openApptModal(appt, prefillDate) {
               ${state.contacts.map((c) => `<option value="${c.id}" ${editing && appt.contactId === c.id ? 'selected' : ''}>${escapeHtml(c.name || 'Unnamed')}</option>`).join('')}
             </select></div>
           ${state.google.connected ? `
-          <div class="crm-form-row">
+          <div class="crm-gcal-card">
+            <div class="crm-gcal-head">
+              <span class="crm-gcal-dot"></span>
+              Google Calendar connected${state.google.googleEmail ? ` · ${escapeHtml(state.google.googleEmail)}` : ''}
+            </div>
+            <div class="crm-gcal-note">Syncs to your calendar and adds a Google Meet link when Location is blank.</div>
             <label class="crm-consent-check">
               <input type="checkbox" id="ap-invite" ${editing && appt.inviteContact ? 'checked' : ''} />
               <span id="ap-invite-label">Send a calendar invite to the contact</span>
             </label>
-          </div>
-          ${editing && appt.meetLink ? `<div class="crm-mini-sub"><a class="crm-meet-link" href="${escapeHtml(appt.meetLink)}" target="_blank" rel="noopener">Join Google Meet</a></div>` : ''}
-          ${editing && appt.googleSyncError ? `<div class="crm-mini-sub" style="color:var(--red);">Calendar sync failed: ${escapeHtml(appt.googleSyncError)}</div>` : ''}` : ''}
+            ${editing && appt.meetLink ? `<div class="crm-gcal-note"><a class="crm-meet-link" href="${escapeHtml(appt.meetLink)}" target="_blank" rel="noopener">Join Google Meet</a></div>` : ''}
+            ${editing && appt.googleSyncError ? `<div class="crm-gcal-note crm-gcal-err">Calendar sync failed: ${escapeHtml(appt.googleSyncError)}</div>` : ''}
+          </div>` : `
+          <div class="crm-gcal-card crm-gcal-off">
+            <div class="crm-gcal-head"><span class="crm-gcal-dot"></span>${state.google.error ? 'Google Calendar needs reconnecting' : 'Google Calendar not connected'}</div>
+            <div class="crm-gcal-note">${state.google.error ? escapeHtml(state.google.error) + ' ' : ''}Connect it to book on your calendar, get a Meet link, and email invites to contacts. This saves to the CRM only.</div>
+            <button type="button" class="btn btn-ghost btn-sm" id="ap-connect">Connect Google Calendar</button>
+            <div id="ap-connect-err" class="crm-gcal-note crm-gcal-err" style="display:none;"></div>
+          </div>`}
           <div id="ap-err" class="auth-error" style="display:none;"></div>
           <div class="crm-modal-actions">
             ${editing ? `<button type="button" class="btn btn-ghost" id="ap-del" style="margin-right:auto;">Delete</button>
@@ -157,6 +168,23 @@ function openApptModal(appt, prefillDate) {
     </div>`;
   const close = () => { root.innerHTML = ''; };
   $('ap-close').addEventListener('click', close);
+
+  const connectBtn = $('ap-connect');
+  if (connectBtn) connectBtn.addEventListener('click', async () => {
+    const err = $('ap-connect-err');
+    connectBtn.disabled = true;
+    connectBtn.textContent = 'Opening Google…';
+    try {
+      const url = await startGoogleCalendarConnect(state.companyId);
+      if (!url) throw new Error('No consent URL returned.');
+      location.href = url;
+    } catch (e) {
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect Google Calendar';
+      err.textContent = e.message || String(e);
+      err.style.display = '';
+    }
+  });
 
   const inviteBox = $('ap-invite');
   if (inviteBox) {

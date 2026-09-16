@@ -708,6 +708,15 @@ export async function createAppointment(companyId, data = {}) {
   return { id: ref.id, ...payload };
 }
 
+/** One appointment by id — used to poll for the Google sync result after booking. */
+export async function getAppointment(companyId, apptId) {
+  if (!firebaseReady || !companyId || !apptId) return null;
+  try {
+    const snap = await getDoc(appointmentRef(companyId, apptId));
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  } catch (e) { return null; }
+}
+
 export async function updateAppointment(companyId, apptId, patch = {}) {
   const allowed = ['title', 'startAt', 'durationMin', 'location', 'notes', 'contactId', 'contactName', 'ownerUid', 'inviteContact'];
   const clean = {};

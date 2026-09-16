@@ -10229,6 +10229,24 @@ body.has-call-dock .crm-content { padding-bottom: 190px; }
 }
 
 /* Google Calendar affordances. */
+/* Google Calendar block inside the booking modal. */
+.crm-gcal-card {
+  border: 1px solid var(--border); border-radius: 10px;
+  background: rgba(255, 255, 255, .02); padding: 12px; margin-bottom: 14px;
+  display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+}
+.crm-gcal-head {
+  display: flex; align-items: center; gap: 7px;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--white-dim);
+}
+.crm-gcal-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #56D4A8; flex-shrink: 0;
+}
+.crm-gcal-off .crm-gcal-dot { background: var(--red); }
+.crm-gcal-note { font-size: 12px; line-height: 1.5; color: var(--white-dim); }
+.crm-gcal-err { color: var(--red); }
+
 .crm-meet-link { color: var(--red); text-decoration: none; font-weight: 600; }
 .crm-meet-link:hover { text-decoration: underline; }
 .cal-appt-google::after {
