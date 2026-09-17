@@ -173,9 +173,18 @@ Nothing below is needed for SMS, which keeps working as before.
 
 ### Twilio Voice (softphone + cell bridge)
 
-Runtime environment variables (functions/.env or the Cloud Run env), in
-addition to the existing `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and
-`TWILIO_FROM_NUMBER`:
+**Step-by-step walkthrough: [`docs/twilio-setup.md`](docs/twilio-setup.md)** —
+which console pages, which URLs, and how to test. The summary below is the
+variable reference.
+
+Every value goes in as a **GitHub repository secret**, not a local file: the
+deploy workflow writes `functions/.env` from those secrets, so CI is the single
+source of truth and a later merge cannot silently un-configure calling. See
+`functions/.env.example` for the full list. Redeploy the functions after any
+change.
+
+Runtime environment variables, in addition to the existing
+`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM_NUMBER`:
 
 | Variable | Where it comes from |
 |---|---|
@@ -200,6 +209,28 @@ the settings page says so.
 
 The Voice SDK is vendored at `public/vendor/twilio-voice-<version>.min.js`
 (see the README there) rather than loaded from a CDN.
+
+### Texting: registration is unavoidable, but there is a light door
+
+Since 1 February 2025 the carriers block 100% of unregistered A2P long-code
+traffic, so there is no provider that will text from a US local number without
+registering — Telnyx, Plivo, SignalWire and the rest all require the identical
+Campaign Registry process. Voice is completely exempt.
+
+Without an EIN, **Sole Proprietor 10DLC** is the lightest path and keeps a
+local area code: name, email, address, and a one-time code to your personal
+mobile. No EIN, no SSN, no business documents. Capped at one number and roughly
+a message per second, which is far above what one-to-one follow-up uses.
+Toll-free verification is the alternative if you need full throughput.
+
+The full submission — the opt-in URL to give them, the use-case wording, the
+workflow description and the message samples — is in
+[`docs/sms-registration.md`](docs/sms-registration.md). Note that
+`TWILIO_FROM_NUMBER` must not be pointed at the toll-free number until
+verification is approved, because a toll-free number cannot send to the US or
+Canada before then.
+
+Voice is unaffected by any of this and needs no registration.
 
 ### Google Calendar (two-way sync)
 

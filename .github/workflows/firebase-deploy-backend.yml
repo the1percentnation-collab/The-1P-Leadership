@@ -53,6 +53,66 @@ jobs:
             --non-interactive \
             --force
 
+      # Runtime config for the functions.
+      #
+      # These are plain process.env values (Twilio, the Google OAuth client,
+      # the automation tick secret) rather than Secret Manager entries, so
+      # `firebase deploy` takes them from functions/.env. That file is
+      # gitignored, which means a deploy that does not write it can redeploy
+      # the functions without these values and quietly switch off calling,
+      # texting and the calendar. Writing it here from repository secrets
+      # makes CI the single source of truth.
+      #
+      # Only non-empty secrets are written, so partial configuration works:
+      # every feature reports "not set up yet" until its own vars exist.
+      - name: Write functions runtime env
+        working-directory: functions
+        env:
+          TELNYX_API_KEY: ${{ secrets.TELNYX_API_KEY }}
+          TELNYX_PUBLIC_KEY: ${{ secrets.TELNYX_PUBLIC_KEY }}
+          TELNYX_FROM_NUMBER: ${{ secrets.TELNYX_FROM_NUMBER }}
+          TELNYX_MESSAGING_PROFILE_ID: ${{ secrets.TELNYX_MESSAGING_PROFILE_ID }}
+          TELNYX_SIP_CONNECTION_ID: ${{ secrets.TELNYX_SIP_CONNECTION_ID }}
+          TELNYX_TEXML_APP_ID: ${{ secrets.TELNYX_TEXML_APP_ID }}
+          TELNYX_CALLER_ID: ${{ secrets.TELNYX_CALLER_ID }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+          TWILIO_API_KEY_SID: ${{ secrets.TWILIO_API_KEY_SID }}
+          TWILIO_API_KEY_SECRET: ${{ secrets.TWILIO_API_KEY_SECRET }}
+          TWILIO_TWIML_APP_SID: ${{ secrets.TWILIO_TWIML_APP_SID }}
+          TWILIO_CALLER_ID: ${{ secrets.TWILIO_CALLER_ID }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REDIRECT_URI: ${{ secrets.GOOGLE_OAUTH_REDIRECT_URI }}
+          CRM_TICK_SECRET: ${{ secrets.CRM_TICK_SECRET }}
+          SENDGRID_WEBHOOK_KEY: ${{ secrets.SENDGRID_WEBHOOK_KEY }}
+          FUNCTIONS_BASE_URL: ${{ secrets.FUNCTIONS_BASE_URL }}
+        run: |
+          : > .env
+          set_count=0
+          for name in TELNYX_API_KEY TELNYX_PUBLIC_KEY TELNYX_FROM_NUMBER \
+                      TELNYX_MESSAGING_PROFILE_ID TELNYX_SIP_CONNECTION_ID \
+                      TELNYX_TEXML_APP_ID TELNYX_CALLER_ID \
+                      TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM_NUMBER \
+                      TWILIO_API_KEY_SID TWILIO_API_KEY_SECRET TWILIO_TWIML_APP_SID \
+                      TWILIO_CALLER_ID GOOGLE_OAUTH_CLIENT_ID \
+                      GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_REDIRECT_URI \
+                      CRM_TICK_SECRET SENDGRID_WEBHOOK_KEY FUNCTIONS_BASE_URL; do
+            value="${!name}"
+            if [ -n "$value" ]; then
+              printf '%s=%s\n' "$name" "$value" >> .env
+              set_count=$((set_count + 1))
+              echo "  set $name"
+            else
+              echo "  (unset) $name"
+            fi
+          done
+          echo "Wrote functions/.env with $set_count value(s)."
+          if [ "$set_count" -eq 0 ]; then
+            echo "::warning::No runtime secrets are configured, so calling, texting and calendar sync stay dormant. See functions/.env.example."
+          fi
+
       - name: Install function deps
         working-directory: functions
         run: npm install --no-audit --no-fund
