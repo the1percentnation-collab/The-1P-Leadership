@@ -9,21 +9,21 @@
 //   const result = await dialer.callContact(contact);   // resolves after disposition
 //
 // Three connection modes, in the order they are tried:
-//   softphone — Twilio Voice WebRTC in this tab (the default)
-//   bridge    — Twilio rings the agent's own cell, then dials the lead
-//   manual    — no Twilio credentials: hand off to the device dialer via tel:
+//   softphone — Telnyx WebRTC in this tab (the default)
+//   bridge    — Telnyx rings the agent's own cell, then dials the lead
+//   manual    — no calling credentials: hand off to the device dialer via tel:
 //               and still require a disposition, so the pipeline stays honest
 //
-// The vendored SDK (public/vendor/) is injected on first use rather than on
-// page load: most CRM page views never place a call, and it is a 296 KB parse.
+// The vendored SDK (public/vendor/) is imported on first use rather than on
+// page load: most CRM page views never place a call, and it is a 266 KB parse.
 
 import {
-  createCallLog, updateCallLog, setCallDisposition, getVoiceToken, startBridgeCall,
+  createCallLog, updateCallLog, setCallDisposition, getVoiceToken, authorizeCall, startBridgeCall,
   dropVoicemail, getDialerSettings, getAgentPrefs, quietHoursWarning, callBlockReason,
   CALL_DISPOSITIONS, changeStage, dispositionMeta, escapeHtml
 } from './crm.js';
 
-const SDK_SRC = '/vendor/twilio-voice-2.18.5.min.js';
+const SDK_SRC = '/vendor/telnyx-webrtc-2.27.10.min.mjs';
 
 const state = {
   companyId: null,
@@ -32,7 +32,8 @@ const state = {
   prefs: null,
   device: null,
   deviceError: null,      // set once we know voice is unavailable, so we stop retrying
-  activeCall: null,       // the Twilio Call object, softphone mode only
+  activeCall: null,       // call adapter (see wrapCall), softphone mode only
+  rawCall: null,          // the Telnyx Call object behind the adapter
   callDoc: null,          // { id, ... } of the companies/{cid}/calls doc
   contact: null,
   status: 'idle',
@@ -65,57 +66,109 @@ function emit(name, detail) {
 
 let sdkPromise = null;
 function loadSdk() {
-  if (window.Twilio && window.Twilio.Device) return Promise.resolve(window.Twilio);
+  // The Telnyx bundle is a self-contained ES module, so a plain dynamic import
+  // works with no bundler and no globals.
   if (sdkPromise) return sdkPromise;
-  sdkPromise = new Promise((resolve, reject) => {
-    const el = document.createElement('script');
-    el.src = SDK_SRC;
-    el.async = true;
-    el.onload = () => {
-      if (window.Twilio && window.Twilio.Device) resolve(window.Twilio);
-      else reject(new Error('Voice SDK loaded but exposed no Device'));
-    };
-    el.onerror = () => reject(new Error('Could not load the Voice SDK'));
-    document.head.appendChild(el);
+  sdkPromise = import(SDK_SRC).then((mod) => {
+    if (!mod || !mod.TelnyxRTC) throw new Error('Voice SDK loaded but exposed no TelnyxRTC');
+    return mod;
+  }).catch((e) => {
+    sdkPromise = null;
+    throw new Error('Could not load the Voice SDK: ' + (e && e.message));
   });
   return sdkPromise;
 }
 
 /**
- * Build the Twilio Device once and keep it registered. Any failure here —
- * missing Twilio credentials, a blocked microphone, no network — is recorded
- * in state.deviceError and downgrades every later call to manual mode instead
- * of throwing into the page.
+ * Telnyx plays remote audio into an element we supply, where the Twilio SDK
+ * managed its own. One hidden element, reused for every call, appended to the
+ * body rather than the dock so re-rendering the dock never cuts the audio.
+ */
+function remoteAudioEl() {
+  let el = document.getElementById('dialer-remote-audio');
+  if (!el) {
+    el = document.createElement('audio');
+    el.id = 'dialer-remote-audio';
+    el.autoplay = true;
+    el.style.display = 'none';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+/**
+ * Present a Telnyx Call through the small surface the dock already drives:
+ * disconnect / mute / sendDigits / parameters.CallSid. Keeping this adapter
+ * means the dock, the keypad, the mute button and the voicemail drop are
+ * provider-agnostic and did not have to change with the migration.
+ */
+function wrapCall(call) {
+  return {
+    raw: call,
+    disconnect() { try { call.hangup(); } catch (e) {} },
+    mute(on) { try { on ? call.muteAudio() : call.unmuteAudio(); } catch (e) {} },
+    sendDigits(d) { try { call.dtmf(d); } catch (e) {} },
+    // Telnyx exposes the call-control leg id only when the call is bridged
+    // through a TeXML application; on a direct WebRTC dial there is none, which
+    // is why the dock hides voicemail drop outside bridge mode.
+    get parameters() {
+      return { CallSid: call.telnyxCallControlId || call.telnyxLegId || null };
+    }
+  };
+}
+
+/**
+ * Build the Telnyx client once and keep it registered. Any failure here —
+ * missing credentials, a blocked microphone, no network — is recorded in
+ * state.deviceError and downgrades every later call to manual mode instead of
+ * throwing into the page.
+ *
+ * The token is a JWT minted server-side against a per-agent telephony
+ * credential. It outlives a browsing session comfortably, and a refresh means
+ * building a new client, so there is no equivalent of Twilio's updateToken.
  */
 async function ensureDevice() {
   if (state.device) return state.device;
   if (state.deviceError) throw state.deviceError;
   try {
-    const [Twilio, tokenData] = await Promise.all([loadSdk(), getVoiceToken(state.companyId)]);
-    const device = new Twilio.Device(tokenData.token, {
-      codecPreferences: ['opus', 'pcmu'],
-      logLevel: 'error'
+    const [mod, tokenData] = await Promise.all([loadSdk(), getVoiceToken(state.companyId)]);
+    const client = new mod.TelnyxRTC({ login_token: tokenData.token });
+
+    client.on('telnyx.error', (err) => {
+      const msg = (err && (err.message || (err.error && err.error.message))) || 'Calling error';
+      console.warn('[dialer] client error', msg);
+      // A blocked microphone is worth surfacing plainly: the fix is a browser
+      // permission, not a retry.
+      if (/permission|microphone|NotAllowed/i.test(msg)) {
+        setStatus('error', 'Microphone access was blocked. Allow it in your browser, then try again.');
+      }
     });
-    device.on('tokenWillExpire', async () => {
-      try {
-        const fresh = await getVoiceToken(state.companyId);
-        device.updateToken(fresh.token);
-      } catch (e) { console.warn('[dialer] token refresh failed', e); }
-    });
-    device.on('error', (err) => {
-      console.warn('[dialer] device error', err && err.message);
-      // 31401 is "user denied microphone access" — worth surfacing plainly,
-      // because the fix is a browser permission, not a retry.
-      if (err && err.code === 31401) setStatus('error', 'Microphone access was blocked. Allow it in your browser, then try again.');
-    });
-    device.on('incoming', (call) => {
+
+    client.on('telnyx.notification', (n) => {
+      if (!n || n.type !== 'callUpdate' || !n.call) return;
+      const call = n.call;
       // Inbound calls are answered from the dock so a lead calling back does
       // not get dropped just because nobody was on the Conversations page.
-      handleIncoming(call);
+      if (call.direction === 'inbound' && call.state === 'ringing'
+          && state.status === 'idle' && state.rawCall !== call) {
+        handleIncoming(call);
+        return;
+      }
+      if (state.rawCall === call) onSoftphoneState(call);
     });
-    await device.register();
-    state.device = device;
-    return device;
+
+    // remoteElement is set per call; audio needs it in place before answering.
+    client.remoteElement = remoteAudioEl();
+
+    await new Promise((resolve, reject) => {
+      const to = setTimeout(() => reject(new Error('Calling did not connect in time.')), 15000);
+      client.on('telnyx.ready', () => { clearTimeout(to); resolve(); });
+      client.on('telnyx.socket.error', () => { clearTimeout(to); reject(new Error('Could not reach the calling service.')); });
+      client.connect();
+    });
+
+    state.device = client;
+    return client;
   } catch (e) {
     state.deviceError = e;
     throw e;
@@ -217,7 +270,15 @@ export async function callContact(contact, { mode } = {}) {
     if (wanted === 'bridge') await placeBridgeCall(contact);
     else await placeSoftphoneCall(contact);
   } catch (e) {
-    // Twilio is not set up, the mic was blocked, or the bridge failed. Fall
+    // A consent refusal is not a transport problem: falling back to the device
+    // dialer would place exactly the call the server just forbade.
+    if (e && e.fatal) {
+      await updateCallLog(state.companyId, state.callDoc.id, { status: 'canceled' }).catch(() => {});
+      setStatus('error', e.message || 'This call is not allowed.');
+      recordDisposition('bad_number', e.message || 'Blocked before dialing.');
+      return done;
+    }
+    // Calling is not set up, the mic was blocked, or the bridge failed. Fall
     // back to the device dialer rather than losing the lead, and still collect
     // a disposition so the queue keeps moving.
     console.warn('[dialer] falling back to manual', e && e.message);
@@ -229,34 +290,83 @@ export async function callContact(contact, { mode } = {}) {
 
 async function placeSoftphoneCall(contact) {
   const device = await ensureDevice();
-  const call = await device.connect({
-    params: {
-      To: contact.phone,
-      companyId: state.companyId,
-      contactId: contact.id,
-      callId: state.callDoc.id
-    }
-  });
-  state.activeCall = call;
 
-  call.on('accept', () => {
-    // Twilio's own SID only exists once the call is accepted; storing it lets
-    // voiceStatusWebhook and dropVoicemail find this exact call.
-    const sid = call.parameters && call.parameters.CallSid;
-    startTimer();
-    setStatus('live');
-    updateCallLog(state.companyId, state.callDoc.id, {
-      status: 'in-progress', twilioCallSid: sid || null
-    }).catch(() => {});
+  // The server gets the last word on consent and supplies the number to dial,
+  // which is what voiceOutboundTwiml used to do before the call reached the
+  // carrier. A rejection here is a hard stop, not a fallback to manual.
+  let auth;
+  try {
+    auth = await authorizeCall(state.companyId, contact.id);
+  } catch (e) {
+    // failed-precondition here means consent or configuration, and the two
+    // need opposite handling: refuse the first, degrade on the second.
+    const msg = (e && e.message) || 'Call not authorized.';
+    if (/do not call|opted out|no phone number/i.test(msg)) {
+      const fatal = new Error(msg);
+      fatal.fatal = true;
+      throw fatal;
+    }
+    throw e;
+  }
+
+  const call = device.newCall({
+    destinationNumber: auth.to,
+    callerNumber: auth.callerId || undefined,
+    callerName: (state.settings && state.settings.callerName) || undefined,
+    audio: true,
+    video: false,
+    remoteElement: remoteAudioEl()
   });
-  call.on('ringing', () => setStatus('ringing'));
-  call.on('reject', () => finishCall('no-answer'));
-  call.on('cancel', () => finishCall('canceled'));
-  call.on('disconnect', () => finishCall('completed'));
-  call.on('error', (err) => {
-    setStatus('error', (err && err.message) || 'Call failed.');
-    finishCall('failed');
-  });
+  state.rawCall = call;
+  state.activeCall = wrapCall(call);
+  setStatus('ringing');
+}
+
+/**
+ * Telnyx reports one call through repeated state changes rather than discrete
+ * accept/reject/disconnect events, so the mapping to our call statuses lives
+ * in one place. States: new, requesting, trying, recovering, ringing,
+ * answering, early, active, held, hangup, destroy, purge.
+ */
+function onSoftphoneState(call) {
+  switch (call.state) {
+    case 'trying':
+    case 'requesting':
+    case 'early':
+    case 'ringing':
+      setStatus('ringing');
+      break;
+    case 'active':
+      if (state.status === 'live') break;
+      startTimer();
+      setStatus('live');
+      updateCallLog(state.companyId, state.callDoc.id, {
+        status: 'in-progress',
+        twilioCallSid: (state.activeCall && state.activeCall.parameters.CallSid) || null
+      }).catch(() => {});
+      break;
+    case 'hangup':
+    case 'destroy':
+    case 'purge': {
+      // The SIP cause separates "they did not pick up" from "we hung up",
+      // which is the difference between a no-answer and a completed call on
+      // the contact's record.
+      const cause = String(call.cause || '').toUpperCase();
+      if (!state.startedMs && (cause === 'NO_ANSWER' || cause === 'ORIGINATOR_CANCEL' || call.sipCode === 480)) {
+        finishCall('no-answer');
+      } else if (cause === 'USER_BUSY' || call.sipCode === 486) {
+        finishCall('busy');
+      } else if (!state.startedMs && cause && cause !== 'NORMAL_CLEARING') {
+        setStatus('error', 'Call failed (' + cause.toLowerCase().replace(/_/g, ' ') + ').');
+        finishCall('failed');
+      } else {
+        finishCall('completed');
+      }
+      break;
+    }
+    default:
+      break;
+  }
 }
 
 async function placeBridgeCall(contact) {
@@ -269,7 +379,7 @@ async function placeBridgeCall(contact) {
     status: 'ringing', twilioCallSid: (res && res.sid) || null
   }).catch(() => {});
   // There is no in-browser call object to listen to in bridge mode: the audio
-  // path is Twilio→cell→lead. The agent closes the call out from the dock.
+  // path is Telnyx→cell→lead. The agent closes the call out from the dock.
   setStatus('bridged', 'Connected through your phone. Hang up there, then log the outcome.');
   startTimer();
 }
@@ -301,6 +411,7 @@ function finishCall(status) {
   const durationSec = state.startedMs ? Math.round((Date.now() - state.startedMs) / 1000) : 0;
   state.lastDurationSec = durationSec;
   state.activeCall = null;
+  state.rawCall = null;
   if (state.callDoc) {
     updateCallLog(state.companyId, state.callDoc.id, {
       status, durationSec, endedAt: new Date()
@@ -359,7 +470,7 @@ function shouldAdvance(from, to) {
 // ────────────────────────────────────────────────────────────────
 
 function handleIncoming(call) {
-  const from = (call.parameters && call.parameters.From) || 'Unknown';
+  const from = (call.options && call.options.remoteCallerNumber) || 'Unknown';
   ensureDock();
   state.status = 'incoming';
   state.contact = { id: null, name: from, phone: from };
@@ -368,13 +479,18 @@ function handleIncoming(call) {
   const accept = dock.querySelector('[data-dock="accept"]');
   const reject = dock.querySelector('[data-dock="reject"]');
   if (accept) accept.addEventListener('click', () => {
-    call.accept();
-    state.activeCall = call;
+    state.rawCall = call;
+    state.activeCall = wrapCall(call);
+    // State changes flow through the client's notification handler, which
+    // takes over once rawCall is set — including the hangup at the far end.
+    call.answer({ remoteElement: remoteAudioEl() });
     startTimer();
     setStatus('live');
-    call.on('disconnect', () => finishCall('completed'));
   });
-  if (reject) reject.addEventListener('click', () => { call.reject(); resetDock(); });
+  if (reject) reject.addEventListener('click', () => {
+    try { call.hangup(); } catch (e) {}
+    resetDock();
+  });
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -439,6 +555,7 @@ function resetDock() {
   state.startedMs = null;
   state.lastDurationSec = 0;
   state.activeCall = null;
+  state.rawCall = null;
   const dock = document.getElementById('call-dock');
   if (dock) { dock.hidden = true; dock.innerHTML = ''; }
   document.body.classList.remove('has-call-dock');
@@ -548,7 +665,15 @@ function wireDock() {
 
 async function triggerVoicemailDrop() {
   const sid = state.activeCall && state.activeCall.parameters && state.activeCall.parameters.CallSid;
-  if (!sid) { setStatus(state.status, 'No active call to drop a voicemail into.'); return; }
+  if (!sid) {
+    // A direct WebRTC dial has no server-side call leg to redirect, so there
+    // is nothing to play the greeting into. Cell-bridge calls run through a
+    // TeXML application and do have one.
+    setStatus(state.status, state.status === 'live'
+      ? 'Voicemail drop needs cell-bridge mode — a browser call has no leg to redirect.'
+      : 'No active call to drop a voicemail into.');
+    return;
+  }
   try {
     await dropVoicemail(state.companyId, sid, null);
     setStatus(state.status, 'Voicemail dropped. Hanging up.');

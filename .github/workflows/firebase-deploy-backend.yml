@@ -72,6 +72,9 @@ jobs:
           TELNYX_PUBLIC_KEY: ${{ secrets.TELNYX_PUBLIC_KEY }}
           TELNYX_FROM_NUMBER: ${{ secrets.TELNYX_FROM_NUMBER }}
           TELNYX_MESSAGING_PROFILE_ID: ${{ secrets.TELNYX_MESSAGING_PROFILE_ID }}
+          TELNYX_SIP_CONNECTION_ID: ${{ secrets.TELNYX_SIP_CONNECTION_ID }}
+          TELNYX_TEXML_APP_ID: ${{ secrets.TELNYX_TEXML_APP_ID }}
+          TELNYX_CALLER_ID: ${{ secrets.TELNYX_CALLER_ID }}
           TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
           TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
           TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
@@ -89,7 +92,8 @@ jobs:
           : > .env
           set_count=0
           for name in TELNYX_API_KEY TELNYX_PUBLIC_KEY TELNYX_FROM_NUMBER \
-                      TELNYX_MESSAGING_PROFILE_ID \
+                      TELNYX_MESSAGING_PROFILE_ID TELNYX_SIP_CONNECTION_ID \
+                      TELNYX_TEXML_APP_ID TELNYX_CALLER_ID \
                       TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM_NUMBER \
                       TWILIO_API_KEY_SID TWILIO_API_KEY_SECRET TWILIO_TWIML_APP_SID \
                       TWILIO_CALLER_ID GOOGLE_OAUTH_CLIENT_ID \

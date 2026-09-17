@@ -24,3 +24,23 @@ To upgrade, bump the version in the filename and in `dialer-core.js`'s
 
 Keeping the version in the filename means a stale browser cache can never
 serve a half-upgraded SDK.
+
+## telnyx-webrtc-2.27.10.min.mjs
+
+The Telnyx WebRTC SDK, used by `js/dialer-core.js` for the browser softphone.
+It is `lib/bundle.mjs` from the npm package, copied verbatim. Unlike the Twilio
+bundle this one is a self-contained ES module — no bare imports, no Node
+builtins — so `dialer-core.js` loads it with a plain dynamic `import()` and
+reads the `TelnyxRTC` export. No globals, no script tag.
+
+To upgrade, bump the version in the filename and in `dialer-core.js`'s
+`SDK_SRC`, then:
+
+    npm pack @telnyx/webrtc@<version>
+    tar xzf telnyx-webrtc-<version>.tgz package/lib/bundle.mjs
+    cp package/lib/bundle.mjs public/vendor/telnyx-webrtc-<version>.min.mjs
+
+Check after upgrading that the bundle still has no top-level `import` of a bare
+specifier, since that would need a bundler:
+
+    grep -o '^import[^;]*;' public/vendor/telnyx-webrtc-<version>.min.mjs

@@ -914,7 +914,7 @@ export async function deleteCallLog(companyId, callId) {
 }
 
 // ────────────────────────────────────────────────────────────────
-// Voice callables. Each one throws a readable error when Twilio Voice is not
+// Voice callables. Each one throws a readable error when calling is not
 // configured yet; dialer-core.js turns that into the "not set up" dock state
 // rather than letting it surface as an unhandled rejection.
 // ────────────────────────────────────────────────────────────────
@@ -923,6 +923,18 @@ export async function getVoiceToken(companyId) {
   if (!firebaseReady) throw new Error('Offline');
   const call = httpsCallable(functions, 'getVoiceToken');
   const res = await call({ companyId });
+  return res.data;
+}
+
+/**
+ * The server's consent check, called immediately before the browser dials.
+ * Returns { ok, to, callerId }. A rejection is a hard stop: do-not-call is not
+ * something to fall back past.
+ */
+export async function authorizeCall(companyId, contactId) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'authorizeCall');
+  const res = await call({ companyId, contactId });
   return res.data;
 }
 

@@ -257,6 +257,60 @@ function telnyxSignatureOk(req, { toleranceSec = TELNYX_WEBHOOK_TOLERANCE_SEC, n
   }
 }
 
+/**
+ * Telnyx voice configuration.
+ *
+ * TELNYX_SIP_CONNECTION_ID is a *Credentials* SIP connection (Mission Control
+ * → Voice → SIP Connections). WebRTC credentials hang off that connection, and
+ * its outbound voice profile is what actually authorises PSTN calls.
+ *
+ * That profile is a security control, not just billing: a browser holding a
+ * WebRTC credential can dial anywhere the profile permits, so the profile must
+ * carry destination restrictions and a daily spend limit. See
+ * docs/telnyx-setup.md.
+ */
+function telnyxVoiceConfig() {
+  const apiKey = telnyxApiKey();
+  const connectionId = (process.env.TELNYX_SIP_CONNECTION_ID || '').trim();
+  const callerId = (process.env.TELNYX_CALLER_ID || process.env.TELNYX_FROM_NUMBER || '').trim();
+  const texmlAppId = (process.env.TELNYX_TEXML_APP_ID || '').trim();
+  const missing = [];
+  if (!apiKey) missing.push('TELNYX_API_KEY');
+  if (!connectionId) missing.push('TELNYX_SIP_CONNECTION_ID');
+  if (!callerId) missing.push('TELNYX_CALLER_ID or TELNYX_FROM_NUMBER');
+  return { apiKey, connectionId, callerId, texmlAppId, missing, ok: missing.length === 0 };
+}
+
+/**
+ * One Telnyx telephony credential per agent, created on first use and reused
+ * after that.
+ *
+ * Per-agent rather than one shared credential so a single rep can be revoked,
+ * and so an inbound TeXML <Dial><Sip> can address one rep's browser. The
+ * credential id and SIP username live in companies/{cid}/private/telnyxAgents,
+ * which no client can read (firestore.rules denies the whole private path).
+ */
+async function ensureAgentCredential(db, companyId, uid) {
+  const cfg = telnyxVoiceConfig();
+  const ref = db.collection('companies').doc(companyId).collection('private').doc('telnyxAgents');
+  const snap = await ref.get();
+  const agents = (snap.exists && snap.data().agents) || {};
+  const existing = agents[uid];
+  if (existing && existing.credentialId) return existing;
+
+  const cred = await telnyx('POST', '/telephony_credentials', {
+    connection_id: cfg.connectionId,
+    name: `crm-agent-${uid}`
+  });
+  const record = {
+    credentialId: cred.id,
+    sipUsername: cred.sip_username || null,
+    createdAt: new Date().toISOString()
+  };
+  await ref.set({ agents: { [uid]: record } }, { merge: true });
+  return record;
+}
+
 /** The number leads see when we call them. */
 function voiceCallerId() {
   return (process.env.TWILIO_CALLER_ID || process.env.TWILIO_FROM_NUMBER || '').trim();
@@ -5584,30 +5638,92 @@ exports.getVoiceToken = onCall(async (request) => {
   // would be invisible without this.
   await rateLimitCaller(db, request, { action: 'getVoiceToken', max: 60, windowSec: 600 });
 
-  const cfg = voiceConfig();
+  const cfg = telnyxVoiceConfig();
   if (!cfg.ok) {
     throw new HttpsError('failed-precondition',
       'Calling is not set up yet. Missing: ' + cfg.missing.join(', ') + '.');
   }
 
-  const twilioLib = require('twilio');
-  const AccessToken = twilioLib.jwt.AccessToken;
-  const identity = voiceIdentityFor(uid);
-  const token = new AccessToken(cfg.accountSid, cfg.apiKeySid, cfg.apiKeySecret, {
-    identity,
-    ttl: 3600
-  });
-  token.addGrant(new AccessToken.VoiceGrant({
-    outgoingApplicationSid: cfg.twimlAppSid,
-    incomingAllow: true
-  }));
+  // Telnyx authenticates the browser with a JWT minted against a per-agent
+  // telephony credential. The JWT is good for 24 hours or until the parent
+  // credential expires, whichever comes first; we report a 1 hour lifetime so
+  // the client refreshes well inside that and a stale tab never fails a call.
+  let agent;
+  try {
+    agent = await ensureAgentCredential(db, companyId, uid);
+  } catch (e) {
+    throw new HttpsError('failed-precondition',
+      'Could not create a calling credential: ' + (e && e.message));
+  }
+
+  let token;
+  try {
+    // This endpoint answers with the bare JWT, not a JSON envelope.
+    const res = await fetch(`${TELNYX_API}/telephony_credentials/${agent.credentialId}/token`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${cfg.apiKey}` }
+    });
+    const text = (await res.text()).trim();
+    if (!res.ok || !text) throw new Error(text || `HTTP ${res.status}`);
+    token = text;
+  } catch (e) {
+    throw new HttpsError('internal', 'Could not mint a calling token: ' + (e && e.message));
+  }
 
   return {
-    token: token.toJwt(),
-    identity,
+    token,
+    identity: agent.sipUsername || `agent_${uid}`,
     expiresAt: Date.now() + 3600 * 1000,
     callerId: cfg.callerId
   };
+});
+
+/**
+ * authorizeCall — the server's say on whether this call may be placed.
+ *
+ * Twilio's softphone path re-read the lead's number from Firestore inside
+ * voiceOutboundTwiml, so a tampered client could not dial anywhere. Telnyx
+ * WebRTC dials the PSTN directly from the browser, so that interception point
+ * is gone and this callable replaces it: the client must call it immediately
+ * before dialing, and it re-checks consent server-side and returns the number
+ * and caller ID to use.
+ *
+ * Be clear about what this is and is not. Against an honest client it enforces
+ * do-not-call and SMS-style opt-out the same way the TwiML <Reject> did.
+ * Against a tampered client it does not, because the browser holds a real SIP
+ * credential and could dial without asking. The hard limit on that is the
+ * Telnyx outbound voice profile — destination restrictions and a daily spend
+ * cap — which is why docs/telnyx-setup.md treats it as required setup rather
+ * than as billing configuration.
+ */
+exports.authorizeCall = onCall(async (request) => {
+  const db = admin.firestore();
+  const { companyId, contactId } = request.data || {};
+  if (!companyId || !contactId) {
+    throw new HttpsError('invalid-argument', 'companyId and contactId are required.');
+  }
+  await assertCompanyAdmin(db, companyId, request);
+  await rateLimitCaller(db, request, { action: 'authorizeCall', max: 300, windowSec: 600 });
+
+  const cfg = telnyxVoiceConfig();
+  if (!cfg.ok) {
+    throw new HttpsError('failed-precondition',
+      'Calling is not set up yet. Missing: ' + cfg.missing.join(', ') + '.');
+  }
+
+  const cSnap = await db.collection('companies').doc(companyId)
+    .collection('contacts').doc(contactId).get();
+  if (!cSnap.exists) throw new HttpsError('not-found', 'Contact not found.');
+  const contact = cSnap.data();
+
+  if (contact.doNotCall === true) {
+    throw new HttpsError('failed-precondition',
+      'This contact is marked do not call and cannot be dialed.');
+  }
+  const to = normalizePhone(contact.phone);
+  if (!to) throw new HttpsError('failed-precondition', 'Contact has no phone number.');
+
+  return { ok: true, to, callerId: cfg.callerId };
 });
 
 /**
