@@ -79,10 +79,86 @@ contact-creation path.
    fails, a stale timestamp fails, and re-serialised JSON fails (which is what
    proves the raw request bytes are being used).
 
+## 5. Calling
+
+Voice needs no registration at all. No 10DLC, no campaign, no waiting: buy a
+number, add the credentials, and the softphone works.
+
+### The SIP connection is a security control
+
+Mission Control → **Voice → SIP Connections** → create a connection of type
+**Credentials**. Copy its id into `TELNYX_SIP_CONNECTION_ID`.
+
+WebRTC credentials hang off that connection, and its **outbound voice profile**
+is what authorises PSTN calls. Read that as security, not billing. The browser
+holds a real SIP credential, so it can dial anywhere the profile permits — and
+unlike the old Twilio path, there is no server-side document in the middle that
+could refuse. Before going live, on the connection's outbound voice profile:
+
+- restrict destinations to the countries you actually call (US and Canada),
+- set a **daily spend limit** you would not mind losing,
+- leave concurrent-call limits at something sane for one operator.
+
+Without those, a compromised admin session is toll fraud with no ceiling.
+
+The CRM's own consent check still runs: `authorizeCall` re-reads the contact
+server-side immediately before each dial and refuses a do-not-call record, and
+a refusal is a hard stop rather than a fall-through to the phone's dialer. That
+holds against an honest client. The voice profile is what holds against a
+tampered one.
+
+### Per-agent credentials
+
+The first time a rep opens the dialer, the server creates a telephony
+credential for them on that connection and mints a short-lived JWT against it.
+Nothing to configure. Two consequences worth knowing: a rep who has never
+opened the dialer cannot be rung by an inbound call (their browser has no SIP
+identity yet, so the call goes to voicemail), and revoking one rep means
+deleting one credential in Mission Control rather than rotating a shared
+secret.
+
+### Inbound calls and the cell bridge
+
+Both need a TeXML application: Mission Control → **Voice → TeXML
+Applications**. Copy its id into `TELNYX_TEXML_APP_ID`, and set its voice URL
+to:
+
+    https://<region>-<project>.cloudfunctions.net/voiceInboundTwiml
+
+Then assign your number to that application. Inbound calls ring whichever rep
+owns the contact, fall back to every admin, and record a voicemail if nobody
+picks up.
+
+Cell-bridge mode — Telnyx rings your own phone first, then the lead, so no
+WebRTC and no microphone permission — needs the same application plus your
+mobile number in CRM Settings. It is also the only mode where one-click
+voicemail drop works: a browser call has no server-side leg to redirect into a
+greeting, and the dock says so rather than failing quietly.
+
+`voiceInboundTwiml`'s URL is configured by hand in the portal, so it cannot
+carry a token we issued and the Ed25519 signature is its only check. If inbound
+calls never ring, `TELNYX_PUBLIC_KEY` is the first thing to check. The
+callbacks the CRM builds itself carry an HMAC token as well, so they stay
+verifiable either way.
+
+### Optional
+
+| Value | Where |
+|---|---|
+| `TELNYX_CALLER_ID` | The number leads see. Optional — falls back to `TELNYX_FROM_NUMBER`. |
+| `TELNYX_TEXML_APP_ID` | Only needed for inbound routing and cell bridge. The browser softphone works without it. |
+
+Recording is a per-company setting in CRM Settings (`off`, `announce`, `on`),
+and `announce` plays a notice before connecting. Two-party-consent states make
+announcement the only defensible default, which is why it is worded plainly in
+the UI rather than hidden in a toggle.
+
 ## What is still on Twilio
 
-Voice only: the softphone, the cell bridge, inbound call routing and voicemail
-drop. Those still read the `TWILIO_*` variables documented in
-[`twilio-setup.md`](twilio-setup.md), and keep working untouched while texting
-runs on Telnyx. The Twilio code stays in place until the voice port is proven,
-which keeps a failed migration to a one-line revert.
+Nothing in the live path. The Twilio SMS and voice functions are still in the
+file, and the Twilio SDK is still vendored, deliberately: until texting and
+calling have been exercised against a real Telnyx account, keeping that code
+means a failed migration is a revert rather than a rebuild. Once both are
+proven, the `twilio` dependency, its functions,
+`public/vendor/twilio-voice-2.18.5.min.js` and
+[`twilio-setup.md`](twilio-setup.md) all come out.

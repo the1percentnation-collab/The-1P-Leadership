@@ -5679,6 +5679,120 @@ exports.getVoiceToken = onCall(async (request) => {
 });
 
 /**
+ * A minimal TeXML builder.
+ *
+ * TeXML is TwiML-compatible markup, so this exposes the same fluent subset the
+ * voice endpoints already used from the Twilio SDK — say/dial/record/hangup,
+ * with number/client/sip nested under dial — and nothing else. Hand-rolling it
+ * is what lets the twilio package be dropped without rewriting every endpoint.
+ *
+ * Attribute names are passed through as given, because TeXML uses TwiML's
+ * camelCase (callerId, answerOnBridge, recordingStatusCallback).
+ */
+function xmlEscape(v) {
+  return String(v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+function attrString(attrs) {
+  return Object.keys(attrs || {})
+    .filter((k) => attrs[k] !== undefined && attrs[k] !== null && attrs[k] !== '')
+    .map((k) => ` ${k}="${xmlEscape(attrs[k])}"`)
+    .join('');
+}
+
+function texmlResponse() {
+  const parts = [];
+  const self = {
+    say(attrs, text) {
+      // Called as say(text) or say(attrs, text), matching the Twilio builder.
+      if (typeof attrs === 'string') { text = attrs; attrs = {}; }
+      parts.push(`<Say${attrString(attrs)}>${xmlEscape(text)}</Say>`);
+      return self;
+    },
+    hangup() { parts.push('<Hangup/>'); return self; },
+    reject(attrs) { parts.push(`<Reject${attrString(attrs)}/>`); return self; },
+    record(attrs) { parts.push(`<Record${attrString(attrs)}/>`); return self; },
+    pause(attrs) { parts.push(`<Pause${attrString(attrs)}/>`); return self; },
+    play(attrs, url) {
+      if (typeof attrs === 'string') { url = attrs; attrs = {}; }
+      parts.push(`<Play${attrString(attrs)}>${xmlEscape(url)}</Play>`);
+      return self;
+    },
+    dial(attrs) {
+      const nested = [];
+      const dialSelf = {
+        number(n, nAttrs) { nested.push(`<Number${attrString(nAttrs)}>${xmlEscape(n)}</Number>`); return dialSelf; },
+        sip(uri, sAttrs) { nested.push(`<Sip${attrString(sAttrs)}>${xmlEscape(uri)}</Sip>`); return dialSelf; }
+      };
+      // The element is serialised lazily so nested children added after the
+      // dial() call still land inside it.
+      parts.push(() => nested.length
+        ? `<Dial${attrString(attrs)}>${nested.join('')}</Dial>`
+        : `<Dial${attrString(attrs)}/>`);
+      return dialSelf;
+    },
+    toString() {
+      const body = parts.map((p) => (typeof p === 'function' ? p() : p)).join('');
+      return `<?xml version="1.0" encoding="UTF-8"?><Response>${body}</Response>`;
+    }
+  };
+  return self;
+}
+
+/**
+ * A callback token for the webhook URLs we build ourselves.
+ *
+ * Telnyx signs webhooks with Ed25519, and the voice endpoints check that
+ * first. This is a second, independent proof for the callbacks we hand Telnyx
+ * in a Url or StatusCallback parameter: the URL is known only to us and to
+ * Telnyx, and the token is an HMAC keyed on the API key, which never leaves
+ * the server. Belt and braces, because the alternative to a callback we cannot
+ * authenticate is a public endpoint that writes call records.
+ */
+function voiceCallbackToken(companyId, callId) {
+  const key = telnyxApiKey();
+  if (!key) return '';
+  return require('crypto')
+    .createHmac('sha256', key)
+    .update(`${companyId}|${callId}`)
+    .digest('hex')
+    .slice(0, 32);
+}
+
+/** Accept a Telnyx-signed request, or one carrying a token we issued. */
+function telnyxVoiceWebhookOk(req) {
+  if (telnyxSignatureOk(req)) return true;
+  const token = (req.query && req.query.token ? String(req.query.token) : '');
+  if (!token) return false;
+  const companyId = (req.query.companyId || '').toString();
+  const callId = (req.query.callId || '').toString();
+  const expected = voiceCallbackToken(companyId, callId);
+  if (!expected || token.length !== expected.length) return false;
+  try {
+    return require('crypto').timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+  } catch (e) { return false; }
+}
+
+/**
+ * SIP URIs for the agents' browsers, so an inbound TeXML <Dial> can ring them.
+ * Only agents who have a telephony credential appear, which means only agents
+ * who have opened the dialer at least once — a rep who never has cannot be
+ * rung, and ringing nobody is what the voicemail fallback is for.
+ */
+async function agentSipTargets(db, companyId, uids) {
+  if (!uids || !uids.length) return [];
+  const snap = await db.collection('companies').doc(companyId)
+    .collection('private').doc('telnyxAgents').get();
+  const agents = (snap.exists && snap.data().agents) || {};
+  return uids
+    .map((u) => agents[u] && agents[u].sipUsername)
+    .filter(Boolean)
+    .map((username) => `sip:${username}@sip.telnyx.com`);
+}
+
+/**
  * authorizeCall — the server's say on whether this call may be placed.
  *
  * Twilio's softphone path re-read the lead's number from Firestore inside
@@ -5821,11 +5935,11 @@ exports.startBridgeCall = onCall(async (request) => {
   const { uid } = await assertCompanyAdmin(db, companyId, request);
   await rateLimitCaller(db, request, { action: 'startBridgeCall', max: 120, windowSec: 600 });
 
-  const client = getTwilio();
-  const cfg = voiceConfig();
-  if (!client || !cfg.callerId) {
+  const cfg = telnyxVoiceConfig();
+  if (!cfg.ok || !cfg.texmlAppId) {
+    const missing = cfg.ok ? ['TELNYX_TEXML_APP_ID'] : cfg.missing;
     throw new HttpsError('failed-precondition',
-      'Calling is not set up yet. Add the Twilio voice settings first.');
+      'Cell-bridge calling is not set up yet. Missing: ' + missing.join(', ') + '.');
   }
 
   const meSnap = await db.collection('users').doc(uid).get();
@@ -5846,38 +5960,41 @@ exports.startBridgeCall = onCall(async (request) => {
   }
 
   const base = functionsBaseUrl();
-  const bridgeUrl = `${base}/voiceBridgeTwiml`
-    + `?companyId=${encodeURIComponent(companyId)}`
-    + `&contactId=${encodeURIComponent(contactId)}`
+  const token = voiceCallbackToken(companyId, callId || '');
+  const q = `companyId=${encodeURIComponent(companyId)}`
     + `&callId=${encodeURIComponent(callId || '')}`
+    + `&token=${encodeURIComponent(token)}`;
+  const bridgeUrl = `${base}/voiceBridgeTwiml?${q}`
+    + `&contactId=${encodeURIComponent(contactId)}`
     + `&agentUid=${encodeURIComponent(uid)}`;
 
   let call;
   try {
-    call = await client.calls.create({
-      to: agentCell,
-      from: cfg.callerId,
-      url: bridgeUrl,
-      method: 'POST',
-      statusCallback: `${base}/voiceStatusWebhook`
-        + `?companyId=${encodeURIComponent(companyId)}&callId=${encodeURIComponent(callId || '')}`,
-      statusCallbackMethod: 'POST',
-      statusCallbackEvent: ['answered', 'completed']
+    // TeXML's outbound-call endpoint takes Twilio-shaped parameters, so the
+    // call is set up exactly as before: ring the rep's cell, then fetch the
+    // bridge document to find out who to connect them to.
+    call = await telnyx('POST', `/texml/calls/${encodeURIComponent(cfg.texmlAppId)}`, {
+      To: agentCell,
+      From: cfg.callerId,
+      Url: bridgeUrl,
+      StatusCallback: `${base}/voiceStatusWebhook?${q}`,
+      StatusCallbackMethod: 'POST'
     });
   } catch (e) {
-    throw new HttpsError('internal', 'Twilio could not start the call: ' + (e && e.message));
+    throw new HttpsError('internal', 'Telnyx could not start the call: ' + (e && e.message));
   }
 
+  const sid = (call && (call.call_sid || call.sid || call.call_control_id)) || null;
   if (callId) {
     try {
       await db.collection('companies').doc(companyId).collection('calls').doc(callId).set({
-        twilioCallSid: call.sid, mode: 'bridge', status: 'ringing',
+        twilioCallSid: sid, mode: 'bridge', status: 'ringing',
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
     } catch (e) { /* the client also writes this; losing the mirror is survivable */ }
   }
 
-  return { ok: true, sid: call.sid, ringing: agentCell };
+  return { ok: true, sid, ringing: agentCell };
 });
 
 /**
@@ -5885,14 +6002,13 @@ exports.startBridgeCall = onCall(async (request) => {
  * lead's number from Firestore (never the query string) and dials it.
  */
 exports.voiceBridgeTwiml = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
-  const VoiceResponse = require('twilio').twiml.VoiceResponse;
-  const twiml = new VoiceResponse();
+  const twiml = texmlResponse();
   const send = () => {
     res.set('Content-Type', 'text/xml');
     res.status(200).send(twiml.toString());
   };
 
-  if (!twilioSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
+  if (!telnyxVoiceWebhookOk(req)) { res.status(403).send('invalid signature'); return; }
 
   const db = admin.firestore();
   const companyId = (req.query.companyId || '').toString();
@@ -5902,7 +6018,7 @@ exports.voiceBridgeTwiml = onRequest({ cors: false, invoker: 'public' }, async (
 
   try {
     if (!(await uidAdminsCompany(db, companyId, agentUid))) {
-      twiml.say({ voice: 'alice' }, 'This call is no longer authorized.');
+      twiml.say('This call is no longer authorized.');
       twiml.hangup();
       return send();
     }
@@ -5911,32 +6027,33 @@ exports.voiceBridgeTwiml = onRequest({ cors: false, invoker: 'public' }, async (
     const contact = cSnap.exists ? cSnap.data() : null;
     const to = contact && contact.doNotCall !== true ? normalizePhone(contact.phone) : null;
     if (!to) {
-      twiml.say({ voice: 'alice' }, 'That contact can no longer be called.');
+      twiml.say('That contact can no longer be called.');
       twiml.hangup();
       return send();
     }
 
-    const cfg = voiceConfig();
+    const cfg = telnyxVoiceConfig();
     const settings = await dialerSettings(db, companyId);
-    twiml.say({ voice: 'alice' },
-      `Connecting you to ${(contact.name || 'your contact').toString().slice(0, 60)}.`);
+    twiml.say(`Connecting you to ${(contact.name || 'your contact').toString().slice(0, 60)}.`);
     if (settings.recordingMode === 'announce') {
-      twiml.say({ voice: 'alice' }, 'This call may be recorded for quality purposes.');
+      twiml.say('This call may be recorded for quality purposes.');
     }
 
     const base = fnBaseUrl(req);
+    const token = voiceCallbackToken(companyId, callId);
     const dialAttrs = { callerId: cfg.callerId, answerOnBridge: true };
     if (settings.recordingMode === 'announce' || settings.recordingMode === 'on') {
       dialAttrs.record = 'record-from-answer-dual';
       dialAttrs.recordingStatusCallback =
-        `${base}/voiceRecordingWebhook?companyId=${encodeURIComponent(companyId)}&callId=${encodeURIComponent(callId)}`;
+        `${base}/voiceRecordingWebhook?companyId=${encodeURIComponent(companyId)}`
+        + `&callId=${encodeURIComponent(callId)}&token=${encodeURIComponent(token)}`;
       dialAttrs.recordingStatusCallbackMethod = 'POST';
     }
     twiml.dial(dialAttrs).number(to);
     return send();
   } catch (e) {
     console.error('[voiceBridge]', e && e.message);
-    twiml.say({ voice: 'alice' }, 'Something went wrong connecting this call.');
+    twiml.say('Something went wrong connecting this call.');
     twiml.hangup();
     return send();
   }
@@ -5948,14 +6065,17 @@ exports.voiceBridgeTwiml = onRequest({ cors: false, invoker: 'public' }, async (
  * lead lands on a real contact record rather than a mystery number.
  */
 exports.voiceInboundTwiml = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
-  const VoiceResponse = require('twilio').twiml.VoiceResponse;
-  const twiml = new VoiceResponse();
+  const twiml = texmlResponse();
   const send = () => {
     res.set('Content-Type', 'text/xml');
     res.status(200).send(twiml.toString());
   };
 
-  if (!twilioSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
+  // This URL is configured by hand in the Telnyx portal, so it cannot carry a
+  // token we issued: the Ed25519 signature is the only check, and with no
+  // public key configured inbound calls will not ring. That is fail-closed by
+  // design — the endpoint creates contacts.
+  if (!telnyxSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
 
   const db = admin.firestore();
   const FV = admin.firestore.FieldValue;
@@ -5966,7 +6086,7 @@ exports.voiceInboundTwiml = onRequest({ cors: false, invoker: 'public' }, async 
   try {
     const cid = await resolveAcademyCompanyId(db);
     if (!cid || !from) {
-      twiml.say({ voice: 'alice' }, 'Thanks for calling. Please try again later.');
+      twiml.say('Thanks for calling. Please try again later.');
       twiml.hangup();
       return send();
     }
@@ -5982,7 +6102,7 @@ exports.voiceInboundTwiml = onRequest({ cors: false, invoker: 'public' }, async 
         name: from, email: null, phone: from, companyName: null,
         source: 'Inbound call', stage: 'new', tags: [], ownerUid: null,
         createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp(),
-        createdBy: 'twilio', lastActivityAt: FV.serverTimestamp()
+        createdBy: 'telnyx', lastActivityAt: FV.serverTimestamp()
       });
       contactDoc = await newRef.get();
     }
@@ -6010,7 +6130,7 @@ exports.voiceInboundTwiml = onRequest({ cors: false, invoker: 'public' }, async 
     await contactDoc.ref.collection('activities').add({
       type: 'call_inbound',
       description: 'Inbound call from ' + from,
-      actorUid: 'twilio', actorName: from,
+      actorUid: 'telnyx', actorName: from,
       createdAt: FV.serverTimestamp(),
       meta: { callId: callRef.id, direction: 'in' }
     });
@@ -6018,7 +6138,9 @@ exports.voiceInboundTwiml = onRequest({ cors: false, invoker: 'public' }, async 
     await contactDoc.ref.set({ lastActivityAt: FV.serverTimestamp() }, { merge: true });
 
     const base = fnBaseUrl(req);
-    const statusUrl = `${base}/voiceStatusWebhook?companyId=${encodeURIComponent(cid)}&callId=${encodeURIComponent(callRef.id)}`;
+    const token = voiceCallbackToken(cid, callRef.id);
+    const statusUrl = `${base}/voiceStatusWebhook?companyId=${encodeURIComponent(cid)}`
+      + `&callId=${encodeURIComponent(callRef.id)}&token=${encodeURIComponent(token)}`;
 
     // Ring the assigned rep if there is one; otherwise every admin at once,
     // because an unassigned inbound lead going to voicemail is a lost lead.
@@ -6029,31 +6151,35 @@ exports.voiceInboundTwiml = onRequest({ cors: false, invoker: 'public' }, async 
       ((coSnap.exists && coSnap.data().adminUids) || []).slice(0, 5).forEach((u) => targets.push(u));
     }
 
-    if (targets.length) {
+    // Twilio addressed a browser as <Client>identity</Client>. Telnyx has no
+    // such verb: a registered WebRTC client is a SIP endpoint, reached at its
+    // credential's SIP username.
+    const sipTargets = await agentSipTargets(db, cid, targets);
+    if (sipTargets.length) {
       const dial = twiml.dial({
         timeout: 20,
         answerOnBridge: true,
         action: statusUrl,
         method: 'POST'
       });
-      targets.forEach((u) => dial.client(voiceIdentityFor(u)));
+      sipTargets.forEach((uri) => dial.sip(uri));
     }
 
     // Reached when nobody answers (or nobody is registered).
-    twiml.say({ voice: 'alice' },
-      'Sorry we missed you. Please leave a message after the tone and we will call you right back.');
+    twiml.say('Sorry we missed you. Please leave a message after the tone and we will call you right back.');
     twiml.record({
       maxLength: 120,
       playBeep: true,
       recordingStatusCallback:
-        `${base}/voiceRecordingWebhook?companyId=${encodeURIComponent(cid)}&callId=${encodeURIComponent(callRef.id)}&voicemail=1`,
+        `${base}/voiceRecordingWebhook?companyId=${encodeURIComponent(cid)}`
+        + `&callId=${encodeURIComponent(callRef.id)}&voicemail=1&token=${encodeURIComponent(token)}`,
       recordingStatusCallbackMethod: 'POST'
     });
     twiml.hangup();
     return send();
   } catch (e) {
     console.error('[voiceInbound]', e && e.message);
-    twiml.say({ voice: 'alice' }, 'Thanks for calling. Please try again later.');
+    twiml.say('Thanks for calling. Please try again later.');
     twiml.hangup();
     return send();
   }
@@ -6068,14 +6194,14 @@ exports.voiceInboundTwiml = onRequest({ cors: false, invoker: 'public' }, async 
  * (inbound legs, or a callId that never made it).
  */
 exports.voiceStatusWebhook = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
-  // Always answer Twilio with valid TwiML: this doubles as a <Dial action>,
-  // and a non-TwiML body there drops the call.
+  // Always answer with valid TeXML: this doubles as a <Dial action>, and a
+  // non-TeXML body there drops the call.
   const respond = () => {
     res.set('Content-Type', 'text/xml');
-    res.status(200).send('<Response></Response>');
+    res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
   };
 
-  if (!twilioSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
+  if (!telnyxVoiceWebhookOk(req)) { res.status(403).send('invalid signature'); return; }
 
   const db = admin.firestore();
   const companyId = (req.query.companyId || '').toString();
@@ -6119,7 +6245,7 @@ exports.voiceStatusWebhook = onRequest({ cors: false, invoker: 'public' }, async
         description: Number.isFinite(durationSec) && durationSec > 0
           ? `Call ended after ${durationSec}s`
           : 'Call ended with no answer',
-        actorUid: 'twilio', actorName: 'Twilio',
+        actorUid: 'telnyx', actorName: 'Phone system',
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         meta: { callId: snap.id, status, durationSec: durationSec || 0 }
       }).catch(() => {});
@@ -6138,14 +6264,17 @@ exports.voiceStatusWebhook = onRequest({ cors: false, invoker: 'public' }, async
  * CRM is an <audio src> against it.
  */
 exports.voiceRecordingWebhook = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
-  if (!twilioSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
+  if (!telnyxVoiceWebhookOk(req)) { res.status(403).send('invalid signature'); return; }
 
   const db = admin.firestore();
   const FV = admin.firestore.FieldValue;
   const companyId = (req.query.companyId || '').toString();
   const callId = (req.query.callId || '').toString();
   const isVoicemail = req.query.voicemail === '1';
-  const url = req.body.RecordingUrl ? String(req.body.RecordingUrl) + '.mp3' : null;
+  // Telnyx sends a complete, playable URL; Twilio sent one needing a format
+  // suffix. Only append .mp3 when there is no extension already.
+  const rawUrl = req.body.RecordingUrl ? String(req.body.RecordingUrl) : null;
+  const url = rawUrl ? (/\.(mp3|wav|ogg)(\?|$)/i.test(rawUrl) ? rawUrl : rawUrl + '.mp3') : null;
   const durationSec = req.body.RecordingDuration != null ? Number(req.body.RecordingDuration) : null;
 
   try {
@@ -6169,7 +6298,7 @@ exports.voiceRecordingWebhook = onRequest({ cors: false, invoker: 'public' }, as
             .collection('activities').add({
               type: 'voicemail_received',
               description: `Voicemail left (${durationSec || '?'}s)`,
-              actorUid: 'twilio', actorName: 'Twilio',
+              actorUid: 'telnyx', actorName: 'Phone system',
               createdAt: FV.serverTimestamp(),
               meta: { callId, durationSec: durationSec || null }
             }).catch(() => {});
@@ -6196,8 +6325,7 @@ exports.dropVoicemail = onCall(async (request) => {
   await assertCompanyAdmin(db, companyId, request);
   await rateLimitCaller(db, request, { action: 'dropVoicemail', max: 200, windowSec: 600 });
 
-  const client = getTwilio();
-  if (!client) throw new HttpsError('failed-precondition', 'Calling is not set up yet.');
+  if (!telnyxApiKey()) throw new HttpsError('failed-precondition', 'Calling is not set up yet.');
 
   // Named drop, else the one marked default, else the most recent.
   const dropsCol = db.collection('companies').doc(companyId).collection('voicemailDrops');
@@ -6219,22 +6347,56 @@ exports.dropVoicemail = onCall(async (request) => {
       'Record a voicemail greeting in CRM Settings first.');
   }
 
-  const audioUrl = `${functionsBaseUrl()}/voicemailAudio`
+  // Telnyx redirects a live call to a TeXML *document*, where Twilio accepted
+  // inline markup, so the greeting is served from voicemailTexml and only its
+  // URL is handed over.
+  const texmlUrl = `${functionsBaseUrl()}/voicemailTexml`
     + `?cid=${encodeURIComponent(companyId)}`
     + `&id=${encodeURIComponent(drop.id)}`
     + `&token=${encodeURIComponent(drop.playToken)}`;
 
-  const VoiceResponse = require('twilio').twiml.VoiceResponse;
-  const twiml = new VoiceResponse();
-  twiml.play(audioUrl);
-  twiml.hangup();
-
   try {
-    await client.calls(callSid).update({ twiml: twiml.toString() });
+    await telnyx('POST', `/texml/calls/${encodeURIComponent(callSid)}/update`, {
+      Url: texmlUrl,
+      Method: 'POST'
+    });
   } catch (e) {
     throw new HttpsError('internal', 'Could not drop the voicemail: ' + (e && e.message));
   }
   return { ok: true, dropId: drop.id };
+});
+
+/**
+ * voicemailTexml — the document a dropped call is redirected to: play the
+ * greeting, then hang up.
+ *
+ * Gated by the same per-drop playToken as the audio itself, which is written
+ * server-side and never reaches the browser. Telnyx fetches this
+ * unauthenticated, so the token is the whole access check.
+ */
+exports.voicemailTexml = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  const db = admin.firestore();
+  const cid = (req.query.cid || '').toString();
+  const id = (req.query.id || '').toString();
+  const token = (req.query.token || '').toString();
+  const twiml = texmlResponse();
+
+  try {
+    const snap = await db.collection('companies').doc(cid).collection('voicemailDrops').doc(id).get();
+    if (!snap.exists || !snap.data().playToken || snap.data().playToken !== token) {
+      res.status(403).send('forbidden');
+      return;
+    }
+    const audioUrl = `${fnBaseUrl(req)}/voicemailAudio`
+      + `?cid=${encodeURIComponent(cid)}&id=${encodeURIComponent(id)}&token=${encodeURIComponent(token)}`;
+    twiml.play(audioUrl);
+    twiml.hangup();
+  } catch (e) {
+    console.warn('[voicemailTexml]', e && e.message);
+    twiml.hangup();
+  }
+  res.set('Content-Type', 'text/xml');
+  res.status(200).send(twiml.toString());
 });
 
 /**
