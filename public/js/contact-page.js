@@ -893,6 +893,9 @@ async function showApptSyncResult(apptId, { invite, email }) {
     await Promise.all([refreshSide(), refreshTimeline()]);
   };
   $('ca-done').addEventListener('click', finish);
+  // Refresh the record behind the modal now, so closing it any way — Done,
+  // backdrop, Esc — still leaves the booking visible in Upcoming.
+  Promise.all([refreshSide(), refreshTimeline()]).catch(() => {});
 
   const deadline = Date.now() + 15000;
   let row = null;
@@ -1122,7 +1125,8 @@ async function main() {
     const reason = new URLSearchParams(location.search).get('reason');
     const clean = new URLSearchParams(location.search);
     clean.delete('google'); clean.delete('reason');
-    history.replaceState(null, '', location.pathname + '?' + clean.toString());
+    const qs = clean.toString();
+    history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
     if (gflash === 'error') {
       state.google = { ...state.google, connected: false, error: `Google connection failed: ${reason || 'unexpected error'}.` };
     }

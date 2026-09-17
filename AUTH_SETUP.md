@@ -208,12 +208,27 @@ The Voice SDK is vendored at `public/vendor/twilio-voice-<version>.min.js`
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID → Web application. Enable the **Google Calendar API** on the project first. |
 | `GOOGLE_OAUTH_REDIRECT_URI` | Optional override. Defaults to `https://us-central1-the-1p-leadership.cloudfunctions.net/googleOAuthCallback`, which must be listed as an **Authorized redirect URI** on that OAuth client. |
 
-Connect from CRM Settings → Google Calendar. Appointments booked anywhere in
-the CRM then create real calendar events with a Meet link, and can invite
-the contact by email; edits made in Google flow back through a push channel
-(`googleCalendarPush`). Refresh tokens are stored at
-`companies/{cid}/private/googleOAuth`, which the security rules close to
-every client including the owner.
+Connect from CRM Settings → Google Calendar, or straight from a booking:
+the New Appointment window on a contact record and on the calendar page
+shows the connection state and carries a **Connect Google Calendar** button
+when it is not connected. Consent returns to the page it started from (the
+contact's record, id and all) and reopens the booking.
+
+Once connected, every appointment booked anywhere in the CRM creates a real
+calendar event with a Google Meet link (the Meet link becomes the location
+when Location is left blank), and the booking window's invite checkbox emails
+a genuine calendar invite to the contact's address — that checkbox is what
+sets `inviteContact`, which is what puts the lead on the event as an attendee
+with `sendUpdates: all`. Turning it on later re-pushes and sends the invite.
+The Agenda / notes field becomes the event description.
+
+Booking with Google connected waits on the sync and reports what happened:
+on the calendar, invite emailed, a Join Meet link, or the Google error with
+the appointment still saved in the CRM.
+
+Edits made in Google flow back through a push channel (`googleCalendarPush`).
+Refresh tokens are stored at `companies/{cid}/private/googleOAuth`, which the
+security rules close to every client including the owner.
 
 Push channels expire after 7 days. They are renewed from the calendar and
 settings pages, from every push, and from the automation tick below.
