@@ -68,6 +68,10 @@ jobs:
       - name: Write functions runtime env
         working-directory: functions
         env:
+          TELNYX_API_KEY: ${{ secrets.TELNYX_API_KEY }}
+          TELNYX_PUBLIC_KEY: ${{ secrets.TELNYX_PUBLIC_KEY }}
+          TELNYX_FROM_NUMBER: ${{ secrets.TELNYX_FROM_NUMBER }}
+          TELNYX_MESSAGING_PROFILE_ID: ${{ secrets.TELNYX_MESSAGING_PROFILE_ID }}
           TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
           TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
           TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
@@ -84,7 +88,9 @@ jobs:
         run: |
           : > .env
           set_count=0
-          for name in TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM_NUMBER \
+          for name in TELNYX_API_KEY TELNYX_PUBLIC_KEY TELNYX_FROM_NUMBER \
+                      TELNYX_MESSAGING_PROFILE_ID \
+                      TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM_NUMBER \
                       TWILIO_API_KEY_SID TWILIO_API_KEY_SECRET TWILIO_TWIML_APP_SID \
                       TWILIO_CALLER_ID GOOGLE_OAUTH_CLIENT_ID \
                       GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_REDIRECT_URI \

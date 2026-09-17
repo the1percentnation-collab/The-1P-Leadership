@@ -106,6 +106,157 @@ function getTwilio() {
   return _twilioClient;
 }
 
+
+// ────────────────────────────────────────────────────────────────
+// Telnyx — SMS and voice provider.
+//
+// Replaces Twilio. Deliberately no SDK: sending is one POST to
+// api.telnyx.com/v2/messages, and Node 20 has global fetch, so an extra
+// dependency would only add supply-chain surface for no gain.
+//
+// Configuration is plain process.env, matching the Stripe/Twilio convention in
+// this file — the deploy workflow writes functions/.env from repository
+// secrets. Until the values exist, every entry point reports "not set up yet"
+// rather than throwing, so a deploy always succeeds.
+//
+// Provide: TELNYX_API_KEY, TELNYX_PUBLIC_KEY, TELNYX_FROM_NUMBER, and
+// optionally TELNYX_MESSAGING_PROFILE_ID.
+// ────────────────────────────────────────────────────────────────
+
+const TELNYX_API = 'https://api.telnyx.com/v2';
+
+function telnyxApiKey() {
+  return (process.env.TELNYX_API_KEY || '').trim();
+}
+
+/** The number we text from. */
+function telnyxFromNumber() {
+  return (process.env.TELNYX_FROM_NUMBER || '').trim();
+}
+
+/** Which messaging pieces are configured, and what is missing if not. */
+function telnyxSmsConfig() {
+  const apiKey = telnyxApiKey();
+  const from = telnyxFromNumber();
+  const profileId = (process.env.TELNYX_MESSAGING_PROFILE_ID || '').trim();
+  const missing = [];
+  if (!apiKey) missing.push('TELNYX_API_KEY');
+  if (!from) missing.push('TELNYX_FROM_NUMBER');
+  return { apiKey, from, profileId, missing, ok: missing.length === 0 };
+}
+
+/**
+ * Thin Telnyx REST caller. Throws with the API's own error detail, which is
+ * far more useful than a generic 4xx when a number is not on the account or a
+ * messaging profile is wrong.
+ */
+async function telnyx(method, path, body) {
+  const apiKey = telnyxApiKey();
+  if (!apiKey) throw new Error('TELNYX_API_KEY is not set');
+  const res = await fetch(`${TELNYX_API}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {})
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const text = await res.text();
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch (e) { /* non-JSON error page */ }
+  if (!res.ok) {
+    const detail = json && Array.isArray(json.errors) && json.errors.length
+      ? json.errors.map((e) => e.detail || e.title).filter(Boolean).join('; ')
+      : (text || `HTTP ${res.status}`);
+    const err = new Error(`Telnyx ${res.status}: ${detail}`);
+    err.status = res.status;
+    throw err;
+  }
+  return json && json.data !== undefined ? json.data : json;
+}
+
+/**
+ * Send one SMS through Telnyx.
+ *
+ * Returns the Twilio-shaped `{ sid, status, from }` the callers already write
+ * to Firestore, so conversation and message documents keep the exact shape
+ * they had under Twilio and the whole frontend needs no change. Telnyx's
+ * message id goes in the same `twilioSid` field, which is the indexed key the
+ * status webhook looks messages up by.
+ */
+async function sendTelnyxSms({ to, body }) {
+  const cfg = telnyxSmsConfig();
+  if (!cfg.ok) throw new Error('Telnyx SMS is not configured: missing ' + cfg.missing.join(', '));
+  const payload = { from: cfg.from, to, text: String(body).slice(0, 1600) };
+  if (cfg.profileId) payload.messaging_profile_id = cfg.profileId;
+  const data = await telnyx('POST', '/messages', payload);
+  const sid = (data && data.id) || ('tx_' + Date.now());
+  // Telnyx reports per-recipient delivery state; the message-level status
+  // arrives later on the status webhook.
+  const recipient = data && Array.isArray(data.to) ? data.to[0] : null;
+  const status = (recipient && recipient.status) || 'queued';
+  return { sid, status, from: cfg.from };
+}
+
+/**
+ * Verify a Telnyx webhook.
+ *
+ * Telnyx signs with Ed25519 public-key signatures, not an HMAC like Twilio.
+ * Two headers arrive: `telnyx-signature-ed25519` (base64, 64 bytes) and
+ * `telnyx-timestamp` (unix seconds). The signed message is
+ * `${timestamp}|${rawBody}`.
+ *
+ * Two things here are easy to get wrong and both are security-relevant:
+ *
+ *   1. The signature covers the EXACT bytes Telnyx sent. Firebase parses JSON
+ *      bodies, and re-serialising the parsed object will not round-trip (key
+ *      order, unicode escaping, whitespace), so verification must use
+ *      req.rawBody. If rawBody is unavailable we fail closed.
+ *   2. A valid signature alone does not prevent replay of a captured request,
+ *      so the timestamp must be inside a tolerance window.
+ */
+const TELNYX_WEBHOOK_TOLERANCE_SEC = 300;
+
+function telnyxSignatureOk(req, { toleranceSec = TELNYX_WEBHOOK_TOLERANCE_SEC, now = Date.now() } = {}) {
+  const publicKeyB64 = (process.env.TELNYX_PUBLIC_KEY || '').trim();
+  if (!publicKeyB64) return false;
+
+  const signatureB64 = req.get ? (req.get('telnyx-signature-ed25519') || '') : '';
+  const timestamp = req.get ? (req.get('telnyx-timestamp') || '') : '';
+  if (!signatureB64 || !timestamp) return false;
+
+  // Reject anything outside the replay window, including a timestamp far in
+  // the future (a clock-skew attack looks the same as a stale replay).
+  const tsSec = Number(timestamp);
+  if (!Number.isFinite(tsSec)) return false;
+  if (Math.abs(now / 1000 - tsSec) > toleranceSec) return false;
+
+  // rawBody is what Firebase preserves for exactly this purpose. Without it we
+  // cannot verify honestly, so refuse rather than guessing at a re-serialisation.
+  const raw = req.rawBody;
+  if (!raw || !Buffer.isBuffer(raw)) return false;
+
+  try {
+    const crypto = require('crypto');
+    const signature = Buffer.from(signatureB64, 'base64');
+    if (signature.length !== 64) return false;
+    const key = crypto.createPublicKey({
+      key: Buffer.concat([
+        // DER prefix for a raw 32-byte Ed25519 public key.
+        Buffer.from('302a300506032b6570032100', 'hex'),
+        Buffer.from(publicKeyB64, 'base64')
+      ]),
+      format: 'der',
+      type: 'spki'
+    });
+    const signed = Buffer.concat([Buffer.from(`${timestamp}|`, 'utf8'), raw]);
+    return crypto.verify(null, signed, key, signature);
+  } catch (e) {
+    console.warn('[telnyx] signature check threw', e && e.message);
+    return false;
+  }
+}
+
 /** The number leads see when we call them. */
 function voiceCallerId() {
   return (process.env.TWILIO_CALLER_ID || process.env.TWILIO_FROM_NUMBER || '').trim();
@@ -5095,11 +5246,12 @@ exports.sendSms = onCall(
     // Throttle outbound SMS: 100 per admin per 10 minutes.
     await rateLimitCaller(db, request, { action: 'sendSms', max: 100, windowSec: 600 });
 
-    const client = getTwilio();
-    const from = (process.env.TWILIO_FROM_NUMBER || '').trim();
-    if (!client || !from) {
-      throw new HttpsError('failed-precondition', 'SMS is not configured yet. Add the Twilio secrets first.');
+    const cfg = telnyxSmsConfig();
+    if (!cfg.ok) {
+      throw new HttpsError('failed-precondition',
+        'SMS is not configured yet. Add the Telnyx secrets first (missing ' + cfg.missing.join(', ') + ').');
     }
+    const from = cfg.from;
 
     const cRef = db.collection('companies').doc(companyId).collection('contacts').doc(contactId);
     const cSnap = await cRef.get();
@@ -5114,9 +5266,9 @@ exports.sendSms = onCall(
 
     let msg;
     try {
-      msg = await client.messages.create({ to, from, body: String(body).slice(0, 1600) });
+      msg = await sendTelnyxSms({ to, body });
     } catch (e) {
-      throw new HttpsError('internal', 'Twilio send failed: ' + (e && e.message));
+      throw new HttpsError('internal', 'SMS send failed: ' + (e && e.message));
     }
 
     const FV = admin.firestore.FieldValue;
@@ -5128,8 +5280,8 @@ exports.sendSms = onCall(
     }, { merge: true });
     await convRef.collection('messages').doc(msg.sid).set({
       direction: 'out', body: String(body), fromNumber: from, toNumber: to,
-      status: msg.status || 'sent', twilioSid: msg.sid, sentByUid: request.auth.uid,
-      createdAt: FV.serverTimestamp()
+      status: msg.status || 'sent', twilioSid: msg.sid, provider: 'telnyx',
+      sentByUid: request.auth.uid, createdAt: FV.serverTimestamp()
     });
     await cRef.collection('activities').add({
       type: 'manual_sms', description: 'SMS sent: ' + String(body).slice(0, 120),
@@ -5257,6 +5409,137 @@ exports.twilioStatusWebhook = onRequest(
   }
 );
 
+
+// ════════════════════════════════════════════════════════════════
+// Telnyx 2-way SMS webhooks.
+//
+// Point the number's messaging profile at telnyxInboundWebhook for inbound
+// and at telnyxStatusWebhook for delivery receipts (Telnyx will happily send
+// both to one URL; we keep them split so a status flood can never touch the
+// contact-creation path).
+//
+// Both verify the Ed25519 signature over req.rawBody before touching
+// Firestore, and both answer 200 on anything they cannot act on so Telnyx
+// does not retry a payload we will never understand.
+// ════════════════════════════════════════════════════════════════
+
+/** Telnyx nests everything under data.payload; normalise the bits we use. */
+function telnyxMessagePayload(req) {
+  const data = (req.body && req.body.data) || {};
+  const payload = data.payload || {};
+  const toList = Array.isArray(payload.to) ? payload.to : [];
+  return {
+    eventType: data.event_type || '',
+    id: payload.id || '',
+    text: payload.text || '',
+    from: normalizePhone(payload.from && payload.from.phone_number),
+    to: normalizePhone(toList[0] && toList[0].phone_number),
+    // Delivery state lives per-recipient, not on the message.
+    recipientStatus: (toList[0] && toList[0].status) || ''
+  };
+}
+
+exports.telnyxInboundWebhook = onRequest(
+  { cors: false, invoker: 'public' },
+  async (req, res) => {
+    if (!telnyxSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
+    const db = admin.firestore();
+    const m = telnyxMessagePayload(req);
+    if (m.eventType !== 'message.received') { res.status(200).send('ignored'); return; }
+
+    const from = m.from;
+    const to = m.to;
+    const text = m.text;
+    const sid = m.id || ('in_' + Date.now());
+
+    try {
+      const cid = await resolveAcademyCompanyId(db);
+      if (cid && from) {
+        const FV = admin.firestore.FieldValue;
+        const contactsRef = db.collection('companies').doc(cid).collection('contacts');
+        let contactDoc = null;
+        const q1 = await contactsRef.where('phone', '==', from).limit(1).get();
+        if (!q1.empty) contactDoc = q1.docs[0];
+        if (!contactDoc) {
+          const newRef = await contactsRef.add({
+            name: from, email: null, phone: from, companyName: null,
+            source: 'SMS', stage: 'new', tags: [], ownerUid: null,
+            createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp(),
+            createdBy: 'telnyx', lastActivityAt: FV.serverTimestamp()
+          });
+          contactDoc = await newRef.get();
+        }
+        const contactId = contactDoc.id;
+        const convRef = db.collection('companies').doc(cid).collection('conversations').doc(contactId);
+        await convRef.set({
+          contactId, contactPhone: from, channel: 'sms',
+          lastMessageAt: FV.serverTimestamp(), lastMessageText: String(text).slice(0, 200), lastDirection: 'in',
+          unreadCount: FV.increment(1), updatedAt: FV.serverTimestamp(), createdAt: FV.serverTimestamp()
+        }, { merge: true });
+        await convRef.collection('messages').doc(sid).set({
+          direction: 'in', body: String(text), fromNumber: from, toNumber: to,
+          status: 'received', twilioSid: sid, provider: 'telnyx', createdAt: FV.serverTimestamp()
+        });
+        await contactDoc.ref.collection('activities').add({
+          type: 'sms_received', description: 'SMS received: ' + String(text).slice(0, 120),
+          actorUid: 'telnyx', actorName: from, createdAt: FV.serverTimestamp(), meta: { direction: 'in' }
+        });
+        // A reply is the lead engaging: no follow-up cadence should keep
+        // firing over the top of a live conversation.
+        try { await stopEnrollmentsForContact(db, cid, contactId, 'replied by SMS'); } catch (e) {}
+
+        // ── TCPA opt-out / opt-in keyword handling ──────────────────────────
+        // Carriers honor STOP at the network level, but we must also record it
+        // so our own sendSms/sendCampaign never message an opted-out number.
+        const kw = String(text).trim().toUpperCase().replace(/[^A-Z]/g, '');
+        const STOP_WORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'OPTOUT'];
+        const START_WORDS = ['START', 'YES', 'UNSTOP', 'OPTIN'];
+        if (STOP_WORDS.includes(kw)) {
+          await contactDoc.ref.set({
+            smsOptedOut: true, smsOptedOutAt: FV.serverTimestamp()
+          }, { merge: true });
+          await contactDoc.ref.collection('activities').add({
+            type: 'sms_opt_out', description: 'Contact opted OUT of SMS (replied ' + kw + ').',
+            actorUid: 'telnyx', actorName: from, createdAt: FV.serverTimestamp(), meta: { keyword: kw }
+          });
+        } else if (START_WORDS.includes(kw)) {
+          await contactDoc.ref.set({
+            smsOptedOut: false, smsOptedInAt: FV.serverTimestamp()
+          }, { merge: true });
+          await contactDoc.ref.collection('activities').add({
+            type: 'sms_opt_in', description: 'Contact opted IN to SMS (replied ' + kw + ').',
+            actorUid: 'telnyx', actorName: from, createdAt: FV.serverTimestamp(), meta: { keyword: kw }
+          });
+        }
+
+        await contactDoc.ref.set({ lastActivityAt: FV.serverTimestamp() }, { merge: true });
+      }
+    } catch (e) { console.warn('[telnyxInbound]', e && e.message); }
+
+    res.status(200).send('ok');
+  }
+);
+
+exports.telnyxStatusWebhook = onRequest(
+  { cors: false, invoker: 'public' },
+  async (req, res) => {
+    if (!telnyxSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
+    const db = admin.firestore();
+    const m = telnyxMessagePayload(req);
+    // message.sent is the handoff to the carrier; message.finalized carries the
+    // terminal delivered / failed state.
+    if (m.eventType !== 'message.sent' && m.eventType !== 'message.finalized') {
+      res.status(200).send('ignored'); return;
+    }
+    if (m.id && m.recipientStatus) {
+      try {
+        const ms = await db.collectionGroup('messages').where('twilioSid', '==', m.id).limit(1).get();
+        if (!ms.empty) await ms.docs[0].ref.set({ status: m.recipientStatus }, { merge: true });
+      } catch (e) { console.warn('[telnyxStatus] (index?)', e && e.message); }
+    }
+    res.status(200).send('ok');
+  }
+);
 
 // ════════════════════════════════════════════════════════════════
 // Twilio Voice — browser softphone, cell bridge, inbound routing, call
@@ -6662,11 +6945,11 @@ async function executeSequenceStep(db, companyId, enrollment, step, seq) {
     if (contact.smsOptedOut === true) return 'skipped: opted out of SMS';
     const to = normalizePhone(contact.phone);
     if (!to) return 'skipped: no phone';
-    const client = getTwilio();
-    const from = (process.env.TWILIO_FROM_NUMBER || '').trim();
-    if (!client || !from) return 'skipped: SMS not configured';
+    const cfg = telnyxSmsConfig();
+    if (!cfg.ok) return 'skipped: SMS not configured';
+    const from = cfg.from;
     if (!body) return 'skipped: empty body';
-    const msg = await client.messages.create({ to, from, body: body.slice(0, 1600) });
+    const msg = await sendTelnyxSms({ to, body });
     const convRef = db.collection('companies').doc(companyId).collection('conversations').doc(contact.id);
     await convRef.set({
       contactId: contact.id, contactPhone: to, channel: 'sms',
@@ -6675,8 +6958,8 @@ async function executeSequenceStep(db, companyId, enrollment, step, seq) {
     }, { merge: true });
     await convRef.collection('messages').doc(msg.sid).set({
       direction: 'out', body, fromNumber: from, toNumber: to,
-      status: msg.status || 'sent', twilioSid: msg.sid, sentByUid: 'sequence',
-      sequenceId: enrollment.sequenceId, createdAt: FV.serverTimestamp()
+      status: msg.status || 'sent', twilioSid: msg.sid, provider: 'telnyx',
+      sentByUid: 'sequence', sequenceId: enrollment.sequenceId, createdAt: FV.serverTimestamp()
     });
     await cRef.collection('activities').add({
       type: 'manual_sms', description: `Sequence SMS (${seq.name}): ${body.slice(0, 120)}`,
