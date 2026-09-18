@@ -2,11 +2,12 @@
   "name": "the-1p-leadership-tests",
   "private": true,
   "type": "module",
-  "description": "Firestore security-rules regression tests (emulator) plus Telnyx unit tests.",
+  "description": "Firestore security-rules regression tests (emulator), plus Telnyx and inbound-email unit tests.",
   "scripts": {
     "emulator": "firebase emulators:exec --only firestore --project demo-1p \"node firestore-rules.test.mjs\"",
     "test:telnyx": "node telnyx-signature.test.cjs && node telnyx-send.test.cjs && node telnyx-texml.test.cjs",
-    "test": "npm run test:telnyx && npm run emulator"
+    "test:email": "node inbound-email.test.cjs",
+    "test": "npm run test:telnyx && npm run test:email && npm run emulator"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",

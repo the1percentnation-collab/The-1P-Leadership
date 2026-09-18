@@ -420,6 +420,18 @@ service cloud.firestore {
           // Deletes only by owner — admins cannot tamper with history.
           allow delete: if isOwner();
         }
+
+        // Two-way email. Every document here is written by a Cloud Function
+        // (sendContactEmail, inboundEmailWebhook, the SendGrid event webhook)
+        // through the Admin SDK, which bypasses rules — so the client is
+        // read-only by design. That is what keeps the record trustworthy: a
+        // signed-in admin cannot forge a reply from a lead, edit what was
+        // sent, or mark an inbound message read without going through
+        // markContactEmailsRead.
+        match /emails/{emailId} {
+          allow read: if isOwner() || isCompanyAdmin(cid);
+          allow write: if false;
+        }
       }
 
       // ──────────────────────────────────────────────────────────────

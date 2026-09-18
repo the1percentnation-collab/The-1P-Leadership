@@ -12,12 +12,11 @@
 // already lands in one of them, so nothing has to be re-plumbed to show up
 // here, and a feature added later appears automatically.
 
-import { db, functions, firebaseReady } from './firebase.js';
+import { db, firebaseReady } from './firebase.js';
 import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { renderTopbar } from './topbar.js';
 import { collection, getDocs, query, where, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import {
   STAGES, SOURCES, stageMeta,
   getContact, updateContact, changeStage,
@@ -29,6 +28,7 @@ import {
   listTasks, createTask, completeTask,
   listAppointments, createAppointment, setAppointmentStatus,
   listMessages, sendSms,
+  listContactEmails, sendContactEmail, markContactEmailsRead, groupEmailThreads,
   listCalls, setDoNotCall, dispositionMeta, callBlockReason,
   getGoogleCalendarStatus, listSequences, listEnrollments, enrollContact, stopEnrollment,
   escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate
@@ -57,7 +57,14 @@ const state = {
   composeTab: 'sms',
   tlFilter: 'all',
   smsTemplates: null,
-  emailTemplates: null
+  emailTemplates: null,
+  emails: [],
+  // Set when the composer was opened by "Reply" on a thread, so the send
+  // joins that thread instead of starting a new one.
+  emailReply: null,
+  // Thread keys the reader has expanded. Long threads collapse by default so
+  // the timeline stays scannable.
+  openThreads: new Set()
 };
 
 function gate(msg) {
@@ -142,8 +149,12 @@ function renderContactHeader() {
   const smsBlock = !c.phone ? 'No phone number' : (c.smsOptedOut === true ? 'Opted out of SMS' : null);
   const textBtn = $('btn-text-contact');
   if (textBtn) { textBtn.disabled = !!smsBlock; textBtn.title = smsBlock || 'Text this contact'; }
+  const emailBlock = !c.email
+    ? 'No email address'
+    : (c.emailOptOut === true || (Array.isArray(c.tags) && c.tags.includes('Unsubscribed'))
+        ? 'Unsubscribed from email' : null);
   const emailBtn = $('btn-send-email');
-  if (emailBtn) { emailBtn.disabled = !c.email; emailBtn.title = c.email ? 'Email this contact' : 'No email address'; }
+  if (emailBtn) { emailBtn.disabled = !!emailBlock; emailBtn.title = emailBlock || 'Email this contact'; }
 
   renderTags();
 }
@@ -254,6 +265,9 @@ function renderSideDeals() {
 const ACTIVITY_DUPES = new Set([
   'manual_sms', 'sms_received',
   'call_logged', 'call_completed', 'call_inbound',
+  // Email bodies live in contacts/{id}/emails and are rendered from there;
+  // the activity rows exist for the audit trail only.
+  'email_sent', 'email_received',
   'note_added'
 ]);
 
@@ -319,6 +333,19 @@ function buildTimeline() {
     });
   });
 
+  // Email is grouped into threads, not loose messages: a lead's reply only
+  // makes sense next to what it is replying to, and a five-message exchange
+  // scattered across the day dividers is unreadable.
+  groupEmailThreads(state.emails).forEach((t) => {
+    const last = t.messages[t.messages.length - 1];
+    items.push({
+      kind: 'email',
+      dir: last.direction === 'out' ? 'out' : 'in',
+      at: t.lastAt,
+      thread: t
+    });
+  });
+
   state.activities.forEach((a) => {
     if (ACTIVITY_DUPES.has(a.type)) return;
     const kind = ACTIVITY_KIND[a.type] || 'system';
@@ -376,6 +403,65 @@ function iconForActivity(type) {
   }
 }
 
+/** What SendGrid last told us about a sent message, in plain words. */
+function emailStatusLabel(m) {
+  if (m.direction === 'in') return 'received';
+  switch (m.status) {
+    case 'bounce': return 'bounced — ' + (m.failureReason || 'undeliverable');
+    case 'dropped': return 'dropped — ' + (m.failureReason || 'suppressed');
+    case 'spam': return 'marked as spam';
+    case 'delivered': return 'delivered';
+    case 'opened': return 'opened';
+    case 'clicked': return 'link clicked';
+    case 'processed': return 'sent';
+    default: return m.status || 'sent';
+  }
+}
+
+function emailMessageHtml(m) {
+  const who = m.direction === 'out'
+    ? `${escapeHtml(m.sentByName || m.fromName || 'You')} → ${escapeHtml(m.toEmail || '')}`
+    : (m.fromName
+        ? `${escapeHtml(m.fromName)} &lt;${escapeHtml(m.fromEmail || '')}&gt;`
+        : escapeHtml(m.fromEmail || 'Unknown sender'));
+  const when = m.createdAt ? fmtDateTime(m.createdAt) : '';
+  const failed = m.status === 'bounce' || m.status === 'dropped' || m.status === 'spam';
+  return `
+    <div class="em-msg em-${m.direction === 'out' ? 'out' : 'in'}">
+      <div class="em-msg-head">
+        <span class="em-who">${who}</span>
+        <span class="em-when">${escapeHtml(when)}</span>
+      </div>
+      <div class="em-msg-body">${escapeHtml(m.bodyText || '')}</div>
+      <div class="em-msg-meta${failed ? ' em-failed' : ''}">${escapeHtml(emailStatusLabel(m))}</div>
+    </div>`;
+}
+
+/**
+ * A thread renders collapsed to its latest message with a count, because the
+ * timeline is a history of a whole relationship, not an inbox. Expanding is
+ * per-thread and survives a re-render.
+ */
+function emailThreadHtml(t) {
+  const open = state.openThreads.has(t.key);
+  const shown = open ? t.messages : t.messages.slice(-1);
+  const hidden = t.messages.length - shown.length;
+  return `
+    <div class="em-thread${t.unread ? ' em-unread' : ''}">
+      <div class="em-thread-head">
+        <span class="em-subject">${escapeHtml(t.subject)}</span>
+        ${t.messages.length > 1 ? `<span class="em-count">${t.messages.length}</span>` : ''}
+        ${t.unread ? '<span class="em-new">New</span>' : ''}
+      </div>
+      ${hidden > 0 ? `<button class="em-more" data-em-expand="${escapeHtml(t.key)}">Show ${hidden} earlier message${hidden === 1 ? '' : 's'}</button>` : ''}
+      ${shown.map(emailMessageHtml).join('')}
+      <div class="tl-actions">
+        <button class="crm-chip" data-em-reply="${escapeHtml(t.key)}">Reply</button>
+        ${open && t.messages.length > 1 ? `<button class="crm-chip" data-em-collapse="${escapeHtml(t.key)}">Collapse</button>` : ''}
+      </div>
+    </div>`;
+}
+
 function dayLabel(atMs) {
   const d = new Date(atMs);
   const today = new Date();
@@ -413,6 +499,14 @@ function renderTimeline() {
     if (day !== lastDay) { html.push(`<div class="tl-day">${escapeHtml(day)}</div>`); lastDay = day; }
     const time = i.at ? new Date(i.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
     const cls = ['tl-item', `tl-item-${i.kind}`, i.dir ? `tl-${i.dir}` : ''].filter(Boolean).join(' ');
+    if (i.thread) {
+      html.push(`
+        <div class="${cls}">
+          <div class="tl-ico">${KIND_ICON.email}</div>
+          <div class="tl-main">${emailThreadHtml(i.thread)}</div>
+        </div>`);
+      return;
+    }
     html.push(`
       <div class="${cls}">
         <div class="tl-ico">${i.icon || KIND_ICON[i.kind] || '•'}</div>
@@ -427,6 +521,29 @@ function renderTimeline() {
       </div>`);
   });
   host.innerHTML = html.join('');
+
+  host.querySelectorAll('[data-em-expand]').forEach((b) => b.addEventListener('click', () => {
+    state.openThreads.add(b.getAttribute('data-em-expand'));
+    renderTimeline();
+  }));
+  host.querySelectorAll('[data-em-collapse]').forEach((b) => b.addEventListener('click', () => {
+    state.openThreads.delete(b.getAttribute('data-em-collapse'));
+    renderTimeline();
+  }));
+  host.querySelectorAll('[data-em-reply]').forEach((b) => b.addEventListener('click', () => {
+    const key = b.getAttribute('data-em-reply');
+    const thread = groupEmailThreads(state.emails).find((t) => t.key === key);
+    if (!thread) return;
+    const last = thread.messages[thread.messages.length - 1];
+    state.emailReply = {
+      threadKey: key,
+      inReplyTo: last.messageId || '',
+      subject: /^re:/i.test(thread.subject) ? thread.subject : 'Re: ' + thread.subject
+    };
+    setComposeTab('email');
+    const box = $('cp-em-body');
+    if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
 
   host.querySelectorAll('[data-del-note]').forEach((b) => b.addEventListener('click', async () => {
     if (!confirm('Delete this note?')) return;
@@ -544,8 +661,11 @@ function renderComposer() {
     host.innerHTML = `<div class="crm-subpanel-empty">Add an email address to this contact first.</div>`;
     return;
   }
+  const reply = state.emailReply;
   host.innerHTML = `
-    <div class="crm-field"><input class="c-input" id="cp-em-subject" placeholder="Subject" /></div>
+    ${reply ? `<div class="em-reply-bar">Replying in this thread
+      <button class="tl-del" id="cp-em-cancel-reply" title="Start a new thread instead">×</button></div>` : ''}
+    <div class="crm-field"><input class="c-input" id="cp-em-subject" placeholder="Subject" value="${reply ? escapeHtml(reply.subject) : ''}" /></div>
     <div class="tl-compose-row" style="margin-top:8px;">
       <textarea class="c-textarea" id="cp-em-body" rows="4" placeholder="Hi ${escapeHtml((c.name || '').split(' ')[0] || 'there')},"></textarea>
       <button class="btn btn-primary" id="cp-em-send">Send</button>
@@ -556,6 +676,8 @@ function renderComposer() {
     </div>
     <div id="cp-em-err" class="auth-error" style="display:none;margin-top:8px;"></div>
     <div id="cp-em-ok" class="auth-ok" style="display:none;margin-top:8px;"></div>`;
+  const cancelReply = $('cp-em-cancel-reply');
+  if (cancelReply) cancelReply.addEventListener('click', () => { state.emailReply = null; renderComposer(); });
   mountTemplatePicker({
     host: $('cp-em-tpl'), input: $('cp-em-body'), channel: 'email', replace: true,
     companyId: state.companyId, context: mergeContext,
@@ -576,12 +698,13 @@ function renderComposer() {
     btn.disabled = true; btn.textContent = 'Sending…';
     $('cp-em-err').style.display = 'none';
     try {
-      const call = httpsCallable(functions, 'sendContactEmail');
-      await call({
-        companyId: state.companyId, contactId: state.contactId,
-        subject, bodyHtml, bodyText
+      await sendContactEmail(state.companyId, state.contactId, {
+        subject, bodyHtml, bodyText,
+        threadKey: reply ? reply.threadKey : '',
+        inReplyTo: reply ? reply.inReplyTo : ''
       });
       $('cp-em-subject').value = ''; $('cp-em-body').value = '';
+      state.emailReply = null;
       $('cp-em-ok').textContent = 'Email sent.';
       $('cp-em-ok').style.display = 'block';
       setTimeout(() => { const el = $('cp-em-ok'); if (el) el.style.display = 'none'; }, 3000);
@@ -591,7 +714,7 @@ function renderComposer() {
       $('cp-em-err').style.display = 'block';
     } finally { btn.disabled = false; btn.textContent = 'Send'; }
   });
-  $('cp-em-subject').focus();
+  if (reply) $('cp-em-body').focus(); else $('cp-em-subject').focus();
 }
 
 function setComposeTab(tab) {
@@ -611,17 +734,26 @@ async function refreshContact() {
 
 /** Everything the timeline reads, in one round trip. */
 async function refreshTimeline() {
-  const [messages, calls, notes, activities] = await Promise.all([
+  const [messages, calls, notes, activities, emails] = await Promise.all([
     listMessages(state.companyId, state.contactId),
     listCalls(state.companyId, { contactId: state.contactId, max: 100 }),
     listNotes(state.companyId, state.contactId),
-    listActivities(state.companyId, state.contactId)
+    listActivities(state.companyId, state.contactId),
+    listContactEmails(state.companyId, state.contactId)
   ]);
   state.messages = messages;
   state.calls = calls;
   state.notes = notes;
   state.activities = activities;
+  state.emails = emails;
   renderTimeline();
+
+  // Opening the card is reading the mail. Clears the unread badge here and on
+  // the CRM list, server-side (the docs are not client-writable).
+  if (emails.some((e) => e.direction === 'in' && e.read === false)) {
+    markContactEmailsRead(state.companyId, state.contactId);
+    state.emails = emails.map((e) => (e.direction === 'in' ? { ...e, read: true } : e));
+  }
 }
 
 async function refreshSide() {
@@ -882,7 +1014,9 @@ function wire() {
     const el = $('tl-compose');
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
-  $('btn-send-email').addEventListener('click', () => setComposeTab('email'));
+  // The action button always starts a fresh thread; "Reply" on a thread is
+  // what continues one.
+  $('btn-send-email').addEventListener('click', () => { state.emailReply = null; setComposeTab('email'); });
   $('btn-schedule-contact').addEventListener('click', openContactApptModal);
   $('btn-add-task').addEventListener('click', openContactTaskModal);
   $('btn-sequence-contact').addEventListener('click', openSequenceModal);

@@ -785,6 +785,102 @@ export async function markConversationRead(companyId, contactId) {
 }
 
 // ════════════════════════════════════════════════════════════════
+// EMAIL — two-way, per contact.
+//
+// Outbound goes through the sendContactEmail callable (SendGrid); inbound
+// arrives on the inboundEmailWebhook (SendGrid Inbound Parse) addressed to
+// reply+<companyId>.<contactId>@<reply domain>. Both land in the same
+// contacts/{id}/emails collection, which is server-written and client-read:
+// nothing here can forge or edit a message, only read the record.
+// ════════════════════════════════════════════════════════════════
+
+export const DEFAULT_EMAIL_SETTINGS = {
+  fromEmail: '',       // blank = the CRM default (anthonybrown@the1pnation.com)
+  fromName: '',
+  replyTo: '',
+  signature: '',
+  forwardInboundTo: '' // a copy of every inbound reply to a real mailbox
+};
+
+export async function listContactEmails(companyId, contactId) {
+  if (!firebaseReady || !companyId || !contactId) return [];
+  try {
+    const col = collection(db, 'companies', companyId, 'contacts', contactId, 'emails');
+    const snap = await getDocs(query(col, orderBy('createdAt', 'asc')));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) { console.warn('[crm] listContactEmails failed', e); return []; }
+}
+
+/**
+ * Send from a contact card. `threadKey`/`inReplyTo` are set when replying
+ * from an existing thread so the message stays in it — both in our own
+ * timeline and in the lead's mail client.
+ */
+export async function sendContactEmail(companyId, contactId, { subject, bodyText, bodyHtml, threadKey, inReplyTo } = {}) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'sendContactEmail');
+  const res = await call({
+    companyId, contactId, subject,
+    bodyText: bodyText || '',
+    bodyHtml: bodyHtml || '',
+    threadKey: threadKey || '',
+    inReplyTo: inReplyTo || ''
+  });
+  return res.data || { ok: true };
+}
+
+export async function markContactEmailsRead(companyId, contactId) {
+  if (!firebaseReady) return;
+  try {
+    const call = httpsCallable(functions, 'markContactEmailsRead');
+    await call({ companyId, contactId });
+  } catch (e) { /* best-effort: a stale badge is not worth an error toast */ }
+}
+
+/** Group a flat email list into threads, newest thread first. */
+export function groupEmailThreads(emails) {
+  const byKey = new Map();
+  (emails || []).forEach((e) => {
+    const k = e.threadKey || e.id;
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(e);
+  });
+  const at = (e) => (e && e.createdAt && e.createdAt.toMillis ? e.createdAt.toMillis() : 0);
+  const threads = [...byKey.entries()].map(([key, msgs]) => {
+    msgs.sort((a, b) => at(a) - at(b));
+    const last = msgs[msgs.length - 1];
+    return {
+      key,
+      messages: msgs,
+      subject: msgs[0].subject || last.subject || '(no subject)',
+      lastAt: at(last),
+      unread: msgs.some((m) => m.direction === 'in' && m.read === false)
+    };
+  });
+  threads.sort((a, b) => b.lastAt - a.lastAt);
+  return threads;
+}
+
+/** Company-wide sending identity. Stored on the company doc, like `dialer`. */
+export async function getEmailSettings(companyId) {
+  if (!firebaseReady || !companyId) return { ...DEFAULT_EMAIL_SETTINGS };
+  try {
+    const snap = await getDoc(doc(db, 'companies', companyId));
+    const d = snap.exists() ? (snap.data().email || {}) : {};
+    return { ...DEFAULT_EMAIL_SETTINGS, ...d };
+  } catch (e) { return { ...DEFAULT_EMAIL_SETTINGS }; }
+}
+
+export async function updateEmailSettings(companyId, patch = {}) {
+  const clean = {};
+  Object.keys(DEFAULT_EMAIL_SETTINGS).forEach((k) => {
+    if (patch[k] !== undefined) clean[`email.${k}`] = String(patch[k] || '').trim();
+  });
+  if (!Object.keys(clean).length) return;
+  await updateDoc(doc(db, 'companies', companyId), clean);
+}
+
+// ════════════════════════════════════════════════════════════════
 // CALLS — dialer call logs. A call doc is created client-side the moment
 // dialing starts (the softphone knows the state before any webhook fires)
 // and is then enriched server-side by voiceStatusWebhook with the duration
