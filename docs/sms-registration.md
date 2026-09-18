@@ -8,34 +8,33 @@ unregistered A2P 10DLC traffic** — not throttled, blocked — and bill sender
 fees for the attempt. AT&T, T-Mobile and Verizon enforce this at the network,
 through The Campaign Registry.
 
-So Twilio, Telnyx, Plivo, SignalWire, Vonage, Bandwidth: identical requirement.
+So Telnyx, Twilio, Plivo, SignalWire, Vonage, Bandwidth: identical requirement.
 Changing vendor changes who hands you the same form. Anyone advertising
 "no 10DLC needed" for US local-number business texting is either routing
 person-to-person traffic that carriers actively filter, or about to have their
 route shut off.
 
-**Voice is completely exempt.** No 10DLC, no verification, no registration. A
-local number and the Twilio Voice credentials in
-[`twilio-setup.md`](twilio-setup.md) and the softphone works today.
+What *does* differ between vendors is who will register you without an EIN.
+That is why this CRM is on Telnyx: its Sole Proprietor path takes the last four
+digits of your SSN instead of a tax ID, which is the door that was closed
+everywhere else.
 
-## Three doors, pick one
+**Voice is completely exempt.** No 10DLC, no verification, no registration. A
+local number and the credentials in [`telnyx-setup.md`](telnyx-setup.md) and
+the softphone works today.
+
+## Two doors, pick one
 
 | | Number | Verification | Limits |
 |---|---|---|---|
-| **Sole Proprietor 10DLC** *(recommended)* | Local area code | Name, email, address, and a one-time code to your personal mobile. No EIN, **no SSN**, no business documents. | 1 campaign, 1 number, ~1 msg/sec, ~1,000/day T-Mobile, 15/min AT&T |
-| **Toll-free verification** | 800-style | Business details form, no EIN required for sole proprietors | Full throughput |
+| **Sole Proprietor 10DLC** *(recommended)* | Local area code | Name, address, mobile number, **last four of your SSN**, and a one-time code to that mobile. No EIN, no business documents. | 1 campaign, 1 number, ~1 msg/sec, ~1,000/day T-Mobile, 15/min AT&T |
 | **Phone handoff** *(already live)* | Your own cell | None | No CRM capture at all |
 
-**Sole Proprietor is the right default here**: it is the local number, the
-lightest identity check of the three — no tax number of any kind, just a code
-texted to your phone — and the throughput ceiling is far above what one coach
-sends in a day. Expect a small Campaign Registry brand fee plus a low monthly
-campaign fee; Twilio shows the current amounts at registration.
-
-**Toll-free** is the fallback if you want unlimited throughput or a second
-number. Its approval window is the one thing to watch — estimates range from
-1-3 business days to 3-6 weeks depending on who you ask, so do not plan a
-launch around it.
+**Sole Proprietor is the right default here**: it keeps a local area code, it
+is the lightest identity check available without an EIN, and the throughput
+ceiling is far above what one coach sends in a day. Expect a small Campaign
+Registry brand fee plus a low monthly campaign fee; Telnyx shows the current
+amounts at registration.
 
 **Phone handoff** needs no setup and is what the Call and Text buttons already
 do when no credentials exist. Your own number, your own carrier plan, nothing
@@ -46,18 +45,19 @@ call logging and dispositions, because the CRM prompts you after the handoff.
 
 ## Sole Proprietor 10DLC — what you actually submit
 
-Twilio Console → Messaging → Regulatory Compliance → A2P 10DLC → register, and
-choose the **Sole Proprietor** brand type. Twilio states this path is "available
-to individuals or small business that have no Tax ID."
+Mission Control → Messaging → 10DLC → register a brand, entity type **Sole
+Proprietor**. This path exists for individuals and small businesses with no
+tax ID.
 
-**No SSN and no EIN.** Identity is proved by a one-time code, not a tax number.
-What it asks for:
+**No EIN and no business documents.** Identity is proved by the last four
+digits of your SSN plus a one-time code. What it asks for:
 
 - Business name (`The One Percent Nation`)
 - Your first and last name
 - Email address
 - Physical address
-- A mobile phone number, which Twilio verifies by **OTP**
+- The **last four digits of your SSN**
+- A mobile phone number, verified by **OTP**
 
 Then one campaign: use case, sample messages, and the opt-in description — all
 drafted for you under **Campaign content** below.
@@ -66,9 +66,9 @@ drafted for you under **Campaign content** below.
 
 These are the details that waste a day if you miss them:
 
-- **The mobile number must be a real mobile**, US or Canadian. Twilio is
-  explicit that you cannot use a number acquired from a CPaaS provider,
-  including Twilio itself. Use your personal cell.
+- **The mobile number must be a real mobile**, US or Canadian. It cannot be a
+  number acquired from a CPaaS provider, Telnyx included — the carriers check.
+  Use your personal cell.
 - **Answer the code within 24 hours** or the registration expires and you start
   over.
 - **That mobile number can be used at most 3 times** across Sole Proprietor
@@ -88,30 +88,14 @@ throttled to roughly a message per second, with carrier-level daily caps around
 
 The CRM's sequence tick sends serially and the dialer is one-to-one, so neither
 brushes that ceiling. What would hit it is a broadcast to hundreds of contacts
-at once — if you ever want that, verify a toll-free number as a second sender
-and send campaigns from it while keeping the local number for conversations.
+at once — if you ever need that, add a verified toll-free number as a second
+sender and send campaigns from it while keeping the local number for
+conversations.
 
 ## Campaign content
 
-Use this for a Sole Proprietor 10DLC campaign or for toll-free verification.
-The fields are named slightly differently between the two flows but ask for the
-same things.
-
----
-
-## If you go the toll-free route instead
-
-1. **Buy a toll-free number.** Twilio Console → Phone Numbers → Buy a number →
-   tick *Toll-free*, with SMS and Voice capability.
-2. **Start verification.** Messaging → Regulatory Compliance → Toll-Free
-   Verification → the new number.
-3. **Do not set `TWILIO_FROM_NUMBER` to it yet.** A toll-free number cannot
-   send to the US or Canada until verification is approved, so every send would
-   fail. Point the env var at it only after the approval email.
-
-Twilio exempts sole proprietors from the business-registration-number
-requirement on this flow, and states an EIN or Tax ID is not required for sole
-proprietor registration.
+Paste this into the campaign form. The field names vary slightly between
+providers but they all ask for the same things.
 
 ## The opt-in URL to submit
 
@@ -154,8 +138,11 @@ proprietors are exempt from this field.
 **Business name:** The One Percent Nation
 **Website:** https://the1pnation.com
 **Business address / contact:** your own name, address, email and mobile.
-Use the same details your Twilio account is registered under — a mismatch
-between the account holder and the submission slows review.
+Use the same details your Telnyx account is registered under — a mismatch
+between the account holder and the submission slows review. This is also what
+sank the previous attempt on Twilio: the campaign was rejected because the
+website did not match the registered brand, so keep the name and URL identical
+across the account, the brand and the campaign.
 
 **Use case category:** Customer Care
 *(Account Notifications is the second choice. Avoid Marketing as the primary
@@ -239,21 +226,27 @@ later.)*
 
 ## After approval
 
-1. Set `TWILIO_FROM_NUMBER` to the approved number as a **GitHub repository
+1. Set `TELNYX_FROM_NUMBER` to the approved number as a **GitHub repository
    secret** (Settings → Secrets and variables → Actions), not in a local file —
-   see [`twilio-setup.md`](twilio-setup.md) for why — and re-run the backend
+   see [`telnyx-setup.md`](telnyx-setup.md) for why — and re-run the backend
    deploy workflow.
-2. Set the number's **Messaging** webhook to
-   `https://us-central1-the-1p-leadership.cloudfunctions.net/twilioInboundWebhook`
-   (HTTP POST) and its status callback to
-   `https://us-central1-the-1p-leadership.cloudfunctions.net/twilioStatusWebhook`,
-   so inbound texts and delivery receipts reach the contact timeline.
-3. Send one text to your own phone from a contact record and confirm it appears
-   on the timeline. Reply STOP from that phone, then confirm the contact shows
-   "Replied STOP — texting blocked" and that sending is refused.
+2. On the number's messaging profile, set the inbound webhook to
+   `https://us-central1-the-1p-leadership.cloudfunctions.net/telnyxInboundWebhook`
+   and the delivery-receipt webhook to
+   `https://us-central1-the-1p-leadership.cloudfunctions.net/telnyxStatusWebhook`,
+   with webhook API version **v2**, so inbound texts and delivery receipts
+   reach the contact timeline.
+3. Confirm `TELNYX_PUBLIC_KEY` is set. Webhooks are verified with Ed25519
+   against it, and with no key every webhook is rejected — deliberate, since an
+   unverified webhook could create contacts and flip opt-out flags. The symptom
+   of forgetting it is inbound texts silently never arriving, not an error.
+4. Send one text to your own phone from a contact record and confirm it appears
+   on the timeline with a delivery status. Reply STOP from that phone, then
+   confirm the contact shows "Replied STOP — texting blocked", that sending is
+   refused, and that any active sequence for that contact has stopped.
 
 If you registered a *local* number for SMS and also bought a separate number
-for voice, set `TWILIO_CALLER_ID` to the voice number so outbound calls show
+for voice, set `TELNYX_CALLER_ID` to the voice number so outbound calls show
 the right caller ID.
 
 ## Staying approved

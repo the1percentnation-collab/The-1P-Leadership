@@ -78,23 +78,18 @@ const STRIPE_SECRETS = [stripeSecretKey, stripeWebhookSecret];
 // vanishing. Secret Manager is the only path that survives a deploy.
 const ANTHROPIC_API_KEY = () => (process.env.ANTHROPIC_API_KEY || '').trim();
 
-// Twilio SMS credentials are read from process.env (like Stripe), NOT via
-// defineSecret — so deploys succeed before the values exist. Until they're set
-// (functions/.env or runtime env), sendSms returns "not configured" and the
-// inbound webhook rejects unsigned traffic. Provide: TWILIO_ACCOUNT_SID,
-// TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER.
+// Telephony credentials are read from process.env (like Stripe), NOT via
+// defineSecret — so deploys succeed before the values exist. Until they are set
+// (functions/.env, written by CI from repository secrets), sendSms returns "not
+// configured" and the webhooks reject unsigned traffic. See the Telnyx block
+// further down for the full list and docs/telnyx-setup.md for where each value
+// comes from.
 //
-// Voice needs three MORE values, because minting a Voice access token cannot
-// be done with the account auth token:
-//   TWILIO_API_KEY_SID / TWILIO_API_KEY_SECRET — a Standard API key, used to
-//     sign the short-lived JWT the browser softphone registers with.
-//   TWILIO_TWIML_APP_SID — the TwiML App whose Voice URL points at
-//     voiceOutboundTwiml. Outbound softphone calls route through it.
-// Optional: TWILIO_CALLER_ID overrides TWILIO_FROM_NUMBER for outbound
-// caller ID, for when the SMS number and the voice number differ.
+// The TWILIO_* values below belong to the pre-Telnyx code kept as a revert
+// path. Nothing in the live path reads them.
 //
-// These stay on process.env rather than defineSecret for the same reason as
-// the SMS trio, and because a defineSecret value read from a function that
+// These stay on process.env rather than defineSecret because a defineSecret
+// value read from a function that
 // does not declare it in `secrets:` comes back empty — the trap that broke
 // ANTHROPIC_API_KEY in 277162f.
 let _twilioClient = null;
@@ -5189,104 +5184,18 @@ function reminderHtml(title, lines) {
   </div>`;
 }
 
-// NOTE: Scheduled (cron) reminders are temporarily NOT exported because the CI
-// deploy service account lacks the "Cloud Scheduler Admin" IAM role
-// (cloudscheduler.jobs.update). To re-enable: grant that role to the deploy
-// service account in GCP IAM, then rename `_disabled_taskReminders` /
-// `_disabled_appointmentReminders` back to `exports.taskReminders` /
-// `exports.appointmentReminders` and redeploy.
-const _disabled_taskReminders = onSchedule(
-  { schedule: 'every 60 minutes', secrets: [sendgridKey] },
-  async () => {
-    const db = admin.firestore();
-    const now = admin.firestore.Timestamp.now();
-    const horizon = admin.firestore.Timestamp.fromMillis(now.toMillis() + 24 * 3600 * 1000);
-    let snap;
-    try {
-      snap = await db.collectionGroup('tasks')
-        .where('status', '==', 'open')
-        .where('dueAt', '<=', horizon)
-        .limit(200).get();
-    } catch (e) { console.warn('[taskReminders] query failed (index?):', e && e.message); return; }
-    sgMail.setApiKey(sendgridKey.value());
-    let sent = 0;
-    for (const d of snap.docs) {
-      const t = d.data();
-      if (t.remindedAt || !t.dueAt) continue;
-      const email = await emailForUid(db, t.assigneeUid);
-      if (!email) { await d.ref.set({ remindedAt: now }, { merge: true }); continue; }
-      try {
-        const due = t.dueAt.toDate ? t.dueAt.toDate() : new Date(t.dueAt);
-        await sgMail.send({
-          to: email,
-          from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
-          replyTo: REPLY_TO,
-          subject: `Reminder: ${t.title}`,
-          html: reminderHtml('Task reminder', [
-            `<strong>${t.title}</strong>`,
-            t.contactName ? `Contact: ${t.contactName}` : '',
-            `Due: ${due.toLocaleString()}`,
-            `<a href="${APP_BASE_URL}/tasks.html" style="color:#E60306;">Open Tasks →</a>`
-          ].filter(Boolean)),
-          text: `Task reminder: ${t.title} — due ${due.toLocaleString()}`
-        });
-        sent++;
-      } catch (e) { console.warn('[taskReminders] send failed', e && e.message); }
-      await d.ref.set({ remindedAt: now }, { merge: true });
-    }
-    console.log(`[taskReminders] processed ${snap.size}, emailed ${sent}`);
-  }
-);
-
-const _disabled_appointmentReminders = onSchedule(
-  { schedule: 'every 60 minutes', secrets: [sendgridKey] },
-  async () => {
-    const db = admin.firestore();
-    const now = admin.firestore.Timestamp.now();
-    const horizon = admin.firestore.Timestamp.fromMillis(now.toMillis() + 24 * 3600 * 1000);
-    let snap;
-    try {
-      snap = await db.collectionGroup('appointments')
-        .where('status', '==', 'scheduled')
-        .where('startAt', '<=', horizon)
-        .limit(200).get();
-    } catch (e) { console.warn('[appointmentReminders] query failed (index?):', e && e.message); return; }
-    sgMail.setApiKey(sendgridKey.value());
-    let sent = 0;
-    for (const d of snap.docs) {
-      const a = d.data();
-      if (a.remindedAt || !a.startAt) continue;
-      if (a.startAt.toMillis && a.startAt.toMillis() < now.toMillis()) { await d.ref.set({ remindedAt: now }, { merge: true }); continue; }
-      const email = await emailForUid(db, a.ownerUid);
-      if (!email) { await d.ref.set({ remindedAt: now }, { merge: true }); continue; }
-      try {
-        const start = a.startAt.toDate ? a.startAt.toDate() : new Date(a.startAt);
-        await sgMail.send({
-          to: email,
-          from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
-          replyTo: REPLY_TO,
-          subject: `Upcoming: ${a.title}`,
-          html: reminderHtml('Appointment reminder', [
-            `<strong>${a.title}</strong>`,
-            a.contactName ? `With: ${a.contactName}` : '',
-            `When: ${start.toLocaleString()}`,
-            a.location ? `Where: ${a.location}` : '',
-            `<a href="${APP_BASE_URL}/calendar.html" style="color:#E60306;">Open Calendar →</a>`
-          ].filter(Boolean)),
-          text: `Appointment: ${a.title} at ${start.toLocaleString()}`
-        });
-        sent++;
-      } catch (e) { console.warn('[appointmentReminders] send failed', e && e.message); }
-      await d.ref.set({ remindedAt: now }, { merge: true });
-    }
-    console.log(`[appointmentReminders] processed ${snap.size}, emailed ${sent}`);
-  }
-);
+// Reminder emails are sent by sendReminders() from runAutomationTick, not by
+// Cloud Scheduler. Two onSchedule functions used to live here, un-exported
+// because the CI deploy service account lacked Cloud Scheduler Admin; they were
+// deleted rather than re-exported once the tick took over the same work against
+// the same `remindedAt` dedupe. Re-adding them would put two senders in a race
+// on a read-then-write flag, which is how one task gets two reminder emails.
 
 // ════════════════════════════════════════════════════════════════
-// Twilio 2-way SMS — send (callable) + inbound/status webhooks.
+// 2-way SMS — send (callable), plus the Telnyx inbound/status webhooks below.
 // Conversations live at companies/{cid}/conversations/{contactId} with a
-// messages subcollection (written only here, via Admin SDK).
+// messages subcollection (written only here, via Admin SDK). The twilio*
+// webhooks that follow are the superseded pair, kept as a revert path.
 // ════════════════════════════════════════════════════════════════
 exports.sendSms = onCall(
   async (request) => {
@@ -5825,17 +5734,25 @@ exports.authorizeCall = onCall(async (request) => {
       'Calling is not set up yet. Missing: ' + cfg.missing.join(', ') + '.');
   }
 
+  // Every refusal below carries { blocked: true } in the error details, and the
+  // client keys off that rather than the message text. Matching on wording is
+  // how a hard stop quietly becomes a fallback: reword one string and a
+  // do-not-call contact starts getting dialed from the phone's own dialer. The
+  // configuration failure above is deliberately NOT flagged, because degrading
+  // to the manual handoff is the right answer when calling is merely unset up.
+  const blocked = (message) => new HttpsError('failed-precondition', message, { blocked: true });
+
   const cSnap = await db.collection('companies').doc(companyId)
     .collection('contacts').doc(contactId).get();
-  if (!cSnap.exists) throw new HttpsError('not-found', 'Contact not found.');
+  // A contact the server cannot find must not be dialed by any route.
+  if (!cSnap.exists) throw new HttpsError('not-found', 'Contact not found.', { blocked: true });
   const contact = cSnap.data();
 
   if (contact.doNotCall === true) {
-    throw new HttpsError('failed-precondition',
-      'This contact is marked do not call and cannot be dialed.');
+    throw blocked('This contact is marked do not call and cannot be dialed.');
   }
   const to = normalizePhone(contact.phone);
-  if (!to) throw new HttpsError('failed-precondition', 'Contact has no phone number.');
+  if (!to) throw blocked('Contact has no phone number.');
 
   return { ok: true, to, callerId: cfg.callerId };
 });
@@ -7133,11 +7050,11 @@ exports.registerVoicemailDrop = onCall(async (request) => {
 // company from the CRM through runAutomationNowForCompany.
 //
 // Each tick:
-//   1. sends due sequence steps (SMS via Twilio, email via SendGrid, or a
+//   1. sends due sequence steps (SMS via Telnyx, email via SendGrid, or a
 //      task), advancing currentStep / nextRunAt, and completing enrollments
 //      that ran out of steps;
 //   2. renews Google Calendar watch channels inside their last 24 hours;
-//   3. sends task and appointment reminders — the job the two stranded
+//   3. sends task and appointment reminders, which is the job the two deleted
 //      onSchedule functions were written for.
 // ════════════════════════════════════════════════════════════════
 
@@ -7386,8 +7303,10 @@ async function renewAllGoogleWatches(db) {
 }
 
 /**
- * The reminder work that _disabled_taskReminders / _disabled_appointmentReminders
- * were written for, run from the tick instead of Cloud Scheduler.
+ * Task and appointment reminder emails, run from the tick rather than Cloud
+ * Scheduler. This is the single sender: see the note above sendSms's section
+ * for why the two onSchedule functions that used to do this were deleted
+ * instead of being re-exported.
  */
 async function sendReminders(db) {
   const now = admin.firestore.Timestamp.now();

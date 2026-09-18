@@ -6,16 +6,18 @@
 # THE SITUATION
 # -------------
 # taskReminders and appointmentReminders are deployed in the project but are
-# no longer exported from functions/index.js — they were un-exported because
-# the CI service account lacks the Cloud Scheduler Admin role (see the note
-# above _disabled_taskReminders in functions/index.js).
+# not in source. They were un-exported because the CI service account lacks the
+# Cloud Scheduler Admin role, and their source has since been deleted outright:
+# runAutomationTick's sendReminders() does the same work against the same
+# remindedAt dedupe, so re-exporting them would put two senders in a race on a
+# read-then-write flag.
 #
-# That workaround created a worse problem. Firebase now sees two functions
-# that exist in the project but not in source, tries to delete them, and the
-# very same missing permission rejects the delete. So every deploy since
-# 2026-06-14 has exited non-zero AFTER successfully deploying every real
-# function. A pipeline that is always red reports nothing: a genuine failure
-# looks exactly like the last three months of noise.
+# That leaves one problem. Firebase sees two functions that exist in the
+# project but not in source, tries to delete them, and the very same missing
+# permission rejects the delete. So every deploy since 2026-06-14 has exited
+# non-zero AFTER successfully deploying every real function. A pipeline that is
+# always red reports nothing: a genuine failure looks exactly like the last
+# three months of noise.
 #
 # WHAT THIS DOES
 # --------------
@@ -24,18 +26,27 @@
 # exits clean. Anything else — including a third function getting stranded the
 # same way — still fails the build.
 #
-# THE REAL FIX
-# ------------
-# Grant the deploy service account roles/cloudscheduler.admin in GCP IAM.
-# Then rename _disabled_taskReminders / _disabled_appointmentReminders back to
-# exports.taskReminders / exports.appointmentReminders, redeploy, and delete
-# this script's tolerance. Until then those two functions keep running the
-# code they were last deployed with, which is not the code in this repo.
+# THE REAL FIX, AND HOW TO FINISH IT
+# ----------------------------------
+# Grant the deploy service account roles/cloudscheduler.admin in GCP IAM:
+#
+#   gcloud projects add-iam-policy-binding the-1p-leadership \
+#     --member="serviceAccount:<the CI deploy service account>" \
+#     --role="roles/cloudscheduler.admin"
+#
+# The next deploy then succeeds in deleting both functions, and they stop
+# running the June 2026 code they were last deployed with. Confirm that in the
+# deploy log, then empty KNOWN_STRANDED below and delete the ::warning:: at the
+# end of this script.
+#
+# Do it in that order. Emptying the list before the grant lands just turns
+# every deploy red again, because the delete still fails.
 
 set -uo pipefail
 
 # Deployed-but-unexported functions we knowingly cannot clean up yet. Keep this
 # list minimal: every name here is a function whose failure we stop reporting.
+# Empty it once the IAM grant above has let a deploy delete these two.
 KNOWN_STRANDED="appointmentReminders taskReminders"
 
 LOG="$(mktemp)"

@@ -1,5 +1,5 @@
 // Conversations — SMS inbox (left) + thread (right). Sending goes through the
-// sendSms callable (Twilio). Admin/owner only. Works once Twilio is configured;
+// sendSms callable (Telnyx). Admin/owner only. Works once Telnyx is configured;
 // until then the list is empty and sending shows a "not configured" message.
 
 import { db, firebaseReady } from './firebase.js';

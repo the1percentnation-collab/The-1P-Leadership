@@ -736,7 +736,7 @@ export async function deleteAppointment(companyId, apptId) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// SMS conversations (Twilio). Sending goes through the sendSms callable;
+// SMS conversations. Sending goes through the sendSms callable;
 // messages are written server-side. Reads are client-side.
 // ════════════════════════════════════════════════════════════════
 function conversationsCol(companyId) { return collection(db, 'companies', companyId, 'conversations'); }

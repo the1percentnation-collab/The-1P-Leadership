@@ -130,20 +130,20 @@ function voicemailCardHtml() {
 }
 
 function pickRecorderMime() {
-  // Twilio <Play> accepts mp3/wav/ogg/webm-opus is NOT in its list; prefer
-  // formats Twilio can play directly. Most browsers offer webm/opus only,
-  // which Twilio does not accept — so we transcode to WAV client-side below.
+  // A <Play> verb accepts mp3/wav/ogg; webm/opus is not in that list, and it is
+  // the only format most browsers offer. So we transcode to WAV client-side
+  // below. This holds for Telnyx TeXML exactly as it did for TwiML.
   const c = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
   return c.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
 }
 
-/** Decode any recorded blob and re-encode as 16-bit PCM WAV, which Twilio plays. */
+/** Decode any recorded blob and re-encode as 16-bit PCM WAV, which <Play> accepts. */
 async function toWav(blob) {
   const AC = window.AudioContext || window.webkitAudioContext;
   const ctx = new AC();
   const buf = await blob.arrayBuffer();
   const audio = await ctx.decodeAudioData(buf);
-  const rate = 8000; // telephony rate; keeps the file small and Twilio-native
+  const rate = 8000; // telephony rate; keeps the file small and carrier-native
   const off = new OfflineAudioContext(1, Math.ceil(audio.duration * rate), rate);
   const src = off.createBufferSource();
   src.buffer = audio; src.connect(off.destination); src.start();
