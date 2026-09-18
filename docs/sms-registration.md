@@ -103,14 +103,38 @@ providers but they all ask for the same things.
 https://the1pnation.com/webinar
 ```
 
-This is the page to give them, and it is already built correctly: the phone
-field and both consent checkboxes are in the same visible form, on a public
-page with no login, and the wording carries everything a reviewer looks for —
-named sender, message frequency, data rates, and HELP/STOP.
+> **STOP — this page is not submittable as-is.** An earlier version of this
+> doc claimed `/webinar` was already built correctly. It is not, and the
+> problem is the single most common rejection cause.
+>
+> The consent block lives inside `<div id="final-step" class="final-step-locked">`
+> in `public/webinar.html`, and that container is `display: none` until the
+> visitor answers every quiz question. Verified in a headless browser on a
+> fresh load: the phone field is visible, the consent block has a zero-size
+> box, and `document.body.innerText` contains no consent wording at all — no
+> "agree to receive text messages", no HELP, no STOP. A reviewer opening the
+> URL sees a phone field with no visible consent language next to it.
+>
+> `/class` and `/matrix` were checked as alternatives and fail the same way on
+> load. Nothing currently deployed satisfies the requirement.
+>
+> The requirement is that a reviewer, without logging in and without
+> interacting with the page, can see the phone input and the consent wording at
+> the same time. The fix is to move `.consent-block` out of the gated
+> `#final-step` container so it renders beside the phone field from the start.
+> Real `<input type="checkbox">` elements instead of the `<div class="consent-box">`
+> toggles would also help, since some review tooling looks for actual inputs
+> and it is better for accessibility either way.
+
+Once that is fixed, this is the page to give them. The wording itself already
+carries everything a reviewer looks for — named sender, message frequency, data
+rates, and HELP/STOP — so only its visibility is at issue.
 
 **Do not submit `/onboarding`.** Its consent language is the strongest on the
 site, but the page redirects to login when nobody is signed in, so a reviewer
-cannot see it. An unreachable opt-in URL is the most common rejection.
+cannot see it. An unreachable opt-in URL is the most common rejection, and a
+reachable page whose consent is hidden behind a quiz gate fails for the same
+reason.
 
 The two boxes on `/webinar`, quoted for the submission:
 
