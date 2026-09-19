@@ -8948,7 +8948,11 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 .sms-list-item { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--border); padding: 12px 14px; cursor: pointer; color: var(--white); }
 .sms-list-item:hover { background: var(--surface2); }
 .sms-list-item.active { background: color-mix(in srgb, var(--red) 14%, transparent); }
-.sms-list-top { display: flex; justify-content: space-between; align-items: center; }
+.sms-list-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+/* Channel marker in the unified inbox. The name takes the free space so the
+   icon and the unread pill stay pinned to their ends. */
+.sms-chan { font-size: 12px; opacity: .7; flex-shrink: 0; }
+.sms-list-top .sms-list-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sms-list-name { font-weight: 600; font-size: 13px; }
 .sms-unread { background: var(--red); color: #fff; border-radius: 999px; font-size: 10px; padding: 1px 7px; font-family: var(--font-mono); }
 .sms-list-preview { color: var(--gray-light); font-size: 12px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -10397,6 +10401,31 @@ body.has-call-dock .crm-content { padding-bottom: 190px; }
 .tl-item-sms.tl-out .tl-time { margin-left: 0; }
 .tl-item-call.tl-in .tl-ico { color: #56D4A8; }
 .tl-item-note { background: color-mix(in srgb, #E8C547 6%, transparent); }
+/* Contact recency.
+   Deliberately distinct from `.crm-stage-badge` in shape — a pill, not a
+   rectangle — because the two sit side by side on the contact card and mean
+   different things: one is where the lead is in the pipeline, the other is
+   whether anyone has actually spoken to them. */
+.crm-fresh-pill {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--fresh-color, #6E6E6E) 16%, transparent);
+  color: var(--fresh-color, #6E6E6E);
+  border: 1px solid color-mix(in srgb, var(--fresh-color, #6E6E6E) 35%, transparent);
+}
+/* Never-contacted is muted rather than alarming: a lead that arrived this
+   morning has not been neglected, it has just arrived. */
+.crm-fresh-pill.crm-fresh-never { opacity: .75; }
+.crm-fresh-badge { margin-left: 6px; border-radius: 999px; }
+.crm-list-unread { margin-left: 6px; vertical-align: middle; }
+.crm-card-foot { display: flex; align-items: center; gap: 6px; }
+.crm-nav-unread { margin-left: auto; }
+
 /* Email threads on the contact timeline. An email is a document, not a
    bubble: it gets a subject line, a sender row and the delivery state, and a
    thread collapses to its latest message so one long exchange does not bury

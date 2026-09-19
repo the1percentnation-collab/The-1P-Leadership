@@ -4,13 +4,13 @@
 import { db, firebaseReady } from './firebase.js';
 import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
-import { renderCrmShell } from './crm-shell.js';
+import { renderCrmShell, setCrmUnreadCount } from './crm-shell.js';
 import { collection, getDocs, query, where, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.js';
 import {
   STAGES, STAGE_IDS, SOURCES, stageMeta,
   listContacts, createContact, changeStage, listCompanyAdmins,
-  callBlockReason,
+  callBlockReason, contactFreshness,
   escapeHtml, fmtDate, toDate
 } from './crm.js';
 import { dialer, onDialerEvent } from './dialer-core.js';
@@ -110,7 +110,7 @@ function exportVisibleContacts() {
     return a ? (a.displayName || a.email || '') : '';
   };
   const csv = toCsv(
-    ['Name', 'Email', 'Phone', 'Company', 'Tags', 'Stage', 'Source', 'Owner', 'Created', 'Last activity'],
+    ['Name', 'Email', 'Phone', 'Company', 'Tags', 'Stage', 'Source', 'Owner', 'Created', 'Last activity', 'Last contacted'],
     rows.map((c) => [
       c.name || '',
       c.email || '',
@@ -121,7 +121,8 @@ function exportVisibleContacts() {
       c.source || '',
       ownerName(c.ownerUid),
       iso(c.createdAt),
-      iso(c.lastActivityAt)
+      iso(c.lastActivityAt),
+      iso(c.lastContactedAt)
     ])
   );
   const stamp = new Date().toISOString().slice(0, 10);
@@ -202,7 +203,7 @@ function contactCardHtml(c) {
         </div>
         ${subparts.length ? `<div class="crm-card-sub">${subparts.join(' · ')}</div>` : ''}
         ${tags.length ? `<div class="crm-card-tags">${tags.map((t) => `<span class="crm-tag">#${escapeHtml(t)}</span>`).join('')}${moreTags ? `<span class="crm-tag crm-tag-more">+${moreTags}</span>` : ''}</div>` : ''}
-        <div class="crm-card-foot">${fmtDate(c.lastActivityAt)}</div>
+        <div class="crm-card-foot">${freshnessPillHtml(c)}${unreadBadgeHtml(c)}</div>
       </a>
       <div class="crm-card-actions">${quickActionsHtml(c)}</div>
     </div>
@@ -339,6 +340,23 @@ function ownerLabel(uid) {
   return a.displayName || a.email || uid.slice(0, 6);
 }
 
+/**
+ * How long since anyone actually reached this lead. Deliberately separate from
+ * the Last Activity column beside it: that one moves when the record is
+ * edited, this one only when someone made contact.
+ */
+function freshnessPillHtml(c) {
+  const f = contactFreshness(c);
+  return `<span class="crm-fresh-pill crm-fresh-${f.id}" style="--fresh-color:${f.color}" title="${escapeHtml(f.never ? 'Nobody has contacted this lead yet' : f.detail)}">${escapeHtml(f.never ? 'Never' : f.short)}</span>`;
+}
+
+/** Unread inbound email waiting on this contact's card. */
+function unreadBadgeHtml(c) {
+  const n = Number(c.emailUnreadCount) || 0;
+  if (n <= 0) return '';
+  return `<span class="sms-unread crm-list-unread" title="${n} unread ${n === 1 ? 'reply' : 'replies'}">${n}</span>`;
+}
+
 function renderList() {
   const host = $('view-list');
   const rows = filteredContacts().slice();
@@ -349,6 +367,11 @@ function renderList() {
     if (key === 'lastActivityAt') {
       va = a.lastActivityAt && a.lastActivityAt.toMillis ? a.lastActivityAt.toMillis() : 0;
       vb = b.lastActivityAt && b.lastActivityAt.toMillis ? b.lastActivityAt.toMillis() : 0;
+    } else if (key === 'lastContactedAt') {
+      // Never-contacted sorts as the oldest possible, so descending puts the
+      // freshest first and ascending surfaces the people nobody has called.
+      va = toDate(a.lastContactedAt) ? toDate(a.lastContactedAt).getTime() : 0;
+      vb = toDate(b.lastContactedAt) ? toDate(b.lastContactedAt).getTime() : 0;
     } else if (key === 'owner') {
       va = ownerLabel(a.ownerUid).toLowerCase();
       vb = ownerLabel(b.ownerUid).toLowerCase();
@@ -378,6 +401,7 @@ function renderList() {
             ${hdr('stage', 'Stage')}
             ${hdr('owner', 'Owner')}
             <th>Tags</th>
+            ${hdr('lastContactedAt', 'Last Contacted')}
             ${hdr('lastActivityAt', 'Last Activity')}
             <th>Actions</th>
           </tr>
@@ -388,18 +412,22 @@ function renderList() {
             const tags = (c.tags || []).slice(0, 3);
             return `
               <tr class="crm-list-row" data-contact-id="${c.id}">
-                <td><a href="/contact.html?id=${encodeURIComponent(c.id)}" class="crm-list-name">${escapeHtml(c.name || 'Unnamed')}</a></td>
+                <td>
+                  <a href="/contact.html?id=${encodeURIComponent(c.id)}" class="crm-list-name">${escapeHtml(c.name || 'Unnamed')}</a>
+                  ${unreadBadgeHtml(c)}
+                </td>
                 <td>${escapeHtml(c.email || '—')}</td>
                 <td>${escapeHtml(c.phone || '—')}</td>
                 <td>${escapeHtml(c.companyName || '—')}</td>
                 <td><span class="crm-stage-badge" style="--stage-color:${meta.color}">${escapeHtml(meta.label)}</span></td>
                 <td>${escapeHtml(ownerLabel(c.ownerUid))}</td>
                 <td>${tags.map((t) => `<span class="crm-tag">#${escapeHtml(t)}</span>`).join('') || '—'}</td>
+                <td>${freshnessPillHtml(c)}</td>
                 <td>${fmtDate(c.lastActivityAt)}</td>
                 <td><div class="crm-row-actions">${quickActionsHtml(c)}</div></td>
               </tr>
             `;
-          }).join('') : `<tr><td colspan="9" style="color:var(--gray-mid);">No contacts yet.</td></tr>`}
+          }).join('') : `<tr><td colspan="10" style="color:var(--gray-mid);">No contacts yet.</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -411,7 +439,8 @@ function renderList() {
         state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
       } else {
         state.sort.key = k;
-        state.sort.dir = k === 'lastActivityAt' ? 'desc' : 'asc';
+        // Recency columns read newest-first by default; everything else A-Z.
+        state.sort.dir = (k === 'lastActivityAt' || k === 'lastContactedAt') ? 'desc' : 'asc';
       }
       renderList();
     });
@@ -544,6 +573,7 @@ function openNewContactModal() {
 // ────────────────────────────────────────────────────────────────
 async function refreshContacts() {
   state.contacts = await listContacts(state.companyId);
+  setCrmUnreadCount(state.contacts.reduce((n, c) => n + (Number(c.emailUnreadCount) || 0), 0));
   renderStageChips();
   renderTagChips();
   renderCurrentView();

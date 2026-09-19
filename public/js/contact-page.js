@@ -29,6 +29,7 @@ import {
   listAppointments, createAppointment, setAppointmentStatus,
   listMessages, sendSms,
   listContactEmails, sendContactEmail, markContactEmailsRead, groupEmailThreads,
+  contactFreshness,
   listCalls, setDoNotCall, dispositionMeta, callBlockReason,
   getGoogleCalendarStatus, listSequences, listEnrollments, enrollContact, stopEnrollment,
   escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate
@@ -116,8 +117,14 @@ function renderContactHeader() {
   const bits = [];
   if (c.companyName) bits.push(escapeHtml(c.companyName));
   if (ownerLabel) bits.push('Owner: ' + escapeHtml(ownerLabel));
+  // The freshness pill sits beside the stage badge rather than in the text
+  // line, because "when did we last actually speak to this person" is a
+  // status, not a detail.
+  const f = contactFreshness(c);
+  const freshLabel = f.never ? 'Never contacted' : `${f.label} · ${f.detail}`;
   $('ct-sub').innerHTML =
     `<span class="crm-stage-badge" style="--stage-color:${meta.color}">${escapeHtml(meta.label)}</span>`
+    + `<span class="crm-stage-badge crm-fresh-badge" style="--stage-color:${f.color}" title="${escapeHtml(f.never ? 'Nobody has contacted this lead yet' : f.detail)}">${escapeHtml(freshLabel)}</span>`
     + (bits.length ? `<span class="ct-sub-text">${bits.join(' · ')}</span>` : '');
 
   $('ct-stage').innerHTML = STAGES.map((s) =>

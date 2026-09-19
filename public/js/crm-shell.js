@@ -104,3 +104,26 @@ export function renderCrmShell({ active = 'contacts', title = 'CRM', user = null
 
   return document.getElementById('crm-content');
 }
+
+/**
+ * Badge the Conversations nav item with the number of unread inbound replies.
+ *
+ * Called by pages that have already loaded the contact list, so this costs no
+ * extra read — `emailUnreadCount` rides on the contact documents. Without it
+ * an inbound reply is only discoverable by opening the one card it landed on,
+ * which was the gap that made two-way email feel one-way.
+ */
+export function setCrmUnreadCount(n) {
+  const count = Number(n) || 0;
+  const link = document.querySelector('.crm-nav-item[href="/conversations.html"]');
+  if (!link) return;
+  let badge = link.querySelector('.crm-nav-unread');
+  if (!count) { if (badge) badge.remove(); return; }
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'sms-unread crm-nav-unread';
+    link.appendChild(badge);
+  }
+  badge.textContent = count > 99 ? '99+' : String(count);
+  badge.title = `${count} unread ${count === 1 ? 'reply' : 'replies'}`;
+}
