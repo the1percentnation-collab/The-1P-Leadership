@@ -272,10 +272,37 @@ function sourceReport() {
   );
 }
 
+/**
+ * Pre-backfill guard.
+ *
+ * A contact that has never been written by the new code has NO lastContactedAt
+ * field at all, as distinct from one explicitly set to null, which means
+ * genuinely never contacted. Before scripts/backfill-last-contacted.js runs,
+ * every existing contact falls in the first group and the recency reports read
+ * "Never contacted" for the whole book — wrong, alarming, and the kind of
+ * first impression that makes someone stop trusting a feature.
+ *
+ * Saying so is better than rendering a confident lie. The banner disappears on
+ * its own once the backfill has run.
+ */
+function backfillBannerHtml() {
+  if (!state.contacts.length) return '';
+  const missing = state.contacts.filter((c) => c.lastContactedAt === undefined).length;
+  if (missing < state.contacts.length * 0.5) return '';
+  return `<div class="card rep-banner">
+    <strong>Contact history has not been backfilled yet.</strong>
+    ${missing} of ${state.contacts.length} contacts have no outreach history recorded, so the
+    recency figures below are not meaningful yet. Run
+    <code>node scripts/backfill-last-contacted.js</code> to derive it from existing
+    emails, texts, calls and logged activity. This notice clears itself once that is done.
+  </div>`;
+}
+
 function renderReports() {
   const host = $('crm-reports');
   if (!host) return;
   host.innerHTML = [
+    backfillBannerHtml(),
     stalenessReport(),
     tasksReport(),
     outreachReport(),

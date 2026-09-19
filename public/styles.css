@@ -10416,6 +10416,16 @@ body.has-call-dock .crm-content { padding-bottom: 190px; }
 .task-check.done { background: var(--gray-mid); border-color: var(--gray-mid); }
 .task-priority-high { color: var(--red); font-weight: 700; }
 
+.rep-banner {
+  border-color: rgba(232,197,71,.45);
+  background: color-mix(in srgb, #E8C547 8%, transparent);
+  color: var(--white-dim); font-size: 13px; line-height: 1.5; padding: 12px 16px;
+}
+.rep-banner code {
+  font-family: var(--font-mono); font-size: 12px;
+  background: rgba(0,0,0,.3); padding: 1px 6px; border-radius: 4px;
+}
+
 /* CRM reports. Deterministic, computed from the company's own data — no
    model, no API cost, and exact rather than summarized. Every row is a button
    because a count is only useful once you can see who is behind it. */
