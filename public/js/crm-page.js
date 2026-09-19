@@ -32,12 +32,14 @@ const PANEL_HTML = `
     <button class="btn btn-primary" id="btn-new-contact">+ New Contact</button>
   </div>
   <div class="crm-filters">
-    <div class="crm-chip-row" id="crm-owner-chips">
-      <button class="crm-chip active" data-owner-filter="all">All</button>
-      <button class="crm-chip" data-owner-filter="mine">Mine</button>
+    <div class="crm-seg" id="crm-owner-chips">
+      <button class="crm-seg-btn active" data-owner-filter="all">All</button>
+      <button class="crm-seg-btn" data-owner-filter="mine">Mine</button>
     </div>
-    <div class="crm-chip-row" id="crm-stage-chips"></div>
-    <div class="crm-chip-row" id="crm-tag-chips"></div>
+    <div class="crm-filter" id="crm-stage-filter"></div>
+    <div class="crm-filter" id="crm-tag-filter"></div>
+    <button type="button" class="crm-filter-clear" id="crm-clear-filters" hidden>Clear</button>
+    <span class="crm-filter-count" id="crm-filter-count"></span>
   </div>
   <div id="view-kanban" class="crm-view"></div>
   <div id="view-list" class="crm-view" style="display:none;"></div>
@@ -128,45 +130,125 @@ function exportVisibleContacts() {
   downloadCsv(`contacts-${stamp}.csv`, csv);
 }
 
-function renderStageChips() {
-  const el = $('crm-stage-chips');
-  if (!el) return;
-  el.innerHTML = [
-    `<button class="crm-chip ${!state.filters.stage ? 'active' : ''}" data-stage-filter="">All stages</button>`,
-    ...STAGES.map((s) => `
-      <button class="crm-chip ${state.filters.stage === s.id ? 'active' : ''}" data-stage-filter="${s.id}">
-        <span class="crm-dot" style="background:${s.color}"></span>${escapeHtml(s.label)}
-      </button>`)
-  ].join('');
-  el.querySelectorAll('[data-stage-filter]').forEach((b) => {
+/**
+ * One compact dropdown filter (stage or tag).
+ *
+ * The filter bar used to be three wrapping rows of chips, which grew a row
+ * taller with every new tag and pushed the board down the page. A dropdown
+ * keeps the bar one line high no matter how many tags a company collects,
+ * and the trigger doubles as the readout of what is currently filtered.
+ */
+function renderFilterMenu(hostId, opts) {
+  const host = $(hostId);
+  if (!host) return;
+  const { options, allLabel, value, onPick } = opts;
+  if (!options.length) { host.innerHTML = ''; return; }
+
+  const current = options.find((o) => o.value === value) || null;
+  const label = current ? current.label : allLabel;
+  const dot = current && current.color
+    ? `<span class="crm-dot" style="background:${current.color}"></span>`
+    : '';
+
+  host.innerHTML = `
+    <button type="button" class="crm-filter-btn ${current ? 'active' : ''}" aria-haspopup="true" aria-expanded="false">
+      ${dot}<span class="crm-filter-label">${escapeHtml(label)}</span>
+      <svg class="crm-filter-caret" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="crm-filter-pop" hidden>
+      <button type="button" class="crm-filter-opt ${!current ? 'selected' : ''}" data-value="">${escapeHtml(allLabel)}</button>
+      ${options.map((o) => `
+        <button type="button" class="crm-filter-opt ${o.value === value ? 'selected' : ''}" data-value="${escapeHtml(o.value)}">
+          ${o.color ? `<span class="crm-dot" style="background:${o.color}"></span>` : ''}${escapeHtml(o.label)}
+        </button>`).join('')}
+    </div>
+  `;
+
+  const btn = host.querySelector('.crm-filter-btn');
+  const pop = host.querySelector('.crm-filter-pop');
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = pop.hidden;
+    closeAllFilterMenus();
+    pop.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+  });
+  pop.querySelectorAll('[data-value]').forEach((b) => {
     b.addEventListener('click', () => {
-      const v = b.getAttribute('data-stage-filter');
-      state.filters.stage = v || null;
-      renderStageChips();
-      renderCurrentView();
+      closeAllFilterMenus();
+      onPick(b.getAttribute('data-value') || null);
     });
   });
 }
 
+function closeAllFilterMenus() {
+  document.querySelectorAll('.crm-filter-pop').forEach((p) => { p.hidden = true; });
+  document.querySelectorAll('.crm-filter-btn').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+}
+
+document.addEventListener('click', closeAllFilterMenus);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAllFilterMenus(); });
+
+function renderStageChips() {
+  renderFilterMenu('crm-stage-filter', {
+    allLabel: 'All stages',
+    value: state.filters.stage,
+    options: STAGES.map((s) => ({ value: s.id, label: s.label, color: s.color })),
+    onPick: (v) => {
+      state.filters.stage = v;
+      renderStageChips();
+      renderCurrentView();
+    }
+  });
+  renderFilterBarState();
+}
+
 function renderTagChips() {
-  const el = $('crm-tag-chips');
-  if (!el) return;
-  const allTags = new Set();
-  state.contacts.forEach((c) => (c.tags || []).forEach((t) => allTags.add(t)));
-  if (!allTags.size) { el.innerHTML = ''; return; }
-  const tags = Array.from(allTags).sort();
-  el.innerHTML = [
-    `<button class="crm-chip ${!state.filters.tag ? 'active' : ''}" data-tag-filter="">All tags</button>`,
-    ...tags.map((t) => `<button class="crm-chip ${state.filters.tag === t ? 'active' : ''}" data-tag-filter="${escapeHtml(t)}">#${escapeHtml(t)}</button>`)
-  ].join('');
-  el.querySelectorAll('[data-tag-filter]').forEach((b) => {
-    b.addEventListener('click', () => {
-      const v = b.getAttribute('data-tag-filter');
-      state.filters.tag = v || null;
+  const all = new Set();
+  state.contacts.forEach((c) => (c.tags || []).forEach((t) => all.add(t)));
+  const tags = Array.from(all).sort();
+  // A tag can disappear when the last contact carrying it is filtered away or
+  // retagged; drop the selection instead of leaving a filter nothing matches.
+  if (state.filters.tag && !all.has(state.filters.tag)) state.filters.tag = null;
+  renderFilterMenu('crm-tag-filter', {
+    allLabel: 'All tags',
+    value: state.filters.tag,
+    options: tags.map((t) => ({ value: t, label: '#' + t })),
+    onPick: (v) => {
+      state.filters.tag = v;
       renderTagChips();
       renderCurrentView();
-    });
+    }
   });
+  renderFilterBarState();
+}
+
+/** Clear button + "showing N of M" readout, both driven by the active filters. */
+function renderFilterBarState() {
+  const f = state.filters;
+  const active = f.owner !== 'all' || !!f.stage || !!f.tag || !!f.search;
+  const clear = $('crm-clear-filters');
+  if (clear) {
+    clear.hidden = !active;
+    clear.onclick = () => {
+      state.filters.owner = 'all';
+      state.filters.stage = null;
+      state.filters.tag = null;
+      state.filters.search = '';
+      const search = $('crm-search');
+      if (search) search.value = '';
+      renderOwnerChips();
+      renderStageChips();
+      renderTagChips();
+      renderCurrentView();
+    };
+  }
+  const count = $('crm-filter-count');
+  if (count) {
+    const total = state.contacts.length;
+    const shown = filteredContacts().length;
+    count.textContent = !total ? '' : (active ? `${shown} of ${total}` : `${total} contacts`);
+  }
 }
 
 function renderOwnerChips() {
@@ -180,6 +262,7 @@ function renderOwnerChips() {
       renderCurrentView();
     };
   });
+  renderFilterBarState();
 }
 
 // ────────────────────────────────────────────────────────────────
