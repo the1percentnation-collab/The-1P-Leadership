@@ -117,7 +117,7 @@ module.exports = {
 
 <h2>Practice this week</h2>
 <p>Run three practice coaching sessions, thirty to sixty minutes each. Target three hours logged. At least two should be second or later sessions with the same practice client, because you cannot practice accountability on someone you are meeting for the first time.</p>
-<p>Keep the peer triad running, roles rotating as usual, with two minutes of observer feedback against the four rubric criteria. At least two of your three sessions this week should be with clients who are not classmates. That share keeps growing.</p>
+<p>Keep the peer triad running, roles rotating as usual, with two minutes of observer feedback against the four rubric criteria. At least two of your three sessions this week should be with clients who are not classmates, putting you at <strong>7 of your 12 outside hours</strong> by the end of this module. If you are short here, this is the week to fix it, not week thirteen.</p>
 <h3>Your second feedback-only recording</h3>
 <p>Submit a second practice recording this week, fifteen to twenty minutes, from any practice session. Your first went in after Module 4. Submit the link in the Certification tab, under Practice recordings. This one is reviewed the same way: feedback only, no score recorded, and it has no effect on your certification.</p>
 <p>You will get back one strength and one specific change for each of the four criteria. Read the change items next to your first recording's feedback and look for what repeated. The repeats are your real pattern, and they are what to work on before the graded capstone.</p>

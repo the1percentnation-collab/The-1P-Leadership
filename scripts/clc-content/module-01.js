@@ -97,6 +97,7 @@ module.exports = {
 
 <h2>Practice this week</h2>
 <p>Target: <strong>2 practice coaching hours</strong> this week.</p>
+<p>Certification needs 25 approved hours, and <strong>at least 12 of them with people who are not in this cohort</strong>. Peer practice is where you learn the mechanics. Clients who never read the rubric are where you find out whether they hold. Every module from here gives you the running number you should be at, so the gap never surprises you in week thirteen.</p>
 <p>From this week on you practice in a fixed peer triad: one coach, one client, one observer, rotating roles every week so you sit in all three seats. The observer watches against the four rubric criteria (Presence and Listening, Question Quality, Session Structure, Non-Advising) and gives two minutes of specific feedback after each round. Specific means the moment and the words, not a grade. Being observed early is how you avoid discovering your habits in week 13. Triad practice counts toward your logged hours only for the person in the coach seat.</p>
 <ol>
 <li>Meet your triad once this week and run one round in each seat.</li>

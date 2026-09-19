@@ -8478,10 +8478,18 @@ const CERT_CONFIG_DEFAULTS = {
   passingScorePercent: 80,
   maxExamAttempts: 3,
   requiredHours: 25,          // minimum logged + approved practice coaching hours
+  requiredOutsideHours: 12,   // of those, the minimum coached outside the cohort
   examQuestionCount: 25,
   renewalHours: 10,           // approved hours since last issuance/renewal
   renewalCeCredits: 10        // approved CE credits since last issuance/renewal
 };
+
+// An hour entry is either 'cohort' (a classmate, usually the peer triad) or
+// 'outside' (anyone who is not in the program). Entries written before the
+// field existed count as cohort, which is the conservative reading.
+function isOutsideEntry(e) {
+  return String((e && e.clientType) || 'cohort') === 'outside';
+}
 
 async function loadCertConfig(db) {
   try {
@@ -8879,10 +8887,18 @@ exports.getCertificationStatus = onCall(async (request) => {
 
   let approvedMinutes = 0;
   let pendingMinutes = 0;
+  let approvedOutsideMinutes = 0;
+  let pendingOutsideMinutes = 0;
   hoursSnap.docs.forEach((d) => {
     const e = d.data();
-    if (e.status === 'approved') approvedMinutes += Number(e.minutes) || 0;
-    else if (e.status === 'submitted') pendingMinutes += Number(e.minutes) || 0;
+    const mins = Number(e.minutes) || 0;
+    if (e.status === 'approved') {
+      approvedMinutes += mins;
+      if (isOutsideEntry(e)) approvedOutsideMinutes += mins;
+    } else if (e.status === 'submitted') {
+      pendingMinutes += mins;
+      if (isOutsideEntry(e)) pendingOutsideMinutes += mins;
+    }
   });
   const capstoneApproved = capsSnap.docs.some((d) => d.data().status === 'approved');
   const capstoneSubmitted = capsSnap.docs.some((d) => d.data().status === 'submitted');
@@ -8895,6 +8911,10 @@ exports.getCertificationStatus = onCall(async (request) => {
     approvedHours: Math.round((approvedMinutes / 60) * 10) / 10,
     pendingHours: Math.round((pendingMinutes / 60) * 10) / 10,
     hoursMet: approvedMinutes >= cfg.requiredHours * 60,
+    requiredOutsideHours: cfg.requiredOutsideHours,
+    approvedOutsideHours: Math.round((approvedOutsideMinutes / 60) * 10) / 10,
+    pendingOutsideHours: Math.round((pendingOutsideMinutes / 60) * 10) / 10,
+    outsideHoursMet: approvedOutsideMinutes >= cfg.requiredOutsideHours * 60,
     examPassed,
     attemptsUsed,
     attemptsAllowed: cfg.maxExamAttempts,
@@ -8940,6 +8960,16 @@ exports.issueCertification = onCall(async (request) => {
   if (approvedMinutes < cfg.requiredHours * 60) {
     throw new HttpsError('failed-precondition',
       `Only ${Math.floor(approvedMinutes / 60)} of ${cfg.requiredHours} approved practice hours.`);
+  }
+  // Peer practice builds the mechanics; clients who never read the rubric are
+  // what prove they hold. A log made entirely of classmates does not certify.
+  const approvedOutsideMinutes = hoursSnap.docs
+    .filter((d) => isOutsideEntry(d.data()))
+    .reduce((sum, d) => sum + (Number(d.data().minutes) || 0), 0);
+  if (approvedOutsideMinutes < cfg.requiredOutsideHours * 60) {
+    throw new HttpsError('failed-precondition',
+      `Only ${Math.floor(approvedOutsideMinutes / 60)} of ${cfg.requiredOutsideHours} ` +
+      'approved hours are with clients outside the cohort.');
   }
   if (capsSnap.empty) {
     throw new HttpsError('failed-precondition', 'No approved recorded-session review.');

@@ -143,7 +143,7 @@ function renderHours() {
     <tr>
       <td><b>${escapeHtml(h.userName)}</b><br><span style="font-size:11px;color:var(--gray-mid);">${escapeHtml(h.uid)}</span></td>
       <td>${escapeHtml(h.date || '')}</td>
-      <td>${escapeHtml(h.clientLabel || '')}</td>
+      <td>${escapeHtml(h.clientLabel || '')}<br><span style="font-size:11px;color:var(--gray-mid);">${String(h.clientType || 'cohort') === 'outside' ? 'Outside the cohort' : 'Classmate'}</span></td>
       <td class="num">${Math.round(((Number(h.minutes) || 0) / 60) * 10) / 10}h</td>
       <td style="font-size:12px;color:var(--gray-light);">${escapeHtml(h.notes || '')}</td>
       <td style="white-space:nowrap;">
@@ -324,6 +324,7 @@ async function lookupStatus(ev) {
       ${reqRow(s.examPassed, 'Written exam passed', `${s.attemptsUsed}/${s.attemptsAllowed} attempts used`)}
       ${reqRow(s.capstoneApproved, 'Recorded session approved', s.capstoneSubmitted && !s.capstoneApproved ? 'Submitted, in queue above' : '')}
       ${reqRow(s.hoursMet, `${s.requiredHours} approved practice hours`, `${s.approvedHours}h approved, ${s.pendingHours}h pending`)}
+      ${reqRow(s.outsideHoursMet, `${s.requiredOutsideHours} of those from outside the cohort`, `${s.approvedOutsideHours}h approved, ${s.pendingOutsideHours}h pending`)}
       <div style="margin-top:14px;">
         ${s.certified
           ? `<span class="auth-ok">Certified — ${escapeHtml(s.certification.certNumber)}, license valid through ${escapeHtml((s.certification.licenseExpiresAt || '').slice(0, 10))}</span>`

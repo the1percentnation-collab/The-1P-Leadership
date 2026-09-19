@@ -60,6 +60,11 @@ export function alignBarHtml(activeKey) {
 
 // ─── Hours Log tab ────────────────────────────────────────────────────────
 
+// Mirrors config/certification (CERT_CONFIG_DEFAULTS in functions/index.js).
+// issueCertification enforces both; these are for the progress display.
+const REQUIRED_HOURS = 25;
+const REQUIRED_OUTSIDE_HOURS = 12;
+
 function fmtHours(minutes) {
   return `${Math.round((minutes / 60) * 10) / 10}h`;
 }
@@ -96,18 +101,23 @@ async function renderHoursTab(root) {
     console.warn('[clc] hours load failed', e);
   }
 
+  const isOutside = (e) => String(e.clientType || 'cohort') === 'outside';
   const approvedMin = entries.filter((e) => e.status === 'approved')
     .reduce((s, e) => s + (Number(e.minutes) || 0), 0);
   const pendingMin = entries.filter((e) => e.status === 'submitted')
     .reduce((s, e) => s + (Number(e.minutes) || 0), 0);
-  const goalMin = 25 * 60;
+  const approvedOutsideMin = entries.filter((e) => e.status === 'approved' && isOutside(e))
+    .reduce((s, e) => s + (Number(e.minutes) || 0), 0);
+  const goalMin = REQUIRED_HOURS * 60;
+  const outsideGoalMin = REQUIRED_OUTSIDE_HOURS * 60;
   const pct = Math.min(100, Math.round((approvedMin / goalMin) * 100));
+  const outsidePct = Math.min(100, Math.round((approvedOutsideMin / outsideGoalMin) * 100));
 
   const rows = entries.map((e) => `
     <div style="display:flex;gap:12px;align-items:center;padding:12px 14px;background:#111;border:1px solid #1E1E1E;border-radius:8px;">
       <div style="flex:1;min-width:0;">
         <div style="color:#EEE;font-size:13px;">${esc(e.clientLabel || 'Practice client')}</div>
-        <div style="color:#777;font-size:11px;">${esc(e.date || '')}${e.notes ? ' · ' + esc(e.notes) : ''}</div>
+        <div style="color:#777;font-size:11px;">${esc(e.date || '')} · ${isOutside(e) ? 'Outside the cohort' : 'Classmate'}${e.notes ? ' · ' + esc(e.notes) : ''}</div>
       </div>
       <div style="color:#CCC;font-size:13px;flex-shrink:0;">${fmtHours(Number(e.minutes) || 0)}</div>
       ${statusChip(e.status)}
@@ -116,15 +126,22 @@ async function renderHoursTab(root) {
   slot.innerHTML = `
     <div style="margin-bottom:20px;">
       <h2 style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:#fff;margin-bottom:6px;letter-spacing:0.5px;">PRACTICE HOUR LOG</h2>
-      <p style="color:#AAAAAA;font-size:13px;margin:0;">Certification requires 25 approved practice coaching hours. Log each session here; your program admin reviews and approves them.</p>
+      <p style="color:#AAAAAA;font-size:13px;margin:0;">Certification requires ${REQUIRED_HOURS} approved practice coaching hours, and at least ${REQUIRED_OUTSIDE_HOURS} of them with clients who are not in this cohort. Log each session here; your program admin reviews and approves them.</p>
     </div>
     <div style="background:#111;border:1px solid #222;border-radius:12px;padding:18px;margin-bottom:18px;">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:#AAA;margin-bottom:8px;">
-        <span>${fmtHours(approvedMin)} approved of 25h${pendingMin ? ` · ${fmtHours(pendingMin)} pending review` : ''}</span>
+        <span>${fmtHours(approvedMin)} approved of ${REQUIRED_HOURS}h${pendingMin ? ` · ${fmtHours(pendingMin)} pending review` : ''}</span>
         <span>${pct}%</span>
       </div>
-      <div style="height:8px;background:#0D0D0D;border-radius:4px;overflow:hidden;">
+      <div style="height:8px;background:#0D0D0D;border-radius:4px;overflow:hidden;margin-bottom:14px;">
         <div style="height:100%;width:${pct}%;background:#E60306;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:#AAA;margin-bottom:8px;">
+        <span>${fmtHours(approvedOutsideMin)} of ${REQUIRED_OUTSIDE_HOURS}h from outside the cohort</span>
+        <span>${outsidePct}%</span>
+      </div>
+      <div style="height:8px;background:#0D0D0D;border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${outsidePct}%;background:#C9A227;"></div>
       </div>
     </div>
     <form id="clc-hours-form" style="background:#111;border:1px solid #222;border-radius:12px;padding:18px;margin-bottom:18px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
@@ -137,6 +154,12 @@ async function renderHoursTab(root) {
       </label>
       <label style="grid-column:1/-1;font-size:12px;color:#AAA;">Client (first name or initials only)
         <input name="clientLabel" type="text" maxlength="60" required placeholder="e.g. Sarah M." style="display:block;width:100%;margin-top:4px;background:#0D0D0D;border:1px solid #2A2A2A;border-radius:8px;color:#fff;padding:8px 10px;font-size:13px;box-sizing:border-box;">
+      </label>
+      <label style="grid-column:1/-1;font-size:12px;color:#AAA;">Who did you coach?
+        <select name="clientType" required style="display:block;width:100%;margin-top:4px;background:#0D0D0D;border:1px solid #2A2A2A;border-radius:8px;color:#fff;padding:8px 10px;font-size:13px;box-sizing:border-box;">
+          <option value="cohort">A classmate in this cohort</option>
+          <option value="outside">Someone outside the cohort</option>
+        </select>
       </label>
       <label style="grid-column:1/-1;font-size:12px;color:#AAA;">Session notes (optional)
         <input name="notes" type="text" maxlength="200" placeholder="Focus of the session" style="display:block;width:100%;margin-top:4px;background:#0D0D0D;border:1px solid #2A2A2A;border-radius:8px;color:#fff;padding:8px 10px;font-size:13px;box-sizing:border-box;">
@@ -161,6 +184,7 @@ async function renderHoursTab(root) {
         date: String(fd.get('date') || ''),
         minutes: Number(fd.get('minutes')) || 0,
         clientLabel: String(fd.get('clientLabel') || '').trim(),
+        clientType: fd.get('clientType') === 'outside' ? 'outside' : 'cohort',
         notes: String(fd.get('notes') || '').trim(),
         courseSlug: CLC_SLUG,
         status: 'submitted',

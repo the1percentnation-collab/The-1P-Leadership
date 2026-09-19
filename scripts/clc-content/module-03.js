@@ -113,7 +113,7 @@ module.exports = {
 
 <h2>Practice this week</h2>
 <p>Target: <strong>4 practice coaching hours</strong> across these two weeks.</p>
-<p>Keep the triad rotating, and keep the observer working from the four rubric criteria with two minutes of specific feedback after each round. Coach seat hours are the ones that count in your log. Starting now, widen your practice beyond your classmates. By module 4 your logged hours must include clients who are not in this cohort, because 25 hours of peer practice will not prepare you for a real client who did not read the same material you did.</p>
+<p>Keep the triad rotating, and keep the observer working from the four rubric criteria with two minutes of specific feedback after each round. Coach seat hours are the ones that count in your log. Starting now, widen your practice beyond your classmates. By the end of this module you want <strong>1 hour of the 12 from outside the cohort</strong>, because 25 hours of peer practice will not prepare you for a real client who did not read the same material you did. One person who says yes is enough to start.</p>
 <ol>
 <li>Run four sessions of forty five minutes using the full spine and the timings above. Keep a clock where you can see it.</li>
 <li>Run your pre-session routine before every one of them, including the sessions you do not think you need it for.</li>

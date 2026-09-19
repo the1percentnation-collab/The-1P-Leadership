@@ -213,6 +213,10 @@ service cloud.firestore {
       // 'approved'/'rejected' with reviewedBy/At) happens ONLY through the
       // reviewCoachingHours callable (Admin SDK). Nothing here is
       // self-approvable, which is what makes the requirement real.
+      // clientType is required and only ever 'cohort' or 'outside'. Part of the
+      // 25 hours must come from clients who are not classmates, and
+      // issueCertification counts on this field being honest, so an entry
+      // cannot be written without it.
       match /coachingHours/{entryId} {
         allow read: if isOwner() || isSelf(uid);
         allow create: if (isOwner() || isSelf(uid))
@@ -220,6 +224,7 @@ service cloud.firestore {
                       && request.resource.data.get('minutes', 0) is number
                       && request.resource.data.get('minutes', 0) > 0
                       && request.resource.data.get('minutes', 0) <= 600
+                      && request.resource.data.get('clientType', '') in ['cohort', 'outside']
                       && !('reviewedBy' in request.resource.data);
         allow update: if isOwner() || (isSelf(uid)
                       && resource.data.get('status', '') == 'submitted'
@@ -227,6 +232,7 @@ service cloud.firestore {
                       && request.resource.data.get('minutes', 0) is number
                       && request.resource.data.get('minutes', 0) > 0
                       && request.resource.data.get('minutes', 0) <= 600
+                      && request.resource.data.get('clientType', '') in ['cohort', 'outside']
                       && !('reviewedBy' in request.resource.data));
         allow delete: if isOwner()
                       || (isSelf(uid) && resource.data.get('status', '') == 'submitted');

@@ -86,8 +86,10 @@ first; they become portal resources once Anthony signs off.
   of 20, below either bar is a revise with unlimited resubmission, and
   Non-Advising below 3 is a revise on its own. Published in
   `docs/1p-clc-rubric.md` and enforced by `reviewCapstone`.
-- How many of the 25 hours must be with clients who are not classmates.
-  Modules ask for a growing share; the admin needs a number.
+- ~~How many of the 25 hours must be with clients who are not classmates.~~
+  Confirmed: 12 of the 25. Modules 1 and 3 through 8 carry the running ladder
+  (1, 2, 4, 7, 9, 11, then 12 in the practicum), every hour entry records a
+  `clientType` of cohort or outside, and `issueCertification` enforces it.
 - What happens after three failed exam attempts. Module 8 routes the student
   to the program admin for a path forward.
 - A recommended price band for the six-week client program. The delivery guide

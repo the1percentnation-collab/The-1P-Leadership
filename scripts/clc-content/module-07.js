@@ -112,7 +112,7 @@ module.exports = {
 <h2>Practice this week</h2>
 <p>Run two practice coaching sessions and two practice discovery calls. Target two to three hours logged. Only coaching sessions count as coaching hours. Log discovery calls separately for your own records and note them as business development, not coaching.</p>
 <p>Your peer triad continues, roles rotating, with two minutes of observer feedback against the four rubric criteria. This week the triad also observes one discovery call each, because a discovery call that turns into a pitch fails Non-Advising first.</p>
-<p>By this week, most of your logged coaching hours should be coming from clients who are not classmates. If they are not, that is the gap to close before the practicum weeks. Your graded session should not be the first time you coach someone who has never read this rubric.</p>
+<p>By the end of this module you want <strong>9 of your 12 outside hours</strong> logged. If you are short, that is the gap to close before the practicum weeks. Your graded session should not be the first time you coach someone who has never read this rubric.</p>
 <p>In the discovery calls:</p>
 <ul>
 <li>Run all six moves in order.</li>

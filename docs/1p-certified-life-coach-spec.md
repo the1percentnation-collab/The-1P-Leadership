@@ -89,7 +89,8 @@ one genuinely hard-to-undo mistake.
 - Completion of all eight modules
 - Written exam
 - One recorded coaching session, reviewed against a published rubric
-- Minimum 25 logged practice coaching hours
+- Minimum 25 logged practice coaching hours, at least 12 of them with clients
+  outside the cohort
 
 Do not compress these to shorten the program. Compress lecture time and push into
 application instead. These four items are the entire difference between a

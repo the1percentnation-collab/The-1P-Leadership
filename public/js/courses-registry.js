@@ -89,7 +89,7 @@ export const COURSES = [
       'Coach real clients through the A.L.I.G.N. framework: Awareness, Leadership, Identity, Growth, Navigation.',
       'Run coaching conversations with a repeatable session structure that creates real movement.',
       'Build client engagements: discovery calls, packages, and a six-week client program you can deliver day one.',
-      'Log 25 real practice coaching hours and get certified on evidence, not attendance.',
+      'Log 25 real practice coaching hours, at least 12 with clients outside your cohort, and get certified on evidence, not attendance.',
       'Pass a written certification exam and a reviewed, recorded coaching session scored against a published rubric.',
       'Leave with the 1P Certified Life Coach credential and a license to deliver A.L.I.G.N. commercially.'
     ],

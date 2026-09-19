@@ -132,7 +132,7 @@ module.exports = {
 <h2>Practice this week</h2>
 <p>Run three practice coaching sessions this week, thirty to sixty minutes each. Target three hours logged.</p>
 <p>Keep your peer triad running. Same three people, rotating roles each week: one coach, one client, one observer. The observer gives two minutes of feedback at the end, spoken against the four rubric criteria in order: Presence and Listening, Question Quality, Session Structure, Non-Advising. No general praise. One observation per criterion.</p>
-<p>From this week forward, at least one of your three sessions should be with a client who is not a classmate. Peers are a safe place to learn mechanics. People outside the cohort are where you find out whether the mechanics hold when the client is not also studying the rubric. That share keeps growing through Module 7.</p>
+<p>From this week forward, at least one of your three sessions should be with a client who is not a classmate, which puts you at <strong>4 of your 12 outside hours</strong> by the end of this module. Peers are a safe place to learn mechanics. People outside the cohort are where you find out whether the mechanics hold when the client is not also studying the rubric. That share keeps growing through Module 8.</p>
 <p>Constraints for these three sessions:</p>
 <ul>
 <li>Write down every question you ask, during or immediately after. Longhand is fine.</li>

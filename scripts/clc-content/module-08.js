@@ -44,7 +44,7 @@ module.exports = {
 <p><strong>What counts.</strong> Real coaching sessions where you held the coach's chair, paid or unpaid, in person or on video, including triad sessions where you were the coach.</p>
 <p><strong>What does not.</strong> Cohort calls, time as the client or the observer, discovery calls, preparation, notes, reading, or coaching yourself.</p>
 <p><strong>How to log.</strong> Date, duration, a one-line note, and the client's initials only. Never a full name, never a detail that would identify the client. Log within a few days while the detail is accurate.</p>
-<p><strong>A growing share from outside the cohort.</strong> Peers are where you learned the mechanics. Clients who have never seen this rubric are where you find out whether they hold. Your admin looks for a meaningful share of the twenty-five to come from outside the cohort, so plan for it.</p>
+<p><strong>Twelve of the twenty-five from outside the cohort.</strong> Peers are where you learned the mechanics. Clients who have never seen this rubric are where you find out whether they hold. This is a hard requirement, not a preference: the system will not issue your credential until 12 approved hours are logged against clients who are not classmates. You mark that on every entry when you log it. By the end of this module you want 11 of the 12, with the last one coming during the practicum weeks.</p>
 
 <h2>The rubric: how your session is scored</h2>
 <p>Your session is scored 0 to 5 on four criteria: Presence and Listening, Question Quality, Session Structure, and Non-Advising. The anchors below describe what a 2, a 3 and a 5 sound like on each one. A 4 sits between the 3 and the 5. A 1 sits below the 2. A 0 means the criterion was not demonstrated at all.</p>
@@ -108,7 +108,7 @@ module.exports = {
 <p>What to bring: your feedback notes from the Module 4 and Module 6 recordings, a shortlist of clients you could record, and your current hour count.</p>
 
 <h2>Practice this week</h2>
-<p>Run two practice coaching sessions, thirty to sixty minutes each. Target two hours logged. Both with clients who are not classmates, because that is the condition your graded session will be recorded under.</p>
+<p>Run two practice coaching sessions, thirty to sixty minutes each. Target two hours logged. Both with clients who are not classmates, which should put you at 11 of your 12 outside hours, because that is the condition your graded session will be recorded under.</p>
 <p>Self-score each session against all four criteria immediately afterward: the number plus one sentence of evidence. Then compare against your Module 4 and Module 6 feedback. Where you are generous with yourself is where the reviewer will not be.</p>
 <p>Four setup items: choose your recording client and get written consent, book the session date with room for a resubmission, reconcile your hour log, and schedule your exam attempt.</p>
 <p>Log your sessions in the Hours tab with the date, the duration, and the client's initials only.</p>
@@ -122,7 +122,7 @@ module.exports = {
     "prompts": [
       "Which rubric criterion is currently your weakest, and what specifically will you practice before you record?",
       "What repeated across your Module 4 and Module 6 feedback? That repeat is your pattern. Name it.",
-      "What is your plan to reach 25 approved hours, week by week, and how many will come from outside the cohort?",
+      "What is your plan to reach 25 approved hours, week by week, and where do the 12 outside the cohort come from?",
       "Write the written consent message you will send your recording client, word for word.",
       "Self-score your last practice session on all four criteria and write one sentence of evidence for each.",
       "If your session comes back as revise, what is your first move, and what will you not do?",
