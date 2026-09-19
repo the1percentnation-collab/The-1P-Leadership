@@ -186,7 +186,7 @@ export function softphoneReady() {
 
 /**
  * Must be awaited before callContact(). Loads company dialer settings and the
- * agent's own mode preference. Does NOT build the Twilio Device — that happens
+ * agent's own mode preference. Does NOT build the Telnyx client — that happens
  * on the first actual call, so a page view costs nothing.
  */
 export async function configure({ companyId, uid, hotkeys = false, dockHost = null } = {}) {
@@ -298,11 +298,13 @@ async function placeSoftphoneCall(contact) {
   try {
     auth = await authorizeCall(state.companyId, contact.id);
   } catch (e) {
-    // failed-precondition here means consent or configuration, and the two
-    // need opposite handling: refuse the first, degrade on the second.
-    const msg = (e && e.message) || 'Call not authorized.';
-    if (/do not call|opted out|no phone number/i.test(msg)) {
-      const fatal = new Error(msg);
+    // A refusal and a misconfiguration both arrive as failed-precondition and
+    // need opposite handling: refuse the first, degrade to manual on the
+    // second. The server marks a refusal with details.blocked, so this never
+    // depends on the wording of a message — reword one string and a
+    // do-not-call contact would otherwise start getting dialed.
+    if (e && e.details && e.details.blocked === true) {
+      const fatal = new Error(e.message || 'This call is not allowed.');
       fatal.fatal = true;
       throw fatal;
     }
@@ -312,7 +314,6 @@ async function placeSoftphoneCall(contact) {
   const call = device.newCall({
     destinationNumber: auth.to,
     callerNumber: auth.callerId || undefined,
-    callerName: (state.settings && state.settings.callerName) || undefined,
     audio: true,
     video: false,
     remoteElement: remoteAudioEl()

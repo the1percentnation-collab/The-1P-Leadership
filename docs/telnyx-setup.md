@@ -54,8 +54,8 @@ symptom of forgetting it is inbound texts never appearing, not an error.
 Mission Control → **Messaging → Messaging Profiles** → your profile → Inbound
 and Outbound settings:
 
-- **Inbound (webhook URL):** `https://<region>-<project>.cloudfunctions.net/telnyxInboundWebhook`
-- **Outbound / delivery receipts:** `https://<region>-<project>.cloudfunctions.net/telnyxStatusWebhook`
+- **Inbound (webhook URL):** `https://us-central1-the-1p-leadership.cloudfunctions.net/telnyxInboundWebhook`
+- **Outbound / delivery receipts:** `https://us-central1-the-1p-leadership.cloudfunctions.net/telnyxStatusWebhook`
 - **Webhook API version:** API v2 (the Ed25519-signed format).
 
 Telnyx will send every message event to whichever URL you give it, so the two
@@ -123,7 +123,7 @@ Both need a TeXML application: Mission Control → **Voice → TeXML
 Applications**. Copy its id into `TELNYX_TEXML_APP_ID`, and set its voice URL
 to:
 
-    https://<region>-<project>.cloudfunctions.net/voiceInboundTwiml
+    https://us-central1-the-1p-leadership.cloudfunctions.net/voiceInboundTwiml
 
 Then assign your number to that application. Inbound calls ring whichever rep
 owns the contact, fall back to every admin, and record a voicemail if nobody

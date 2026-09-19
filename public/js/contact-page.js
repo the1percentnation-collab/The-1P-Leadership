@@ -30,7 +30,7 @@ import {
   listMessages, sendSms,
   listContactEmails, sendContactEmail, markContactEmailsRead, groupEmailThreads,
   contactFreshness,
-  listCalls, setDoNotCall, dispositionMeta, callBlockReason,
+  listCalls, setDoNotCall, recordSmsConsent, smsConsentSummary, dispositionMeta, callBlockReason,
   getGoogleCalendarStatus, listSequences, listEnrollments, enrollContact, stopEnrollment,
   escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate
 } from './crm.js';
@@ -147,15 +147,20 @@ function renderContactHeader() {
   const dnc = $('ct-dnc');
   if (dnc) dnc.checked = c.doNotCall === true;
   const smsNote = $('ct-sms-consent');
-  if (smsNote) {
-    smsNote.textContent = c.smsOptedOut === true ? 'Replied STOP — texting blocked.' : '';
-  }
+  if (smsNote) smsNote.textContent = smsConsentSummary(c) || 'No SMS consent on record.';
+  // The way back in for a lead who declined on the form and later says "text
+  // me" on a call. Hidden once consent exists, and never offered after a STOP:
+  // only the contact can undo that, by replying START.
+  const recordBtn = $('btn-record-consent');
+  if (recordBtn) recordBtn.hidden = c.smsConsent === true || c.smsOptedOut === true;
 
   // Disable what cannot work, with the reason in the tooltip.
   const callBlock = callBlockReason(c);
   const callBtn = $('btn-call-contact');
   if (callBtn) { callBtn.disabled = !!callBlock; callBtn.title = callBlock || 'Call this contact'; }
-  const smsBlock = !c.phone ? 'No phone number' : (c.smsOptedOut === true ? 'Opted out of SMS' : null);
+  const smsBlock = !c.phone ? 'No phone number'
+    : (c.smsOptedOut === true ? 'Opted out of SMS'
+    : (c.smsConsent === false ? 'Declined SMS consent' : null));
   const textBtn = $('btn-text-contact');
   if (textBtn) { textBtn.disabled = !!smsBlock; textBtn.title = smsBlock || 'Text this contact'; }
   const emailBlock = !c.email
@@ -638,7 +643,8 @@ function renderComposer() {
 
   if (state.composeTab === 'sms') {
     const blocked = !c.phone ? 'Add a phone number to text this contact.'
-      : (c.smsOptedOut === true ? 'This contact replied STOP. Texting is blocked.' : null);
+      : (c.smsOptedOut === true ? 'This contact replied STOP. Texting is blocked.'
+      : (c.smsConsent === false ? 'This contact declined SMS consent on the web form. Record consent above if they have since agreed.' : null));
     host.innerHTML = blocked
       ? `<div class="crm-subpanel-empty">${escapeHtml(blocked)}</div>`
       : `<div class="tl-compose-row">
@@ -1170,6 +1176,20 @@ function wire() {
     } catch (err) {
       e.target.checked = !on;
       setStatus('Could not save: ' + (err.message || err), 'err');
+    }
+  });
+
+  $('btn-record-consent').addEventListener('click', async () => {
+    const note = prompt('How was consent given? This note becomes the record.\n\nExample: "Asked to be texted appointment reminders, on our call today."');
+    if (note == null) return;
+    if (!note.trim()) { setStatus('A note is required to record consent.', 'err'); return; }
+    try {
+      await recordSmsConsent(state.companyId, state.contactId, note.trim());
+      await Promise.all([refreshContact(), refreshTimeline()]);
+      renderComposer();
+      setStatus('SMS consent recorded', 'ok');
+    } catch (err) {
+      setStatus('Could not record consent: ' + (err.message || err), 'err');
     }
   });
 

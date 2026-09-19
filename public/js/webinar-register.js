@@ -44,12 +44,12 @@ async function registerForWebinarEvent({ name, email, phone }) {
   }
 }
 
-window.__1pSubmitWebinarLead = async ({ name, email, phone, fields, consent }) => {
+window.__1pSubmitWebinarLead = async ({ name, email, phone, fields, consent, consents, consentText }) => {
   if (!firebaseReady) {
     throw new Error('The form is unavailable right now. Please refresh and try again.');
   }
   await httpsCallable(functions, 'submitLeadForm')({
-    formType: 'webinar', name, email, phone, fields, consent
+    formType: 'webinar', name, email, phone, fields, consent, consents, consentText
   });
   // Lead is safe; the join link is a bonus on top.
   registerForWebinarEvent({ name, email, phone });
