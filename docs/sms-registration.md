@@ -103,32 +103,24 @@ providers but they all ask for the same things.
 https://the1pnation.com/webinar
 ```
 
-> **STOP — this page is not submittable as-is.** An earlier version of this
-> doc claimed `/webinar` was already built correctly. It is not, and the
-> problem is the single most common rejection cause.
->
-> The consent block lives inside `<div id="final-step" class="final-step-locked">`
-> in `public/webinar.html`, and that container is `display: none` until the
-> visitor answers every quiz question. Verified in a headless browser on a
-> fresh load: the phone field is visible, the consent block has a zero-size
-> box, and `document.body.innerText` contains no consent wording at all — no
-> "agree to receive text messages", no HELP, no STOP. A reviewer opening the
-> URL sees a phone field with no visible consent language next to it.
->
-> `/class` and `/matrix` were checked as alternatives and fail the same way on
-> load. Nothing currently deployed satisfies the requirement.
->
-> The requirement is that a reviewer, without logging in and without
-> interacting with the page, can see the phone input and the consent wording at
-> the same time. The fix is to move `.consent-block` out of the gated
-> `#final-step` container so it renders beside the phone field from the start.
-> Real `<input type="checkbox">` elements instead of the `<div class="consent-box">`
-> toggles would also help, since some review tooling looks for actual inputs
-> and it is better for accessibility either way.
+This is the page to give them, and it now satisfies the requirement — stated
+as what was measured in a headless browser on a cold load, not as an
+assumption, because an earlier version of this doc asserted it and was wrong:
 
-Once that is fixed, this is the page to give them. The wording itself already
-carries everything a reviewer looks for — named sender, message frequency, data
-rates, and HELP/STOP — so only its visibility is at issue.
+- The phone input and both consent texts are visible together without any
+  interaction. The consent block sits with the contact fields, above the quiz;
+  only the submit button remains behind the quiz gate.
+- The two consents are real `<input type="checkbox">` elements with labels,
+  keyboard-toggleable. Neither is pre-checked. **Neither is required** —
+  consent is not a condition of registering, which is what the campaign copy
+  and the privacy policy both say.
+- The checked state of each box and the exact wording shown are sent with the
+  submission and stored per channel on the contact (`smsConsent`,
+  `smsConsentText`, `smsConsentAt`; likewise `marketingConsent…`), with a
+  `consent_updated` activity as the durable proof of what was agreed and when.
+- A person who sees the SMS box and leaves it unticked is recorded as having
+  declined, and the CRM refuses to text them until consent is recorded on
+  their contact with a note naming who took it and how.
 
 **Do not submit `/onboarding`.** Its consent language is the strongest on the
 site, but the page redirects to login when nobody is signed in, so a reviewer

@@ -5226,6 +5226,13 @@ exports.sendSms = onCall(
       throw new HttpsError('failed-precondition',
         'This contact has opted out of SMS (replied STOP) and cannot be messaged.');
     }
+    // An explicit decline — the consent box was shown and left unticked — is
+    // honoured the same as STOP. Contacts with no recorded decision (imports,
+    // manual entry, inbound texters) are unaffected: only `false` blocks.
+    if (cSnap.data().smsConsent === false) {
+      throw new HttpsError('failed-precondition',
+        'This contact declined SMS consent when they registered. Record consent on their record first.');
+    }
 
     let msg;
     try {
@@ -7138,6 +7145,7 @@ async function executeSequenceStep(db, companyId, enrollment, step, seq) {
 
   if (step.channel === 'sms') {
     if (contact.smsOptedOut === true) return 'skipped: opted out of SMS';
+    if (contact.smsConsent === false) return 'skipped: declined SMS consent';
     const to = normalizePhone(contact.phone);
     if (!to) return 'skipped: no phone';
     const cfg = telnyxSmsConfig();
@@ -9181,6 +9189,58 @@ function escapeHtmlBasic(s) {
 
 // `secrets` is required for the owner notification below — an undeclared
 // secret is never injected at runtime, so sendgridKey.value() would throw.
+/**
+ * recordSmsConsent({ companyId, contactId, note }) — an admin records consent
+ * given outside a web form, typically verbally on a call, for a contact who
+ * declined on the form or has no consent on file.
+ *
+ * A callable rather than a client write for the same reason setDoNotCall sits
+ * outside the updateContact whitelist: a consent change must reach the activity
+ * trail with a trustworthy actor, and firestore.rules refuses client writes to
+ * these fields so this is the only way in.
+ */
+exports.recordSmsConsent = onCall(async (request) => {
+  const db = admin.firestore();
+  const { companyId, contactId } = request.data || {};
+  const note = String((request.data || {}).note || '').trim().slice(0, 500);
+  if (!companyId || !contactId) {
+    throw new HttpsError('invalid-argument', 'companyId and contactId are required.');
+  }
+  if (!note) {
+    throw new HttpsError('invalid-argument',
+      'Say how consent was given — this note is the record.');
+  }
+  const { uid } = await assertCompanyAdmin(db, companyId, request);
+  await rateLimitCaller(db, request, { action: 'recordSmsConsent', max: 60, windowSec: 600 });
+
+  const ref = db.collection('companies').doc(companyId).collection('contacts').doc(contactId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Contact not found.');
+  if (snap.data().smsOptedOut === true) {
+    throw new HttpsError('failed-precondition',
+      'This contact replied STOP. Only they can opt back in, by replying START.');
+  }
+
+  const FV = admin.firestore.FieldValue;
+  const actorName = (request.auth.token && (request.auth.token.name || request.auth.token.email)) || uid;
+  const text = `Consent recorded by ${actorName}: ${note}`;
+  await ref.set({
+    smsConsent: true,
+    smsConsentAt: FV.serverTimestamp(),
+    smsConsentText: text,
+    smsConsentDeclinedAt: FV.delete(),
+    updatedAt: FV.serverTimestamp()
+  }, { merge: true });
+  await ref.collection('activities').add({
+    type: 'consent_updated',
+    description: `SMS consent recorded: ${note}`,
+    actorUid: uid, actorName,
+    createdAt: FV.serverTimestamp(),
+    meta: { channel: 'manual', smsConsent: true, consentText: { sms: text } }
+  });
+  return { ok: true };
+});
+
 exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
   const db = admin.firestore();
   const data = request.data || {};
@@ -9191,7 +9251,16 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
   const phone = (data.phone || '').toString().trim().slice(0, 40) || null;
-  const consent = !!data.consent;
+  // Newer pages send per-channel state plus the exact wording shown; older
+  // pages (and a page that deploys ahead of this function) send one boolean.
+  // The boolean is derived from the per-channel state when present so the
+  // existing tag behaviour is unchanged either way.
+  const hasChannels = data.consents && typeof data.consents === 'object';
+  const smsConsent = hasChannels ? data.consents.sms === true : null;
+  const marketingConsent = hasChannels ? data.consents.marketing === true : null;
+  const consent = hasChannels ? (smsConsent || marketingConsent) : !!data.consent;
+  const textIn = data.consentText && typeof data.consentText === 'object' ? data.consentText : {};
+  const consentTextFor = (k) => String(textIn[k] == null ? '' : textIn[k]).trim().slice(0, 1000);
   if (!name) throw new HttpsError('invalid-argument', 'Please enter your name.');
   if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
 
@@ -9215,11 +9284,56 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
   const ref = await upsertCrmContact(db, companyId, {
     name, email, phone, source: form.source, tags
   });
-  if (consent) {
-    await ref.set({
-      marketingConsent: true, marketingConsentAt: FV.serverTimestamp(),
-      marketingConsentText: `Opted in via ${form.source.toLowerCase()} form`
-    }, { merge: true });
+  // Consent is recorded per channel with the wording the person actually saw.
+  // Opt-in is additive: a later submission never downgrades an earlier `true`,
+  // because revocation is a STOP reply, which has its own path. The one new
+  // outcome is an explicit decline — the SMS box was shown and left unticked
+  // by someone with no prior consent on file — which sendSms then honours.
+  const fallbackText = `Opted in via ${form.source.toLowerCase()} form`;
+  const consentPatch = {};
+  let smsOutcome = null;
+  if (hasChannels) {
+    const prior = await ref.get();
+    const priorSms = prior.exists ? prior.data().smsConsent : undefined;
+    if (smsConsent) {
+      consentPatch.smsConsent = true;
+      consentPatch.smsConsentAt = FV.serverTimestamp();
+      consentPatch.smsConsentText = consentTextFor('sms') || fallbackText;
+      smsOutcome = 'granted';
+    } else if (priorSms !== true) {
+      consentPatch.smsConsent = false;
+      consentPatch.smsConsentDeclinedAt = FV.serverTimestamp();
+      smsOutcome = 'declined';
+    }
+    if (marketingConsent) {
+      consentPatch.marketingConsent = true;
+      consentPatch.marketingConsentAt = FV.serverTimestamp();
+      consentPatch.marketingConsentText = consentTextFor('marketing') || fallbackText;
+    }
+  } else if (consent) {
+    consentPatch.marketingConsent = true;
+    consentPatch.marketingConsentAt = FV.serverTimestamp();
+    consentPatch.marketingConsentText = fallbackText;
+  }
+  if (Object.keys(consentPatch).length) {
+    await ref.set(consentPatch, { merge: true });
+    // The durable proof of opt-in: what was agreed to, in what words, when.
+    await ref.collection('activities').add({
+      type: 'consent_updated',
+      description: hasChannels
+        ? `${form.source} form: SMS ${smsOutcome || 'unchanged'}, marketing ${marketingConsent ? 'granted' : 'not given'}.`
+        : `${form.source} form: opted in.`,
+      actorUid: 'system', actorName: 'Consent capture',
+      createdAt: FV.serverTimestamp(),
+      meta: {
+        channel: formType,
+        smsConsent: hasChannels ? smsConsent : null,
+        marketingConsent: hasChannels ? marketingConsent : consent,
+        consentText: hasChannels
+          ? { sms: consentTextFor('sms') || null, marketing: consentTextFor('marketing') || null }
+          : null
+      }
+    });
   }
   const summary = Object.entries(fields).map(([k, v]) => `${k}: ${v}`).join(' · ');
   await ref.collection('activities').add({

@@ -399,7 +399,17 @@ service cloud.firestore {
       // ──────────────────────────────────────────────────────────────
       match /contacts/{contactId} {
         allow read: if isOwner() || isCompanyAdmin(cid);
-        allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
+        // SMS consent is written only by the server (the lead form, the
+        // recordSmsConsent callable), each of which leaves an activity naming
+        // who granted it. A client write would bypass that trail, which is the
+        // one record asked for after a complaint.
+        allow create: if (isOwner() || isCompanyAdmin(cid))
+                       && !request.resource.data.keys()
+                             .hasAny(['smsConsent', 'smsConsentAt', 'smsConsentText', 'smsConsentDeclinedAt']);
+        allow update: if (isOwner() || isCompanyAdmin(cid))
+                       && !request.resource.data.diff(resource.data).affectedKeys()
+                             .hasAny(['smsConsent', 'smsConsentAt', 'smsConsentText', 'smsConsentDeclinedAt']);
+        allow delete: if isOwner() || isCompanyAdmin(cid);
 
         match /notes/{noteId} {
           allow read: if isOwner() || isCompanyAdmin(cid);

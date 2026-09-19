@@ -5,7 +5,7 @@
   "description": "Firestore security-rules regression tests (emulator) plus Telnyx unit tests.",
   "scripts": {
     "emulator": "firebase emulators:exec --only firestore --project demo-1p \"node firestore-rules.test.mjs\"",
-    "test:telnyx": "node telnyx-signature.test.cjs && node telnyx-send.test.cjs && node telnyx-texml.test.cjs && node call-gate.test.cjs",
+    "test:telnyx": "node telnyx-signature.test.cjs && node telnyx-send.test.cjs && node telnyx-texml.test.cjs && node call-gate.test.cjs && node sms-consent.test.cjs",
     "test": "npm run test:telnyx && npm run emulator"
   },
   "devDependencies": {

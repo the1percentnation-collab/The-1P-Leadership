@@ -235,6 +235,34 @@ export async function setDoNotCall(companyId, contactId, value) {
   });
 }
 
+/**
+ * Record SMS consent given outside a web form (verbally on a call, usually).
+ * Server-side on purpose: firestore.rules refuses client writes to the
+ * smsConsent fields so every consent change carries a named actor.
+ */
+export async function recordSmsConsent(companyId, contactId, note) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'recordSmsConsent');
+  const res = await call({ companyId, contactId, note });
+  return res.data;
+}
+
+/**
+ * A one-line account of where a contact's SMS consent stands, for the record
+ * header. Returns null when nothing is recorded either way.
+ */
+export function smsConsentSummary(c) {
+  if (!c) return null;
+  if (c.smsOptedOut === true) return 'Replied STOP — texting blocked.';
+  if (c.smsConsent === true) {
+    const when = c.smsConsentAt ? fmtDate(c.smsConsentAt) : null;
+    const how = /recorded by/i.test(c.smsConsentText || '') ? 'recorded manually' : 'via web form';
+    return `SMS consent ${how}${when ? ', ' + when : ''}.`;
+  }
+  if (c.smsConsent === false) return 'Declined SMS consent on the web form.';
+  return null;
+}
+
 export async function deleteContact(companyId, contactId) {
   if (!firebaseReady) throw new Error('Offline');
   try {
