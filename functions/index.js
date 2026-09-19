@@ -491,6 +491,39 @@ function htmlToText(html) {
     .trim();
 }
 
+/**
+ * Real outreach only — this is the field `lastActivityAt` fails to be.
+ *
+ * `lastActivityAt` moves on every tag edit, stage change, field save, CSV import
+ * and even an unsubscribe click, so a lead nobody has spoken to in six weeks can
+ * read as freshly touched. `lastContactedAt` moves only when a human actually
+ * reached the lead or the lead reached us: email, SMS, a connected call, or a
+ * manually logged call/meeting/email.
+ *
+ * Deliberately NOT called from: CSV import, member sync, event registration,
+ * unsubscribe handling, or Stripe deal-won. Those change the record, not the
+ * relationship.
+ *
+ * Returns the fields to merge rather than writing, so a caller that is already
+ * building a `set(..., {merge:true})` payload does one write instead of two.
+ */
+function lastContactedFields(channel, direction) {
+  return {
+    lastContactedAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastContactChannel: channel,        // 'email' | 'sms' | 'call' | 'meeting'
+    lastContactDirection: direction     // 'out' | 'in'
+  };
+}
+
+/** Fire-and-forget variant for call sites that are not already writing. */
+async function touchLastContacted(contactRef, { channel, direction }) {
+  try {
+    await contactRef.set(lastContactedFields(channel, direction), { merge: true });
+  } catch (e) {
+    console.warn('[lastContacted]', e && e.message);
+  }
+}
+
 async function assertCompanyAdmin(db, companyId, request) {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -1514,6 +1547,7 @@ exports.sendContactEmail = onCall(
       await contactRef.update({
         lastActivityAt: FV.serverTimestamp(),
         lastEmailAt: FV.serverTimestamp(),
+        ...lastContactedFields('email', 'out'),
         updatedAt: FV.serverTimestamp()
       });
     } catch (e) {
@@ -1797,6 +1831,7 @@ exports.inboundEmailWebhook = onRequest(
       await contactRef.set({
         lastActivityAt: FV.serverTimestamp(),
         lastEmailAt: FV.serverTimestamp(),
+        ...lastContactedFields('email', 'in'),
         emailUnreadCount: FV.increment(1)
       }, { merge: true });
 
@@ -5780,7 +5815,10 @@ exports.sendSms = onCall(
       type: 'manual_sms', description: 'SMS sent: ' + String(body).slice(0, 120),
       actorUid: request.auth.uid, actorName: 'You', createdAt: FV.serverTimestamp(), meta: { direction: 'out' }
     });
-    await cRef.set({ lastActivityAt: FV.serverTimestamp() }, { merge: true });
+    await cRef.set({
+      lastActivityAt: FV.serverTimestamp(),
+      ...lastContactedFields('sms', 'out')
+    }, { merge: true });
     return { ok: true, sid: msg.sid, status: msg.status || 'sent' };
   }
 );
@@ -5866,7 +5904,10 @@ exports.twilioInboundWebhook = onRequest(
           });
         }
 
-        await contactDoc.ref.set({ lastActivityAt: FV.serverTimestamp() }, { merge: true });
+        await contactDoc.ref.set({
+          lastActivityAt: FV.serverTimestamp(),
+          ...lastContactedFields('sms', 'in')
+        }, { merge: true });
       }
     } catch (e) { console.warn('[twilioInbound]', e && e.message); }
 
@@ -6005,7 +6046,10 @@ exports.telnyxInboundWebhook = onRequest(
           });
         }
 
-        await contactDoc.ref.set({ lastActivityAt: FV.serverTimestamp() }, { merge: true });
+        await contactDoc.ref.set({
+          lastActivityAt: FV.serverTimestamp(),
+          ...lastContactedFields('sms', 'in')
+        }, { merge: true });
       }
     } catch (e) { console.warn('[telnyxInbound]', e && e.message); }
 
@@ -6574,7 +6618,10 @@ exports.voiceInboundTwiml = onRequest({ cors: false, invoker: 'public' }, async 
       meta: { callId: callRef.id, direction: 'in' }
     });
     try { await stopEnrollmentsForContact(db, cid, contactDoc.id, 'called in'); } catch (e) {}
-    await contactDoc.ref.set({ lastActivityAt: FV.serverTimestamp() }, { merge: true });
+    await contactDoc.ref.set({
+      lastActivityAt: FV.serverTimestamp(),
+      ...lastContactedFields('call', 'in')
+    }, { merge: true });
 
     const base = fnBaseUrl(req);
     const token = voiceCallbackToken(cid, callRef.id);
@@ -6689,7 +6736,14 @@ exports.voiceStatusWebhook = onRequest({ cors: false, invoker: 'public' }, async
         meta: { callId: snap.id, status, durationSec: durationSec || 0 }
       }).catch(() => {});
       await ref.set({ statusActivityAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-      await cRef.set({ lastActivityAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(() => {});
+      // A ringout is an attempt, not a conversation. Only a call that actually
+      // connected resets the contact clock — otherwise dialling a dead number
+      // every morning would keep a lead looking freshly worked forever.
+      const connected = Number.isFinite(durationSec) && durationSec > 0;
+      await cRef.set({
+        lastActivityAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...(connected ? lastContactedFields('call', data.direction === 'in' ? 'in' : 'out') : {})
+      }, { merge: true }).catch(() => {});
     }
   } catch (e) {
     console.warn('[voiceStatus]', e && e.message);
@@ -7683,6 +7737,7 @@ async function executeSequenceStep(db, companyId, enrollment, step, seq) {
       actorUid: 'system', actorName: 'Automation', createdAt: FV.serverTimestamp(),
       meta: { direction: 'out', sequenceId: enrollment.sequenceId, step: step.order }
     });
+    await cRef.set(lastContactedFields('sms', 'out'), { merge: true });
     return 'sms sent';
   }
 
@@ -7707,6 +7762,7 @@ async function executeSequenceStep(db, companyId, enrollment, step, seq) {
       actorUid: 'system', actorName: 'Automation', createdAt: FV.serverTimestamp(),
       meta: { sequenceId: enrollment.sequenceId, step: step.order }
     });
+    await cRef.set(lastContactedFields('email', 'out'), { merge: true });
     return 'email sent';
   }
 
