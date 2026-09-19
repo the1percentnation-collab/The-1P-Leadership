@@ -8847,9 +8847,12 @@ function contactRow(id, c) {
 /** Every tool result carries these, even when nothing was truncated, so the
  *  model can never mistake a capped list for a complete one. */
 function envelope(rows, { scanned, matchedAtLeast = null, note = null }) {
-  const truncated = matchedAtLeast !== null
-    ? matchedAtLeast > rows.length
-    : scanned >= CRM_FETCH_CAP;
+  // Two ways to be incomplete, and both must set the flag. The post-filter
+  // count can fit inside the limit while the underlying query still hit the
+  // fetch cap — reporting that as complete is exactly the confident
+  // under-report this envelope exists to prevent.
+  const truncated = (matchedAtLeast !== null && matchedAtLeast > rows.length)
+    || scanned >= CRM_FETCH_CAP;
   return {
     rows,
     returned: rows.length,
@@ -9559,6 +9562,30 @@ function looksLikeChangeRequest(message, previousAssistantText) {
  * blocks are stripped and only plain text is replayed — row data never
  * round-trips through the browser at all.
  */
+const BUDGET_NOTICE = 'Tool budget reached. Answer now from what you already have, and say plainly what you were not able to check.';
+
+/**
+ * Append the out-of-budget notice without creating two consecutive user turns.
+ *
+ * The last message at this point is normally a user turn carrying tool
+ * results, so pushing a second user message beside it would be a malformed
+ * conversation. Fold the notice into that turn instead.
+ */
+function withBudgetNotice(messages) {
+  const out = messages.slice();
+  const last = out[out.length - 1];
+  if (last && last.role === 'user' && Array.isArray(last.content)) {
+    out[out.length - 1] = { role: 'user', content: [...last.content, { type: 'text', text: BUDGET_NOTICE }] };
+    return out;
+  }
+  if (last && last.role === 'user') {
+    out[out.length - 1] = { role: 'user', content: `${last.content}\n\n${BUDGET_NOTICE}` };
+    return out;
+  }
+  out.push({ role: 'user', content: BUDGET_NOTICE });
+  return out;
+}
+
 function sanitizeHistory(history) {
   if (!Array.isArray(history)) return [];
   const out = [];
@@ -9672,9 +9699,7 @@ exports.crmAssistantChat = onCall(
           // Out of budget: one last call with tools switched off, so the admin
           // gets an honest partial answer rather than a 504 or an empty reply.
           ...(outOfBudget ? { tool_choice: { type: 'none' } } : {}),
-          messages: outOfBudget
-            ? [...messages, { role: 'user', content: 'Tool budget reached. Answer now from what you already have, and say plainly what you were not able to check.' }]
-            : messages
+          messages: outOfBudget ? withBudgetNotice(messages) : messages
         });
       } catch (err) {
         const status = err && err.status;

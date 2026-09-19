@@ -125,6 +125,36 @@ ok('a capped list reports a floor, not a count', () => {
   assert.match(e.truncationNote, /at least 412/);
 });
 
+ok('hitting the fetch cap counts as truncated even when the filtered set fits', () => {
+  // The post-filter count can sit inside the limit while the query that
+  // produced it still stopped at the cap. Reporting that as complete is the
+  // confident under-report the envelope exists to prevent.
+  const e = sandbox.envelope([{ contactId: 'a' }, { contactId: 'b' }], {
+    scanned: sandbox.CRM_FETCH_CAP, matchedAtLeast: 2
+  });
+  assert.strictEqual(e.truncated, true);
+});
+
+ok('the out-of-budget notice never creates two consecutive user turns', () => {
+  const fn = new Function('BUDGET_NOTICE', 'Array', `
+    ${SRC.slice(SRC.indexOf('function withBudgetNotice'), SRC.indexOf('function sanitizeHistory'))}
+    return withBudgetNotice;
+  `)('NOTICE', Array);
+  const withToolResults = fn([
+    { role: 'user', content: 'hi' },
+    { role: 'assistant', content: [{ type: 'text', text: 'x' }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: '{}' }] }
+  ]);
+  assert.strictEqual(withToolResults.length, 3, 'a fourth message was appended beside a user turn');
+  assert.strictEqual(withToolResults[2].content.length, 2);
+  const afterAssistant = fn([
+    { role: 'user', content: 'hi' },
+    { role: 'assistant', content: [{ type: 'text', text: 'x' }] }
+  ]);
+  assert.strictEqual(afterAssistant.length, 3);
+  assert.strictEqual(afterAssistant[2].role, 'user');
+});
+
 ok('the aggregate tools promise numbers, the row tool promises rows', () => {
   const find = sandbox.CRM_READ_TOOLS.find((t) => t.name === 'crm_find_contacts');
   const snap = sandbox.CRM_READ_TOOLS.find((t) => t.name === 'crm_pipeline_snapshot');
