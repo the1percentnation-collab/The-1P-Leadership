@@ -256,16 +256,20 @@
     .radio-chip label:hover { border-color: rgba(255,255,255,0.2); color: var(--white); }
 
     /* CONSENT */
-    .consent-block { display: flex; flex-direction: column; gap: 10px; }
-    .consent-item { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+    .consent-block { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+    .consent-item { position: relative; display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+    /* A real checkbox, visually hidden rather than display:none so it stays
+       focusable and keyboard-toggleable; the styled box beside it mirrors it. */
+    .consent-input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
     .consent-box {
       width: 18px; height: 18px; flex-shrink: 0; border-radius: 3px;
       border: 1px solid var(--border); background: var(--surface);
       display: flex; align-items: center; justify-content: center;
       transition: border-color 0.15s, background 0.15s; margin-top: 1px; cursor: pointer;
     }
-    .consent-box.checked { border-color: var(--red); background: var(--red); }
-    .consent-box.checked::after { content: '✓'; color: var(--white); font-size: 11px; font-weight: 700; }
+    .consent-input:checked + .consent-box { border-color: var(--red); background: var(--red); }
+    .consent-input:checked + .consent-box::after { content: '✓'; color: var(--white); font-size: 11px; font-weight: 700; }
+    .consent-input:focus-visible + .consent-box { outline: 2px solid var(--red); outline-offset: 2px; }
     .consent-text { font-size: 11px; font-weight: 300; color: var(--gray-600); line-height: 1.5; }
     .consent-text strong { color: var(--white); font-weight: 500; }
 
@@ -587,6 +591,23 @@
         </div>
       </div>
 
+      <!-- CONSENT: sits with the contact fields, visible on load, so the phone
+           input and the consent wording are on screen together. Neither box is
+           pre-checked and neither is required: consent is not a condition of
+           registering. -->
+      <div class="consent-block">
+        <label class="consent-item" for="c1">
+          <input type="checkbox" id="c1" name="smsConsent" class="consent-input">
+          <span class="consent-box" aria-hidden="true"></span>
+          <span class="consent-text">By checking this box, you agree to receive text messages from <strong>The One Percent</strong> related to your inquiry, bookings, or program updates. Message frequency may vary. Message and data rates may apply. Reply <strong>HELP</strong> for assistance or <strong>STOP</strong> to opt out.</span>
+        </label>
+        <label class="consent-item" for="c2">
+          <input type="checkbox" id="c2" name="marketingConsent" class="consent-input">
+          <span class="consent-box" aria-hidden="true"></span>
+          <span class="consent-text">By checking this box, you agree to receive marketing and promotional messages from <strong>The One Percent</strong>, including special offers, discounts, and new program updates. Reply <strong>STOP</strong> to opt out at any time.</span>
+        </label>
+      </div>
+
       <div class="step-progress">
         <span id="step-label">Question 1 of 5</span>
         <span class="step-progress-bar"><span class="step-progress-fill" id="step-progress-fill"></span></span>
@@ -681,18 +702,6 @@
 
       <!-- FINAL: revealed after all questions answered -->
       <div id="final-step" class="final-step-locked">
-      <!-- CONSENT -->
-      <div class="consent-block">
-        <div class="consent-item" onclick="toggleConsent('c1')">
-          <div class="consent-box" id="c1"></div>
-          <p class="consent-text">By checking this box, you agree to receive text messages from <strong>The One Percent</strong> related to your inquiry, bookings, or program updates. Message frequency may vary. Message and data rates may apply. Reply <strong>HELP</strong> for assistance or <strong>STOP</strong> to opt out.</p>
-        </div>
-        <div class="consent-item" onclick="toggleConsent('c2')">
-          <div class="consent-box" id="c2"></div>
-          <p class="consent-text">By checking this box, you agree to receive marketing and promotional messages from <strong>The One Percent</strong>, including special offers, discounts, and new program updates. Reply <strong>STOP</strong> to opt out at any time.</p>
-        </div>
-      </div>
-
       <button type="submit" class="btn-submit" id="btn-submit">
         <span id="btn-text">Claim My Spot Today</span>
         <span id="btn-arrow">→</span>
@@ -772,12 +781,6 @@
   // config/booking.webinarEventId is set. The meter stays hidden until
   // it is wired to that real number; nothing rather than a fiction.
   document.querySelector('.spots-row')?.remove();
-
-  // Consent toggles
-  function toggleConsent(id) {
-    const box = document.getElementById(id);
-    box.classList.toggle('checked');
-  }
 
   // Step navigation (questions only)
   (function(){
@@ -928,11 +931,24 @@
     // registers the signup for the webinar event to get the Zoom join link.
     try {
       if (!window.__1pSubmitWebinarLead) throw new Error('Form is still loading. Please try again.');
+      const c1 = document.getElementById('c1');
+      const c2 = document.getElementById('c2');
+      const consentTextFor = (id) => {
+        const label = document.querySelector(`label[for="${id}"] .consent-text`);
+        return label ? label.innerText.replace(/\s+/g, ' ').trim() : '';
+      };
       await window.__1pSubmitWebinarLead({
         name, email, phone,
         fields: { state, city, inspire, holdback, reset, question, source },
-        consent: document.getElementById('c1')?.classList.contains('checked')
-          || document.getElementById('c2')?.classList.contains('checked') || false
+        // Per-box state plus the exact wording shown, read from the DOM so what
+        // gets stored is what the person saw. The legacy boolean stays so a
+        // page that deploys ahead of the function cannot be misread as consent.
+        consent: c1.checked || c2.checked,
+        consents: { sms: c1.checked, marketing: c2.checked },
+        consentText: {
+          sms: consentTextFor('c1'),
+          marketing: consentTextFor('c2')
+        }
       });
     } catch (err) {
       btn.disabled = false;

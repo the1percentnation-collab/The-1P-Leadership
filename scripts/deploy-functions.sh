@@ -13,12 +13,12 @@
 # once-only `remindedAt` stamp means the stranded deployed copies and the tick
 # cannot double-send even while both exist.
 #
-# That workaround created a worse problem. Firebase now sees two functions
-# that exist in the project but not in source, tries to delete them, and the
-# very same missing permission rejects the delete. So every deploy since
-# 2026-06-14 has exited non-zero AFTER successfully deploying every real
-# function. A pipeline that is always red reports nothing: a genuine failure
-# looks exactly like the last three months of noise.
+# That leaves one problem. Firebase sees two functions that exist in the
+# project but not in source, tries to delete them, and the very same missing
+# permission rejects the delete. So every deploy since 2026-06-14 has exited
+# non-zero AFTER successfully deploying every real function. A pipeline that is
+# always red reports nothing: a genuine failure looks exactly like the last
+# three months of noise.
 #
 # WHAT THIS DOES
 # --------------
@@ -40,11 +40,23 @@
 # comment claimed reminders were switched off, so every reader concluded the
 # feature was broken when it was running fine from the tick. Re-enabling means
 # exporting a scheduled function afresh, not restoring them.)
+#
+# The grant itself:
+#
+#   gcloud projects add-iam-policy-binding the-1p-leadership \
+#     --member="serviceAccount:<the CI deploy service account>" \
+#     --role="roles/cloudscheduler.admin"
+#
+# Then confirm in the next deploy log that both functions were deleted, and
+# only then empty KNOWN_STRANDED below and drop the ::warning:: at the end of
+# this script. Do it in that order: emptying the list before the grant lands
+# just turns every deploy red again, because the delete still fails.
 
 set -uo pipefail
 
 # Deployed-but-unexported functions we knowingly cannot clean up yet. Keep this
 # list minimal: every name here is a function whose failure we stop reporting.
+# Empty it once the IAM grant above has let a deploy delete these two.
 KNOWN_STRANDED="appointmentReminders taskReminders"
 
 LOG="$(mktemp)"

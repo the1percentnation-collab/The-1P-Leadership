@@ -901,7 +901,7 @@ async function main() {
   } catch (e) { state.admins = []; }
 
   // The softphone is shared with the contact page and the dialer queue; the
-  // Twilio Device is only built on the first real call.
+  // The softphone client is only built on the first real call.
   try {
     await dialer.configure({ companyId, uid: u.uid });
   } catch (e) { console.warn('[crm] dialer configure failed', e); }

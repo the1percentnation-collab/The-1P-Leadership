@@ -115,8 +115,9 @@ caught. Adjust the limits at the top of that file.
 - Signed-in members can export or delete their own data from
   `/profile.html` (backed by the `requestDataExport` / `deleteMyAccount`
   callables). No setup needed.
-- SMS `STOP`/`START` opt-out is handled in `twilioInboundWebhook`; `sendSms`
-  refuses opted-out contacts. Works once Twilio is configured.
+- SMS `STOP`/`START` opt-out is handled in `telnyxInboundWebhook`; `sendSms`
+  refuses opted-out contacts, and an inbound reply also stops every active
+  sequence for that contact. Works once Telnyx is configured.
 - A cookie-consent banner (`public/js/consent-banner.js`) is included on
   `index`, `login`, and `signup`. Add the same
   `<script src="/js/consent-banner.js" defer></script>` tag to other public
@@ -171,11 +172,14 @@ The CRM's calling and calendar features ship dormant: every button exists,
 and each one reports "not set up yet" until its credentials are present.
 Nothing below is needed for SMS, which keeps working as before.
 
-### Twilio Voice (softphone + cell bridge)
+### Calling (softphone + cell bridge)
 
-**Step-by-step walkthrough: [`docs/twilio-setup.md`](docs/twilio-setup.md)** —
-which console pages, which URLs, and how to test. The summary below is the
-variable reference.
+**Step-by-step walkthrough: [`docs/telnyx-setup.md`](docs/telnyx-setup.md)** —
+which Mission Control pages, which URLs, and how to test. The summary below is
+the variable reference.
+
+Calling needs no registration of any kind. Unlike texting, it can be live the
+same day you open the account.
 
 Every value goes in as a **GitHub repository secret**, not a local file: the
 deploy workflow writes `functions/.env` from those secrets, so CI is the single
@@ -183,20 +187,29 @@ source of truth and a later merge cannot silently un-configure calling. See
 `functions/.env.example` for the full list. Redeploy the functions after any
 change.
 
-Runtime environment variables, in addition to the existing
-`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM_NUMBER`:
+Runtime environment variables:
 
 | Variable | Where it comes from |
 |---|---|
-| `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET` | Twilio Console → Account → API keys & tokens → Create API key (Standard). Needed to mint the browser softphone's access token; the account auth token cannot do this. |
-| `TWILIO_TWIML_APP_SID` | Twilio Console → Voice → TwiML Apps → Create. Set **Voice Request URL** to `https://us-central1-the-1p-leadership.cloudfunctions.net/voiceOutboundTwiml` (POST). |
-| `TWILIO_CALLER_ID` | Optional. A verified or purchased number used as outbound caller ID when it differs from `TWILIO_FROM_NUMBER`. |
+| `TELNYX_API_KEY` | Mission Control → API Keys. One bearer token for the whole v2 API, used for messaging and voice alike. |
+| `TELNYX_SIP_CONNECTION_ID` | Mission Control → Voice → SIP Connections → a connection of type **Credentials**. Per-agent WebRTC credentials hang off it. |
+| `TELNYX_TEXML_APP_ID` | Mission Control → Voice → TeXML Applications → Create. Needed only for inbound routing and cell-bridge mode; the browser softphone works without it. |
+| `TELNYX_CALLER_ID` | Optional. The number leads see; falls back to `TELNYX_FROM_NUMBER`. |
 
-Then, on the Twilio phone number itself (Phone Numbers → Manage → the
-number → Voice & Fax): set **A call comes in** to the webhook
+**Set destination restrictions and a daily spend cap on that SIP connection's
+outbound voice profile before going live.** This is a security control, not
+billing. The browser holds a real SIP credential and can dial anywhere the
+profile permits, so the profile is the only hard ceiling on toll fraud. The
+CRM's own `authorizeCall` re-checks consent server-side before every dial and
+refuses a do-not-call record outright, which holds against an honest client;
+the voice profile is what holds against a tampered one.
+
+Then, for inbound: set the TeXML application's voice URL to
 `https://us-central1-the-1p-leadership.cloudfunctions.net/voiceInboundTwiml`
-(POST). Inbound calls ring the assigned rep's softphone (or every admin's),
-create the caller as a contact if unknown, and fall to voicemail.
+and assign your number to that application. Inbound calls ring the assigned
+rep's softphone (or every admin's), create the caller as a contact if unknown,
+and fall to voicemail. A rep who has never opened the dialer has no SIP
+identity yet and cannot be rung, which is what the voicemail fallback covers.
 
 Each rep chooses their mode in CRM Settings → Calling: the browser softphone
 (needs microphone permission; `firebase.json` now sends
@@ -207,8 +220,13 @@ Recording is off by default. "On, with a spoken notice" prepends a consent
 announcement; silent recording is illegal in two-party-consent states, and
 the settings page says so.
 
-The Voice SDK is vendored at `public/vendor/twilio-voice-<version>.min.js`
-(see the README there) rather than loaded from a CDN.
+The WebRTC SDK is vendored at `public/vendor/telnyx-webrtc-<version>.min.mjs`
+(see the README there) rather than loaded from a CDN. It is a self-contained ES
+module, so `dialer-core.js` loads it with a plain dynamic `import()`.
+
+One-click voicemail drop works in cell-bridge mode only: a direct WebRTC dial
+has no server-side call leg to redirect into a greeting, and the dock says so
+rather than failing quietly.
 
 ### Texting: registration is unavoidable, but there is a light door
 
@@ -218,17 +236,17 @@ registering — Telnyx, Plivo, SignalWire and the rest all require the identical
 Campaign Registry process. Voice is completely exempt.
 
 Without an EIN, **Sole Proprietor 10DLC** is the lightest path and keeps a
-local area code: name, email, address, and a one-time code to your personal
-mobile. No EIN, no SSN, no business documents. Capped at one number and roughly
-a message per second, which is far above what one-to-one follow-up uses.
-Toll-free verification is the alternative if you need full throughput.
+local area code. Telnyx's flow takes name, address, mobile number and the last
+four digits of your SSN — no EIN and no business documents — then a one-time
+code to that mobile, which must be answered inside 24 hours. Capped at one
+number and roughly a message per second, far above what one-to-one follow-up
+uses.
 
 The full submission — the opt-in URL to give them, the use-case wording, the
 workflow description and the message samples — is in
-[`docs/sms-registration.md`](docs/sms-registration.md). Note that
-`TWILIO_FROM_NUMBER` must not be pointed at the toll-free number until
-verification is approved, because a toll-free number cannot send to the US or
-Canada before then.
+[`docs/sms-registration.md`](docs/sms-registration.md). Leave
+`TELNYX_FROM_NUMBER` unset until the campaign is approved: sending before then
+is blocked by every US carrier and still bills you the sender fees.
 
 Voice is unaffected by any of this and needs no registration.
 
@@ -271,8 +289,10 @@ workflow.
 
 ### Voicemail drop
 
-No credentials needed beyond Twilio Voice. Record a greeting in CRM
-Settings → Voicemail drop (the browser records and converts it to 8 kHz WAV,
-which Twilio plays natively). The audio lives in Cloud Storage under
-`companies/{cid}/voicemails/`, closed to all client reads; Twilio fetches it
-through `voicemailAudio` with a per-file token written server-side.
+No credentials needed beyond the calling setup above, and it works in
+cell-bridge mode only (see the note there). Record a greeting in CRM
+Settings → Voicemail drop; the browser records and converts it to 8 kHz WAV,
+which a `<Play>` verb accepts where webm/opus would not. The audio lives in
+Cloud Storage under `companies/{cid}/voicemails/`, closed to all client reads.
+Telnyx is handed a `voicemailTexml` document that points at `voicemailAudio`,
+both gated by a per-file token written server-side.

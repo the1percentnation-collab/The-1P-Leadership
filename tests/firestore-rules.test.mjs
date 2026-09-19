@@ -173,6 +173,18 @@ await t('admin CANNOT overwrite a recordingUrl on update',
 await t('admin CAN still update a call status',
   () => assertSucceeds(updateDoc(doc(adm, 'companies/co1/calls/call1'), { status: 'completed' })));
 
+// SMS consent is server-written only: the lead form and the recordSmsConsent
+// callable both leave an activity naming the actor, and a client write would
+// bypass that trail.
+await t('admin can update a contact\'s ordinary fields',
+  () => assertSucceeds(updateDoc(doc(adm, 'companies/co1/contacts/c1'), { name: 'Lead One Renamed' })));
+await t('admin cannot grant smsConsent from the client',
+  () => assertFails(updateDoc(doc(adm, 'companies/co1/contacts/c1'), { smsConsent: true })));
+await t('admin cannot clear a recorded decline from the client',
+  () => assertFails(updateDoc(doc(adm, 'companies/co1/contacts/c1'), { smsConsentDeclinedAt: null })));
+await t('admin cannot create a contact pre-consented',
+  () => assertFails(setDoc(doc(adm, 'companies/co1/contacts/c9'), { name: 'Pre', smsConsent: true })));
+
 // ── OAuth refresh tokens are readable by nobody, owner included ───────────
 await t('company admin CANNOT read the Google refresh token',
   () => assertFails(getDoc(doc(adm, 'companies/co1/private/googleOAuth'))));

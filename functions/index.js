@@ -125,23 +125,18 @@ const STRIPE_SECRETS = [stripeSecretKey, stripeWebhookSecret];
 // vanishing. Secret Manager is the only path that survives a deploy.
 const ANTHROPIC_API_KEY = () => (process.env.ANTHROPIC_API_KEY || '').trim();
 
-// Twilio SMS credentials are read from process.env (like Stripe), NOT via
-// defineSecret — so deploys succeed before the values exist. Until they're set
-// (functions/.env or runtime env), sendSms returns "not configured" and the
-// inbound webhook rejects unsigned traffic. Provide: TWILIO_ACCOUNT_SID,
-// TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER.
+// Telephony credentials are read from process.env (like Stripe), NOT via
+// defineSecret — so deploys succeed before the values exist. Until they are set
+// (functions/.env, written by CI from repository secrets), sendSms returns "not
+// configured" and the webhooks reject unsigned traffic. See the Telnyx block
+// further down for the full list and docs/telnyx-setup.md for where each value
+// comes from.
 //
-// Voice needs three MORE values, because minting a Voice access token cannot
-// be done with the account auth token:
-//   TWILIO_API_KEY_SID / TWILIO_API_KEY_SECRET — a Standard API key, used to
-//     sign the short-lived JWT the browser softphone registers with.
-//   TWILIO_TWIML_APP_SID — the TwiML App whose Voice URL points at
-//     voiceOutboundTwiml. Outbound softphone calls route through it.
-// Optional: TWILIO_CALLER_ID overrides TWILIO_FROM_NUMBER for outbound
-// caller ID, for when the SMS number and the voice number differ.
+// The TWILIO_* values below belong to the pre-Telnyx code kept as a revert
+// path. Nothing in the live path reads them.
 //
-// These stay on process.env rather than defineSecret for the same reason as
-// the SMS trio, and because a defineSecret value read from a function that
+// These stay on process.env rather than defineSecret because a defineSecret
+// value read from a function that
 // does not declare it in `secrets:` comes back empty — the trap that broke
 // ANTHROPIC_API_KEY in 277162f.
 let _twilioClient = null;
@@ -5663,9 +5658,10 @@ function reminderHtml(title, lines) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// Twilio 2-way SMS — send (callable) + inbound/status webhooks.
+// 2-way SMS — send (callable), plus the Telnyx inbound/status webhooks below.
 // Conversations live at companies/{cid}/conversations/{contactId} with a
-// messages subcollection (written only here, via Admin SDK).
+// messages subcollection (written only here, via Admin SDK). The twilio*
+// webhooks that follow are the superseded pair, kept as a revert path.
 // ════════════════════════════════════════════════════════════════
 exports.sendSms = onCall(
   async (request) => {
@@ -5695,6 +5691,13 @@ exports.sendSms = onCall(
     if (cSnap.data().smsOptedOut === true) {
       throw new HttpsError('failed-precondition',
         'This contact has opted out of SMS (replied STOP) and cannot be messaged.');
+    }
+    // An explicit decline — the consent box was shown and left unticked — is
+    // honoured the same as STOP. Contacts with no recorded decision (imports,
+    // manual entry, inbound texters) are unaffected: only `false` blocks.
+    if (cSnap.data().smsConsent === false) {
+      throw new HttpsError('failed-precondition',
+        'This contact declined SMS consent when they registered. Record consent on their record first.');
     }
 
     let msg;
@@ -6213,17 +6216,25 @@ exports.authorizeCall = onCall(async (request) => {
       'Calling is not set up yet. Missing: ' + cfg.missing.join(', ') + '.');
   }
 
+  // Every refusal below carries { blocked: true } in the error details, and the
+  // client keys off that rather than the message text. Matching on wording is
+  // how a hard stop quietly becomes a fallback: reword one string and a
+  // do-not-call contact starts getting dialed from the phone's own dialer. The
+  // configuration failure above is deliberately NOT flagged, because degrading
+  // to the manual handoff is the right answer when calling is merely unset up.
+  const blocked = (message) => new HttpsError('failed-precondition', message, { blocked: true });
+
   const cSnap = await db.collection('companies').doc(companyId)
     .collection('contacts').doc(contactId).get();
-  if (!cSnap.exists) throw new HttpsError('not-found', 'Contact not found.');
+  // A contact the server cannot find must not be dialed by any route.
+  if (!cSnap.exists) throw new HttpsError('not-found', 'Contact not found.', { blocked: true });
   const contact = cSnap.data();
 
   if (contact.doNotCall === true) {
-    throw new HttpsError('failed-precondition',
-      'This contact is marked do not call and cannot be dialed.');
+    throw blocked('This contact is marked do not call and cannot be dialed.');
   }
   const to = normalizePhone(contact.phone);
-  if (!to) throw new HttpsError('failed-precondition', 'Contact has no phone number.');
+  if (!to) throw blocked('Contact has no phone number.');
 
   return { ok: true, to, callerId: cfg.callerId };
 });
@@ -7531,7 +7542,7 @@ exports.registerVoicemailDrop = onCall(async (request) => {
 // company from the CRM through runAutomationNowForCompany.
 //
 // Each tick:
-//   1. sends due sequence steps (SMS via Twilio, email via SendGrid, or a
+//   1. sends due sequence steps (SMS via Telnyx, email via SendGrid, or a
 //      task), advancing currentStep / nextRunAt, and completing enrollments
 //      that ran out of steps;
 //   2. renews Google Calendar watch channels inside their last 24 hours;
@@ -7618,6 +7629,7 @@ async function executeSequenceStep(db, companyId, enrollment, step, seq) {
 
   if (step.channel === 'sms') {
     if (contact.smsOptedOut === true) return 'skipped: opted out of SMS';
+    if (contact.smsConsent === false) return 'skipped: declined SMS consent';
     const to = normalizePhone(contact.phone);
     if (!to) return 'skipped: no phone';
     const cfg = telnyxSmsConfig();
@@ -11103,6 +11115,58 @@ function escapeHtmlBasic(s) {
 
 // `secrets` is required for the owner notification below — an undeclared
 // secret is never injected at runtime, so sendgridKey.value() would throw.
+/**
+ * recordSmsConsent({ companyId, contactId, note }) — an admin records consent
+ * given outside a web form, typically verbally on a call, for a contact who
+ * declined on the form or has no consent on file.
+ *
+ * A callable rather than a client write for the same reason setDoNotCall sits
+ * outside the updateContact whitelist: a consent change must reach the activity
+ * trail with a trustworthy actor, and firestore.rules refuses client writes to
+ * these fields so this is the only way in.
+ */
+exports.recordSmsConsent = onCall(async (request) => {
+  const db = admin.firestore();
+  const { companyId, contactId } = request.data || {};
+  const note = String((request.data || {}).note || '').trim().slice(0, 500);
+  if (!companyId || !contactId) {
+    throw new HttpsError('invalid-argument', 'companyId and contactId are required.');
+  }
+  if (!note) {
+    throw new HttpsError('invalid-argument',
+      'Say how consent was given — this note is the record.');
+  }
+  const { uid } = await assertCompanyAdmin(db, companyId, request);
+  await rateLimitCaller(db, request, { action: 'recordSmsConsent', max: 60, windowSec: 600 });
+
+  const ref = db.collection('companies').doc(companyId).collection('contacts').doc(contactId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Contact not found.');
+  if (snap.data().smsOptedOut === true) {
+    throw new HttpsError('failed-precondition',
+      'This contact replied STOP. Only they can opt back in, by replying START.');
+  }
+
+  const FV = admin.firestore.FieldValue;
+  const actorName = (request.auth.token && (request.auth.token.name || request.auth.token.email)) || uid;
+  const text = `Consent recorded by ${actorName}: ${note}`;
+  await ref.set({
+    smsConsent: true,
+    smsConsentAt: FV.serverTimestamp(),
+    smsConsentText: text,
+    smsConsentDeclinedAt: FV.delete(),
+    updatedAt: FV.serverTimestamp()
+  }, { merge: true });
+  await ref.collection('activities').add({
+    type: 'consent_updated',
+    description: `SMS consent recorded: ${note}`,
+    actorUid: uid, actorName,
+    createdAt: FV.serverTimestamp(),
+    meta: { channel: 'manual', smsConsent: true, consentText: { sms: text } }
+  });
+  return { ok: true };
+});
+
 exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
   const db = admin.firestore();
   const data = request.data || {};
@@ -11113,7 +11177,16 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
   const phone = (data.phone || '').toString().trim().slice(0, 40) || null;
-  const consent = !!data.consent;
+  // Newer pages send per-channel state plus the exact wording shown; older
+  // pages (and a page that deploys ahead of this function) send one boolean.
+  // The boolean is derived from the per-channel state when present so the
+  // existing tag behaviour is unchanged either way.
+  const hasChannels = data.consents && typeof data.consents === 'object';
+  const smsConsent = hasChannels ? data.consents.sms === true : null;
+  const marketingConsent = hasChannels ? data.consents.marketing === true : null;
+  const consent = hasChannels ? (smsConsent || marketingConsent) : !!data.consent;
+  const textIn = data.consentText && typeof data.consentText === 'object' ? data.consentText : {};
+  const consentTextFor = (k) => String(textIn[k] == null ? '' : textIn[k]).trim().slice(0, 1000);
   if (!name) throw new HttpsError('invalid-argument', 'Please enter your name.');
   if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
 
@@ -11137,11 +11210,56 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
   const ref = await upsertCrmContact(db, companyId, {
     name, email, phone, source: form.source, tags
   });
-  if (consent) {
-    await ref.set({
-      marketingConsent: true, marketingConsentAt: FV.serverTimestamp(),
-      marketingConsentText: `Opted in via ${form.source.toLowerCase()} form`
-    }, { merge: true });
+  // Consent is recorded per channel with the wording the person actually saw.
+  // Opt-in is additive: a later submission never downgrades an earlier `true`,
+  // because revocation is a STOP reply, which has its own path. The one new
+  // outcome is an explicit decline — the SMS box was shown and left unticked
+  // by someone with no prior consent on file — which sendSms then honours.
+  const fallbackText = `Opted in via ${form.source.toLowerCase()} form`;
+  const consentPatch = {};
+  let smsOutcome = null;
+  if (hasChannels) {
+    const prior = await ref.get();
+    const priorSms = prior.exists ? prior.data().smsConsent : undefined;
+    if (smsConsent) {
+      consentPatch.smsConsent = true;
+      consentPatch.smsConsentAt = FV.serverTimestamp();
+      consentPatch.smsConsentText = consentTextFor('sms') || fallbackText;
+      smsOutcome = 'granted';
+    } else if (priorSms !== true) {
+      consentPatch.smsConsent = false;
+      consentPatch.smsConsentDeclinedAt = FV.serverTimestamp();
+      smsOutcome = 'declined';
+    }
+    if (marketingConsent) {
+      consentPatch.marketingConsent = true;
+      consentPatch.marketingConsentAt = FV.serverTimestamp();
+      consentPatch.marketingConsentText = consentTextFor('marketing') || fallbackText;
+    }
+  } else if (consent) {
+    consentPatch.marketingConsent = true;
+    consentPatch.marketingConsentAt = FV.serverTimestamp();
+    consentPatch.marketingConsentText = fallbackText;
+  }
+  if (Object.keys(consentPatch).length) {
+    await ref.set(consentPatch, { merge: true });
+    // The durable proof of opt-in: what was agreed to, in what words, when.
+    await ref.collection('activities').add({
+      type: 'consent_updated',
+      description: hasChannels
+        ? `${form.source} form: SMS ${smsOutcome || 'unchanged'}, marketing ${marketingConsent ? 'granted' : 'not given'}.`
+        : `${form.source} form: opted in.`,
+      actorUid: 'system', actorName: 'Consent capture',
+      createdAt: FV.serverTimestamp(),
+      meta: {
+        channel: formType,
+        smsConsent: hasChannels ? smsConsent : null,
+        marketingConsent: hasChannels ? marketingConsent : consent,
+        consentText: hasChannels
+          ? { sms: consentTextFor('sms') || null, marketing: consentTextFor('marketing') || null }
+          : null
+      }
+    });
   }
   const summary = Object.entries(fields).map(([k, v]) => `${k}: ${v}`).join(' · ');
   await ref.collection('activities').add({
