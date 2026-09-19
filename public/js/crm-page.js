@@ -27,8 +27,15 @@ const PANEL_HTML = `
     </div>
     <div class="crm-toolbar-spacer"></div>
     <input id="crm-search" class="c-input crm-search" placeholder="Search name or email…" />
-    <button class="btn btn-ghost" id="btn-export-csv" title="Download the contacts currently shown">Export CSV</button>
-    <a class="btn btn-ghost" id="btn-import-csv" href="/crm-import.html">Import CSV</a>
+    <div class="crm-toolbar-group">
+      <button type="button" class="crm-toolbar-more" id="crm-toolbar-more" aria-haspopup="true" aria-expanded="false" aria-label="More actions">
+        <svg viewBox="0 0 16 4" aria-hidden="true"><circle cx="2" cy="2" r="1.6"/><circle cx="8" cy="2" r="1.6"/><circle cx="14" cy="2" r="1.6"/></svg>
+      </button>
+      <div class="crm-toolbar-actions" id="crm-toolbar-actions">
+        <button class="btn btn-ghost" id="btn-export-csv" title="Download the contacts currently shown">Export CSV</button>
+        <a class="btn btn-ghost" id="btn-import-csv" href="/crm-import.html">Import CSV</a>
+      </div>
+    </div>
     <button class="btn btn-primary" id="btn-new-contact">+ New Contact</button>
   </div>
   <div class="crm-filters">
@@ -65,6 +72,46 @@ const state = {
 
 function gate(msg) {
   if (contentEl) contentEl.innerHTML = `<div class="card"><div class="auth-error">${escapeHtml(msg)}</div></div>`;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Filter state <-> URL
+//
+// Filters used to live only in memory, so a refresh — or coming back from a
+// contact page — dropped you to All / All stages / All tags. Keeping them in
+// the query string fixes that and makes a filtered board shareable: a link
+// can point a teammate straight at one tag inside one stage.
+// ────────────────────────────────────────────────────────────────
+const URL_KEYS = { owner: 'owner', stage: 'stage', tag: 'tag', search: 'q' };
+
+function readFiltersFromUrl() {
+  const p = new URLSearchParams(location.search);
+  if (p.get(URL_KEYS.owner) === 'mine') state.filters.owner = 'mine';
+  const stage = p.get(URL_KEYS.stage);
+  if (stage && STAGE_IDS.includes(stage)) state.filters.stage = stage;
+  const tag = p.get(URL_KEYS.tag);
+  if (tag) state.filters.tag = tag;
+  const q = (p.get(URL_KEYS.search) || '').trim();
+  if (q) state.filters.search = q;
+}
+
+/**
+ * Mirror the active filters into the address bar.
+ *
+ * replaceState rather than pushState: filtering is not navigation, and a
+ * dozen chip clicks should not mean a dozen taps of the back button. Other
+ * params (companyId, most importantly) are preserved.
+ */
+function syncFiltersToUrl() {
+  const p = new URLSearchParams(location.search);
+  const f = state.filters;
+  const set = (k, v) => { if (v) p.set(k, v); else p.delete(k); };
+  set(URL_KEYS.owner, f.owner === 'mine' ? 'mine' : null);
+  set(URL_KEYS.stage, f.stage);
+  set(URL_KEYS.tag, f.tag);
+  set(URL_KEYS.search, f.search);
+  const qs = p.toString();
+  history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -269,6 +316,7 @@ function renderStageChips() {
     options: STAGES.map((s) => ({ value: s.id, label: s.label, color: s.color })),
     onPick: (v) => {
       state.filters.stage = v;
+      syncFiltersToUrl();
       renderStageChips();
       renderCurrentView();
     }
@@ -282,7 +330,12 @@ function renderTagChips() {
   const tags = Array.from(all).sort();
   // A tag can disappear when the last contact carrying it is filtered away or
   // retagged; drop the selection instead of leaving a filter nothing matches.
-  if (state.filters.tag && !all.has(state.filters.tag)) state.filters.tag = null;
+  if (state.filters.tag && !all.has(state.filters.tag)) {
+    state.filters.tag = null;
+    // A link can carry a tag this company no longer uses; drop it from the
+    // address bar too rather than leaving a param that filters nothing.
+    syncFiltersToUrl();
+  }
   renderFilterMenu('crm-tag-filter', {
     allLabel: 'All tags',
     searchPlaceholder: 'Find a tag…',
@@ -290,6 +343,7 @@ function renderTagChips() {
     options: tags.map((t) => ({ value: t, label: '#' + t })),
     onPick: (v) => {
       state.filters.tag = v;
+      syncFiltersToUrl();
       renderTagChips();
       renderCurrentView();
     }
@@ -311,6 +365,7 @@ function renderFilterBarState() {
       state.filters.search = '';
       const search = $('crm-search');
       if (search) search.value = '';
+      syncFiltersToUrl();
       renderOwnerChips();
       renderStageChips();
       renderTagChips();
@@ -332,6 +387,7 @@ function renderOwnerChips() {
     b.classList.toggle('active', state.filters.owner === b.getAttribute('data-owner-filter'));
     b.onclick = () => {
       state.filters.owner = b.getAttribute('data-owner-filter');
+      syncFiltersToUrl();
       renderOwnerChips();
       renderCurrentView();
     };
@@ -750,6 +806,7 @@ async function main() {
   }
   state.companyId = companyId;
 
+  readFiltersFromUrl();
   contentEl.innerHTML = PANEL_HTML;
 
   // Wire tabs
@@ -764,8 +821,34 @@ async function main() {
   // Wire search
   $('crm-search').addEventListener('input', (e) => {
     state.filters.search = (e.target.value || '').trim();
+    syncFiltersToUrl();
     renderCurrentView();
   });
+
+  // Reflect filters that arrived in the URL back into the controls.
+  $('crm-search').value = state.filters.search;
+
+  // Wire the narrow-screen overflow menu. Export/Import sit inline on a wide
+  // toolbar and collapse behind this button on a phone, where four stacked
+  // full-width bars pushed the board off the first screen.
+  const moreBtn = $('crm-toolbar-more');
+  const moreMenu = $('crm-toolbar-actions');
+  if (moreBtn && moreMenu) {
+    moreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = !moreMenu.classList.contains('open');
+      moreMenu.classList.toggle('open', open);
+      moreBtn.setAttribute('aria-expanded', String(open));
+    });
+    moreMenu.addEventListener('click', () => {
+      moreMenu.classList.remove('open');
+      moreBtn.setAttribute('aria-expanded', 'false');
+    });
+    document.addEventListener('click', () => {
+      moreMenu.classList.remove('open');
+      moreBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
 
   // Wire new contact
   $('btn-new-contact').addEventListener('click', openNewContactModal);

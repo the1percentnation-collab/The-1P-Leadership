@@ -2911,6 +2911,50 @@ textarea.mc-lines:focus { outline: none; border-color: rgba(204,27,27,0.5); }
   max-width: 280px;
 }
 
+/* Export/Import sit inline on a wide toolbar and collapse behind a "…" button
+   on narrow screens, where every button claimed a full-width row of its own. */
+.crm-toolbar-group { position: relative; display: inline-flex; }
+.crm-toolbar-actions { display: inline-flex; gap: 12px; }
+.crm-toolbar-more { display: none; }
+
+@media (max-width: 860px) {
+  .crm-toolbar { gap: 8px; }
+  .crm-toolbar-spacer { display: none; }
+  .crm-search { max-width: none; flex: 1 1 160px; min-width: 140px; }
+  .crm-toolbar-more {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--gray-light);
+    cursor: pointer;
+    transition: color 0.12s, border-color 0.12s;
+  }
+  .crm-toolbar-more svg { width: 16px; height: 4px; fill: currentColor; }
+  .crm-toolbar-more:hover { color: var(--white); border-color: var(--gray-mid); }
+  .crm-toolbar-actions {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 40;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 180px;
+    padding: 6px;
+    background: var(--charcoal);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.55);
+  }
+  .crm-toolbar-actions.open { display: flex; }
+  .crm-toolbar-actions .btn { width: 100%; text-align: center; }
+}
+
 /* Single-line filter bar: segmented owner toggle + two dropdowns, so the bar
    stays one row tall however many tags a company accumulates. */
 .crm-filters {
