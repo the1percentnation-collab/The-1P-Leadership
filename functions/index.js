@@ -8745,7 +8745,30 @@ exports.reportBug = onCall({ secrets: [sendgridKey, anthropicKey] }, async (requ
 //     approves; the apply path runs with no LLM in it at all.
 // ════════════════════════════════════════════════════════════════
 
-const CRM_MODEL = 'claude-opus-5';
+// Haiku 4.5, not Opus, because the expensive questions are answered for free
+// by the deterministic reports on the CRM dashboard. What is left for the
+// model is ad-hoc phrasing, which Haiku handles at roughly a fifth of the
+// cost (~$1/$5 per MTok against $5/$25).
+//
+// Switching this constant is not just a string swap: thinking is configured
+// differently per model family, so use crmThinkingConfig() below rather than
+// hardcoding a thinking block. Opus 5 / Sonnet 5 take adaptive thinking and
+// reject budget_tokens with a 400; Haiku 4.5 is the reverse.
+const CRM_MODEL = 'claude-haiku-4-5';
+
+/**
+ * The right `thinking` parameter for whichever model CRM_MODEL names.
+ *
+ * Getting this wrong is a 400 at runtime, not a lint error, so it lives in one
+ * place next to the model constant rather than inline at the call site.
+ */
+function crmThinkingConfig(model) {
+  // Haiku 4.5 and older models: an explicit token budget, which must be below
+  // max_tokens. Adaptive is rejected.
+  if (/haiku/.test(model)) return { type: 'enabled', budget_tokens: 2048 };
+  // Opus 5 / Sonnet 5 / the 4.6+ family: adaptive. budget_tokens is a 400.
+  return { type: 'adaptive' };
+}
 const CRM_MAX_ITERATIONS = 6;        // model turns before we force an answer
 const CRM_MAX_TOOL_CALLS = 10;
 const CRM_MAX_ROWS_PER_TOOL = 50;
@@ -9693,7 +9716,7 @@ exports.crmAssistantChat = onCall(
         response = await client.messages.create({
           model: CRM_MODEL,
           max_tokens: 4096,
-          thinking: { type: 'adaptive' },
+          thinking: crmThinkingConfig(CRM_MODEL),
           system: systemBlocks,
           tools,
           // Out of budget: one last call with tools switched off, so the admin

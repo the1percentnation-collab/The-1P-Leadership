@@ -32,7 +32,10 @@ const helpersEnd = SRC.indexOf('// ── Tool schemas');
 assert.ok(helpersStart > 0 && helpersEnd > helpersStart, 'could not locate the assistant helpers');
 const schemaStart = SRC.indexOf('const CRM_READ_TOOLS = [');
 const schemaEnd = SRC.indexOf('// ── Tool executors');
-const constStart = SRC.indexOf("const CRM_MODEL = 'claude-opus-5';");
+// Anchored on the declaration, not the value, so swapping the model does not
+// silently slice the sandbox to nothing.
+const constStart = SRC.indexOf('const CRM_MODEL = ');
+assert.ok(constStart > 0, 'could not locate CRM_MODEL');
 
 const sandboxSrc = SRC.slice(constStart, helpersEnd) + SRC.slice(schemaStart, schemaEnd);
 const fakeAdmin = {
@@ -239,11 +242,23 @@ ok('the sequence trigger honours the suppression flag', () => {
 // ── Loop control ────────────────────────────────────────────────────────────
 console.log('loop control');
 
-ok('runs on the current model with adaptive thinking', () => {
-  assert.strictEqual(sandbox.CRM_MODEL, 'claude-opus-5');
-  assert.ok(/thinking: \{ type: 'adaptive' \}/.test(BLOCK));
-  // budget_tokens is rejected outright on this model.
-  assert.ok(!/budget_tokens/.test(BLOCK));
+ok('the thinking config matches whichever model is configured', () => {
+  // Getting this wrong is a 400 at runtime, not a lint error: Opus 5 and
+  // Sonnet 5 take adaptive and reject budget_tokens; Haiku 4.5 is the reverse.
+  const fn = new Function(`
+    ${SRC.slice(SRC.indexOf('function crmThinkingConfig'), SRC.indexOf('\nconst FRESHNESS_BANDS'))}
+    return crmThinkingConfig;
+  `)();
+  assert.deepStrictEqual(fn('claude-haiku-4-5'), { type: 'enabled', budget_tokens: 2048 });
+  assert.deepStrictEqual(fn('claude-opus-5'), { type: 'adaptive' });
+  assert.deepStrictEqual(fn('claude-sonnet-5'), { type: 'adaptive' });
+  // The configured model must get a config the API will accept.
+  const cfg = fn(sandbox.CRM_MODEL);
+  assert.ok(cfg.type === 'adaptive' || cfg.budget_tokens < 4096,
+    'a thinking budget at or above max_tokens is rejected');
+  // The call site must not hardcode a block past the helper.
+  assert.ok(/thinking: crmThinkingConfig\(CRM_MODEL\)/.test(BLOCK),
+    'the loop hardcodes a thinking block instead of using the per-model helper');
 });
 
 ok('the assistant turn is replayed whole, thinking blocks included', () => {

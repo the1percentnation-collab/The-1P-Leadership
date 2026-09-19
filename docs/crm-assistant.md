@@ -146,12 +146,40 @@ already been delivered, and says so.
 
 ---
 
-## Cost
+## Cost, and what not to use this for
 
-Roughly $0.07 for a typical question, $0.21 for a pipeline audit, $0.55 worst
-case at the caps. Rate limited to 15 questions per admin per 10 minutes and 60
-per company per hour — the second limit exists because the first does not stop
-several admins spending together.
+**Use the CRM Dashboard for standing questions.** Stagnant leads, who needs
+contacting, overdue follow-ups, outreach this week, pipeline by stage, owner
+load, lead-source ROI — all of it is on `/crm-dashboard.html`, computed from
+your own data, exact, instant, and **free**. Every row there opens to show the
+named contacts behind the number.
+
+Those are database questions. Paying a language model to phrase a count
+Firestore already has is the wrong trade, and the dashboard is a better answer
+anyway: you glance at it rather than interviewing it.
+
+The assistant is for what a dashboard cannot anticipate — "what's the story
+with Jane Cole and should I call her before Thursday?" — and for staging
+changes.
+
+**Running on Haiku 4.5** (`$1`/`$5` per MTok), since the heavy questions are
+handled for free. Roughly:
+
+| | Cost |
+| --- | --- |
+| Typical question | ~$0.014 |
+| Multi-step question | ~$0.04 |
+| Worst case at the caps | ~$0.11 |
+
+About $4/month at ten questions a day. Rate limited to 15 per admin per 10
+minutes and 60 per company per hour — the second limit exists because the first
+does not stop several admins spending together.
+
+To change model, edit `CRM_MODEL` in `functions/index.js`. It is not only a
+string swap: thinking is configured differently per model family, which is why
+`crmThinkingConfig()` sits next to it. Opus 5 and Sonnet 5 take adaptive
+thinking and reject `budget_tokens` with a 400; Haiku 4.5 is the reverse. Going
+back to Opus 5 costs roughly 5x and buys more reliable multi-step reasoning.
 
 Token usage is logged per call. Search Cloud Functions logs for
 `[crmAssistant]` to see input, output and cache-read counts.

@@ -10416,6 +10416,65 @@ body.has-call-dock .crm-content { padding-bottom: 190px; }
 .task-check.done { background: var(--gray-mid); border-color: var(--gray-mid); }
 .task-priority-high { color: var(--red); font-weight: 700; }
 
+/* CRM reports. Deterministic, computed from the company's own data — no
+   model, no API cost, and exact rather than summarized. Every row is a button
+   because a count is only useful once you can see who is behind it. */
+.rep-wrap { display: grid; gap: 14px; }
+.rep-card { padding: 0; overflow: hidden; }
+.rep-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 14px 16px 10px; border-bottom: 1px solid var(--border);
+}
+.rep-title { font-size: 14px; font-weight: 600; color: var(--white); }
+.rep-sub { font-family: var(--font-mono); font-size: 11px; color: var(--gray-mid); }
+.rep-row {
+  display: grid; grid-template-columns: 170px minmax(60px, 1fr) 46px 44px auto;
+  align-items: center; gap: 10px; width: 100%;
+  padding: 9px 16px; background: transparent; border: 0; border-bottom: 1px solid var(--border);
+  cursor: pointer; text-align: left; font: inherit; color: var(--white-dim);
+}
+.rep-row:hover { background: var(--surface2); color: var(--white); }
+.rep-row.open { background: var(--surface2); color: var(--white); }
+.rep-row-label { font-size: 13px; }
+.rep-bar { height: 6px; border-radius: 999px; background: var(--surface2); overflow: hidden; }
+.rep-row.open .rep-bar, .rep-row:hover .rep-bar { background: rgba(255,255,255,.08); }
+.rep-bar-fill { display: block; height: 100%; border-radius: 999px; min-width: 2px; }
+.rep-row-count { font-family: var(--font-mono); font-size: 13px; text-align: right; color: var(--white); }
+.rep-row-pct { font-family: var(--font-mono); font-size: 11px; text-align: right; color: var(--gray-mid); }
+.rep-row-sub { font-family: var(--font-mono); font-size: 10px; color: var(--red); white-space: nowrap; }
+
+.rep-drill { background: var(--bg); border-bottom: 1px solid var(--border); }
+.rep-drill-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 10px; align-items: center; padding: 7px 16px 7px 26px;
+  border-bottom: 1px solid var(--border); text-decoration: none;
+}
+.rep-drill-row:last-child { border-bottom: 0; }
+.rep-drill-row:hover { background: var(--surface2); }
+.rep-drill-name { font-size: 13px; color: var(--white); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rep-drill-meta { font-size: 12px; color: var(--gray-light); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rep-drill-more { padding: 8px 16px 8px 26px; font-size: 12px; color: var(--gray-mid); }
+
+.rep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1px; background: var(--border); }
+.rep-stat { background: var(--surface); padding: 14px 16px; }
+.rep-stat-value { font-family: var(--font-display, var(--font-mono)); font-size: 28px; color: var(--white); line-height: 1; }
+.rep-stat-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--gray-mid); margin-top: 6px; }
+.rep-stat-sub { font-size: 12px; color: var(--gray-light); margin-top: 5px; }
+
+.rep-table { width: 100%; }
+.rep-table th, .rep-table td { padding: 8px 16px; }
+.rep-warn { color: var(--red); }
+
+@media (max-width: 720px) {
+  /* The bar is the first thing to go: the label and the count carry the
+     meaning, the bar only compares them. */
+  .rep-row { grid-template-columns: minmax(0, 1fr) 44px 42px; }
+  .rep-bar { display: none; }
+  .rep-row-sub { grid-column: 1 / -1; }
+  .rep-drill-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .rep-drill-row .rep-drill-meta:first-of-type { display: none; }
+}
+
 /* Contact recency.
    Deliberately distinct from `.crm-stage-badge` in shape — a pill, not a
    rectangle — because the two sit side by side on the contact card and mean
