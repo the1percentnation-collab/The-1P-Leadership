@@ -30,6 +30,7 @@ const NAV = [
   { key: 'calendar',      href: '/calendar.html',      label: 'Calendar',      icon: '◷' },
   { key: 'campaigns',     href: '/campaigns.html',     label: 'Campaigns',     icon: '❏' },
   { key: 'sequences',     href: '/sequences.html',     label: 'Sequences',     icon: '⇶' },
+  { key: 'ai-log',        href: '/crm-ai-log.html',    label: 'AI Activity',   icon: '◎' },
   { key: 'settings',      href: '/crm-settings.html',  label: 'Settings',      icon: '⚙' }
 ];
 

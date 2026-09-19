@@ -915,6 +915,97 @@ export async function markConversationRead(companyId, contactId) {
 }
 
 // ════════════════════════════════════════════════════════════════
+// CRM ASSISTANT — the audit trail.
+//
+// companies/{cid}/aiPlans holds every change the assistant staged: the prompt
+// that caused it, its reasoning, each item with before and after, and after
+// approval the per-item results. Rules make it admin-readable and
+// server-written only, so nothing here can forge or edit the record.
+//
+// This is also where shadowed stage proposals live — staged and recorded but
+// never applied, so the decision to enable stage writes can be made on evidence
+// rather than hope.
+// ════════════════════════════════════════════════════════════════
+
+function aiPlansCol(companyId) { return collection(db, 'companies', companyId, 'aiPlans'); }
+
+export async function listAiPlans(companyId, { max = 50 } = {}) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    // Ordered on one field only, with no where clause. A status filter here
+    // would need a composite index, and a bad index declaration is what took
+    // the backend deploy down when this feature first shipped. Filtering
+    // happens in memory instead.
+    const snap = await getDocs(query(aiPlansCol(companyId), orderBy('createdAt', 'desc'), limit(max)));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) { console.warn('[crm] listAiPlans failed', e); return []; }
+}
+
+export async function revertAiPlan(companyId, planId) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'crmAssistantRevert');
+  const res = await call({ companyId, planId });
+  return res.data || { ok: true };
+}
+
+/**
+ * A plan's real state.
+ *
+ * Nothing sweeps expired plans: one that was staged and never approved keeps
+ * `status: 'pending'` forever, and only discovers it has expired if somebody
+ * tries to apply it. Trusting the stored status would show week-old dead
+ * proposals as though they were still awaiting a decision.
+ */
+export function aiPlanState(plan) {
+  if (!plan) return 'unknown';
+  if (plan.status === 'pending') {
+    const exp = toDate(plan.expiresAt);
+    if (exp && exp.getTime() < Date.now()) return 'expired';
+  }
+  return plan.status || 'unknown';
+}
+
+/** Applied, something actually landed, and still inside the 7-day window the
+ *  crmAssistantRevert callable enforces. */
+export function aiPlanRevertable(plan) {
+  if (!plan) return false;
+  if (!['applied', 'partially_applied'].includes(plan.status)) return false;
+  if (!(plan.results || []).some((r) => r.status === 'applied')) return false;
+  const at = toDate(plan.appliedAt);
+  if (!at) return false;
+  return Date.now() - at.getTime() <= 7 * 86400000;
+}
+
+/**
+ * Every stage change the assistant proposed but was never allowed to make.
+ *
+ * This is the evaluation set behind CRM_STAGE_WRITES_ENABLED. Read flat across
+ * all plans, it answers the only question that matters before switching stage
+ * writes on: would I have been happy if these had gone through?
+ */
+export function shadowedStageItems(plans) {
+  const out = [];
+  (plans || []).forEach((p) => {
+    (p.items || []).forEach((i, idx) => {
+      if (i.kind !== 'stage' || !i.shadowed) return;
+      out.push({
+        planId: p.planId || p.id,
+        itemIndex: idx,
+        contactId: i.contactId,
+        contactName: i.contactName,
+        from: (i.before && i.before.stage) || null,
+        to: (i.after && i.after.stage) || null,
+        reason: (i.after && i.after.reason) || null,
+        userPrompt: p.userPrompt || null,
+        createdAt: p.createdAt || null,
+        automationWarnings: p.automationWarnings || []
+      });
+    });
+  });
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════
 // EMAIL — two-way, per contact.
 //
 // Outbound goes through the sendContactEmail callable (SendGrid); inbound
