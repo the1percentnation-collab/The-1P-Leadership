@@ -195,7 +195,10 @@ function renderFilterMenu(hostId, opts) {
     closeAllFilterMenus();
     pop.hidden = !open;
     btn.setAttribute('aria-expanded', String(open));
-    if (open && search) { search.value = ''; applySearch(); search.focus(); }
+    if (open) {
+      alignPop(pop);
+      if (search) { search.value = ''; applySearch(); search.focus(); }
+    }
   });
 
   pop.querySelectorAll('[data-value]').forEach((b) => {
@@ -231,6 +234,23 @@ function renderFilterMenu(hostId, opts) {
         btn.focus();
       }
     });
+  }
+}
+
+/**
+ * Keep an open menu inside the viewport.
+ *
+ * The menus hang left-aligned under their trigger, which runs off the right
+ * edge on a phone once the trigger sits far enough along the row. Flip to
+ * right-aligned when that would happen, and back when it would not.
+ */
+function alignPop(pop) {
+  pop.style.left = '0';
+  pop.style.right = 'auto';
+  const r = pop.getBoundingClientRect();
+  if (r.right > window.innerWidth - 8) {
+    pop.style.left = 'auto';
+    pop.style.right = '0';
   }
 }
 
