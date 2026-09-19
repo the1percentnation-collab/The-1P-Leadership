@@ -7951,6 +7951,18 @@ exports.onContactWrittenForSequences = onDocumentWritten(
     const { companyId, contactId } = event.params;
     const contact = { id: contactId, ...after };
 
+    // Bulk-change escape hatch. The CRM assistant's apply path sets this flag
+    // in the same write when the admin unticks "also run matching automations"
+    // on the confirmation card, then clears it immediately afterwards.
+    //
+    // Without this, "add the tag `nurture` to twenty cold leads" is an
+    // untickable send-twenty-sequences button: a tag add is an outbound
+    // communication trigger wearing a field-write costume.
+    if (after._automationSuppressed === true) {
+      console.log(`[autoEnroll] suppressed for ${companyId}/${contactId} (bulk change)`);
+      return;
+    }
+
     if (!before || before.stage !== after.stage) {
       await autoEnroll(db, companyId, contact, 'stage_change', after.stage, `stage → ${after.stage}`);
     }
@@ -8705,6 +8717,1346 @@ exports.reportBug = onCall({ secrets: [sendgridKey, anthropicKey] }, async (requ
 // in firestore.rules, and a cancelled run simply keeps the drafts
 // written so far.
 // ════════════════════════════════════════════════════════════════
+
+
+// ════════════════════════════════════════════════════════════════
+// CRM assistant — admin-only, company-scoped, tool-using.
+//
+// Answers "who needs contacting?", "who has gone stagnant?", "what's
+// overdue?", "audit my pipeline", "what's the story with X" against live data,
+// and stages task/tag changes for the admin to approve.
+//
+// SECURITY, in one place because it is the whole design:
+//
+//  1. `companyId` comes from the client and is verified with
+//     assertCompanyAdmin — NOT isAdminCaller, which is true for a platform
+//     admin of *any* company and would make this a cross-tenant read endpoint.
+//  2. `companyId` appears in NO tool schema. Executors are built over a
+//     `scope` closure and never receive `db`, so they cannot construct a path
+//     outside this company. A model-invented companyId/path argument is
+//     dropped and the tool proceeds scoped.
+//  3. NO collectionGroup queries. activities/notes/emails/messages/calls
+//     documents carry no companyId field, so a collection-group query is an
+//     unfilterable cross-tenant read. There is no safe version of this.
+//  4. Client-supplied history is replayed as plain text only — tool_use and
+//     tool_result blocks are stripped, so row data never round-trips through
+//     the browser where a history from company A could be replayed at B.
+//  5. Nothing is written by the model. Writes are staged as a plan the admin
+//     approves; the apply path runs with no LLM in it at all.
+// ════════════════════════════════════════════════════════════════
+
+const CRM_MODEL = 'claude-opus-5';
+const CRM_MAX_ITERATIONS = 6;        // model turns before we force an answer
+const CRM_MAX_TOOL_CALLS = 10;
+const CRM_MAX_ROWS_PER_TOOL = 50;
+const CRM_FETCH_CAP = 300;           // docs pulled before in-memory filtering
+const CRM_MAX_TOTAL_ROWS = 200;      // across one turn
+const CRM_SOFT_DEADLINE_MS = 240000; // leave headroom under timeoutSeconds 300
+const CRM_PLAN_TTL_MS = 15 * 60 * 1000;
+
+// Write caps. Sized for the fact that a tag add can trigger sequence
+// auto-enrolment, which sends real email and SMS — see the automation warning
+// machinery below.
+const CRM_MAX_CONTACTS_PER_PLAN = 25;
+const CRM_MAX_ITEMS_PER_PLAN = 40;
+const CRM_MAX_CONTACTS_PER_DAY = 200;
+
+// Stage changes are staged and recorded but NOT applied. Turning this on is a
+// deliberate decision that wants evidence behind it: a stage write fires
+// onContactWrittenForSequences → autoEnroll, so "mark these 40 as lost" can
+// mean "send 40 breakup emails". Leaving it false accumulates real proposals
+// in aiPlans that can be read back before anyone flips it.
+const CRM_STAGE_WRITES_ENABLED = false;
+
+const FRESHNESS_BANDS = { warm: 7, cooling: 14, stagnant: 30 };
+const CRM_STAGES = ['new', 'contacted', 'qualified', 'negotiating', 'customer', 'lost'];
+
+function daysAgoTs(days) {
+  return admin.firestore.Timestamp.fromMillis(Date.now() - days * 86400000);
+}
+
+function msOf(ts) {
+  if (!ts) return null;
+  if (typeof ts.toMillis === 'function') return ts.toMillis();
+  if (ts instanceof Date) return ts.getTime();
+  return null;
+}
+
+function daysSince(ts) {
+  const m = msOf(ts);
+  return m === null ? null : Math.floor((Date.now() - m) / 86400000);
+}
+
+function freshnessId(contact) {
+  const d = daysSince(contact.lastContactedAt);
+  if (d === null) return 'never';
+  if (d < FRESHNESS_BANDS.warm) return 'warm';
+  if (d < FRESHNESS_BANDS.cooling) return 'cooling';
+  if (d < FRESHNESS_BANDS.stagnant) return 'stagnant';
+  return 'cold';
+}
+
+/** Clamp to [min,max], tolerating the model handing us a string or nonsense. */
+function clampInt(v, min, max, dflt) {
+  // null and '' must fall through to the default, not be coerced. Number(null)
+  // is 0, which is finite, so the naive version turned an omitted `limit` into
+  // limit:1 — one row returned and reported on with total confidence.
+  if (v === null || v === undefined || v === '') return dflt;
+  const n = Math.floor(Number(v));
+  if (!Number.isFinite(n)) return dflt;
+  return Math.min(max, Math.max(min, n));
+}
+
+/** Free text out of the CRM and into the model's context, length-bounded. */
+function snip(s, n = 300) {
+  const t = String(s == null ? '' : s).trim();
+  return t.length > n ? t.slice(0, n) + '…[truncated]' : t;
+}
+
+/**
+ * A contact row for the model. A whitelist, never `...doc.data()` — internal
+ * plumbing (Stripe ids, unsub tokens, message ids) has no business in an LLM
+ * context, and the phone number buys nothing because the assistant cannot dial.
+ */
+function contactRow(id, c) {
+  const optOuts = [];
+  if (c.emailOptOut === true) optOuts.push('email');
+  if (c.smsOptedOut === true) optOuts.push('sms');
+  if (c.doNotCall === true) optOuts.push('calls');
+  if (Array.isArray(c.tags) && c.tags.includes('Unsubscribed')) optOuts.push('unsubscribed');
+  return {
+    contactId: id,
+    name: c.name || null,
+    companyName: c.companyName || null,
+    email: c.email || null,
+    hasPhone: !!c.phone,
+    stage: c.stage || null,
+    source: c.source || null,
+    tags: Array.isArray(c.tags) ? c.tags.slice(0, 10) : [],
+    ownerUid: c.ownerUid || null,
+    freshness: freshnessId(c),
+    daysSinceContact: daysSince(c.lastContactedAt),
+    lastContactChannel: c.lastContactChannel || null,
+    lastContactDirection: c.lastContactDirection || null,
+    daysSinceActivity: daysSince(c.lastActivityAt),
+    unreadEmails: Number(c.emailUnreadCount) || 0,
+    optOuts
+  };
+}
+
+/** Every tool result carries these, even when nothing was truncated, so the
+ *  model can never mistake a capped list for a complete one. */
+function envelope(rows, { scanned, matchedAtLeast = null, note = null }) {
+  const truncated = matchedAtLeast !== null
+    ? matchedAtLeast > rows.length
+    : scanned >= CRM_FETCH_CAP;
+  return {
+    rows,
+    returned: rows.length,
+    scanned,
+    matchedAtLeast,
+    truncated,
+    truncationNote: truncated
+      ? `Showing ${rows.length} of at least ${matchedAtLeast || scanned}. Say "at least N", never a bare count, and offer to narrow by stage, owner or tag.`
+      : null,
+    note
+  };
+}
+
+// ── Tool schemas ────────────────────────────────────────────────
+// No tool takes companyId. That is not an oversight and must stay true.
+
+const CRM_READ_TOOLS = [
+  {
+    name: 'crm_find_contacts',
+    description: 'Find contacts by stage, owner, tag, staleness or free text. Returns WHICH contacts match, sorted by how long they have been ignored. For HOW MANY, use crm_pipeline_snapshot instead — do not count these rows.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        stages: { type: 'array', items: { type: 'string', enum: CRM_STAGES }, description: 'OR filter. Omit for all stages.' },
+        staleness: { type: 'string', enum: ['warm', 'cooling', 'stagnant', 'cold', 'never'], description: 'warm <7d, cooling 7-14d, stagnant 14-30d, cold >30d since real outreach; never = nobody has ever contacted them.' },
+        contactedBeforeDays: { type: 'integer', minimum: 0, maximum: 3650, description: 'Alternative to staleness: last contacted more than N days ago.' },
+        ownerUid: { type: 'string' },
+        tags: { type: 'array', items: { type: 'string' }, maxItems: 5 },
+        query: { type: 'string', description: 'Case-insensitive substring on name, company or email.' },
+        excludeOptedOut: { type: 'boolean', description: 'Drop contacts who opted out of email or SMS or are marked do-not-call.' },
+        limit: { type: 'integer', minimum: 1, maximum: CRM_MAX_ROWS_PER_TOOL }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'crm_contact_detail',
+    description: 'The full story on one lead: their record plus recent emails, texts, calls, notes, tasks and deals. Use this for "what is going on with X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        contactId: { type: 'string' },
+        nameQuery: { type: 'string', description: 'Use when you only have a name. Returns candidates if more than one matches, rather than guessing.' },
+        perSectionLimit: { type: 'integer', minimum: 1, maximum: 20 }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'crm_list_tasks',
+    description: 'Follow-up tasks, with overdue and due-today counts.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['open', 'done', 'any'] },
+        overdueOnly: { type: 'boolean' },
+        dueWithinDays: { type: 'integer', minimum: 0, maximum: 365 },
+        assigneeUid: { type: 'string' },
+        contactId: { type: 'string' },
+        limit: { type: 'integer', minimum: 1, maximum: CRM_MAX_ROWS_PER_TOOL }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'crm_pipeline_snapshot',
+    description: 'Exact counts across the whole book of business: contacts by stage, staleness distribution, open deals and their value, open and overdue tasks. Returns NUMBERS ONLY, computed by the database. Always use this for counts rather than counting rows yourself.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        includeStaleness: { type: 'boolean' },
+        includeOwners: { type: 'boolean' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'crm_outreach_metrics',
+    description: 'How much outreach happened recently: distinct contacts actually reached in the last N days, split by channel and direction, plus new contacts created. Counts DISTINCT CONTACTS TOUCHED, not number of messages.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        sinceDays: { type: 'integer', minimum: 1, maximum: 365 },
+        groupBy: { type: 'string', enum: ['none', 'channel', 'direction', 'owner', 'stage'] }
+      },
+      additionalProperties: false
+    }
+  }
+];
+
+const CRM_WRITE_TOOL = {
+  name: 'propose_crm_changes',
+  description: 'Stage changes for the admin to review. THIS DOES NOT APPLY ANYTHING — nothing changes until the admin clicks Apply. Call it only when the admin has explicitly told you to make a change, at most once per turn, with every change in one call. Every contactId must come from a tool result earlier in this conversation.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string', maxLength: 300, description: 'One sentence the admin will see on the confirm card.' },
+      rationale: { type: 'string', maxLength: 600, description: 'Why these specific contacts, including the filter you used.' },
+      createTasks: {
+        type: 'array', maxItems: CRM_MAX_CONTACTS_PER_PLAN,
+        items: {
+          type: 'object',
+          properties: {
+            contactId: { type: 'string' },
+            title: { type: 'string', maxLength: 140 },
+            dueInDays: { type: 'integer', minimum: 0, maximum: 180 },
+            priority: { type: 'string', enum: ['low', 'normal', 'high'] }
+          },
+          required: ['contactId', 'title'],
+          additionalProperties: false
+        }
+      },
+      tagChanges: {
+        type: 'array', maxItems: CRM_MAX_CONTACTS_PER_PLAN,
+        items: {
+          type: 'object',
+          properties: {
+            contactId: { type: 'string' },
+            addTags: { type: 'array', items: { type: 'string', maxLength: 40 }, maxItems: 5 },
+            removeTags: { type: 'array', items: { type: 'string', maxLength: 40 }, maxItems: 5 }
+          },
+          required: ['contactId'],
+          additionalProperties: false
+        }
+      },
+      stageChanges: {
+        type: 'array', maxItems: 10,
+        items: {
+          type: 'object',
+          properties: {
+            contactId: { type: 'string' },
+            toStage: { type: 'string', enum: CRM_STAGES },
+            reason: { type: 'string', maxLength: 140 }
+          },
+          required: ['contactId', 'toStage', 'reason'],
+          additionalProperties: false
+        }
+      }
+    },
+    required: ['summary', 'rationale'],
+    additionalProperties: false
+  }
+};
+
+// ── Tool executors ──────────────────────────────────────────────
+//
+// Each takes (scope, args, ctx) where `scope` is the company document
+// reference. None of them can see `db`. That is the containment boundary:
+// there is no path from here to another company's data.
+
+async function execFindContacts(scope, args, ctx) {
+  const limit = clampInt(args.limit, 1, CRM_MAX_ROWS_PER_TOOL, 25);
+  const stages = Array.isArray(args.stages) ? args.stages.filter((s) => CRM_STAGES.includes(s)) : [];
+  const col = scope.collection('contacts');
+
+  // One indexed predicate plus one range; everything else is filtered in
+  // memory over a bounded fetch. Adding an index per filter combination would
+  // multiply out fast for very little gain.
+  let q = col;
+  if (args.staleness === 'never') {
+    q = q.where('lastContactedAt', '==', null);
+  } else {
+    let cutoffDays = null;
+    if (Number.isFinite(Number(args.contactedBeforeDays))) cutoffDays = clampInt(args.contactedBeforeDays, 0, 3650, 30);
+    else if (args.staleness === 'cold') cutoffDays = FRESHNESS_BANDS.stagnant;
+    else if (args.staleness === 'stagnant') cutoffDays = FRESHNESS_BANDS.cooling;
+    else if (args.staleness === 'cooling') cutoffDays = FRESHNESS_BANDS.warm;
+
+    if (stages.length === 1) q = q.where('stage', '==', stages[0]);
+    else if (args.ownerUid) q = q.where('ownerUid', '==', String(args.ownerUid));
+
+    if (cutoffDays !== null) {
+      // The lower bound is what excludes never-contacted rows: null sorts
+      // before every timestamp, so a bare `<=` would sweep them in and report
+      // brand-new leads as the coldest in the book.
+      q = q.where('lastContactedAt', '>', new admin.firestore.Timestamp(0, 0))
+           .where('lastContactedAt', '<=', daysAgoTs(cutoffDays));
+    }
+    q = q.orderBy('lastContactedAt', 'asc');
+  }
+
+  const snap = await q.limit(CRM_FETCH_CAP).get();
+  let rows = snap.docs.map((d) => contactRow(d.id, d.data() || {}));
+
+  if (stages.length) rows = rows.filter((r) => stages.includes(r.stage));
+  if (args.ownerUid) rows = rows.filter((r) => r.ownerUid === String(args.ownerUid));
+  if (args.staleness === 'warm') rows = rows.filter((r) => r.freshness === 'warm');
+  if (Array.isArray(args.tags) && args.tags.length) {
+    const want = args.tags.slice(0, 5).map((t) => String(t).toLowerCase());
+    rows = rows.filter((r) => r.tags.some((t) => want.includes(String(t).toLowerCase())));
+  }
+  if (args.query) {
+    const needle = String(args.query).toLowerCase();
+    rows = rows.filter((r) => [r.name, r.companyName, r.email]
+      .some((v) => v && String(v).toLowerCase().includes(needle)));
+  }
+  if (args.excludeOptedOut === true) rows = rows.filter((r) => !r.optOuts.length);
+
+  const matched = rows.length;
+  rows = rows.slice(0, limit);
+  rows.forEach((r) => ctx.seenContacts.add(r.contactId));
+  return envelope(rows, {
+    scanned: snap.size,
+    matchedAtLeast: matched,
+    note: args.staleness || args.contactedBeforeDays
+      ? 'Staleness is based on lastContactedAt (real outreach only), not lastActivityAt.'
+      : null
+  });
+}
+
+async function execContactDetail(scope, args, ctx) {
+  const per = clampInt(args.perSectionLimit, 1, 20, 10);
+  const contacts = scope.collection('contacts');
+
+  let id = args.contactId ? String(args.contactId) : null;
+  let snap = id ? await contacts.doc(id).get() : null;
+
+  if ((!snap || !snap.exists) && args.nameQuery) {
+    const needle = String(args.nameQuery).toLowerCase();
+    const all = await contacts.limit(CRM_FETCH_CAP).get();
+    const hits = all.docs.filter((d) => {
+      const c = d.data() || {};
+      return [c.name, c.email, c.companyName].some((v) => v && String(v).toLowerCase().includes(needle));
+    });
+    if (!hits.length) return { error: 'not_found', note: `No contact matches "${args.nameQuery}".` };
+    if (hits.length > 1) {
+      // Better to ask than to guess which Mike.
+      return {
+        ambiguous: true,
+        candidates: hits.slice(0, 10).map((d) => contactRow(d.id, d.data() || {})),
+        note: 'More than one contact matches. Ask the admin which one, or call again with a contactId.'
+      };
+    }
+    snap = hits[0]; id = snap.id;
+  }
+  if (!snap || !snap.exists) return { error: 'not_found', note: 'Provide a contactId or a nameQuery.' };
+
+  const c = snap.data() || {};
+  const ref = contacts.doc(id);
+  ctx.seenContacts.add(id);
+
+  const byCreated = (col) => col.orderBy('createdAt', 'desc').limit(per).get().catch(() => null);
+  const [emails, notes, activities, calls, messages, tasks, opps] = await Promise.all([
+    byCreated(ref.collection('emails')),
+    byCreated(ref.collection('notes')),
+    byCreated(ref.collection('activities')),
+    scope.collection('calls').where('contactId', '==', id).orderBy('createdAt', 'desc').limit(per).get().catch(() => null),
+    scope.collection('conversations').doc(id).collection('messages').orderBy('createdAt', 'desc').limit(per).get().catch(() => null),
+    scope.collection('tasks').where('contactId', '==', id).limit(per).get().catch(() => null),
+    scope.collection('opportunities').where('contactId', '==', id).limit(per).get().catch(() => null)
+  ]);
+
+  const map = (s, f) => (s && !s.empty ? s.docs.map((d) => f(d.id, d.data() || {})) : []);
+  return {
+    contact: contactRow(id, c),
+    emails: map(emails, (i, e) => ({ direction: e.direction, subject: snip(e.subject, 140), body: snip(e.bodyText), status: e.status, daysAgo: daysSince(e.createdAt) })),
+    texts: map(messages, (i, m) => ({ direction: m.direction, body: snip(m.body, 200), daysAgo: daysSince(m.createdAt) })),
+    calls: map(calls, (i, k) => ({ direction: k.direction, disposition: k.disposition || null, durationSec: k.durationSec || 0, note: snip(k.dispositionNote, 200), daysAgo: daysSince(k.createdAt) })),
+    notes: map(notes, (i, n) => ({ body: snip(n.body), author: n.authorName || null, daysAgo: daysSince(n.createdAt) })),
+    activities: map(activities, (i, a) => ({ type: a.type, description: snip(a.description, 160), actor: a.actorName || null, daysAgo: daysSince(a.createdAt) })),
+    tasks: map(tasks, (i, t) => ({ taskId: i, title: snip(t.title, 140), status: t.status, dueInDays: t.dueAt ? -(daysSince(t.dueAt) || 0) : null, priority: t.priority })),
+    deals: map(opps, (i, o) => ({ title: snip(o.title, 140), value: o.value || 0, stageId: o.stageId, status: o.status })),
+    note: 'Bodies are truncated to 300 characters. Sections cap at ' + per + ' items each.'
+  };
+}
+
+async function execListTasks(scope, args, ctx) {
+  const limit = clampInt(args.limit, 1, CRM_MAX_ROWS_PER_TOOL, 25);
+  const status = ['open', 'done', 'any'].includes(args.status) ? args.status : 'open';
+  let q = scope.collection('tasks');
+  if (status !== 'any') q = q.where('status', '==', status);
+  if (args.assigneeUid) q = q.where('assigneeUid', '==', String(args.assigneeUid));
+  if (args.contactId) q = q.where('contactId', '==', String(args.contactId));
+
+  const snap = await q.limit(CRM_FETCH_CAP).get();
+  const now = Date.now();
+  const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
+
+  let rows = snap.docs.map((d) => {
+    const t = d.data() || {};
+    const dueMs = msOf(t.dueAt);
+    return {
+      taskId: d.id,
+      title: snip(t.title, 140),
+      contactId: t.contactId || null,
+      contactName: t.contactName || null,
+      assigneeUid: t.assigneeUid || null,
+      status: t.status,
+      priority: t.priority || 'normal',
+      dueInDays: dueMs === null ? null : Math.round((dueMs - now) / 86400000),
+      overdue: dueMs !== null && dueMs < now && t.status !== 'done'
+    };
+  });
+
+  const counts = {
+    overdue: rows.filter((r) => r.overdue).length,
+    dueToday: rows.filter((r) => r.dueInDays === 0 && r.status !== 'done').length,
+    dueThisWeek: rows.filter((r) => r.dueInDays !== null && r.dueInDays >= 0 && r.dueInDays <= 7 && r.status !== 'done').length,
+    noDueDate: rows.filter((r) => r.dueInDays === null && r.status !== 'done').length
+  };
+
+  if (args.overdueOnly === true) rows = rows.filter((r) => r.overdue);
+  if (Number.isFinite(Number(args.dueWithinDays))) {
+    const w = clampInt(args.dueWithinDays, 0, 365, 7);
+    rows = rows.filter((r) => r.dueInDays !== null && r.dueInDays <= w);
+  }
+  rows.sort((a, b) => (a.dueInDays === null ? Infinity : a.dueInDays) - (b.dueInDays === null ? Infinity : b.dueInDays));
+
+  const matched = rows.length;
+  rows.forEach((r) => { if (r.contactId) ctx.seenContacts.add(r.contactId); });
+  return { ...envelope(rows.slice(0, limit), { scanned: snap.size, matchedAtLeast: matched }), counts };
+}
+
+/**
+ * Counts, not rows. An LLM tallying 400 rows is unreliable in a way that does
+ * not announce itself — "37 stagnant leads" when it is 52 looks exactly as
+ * confident as the truth. These come from Firestore count() aggregations, so
+ * they are exact regardless of collection size and cost no document reads.
+ */
+async function execPipelineSnapshot(scope, args, ctx) {
+  const contacts = scope.collection('contacts');
+  const countOf = async (q) => {
+    try { return (await q.count().get()).data().count; } catch (e) { return null; }
+  };
+
+  const stageEntries = await Promise.all(
+    CRM_STAGES.map(async (s) => [s, await countOf(contacts.where('stage', '==', s))])
+  );
+  const totalContacts = await countOf(contacts);
+
+  const out = {
+    totalContacts,
+    contactsByStage: Object.fromEntries(stageEntries),
+    exact: true,
+    note: 'These are exact database counts. Report them as given; do not re-derive them from row listings.'
+  };
+
+  if (args.includeStaleness !== false) {
+    const gt0 = contacts.where('lastContactedAt', '>', new admin.firestore.Timestamp(0, 0));
+    const [never, warm, cooling, stagnant, cold] = await Promise.all([
+      countOf(contacts.where('lastContactedAt', '==', null)),
+      countOf(gt0.where('lastContactedAt', '>', daysAgoTs(FRESHNESS_BANDS.warm))),
+      countOf(gt0.where('lastContactedAt', '>', daysAgoTs(FRESHNESS_BANDS.cooling)).where('lastContactedAt', '<=', daysAgoTs(FRESHNESS_BANDS.warm))),
+      countOf(gt0.where('lastContactedAt', '>', daysAgoTs(FRESHNESS_BANDS.stagnant)).where('lastContactedAt', '<=', daysAgoTs(FRESHNESS_BANDS.cooling))),
+      countOf(gt0.where('lastContactedAt', '<=', daysAgoTs(FRESHNESS_BANDS.stagnant)))
+    ]);
+    out.staleness = { never, warm, cooling, stagnant, cold };
+    out.stalenessNote = 'never = nobody has ever made contact, which is different from cold. warm <7d, cooling 7-14d, stagnant 14-30d, cold >30d.';
+  }
+
+  const [openTasks, openDeals] = await Promise.all([
+    countOf(scope.collection('tasks').where('status', '==', 'open')),
+    countOf(scope.collection('opportunities').where('status', '==', 'open'))
+  ]);
+  out.tasks = { open: openTasks };
+  out.deals = { open: openDeals };
+
+  // Deal value needs the documents; bounded, and only when there are few
+  // enough that the sum is trustworthy.
+  try {
+    const deals = await scope.collection('opportunities').where('status', '==', 'open').limit(CRM_FETCH_CAP).get();
+    out.deals.openValue = deals.docs.reduce((n, d) => n + (Number((d.data() || {}).value) || 0), 0);
+    out.deals.valueExact = deals.size < CRM_FETCH_CAP;
+  } catch (e) { /* counts alone still answer most questions */ }
+
+  return out;
+}
+
+async function execOutreachMetrics(scope, args, ctx) {
+  const days = clampInt(args.sinceDays, 1, 365, 7);
+  const cutoff = daysAgoTs(days);
+  const contacts = scope.collection('contacts');
+  const countOf = async (q) => {
+    try { return (await q.count().get()).data().count; } catch (e) { return null; }
+  };
+
+  const [touched, created] = await Promise.all([
+    countOf(contacts.where('lastContactedAt', '>=', cutoff)),
+    countOf(contacts.where('createdAt', '>=', cutoff))
+  ]);
+
+  const out = {
+    windowDays: days,
+    contactsTouched: touched,
+    newContacts: created,
+    exact: true,
+    // Said plainly because it is the difference between the number the admin
+    // thinks they asked for and the one they got.
+    note: 'lastContactedAt holds only the MOST RECENT contact, so this counts DISTINCT CONTACTS reached in the window, not how many messages were sent. Three emails to one lead count once.'
+  };
+
+  const groupBy = args.groupBy;
+  if (groupBy && groupBy !== 'none') {
+    const snap = await contacts.where('lastContactedAt', '>=', cutoff).limit(CRM_FETCH_CAP).get();
+    const buckets = {};
+    snap.docs.forEach((d) => {
+      const c = d.data() || {};
+      const key = groupBy === 'channel' ? (c.lastContactChannel || 'unknown')
+        : groupBy === 'direction' ? (c.lastContactDirection || 'unknown')
+        : groupBy === 'owner' ? (c.ownerUid || 'unassigned')
+        : (c.stage || 'unknown');
+      buckets[key] = (buckets[key] || 0) + 1;
+    });
+    out.groupedBy = groupBy;
+    out.groups = buckets;
+    out.groupsExact = snap.size < CRM_FETCH_CAP;
+    if (!out.groupsExact) out.groupsNote = `Grouping scanned the first ${CRM_FETCH_CAP} and may undercount; contactsTouched above is exact.`;
+  }
+  return out;
+}
+
+// ── Staging writes ──────────────────────────────────────────────
+//
+// The model never writes. It stages a plan; the admin approves it; a separate
+// callable applies it with no LLM in the loop, so the bytes that were approved
+// are the bytes that execute. A dry-run-then-execute flag on this same
+// callable would re-run the model and could apply a different plan than the
+// one previewed.
+
+/** Snap a tag to the company's existing casing, so `Follow-Up` does not grow
+ *  up beside `follow-up` and silt the namespace within a week. */
+function snapTag(tag, vocabulary) {
+  const clean = String(tag || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+  if (!clean) return null;
+  const hit = vocabulary.find((t) => t.toLowerCase() === clean.toLowerCase());
+  return hit || clean;
+}
+
+/**
+ * Which sequences a staged change would set off.
+ *
+ * This is the part that makes a tag or stage write more than a field edit:
+ * onContactWrittenForSequences fires autoEnroll on a stage change or a tag
+ * add, and sequence steps send real email and SMS. The admin sees this count
+ * before they approve, not afterwards in their sent folder.
+ */
+async function automationWarnings(scope, { stages = [], tags = [] }) {
+  const warnings = [];
+  try {
+    const snap = await scope.collection('sequences').where('active', '==', true).get();
+    snap.docs.forEach((d) => {
+      const seq = d.data() || {};
+      const trig = seq.trigger || {};
+      const steps = Array.isArray(seq.steps) ? seq.steps : [];
+      const sends = steps.filter((s) => s.channel === 'email' || s.channel === 'sms');
+      if (!steps.length) return;
+      const match = (trig.type === 'stage_change' && stages.some((v) => !trig.value || String(trig.value) === String(v)))
+        || (trig.type === 'tag_added' && tags.some((v) => !trig.value || String(trig.value).toLowerCase() === String(v).toLowerCase()));
+      if (!match) return;
+      warnings.push({
+        sequenceName: seq.name || d.id,
+        triggerType: trig.type,
+        triggerValue: trig.value || '(any)',
+        totalSteps: steps.length,
+        sendingSteps: sends.length,
+        sendsEmail: sends.some((s) => s.channel === 'email'),
+        sendsSms: sends.some((s) => s.channel === 'sms')
+      });
+    });
+  } catch (e) { console.warn('[crmAssistant] automation scan failed', e && e.message); }
+  return warnings;
+}
+
+async function execProposeChanges(scope, args, ctx) {
+  if (ctx.planStaged) {
+    return { error: 'plan_already_staged', note: 'You have already staged a plan this turn. Tell the admin what is waiting instead of staging another.' };
+  }
+
+  const rejected = [];
+  const clamped = {};
+  const items = [];
+  const takeList = (v, cap, label) => {
+    const list = Array.isArray(v) ? v : [];
+    if (list.length > cap) clamped[label] = `truncated from ${list.length} to ${cap} (per-plan cap)`;
+    return list.slice(0, cap);
+  };
+
+  const wantTasks = takeList(args.createTasks, CRM_MAX_CONTACTS_PER_PLAN, 'createTasks');
+  const wantTags = takeList(args.tagChanges, CRM_MAX_CONTACTS_PER_PLAN, 'tagChanges');
+  const wantStages = takeList(args.stageChanges, 10, 'stageChanges');
+
+  // Existing tag vocabulary, for casing.
+  const vocabulary = [];
+  try {
+    const sample = await scope.collection('contacts').limit(CRM_FETCH_CAP).get();
+    const seen = new Set();
+    sample.docs.forEach((d) => (((d.data() || {}).tags) || []).forEach((t) => {
+      const k = String(t).toLowerCase();
+      if (!seen.has(k)) { seen.add(k); vocabulary.push(String(t)); }
+    }));
+  } catch (e) { /* casing is a nicety, not a blocker */ }
+
+  const resolve = async (contactId) => {
+    const id = String(contactId || '');
+    // The model may only act on contacts it actually looked at. This turns a
+    // prompt rule into an invariant.
+    if (!ctx.seenContacts.has(id)) {
+      rejected.push({ contactId: id, reason: 'not retrieved in this conversation — look it up first' });
+      return null;
+    }
+    const snap = await scope.collection('contacts').doc(id).get();
+    if (!snap.exists) { rejected.push({ contactId: id, reason: 'contact not found' }); return null; }
+    return snap;
+  };
+
+  for (const t of wantTasks) {
+    const snap = await resolve(t.contactId);
+    if (!snap) continue;
+    const c = snap.data() || {};
+    const dueInDays = clampInt(t.dueInDays, 0, 180, 3);
+    items.push({
+      kind: 'task',
+      contactId: snap.id,
+      contactName: c.name || null,
+      after: {
+        title: snip(t.title, 140) || `Follow up with ${(c.name || 'contact').split(' ')[0]}`,
+        // Resolved now, so the date on the confirm card is the real date.
+        dueAt: admin.firestore.Timestamp.fromMillis(Date.now() + dueInDays * 86400000),
+        dueInDays,
+        priority: ['low', 'normal', 'high'].includes(t.priority) ? t.priority : 'normal',
+        assigneeUid: c.ownerUid || ctx.uid
+      }
+    });
+  }
+
+  const allAddedTags = [];
+  for (const g of wantTags) {
+    const snap = await resolve(g.contactId);
+    if (!snap) continue;
+    const c = snap.data() || {};
+    const current = Array.isArray(c.tags) ? c.tags : [];
+    const add = (Array.isArray(g.addTags) ? g.addTags : []).slice(0, 5)
+      .map((t) => snapTag(t, vocabulary)).filter(Boolean)
+      .filter((t) => !current.some((x) => String(x).toLowerCase() === t.toLowerCase()));
+    const remove = (Array.isArray(g.removeTags) ? g.removeTags : []).slice(0, 5)
+      .map((t) => String(t || '').trim()).filter(Boolean)
+      .filter((t) => current.some((x) => String(x).toLowerCase() === t.toLowerCase()));
+    if (!add.length && !remove.length) continue;   // no-op, not worth an approval
+    allAddedTags.push(...add);
+    items.push({ kind: 'tags', contactId: snap.id, contactName: c.name || null, before: { tags: current }, after: { addTags: add, removeTags: remove } });
+  }
+
+  const allStages = [];
+  for (const sChange of wantStages) {
+    const snap = await resolve(sChange.contactId);
+    if (!snap) continue;
+    const c = snap.data() || {};
+    if (c.stage === sChange.toStage) continue;     // no-op churn
+    allStages.push(sChange.toStage);
+    items.push({
+      kind: 'stage',
+      contactId: snap.id,
+      contactName: c.name || null,
+      before: { stage: c.stage || null },
+      after: { stage: sChange.toStage, reason: snip(sChange.reason, 140) },
+      // Staged and recorded, never applied, while stage writes are shadowed.
+      shadowed: !CRM_STAGE_WRITES_ENABLED
+    });
+  }
+
+  if (!items.length) {
+    return { staged: false, rejected, clamped, note: 'Nothing to stage — every proposed change was a no-op or was rejected. Explain that to the admin.' };
+  }
+  if (items.length > CRM_MAX_ITEMS_PER_PLAN) {
+    clamped.items = `truncated from ${items.length} to ${CRM_MAX_ITEMS_PER_PLAN}`;
+    items.length = CRM_MAX_ITEMS_PER_PLAN;
+  }
+
+  const warnings = await automationWarnings(scope, { stages: allStages, tags: allAddedTags });
+  const distinct = new Set(items.map((i) => i.contactId));
+
+  const planRef = scope.collection('aiPlans').doc();
+  await planRef.set({
+    planId: planRef.id,
+    companyId: ctx.companyId,
+    createdByUid: ctx.uid,
+    createdByName: ctx.actorName,
+    conversationId: ctx.conversationId || null,
+    userPrompt: snip(ctx.userPrompt, 1000),
+    assistantSummary: snip(args.summary, 300),
+    assistantRationale: snip(args.rationale, 600),
+    model: CRM_MODEL,
+    items,
+    counts: {
+      tasks: items.filter((i) => i.kind === 'task').length,
+      tagChanges: items.filter((i) => i.kind === 'tags').length,
+      stageChanges: items.filter((i) => i.kind === 'stage').length,
+      distinctContacts: distinct.size
+    },
+    automationWarnings: warnings,
+    stageWritesEnabled: CRM_STAGE_WRITES_ENABLED,
+    status: 'pending',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + CRM_PLAN_TTL_MS)
+  });
+
+  ctx.planStaged = {
+    planId: planRef.id,
+    summary: snip(args.summary, 300),
+    rationale: snip(args.rationale, 600),
+    counts: { tasks: items.filter((i) => i.kind === 'task').length, tagChanges: items.filter((i) => i.kind === 'tags').length, stageChanges: items.filter((i) => i.kind === 'stage').length, distinctContacts: distinct.size },
+    items: items.map((i) => ({ kind: i.kind, contactId: i.contactId, contactName: i.contactName, before: i.before || null, after: i.after || null, shadowed: !!i.shadowed })),
+    automationWarnings: warnings,
+    stageWritesEnabled: CRM_STAGE_WRITES_ENABLED,
+    expiresAt: Date.now() + CRM_PLAN_TTL_MS
+  };
+
+  return {
+    staged: true,
+    planId: planRef.id,
+    status: 'awaiting_admin_approval',
+    counts: ctx.planStaged.counts,
+    rejected,
+    clamped,
+    automationWarnings: warnings,
+    shadowedStageChanges: CRM_STAGE_WRITES_ENABLED ? 0 : items.filter((i) => i.kind === 'stage').length,
+    note: 'NOTHING HAS BEEN CHANGED. The admin must click Apply. Tell them what is waiting for approval, in the present tense — never say "done", "created" or "updated". Do not call this tool again this turn.'
+      + (CRM_STAGE_WRITES_ENABLED ? '' : ' Stage changes are recorded for review but will NOT be applied; say so plainly if you staged any.')
+  };
+}
+
+// ── The system prompt ───────────────────────────────────────────
+//
+// A separate prompt in a separate function, not a branch of the member
+// chatbot's. courseAdvisorChat's prompt carries "You never share other
+// members' data", and an admin branch would mean conditionally deleting a
+// security rule based on a runtime boolean — the shape that fails open when
+// the boolean is wrong. Two doors, two locks.
+
+function crmAssistantSystemPrompt({ companyName, adminName, writesAllowed }) {
+  const today = new Date().toISOString().slice(0, 10);
+  return [
+    `You are a CRM analyst for ${companyName}. You are speaking with ${adminName}, a verified admin of this company who is entitled to see every contact record in it.`,
+    `Today is ${today}.`,
+    '',
+    'SCOPE',
+    '- Every tool is permanently scoped to this one company. You cannot query any other company and must never claim to have done so.',
+    '- If a tool result says arguments were ignored, that is expected; carry on.',
+    '',
+    'THE TWO RECENCY FIELDS — do not conflate them',
+    '- lastContactedAt (what "staleness", "stagnant" and "days since contact" mean here) moves ONLY on real outreach: an email, a text, a connected call, or a logged call/meeting. It is the honest one.',
+    '- lastActivityAt moves whenever the RECORD is touched — a tag edit, a stage change, a field save, a CSV import. A lead can have recent activity and have gone months without anyone speaking to them. Never describe lastActivityAt as contact.',
+    '- Bands: warm under 7 days, cooling 7-14, stagnant 14-30, cold over 30. "Never contacted" is its own state, not cold — a lead that arrived this morning has not been neglected.',
+    '',
+    'COUNTS',
+    '- For any "how many", distribution or audit question, call crm_pipeline_snapshot or crm_outreach_metrics. They return exact database counts.',
+    '- Never count rows from crm_find_contacts and present that as a total. That tool tells you WHICH, not HOW MANY.',
+    '- When a result has truncated: true, say "at least N" and offer to narrow. Never present a capped list as complete.',
+    '',
+    'HONESTY',
+    '- Never invent a contact, a number, a date or a quote. Everything you state comes from a tool result.',
+    '- If a tool returns nothing, say so plainly rather than hedging.',
+    '- If a tool fails, say what you could not check.',
+    '',
+    'OUTREACH ETIQUETTE',
+    '- Respect opt-outs. Never suggest emailing someone whose optOuts include email, texting one who opted out of SMS, or calling one marked do-not-call. Flag them as reachable by other channels only.',
+    '',
+    'STYLE',
+    '- Short and scannable. Lead with the answer. Names, days since contact, and the next action.',
+    '- Use "- " bullets for lists. No preamble, no restating the question.',
+    writesAllowed ? [
+      '',
+      'CHANGES — you stage, you do not apply',
+      '- propose_crm_changes stages a plan for the admin to approve. It changes nothing by itself.',
+      '- Call it ONLY when the admin has explicitly told you to change something in this turn. "Create follow-up tasks for those people" is an instruction. "Who should I follow up with?", "what is overdue?", "audit my pipeline", "these look dead" are questions and observations — answer them with words only.',
+      '- Your own analysis is never authorization. Finding 30 stagnant leads does not authorize creating 30 tasks.',
+      '- Never bundle changes that were not asked for. Asked for tasks means tasks, not tasks plus retagging.',
+      '- If the scope is ambiguous ("clean up the old leads"), ask which contacts and which change instead of staging. One question is cheaper than a wrong plan.',
+      '- Suggesting is encouraged: "I can create follow-up tasks for these 12 — want me to?" Staging unasked is not.',
+      '- At most one call per turn, with every change in it.',
+      '- Every contactId must come from a tool result in this conversation.',
+      '- After staging, say what is waiting for approval and that nothing has changed yet. Never say "done", "created", "updated", "I have moved" or any past-tense completion about a staged plan.',
+      '- A stage change can trigger automated email and SMS sequences. Only stage one when the admin named the stage, and never infer "lost" from inactivity — a quiet lead is not a dead one.'
+    ].join('\n') : [
+      '',
+      'CHANGES',
+      '- You have no ability to change anything. If asked to, say so and describe what you would do.'
+    ].join('\n')
+  ].join('\n');
+}
+
+/**
+ * Does this turn look like an instruction to change something?
+ *
+ * The cheapest guardrail against an unasked-for plan is not offering the tool
+ * at all. A false negative is a mild annoyance (the admin rephrases); a false
+ * positive is a confirmation card nobody asked for, so this errs toward
+ * excluding the tool.
+ */
+function looksLikeChangeRequest(message, previousAssistantText) {
+  const m = String(message || '').toLowerCase();
+  const verb = /\b(create|add|make|set|assign|tag|untag|remove|move|mark|change|update|schedule|stage|apply|do it|go ahead|yes please)\b/.test(m);
+  const objectish = /\b(task|tasks|follow[- ]?up|follow[- ]?ups|tag|tags|stage|reminder|them|these|those|it)\b/.test(m);
+  if (verb && objectish) return true;
+  // "yes" / "go ahead" only counts as an instruction if we just offered.
+  if (/^(yes|yep|yeah|do it|go ahead|please do|sounds good|ok|okay)\b/.test(m.trim())) {
+    return /\b(want me to|shall i|should i|i can)\b/.test(String(previousAssistantText || '').toLowerCase());
+  }
+  return false;
+}
+
+/**
+ * Client history, sanitized.
+ *
+ * The browser sends conversation history. A history from company A replayed
+ * against company B's callable would put A's rows into B's context, so tool
+ * blocks are stripped and only plain text is replayed — row data never
+ * round-trips through the browser at all.
+ */
+function sanitizeHistory(history) {
+  if (!Array.isArray(history)) return [];
+  const out = [];
+  for (const h of history.slice(-20)) {
+    const role = h && h.role === 'assistant' ? 'assistant' : 'user';
+    let text = '';
+    if (typeof (h && h.content) === 'string') text = h.content;
+    else if (Array.isArray(h && h.content)) {
+      text = h.content.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
+    }
+    text = String(text || '').slice(0, 4000).trim();
+    if (text) out.push({ role, content: text });
+  }
+  // The API requires the first message to be from the user.
+  while (out.length && out[0].role !== 'user') out.shift();
+  return out;
+}
+
+// ── crmAssistantChat ────────────────────────────────────────────
+
+exports.crmAssistantChat = onCall(
+  { secrets: [anthropicKey], timeoutSeconds: 300, memory: '512MiB' },
+  async (request) => {
+    const db = admin.firestore();
+    const data = request.data || {};
+    const companyId = String(data.companyId || '').trim();
+    const message = String(data.message || '').trim();
+    if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+    if (!message) throw new HttpsError('invalid-argument', 'A message is required.');
+    if (message.length > 4000) throw new HttpsError('invalid-argument', 'Message is too long.');
+
+    // assertCompanyAdmin, not isAdminCaller: the latter is true for a platform
+    // admin of ANY company and returns no companyId, which would make this a
+    // cross-tenant endpoint.
+    const { uid, company } = await assertCompanyAdmin(db, companyId, request);
+
+    // Two limiters. The per-admin one does not stop five admins in one company
+    // burning the budget together, and this endpoint can spend real money per
+    // call.
+    await rateLimitCaller(db, request, { action: 'crmAssistantChat', max: 15, windowSec: 600 });
+    await enforceRateLimit(db, { action: 'crmAssistantChat:company', key: 'co:' + companyId, max: 60, windowSec: 3600 });
+
+    let actorName = (request.auth.token && (request.auth.token.name || request.auth.token.email)) || null;
+    if (!actorName) {
+      try {
+        const u = await db.collection('users').doc(uid).get();
+        if (u.exists) actorName = u.data().displayName || u.data().email || null;
+      } catch (e) {}
+    }
+    actorName = actorName || 'Admin';
+
+    const scope = db.collection('companies').doc(companyId);
+    const history = sanitizeHistory(data.history);
+    const lastAssistant = [...history].reverse().find((h) => h.role === 'assistant');
+    const writesAllowed = looksLikeChangeRequest(message, lastAssistant && lastAssistant.content);
+
+    const ctx = {
+      uid,
+      companyId,
+      actorName,
+      userPrompt: message,
+      conversationId: data.conversationId || null,
+      // Every contact the model has actually looked at. A staged change may
+      // only touch one of these — the prompt says so, this enforces it.
+      seenContacts: new Set(),
+      planStaged: null,
+      rowsUsed: 0
+    };
+
+    const EXECUTORS = {
+      crm_find_contacts: execFindContacts,
+      crm_contact_detail: execContactDetail,
+      crm_list_tasks: execListTasks,
+      crm_pipeline_snapshot: execPipelineSnapshot,
+      crm_outreach_metrics: execOutreachMetrics,
+      propose_crm_changes: execProposeChanges
+    };
+
+    const tools = writesAllowed ? [...CRM_READ_TOOLS, CRM_WRITE_TOOL] : CRM_READ_TOOLS.slice();
+    // A stable prefix across every iteration, cached so iterations 2+ do not
+    // re-pay for the tool definitions and the system prompt.
+    const systemBlocks = [{
+      type: 'text',
+      text: crmAssistantSystemPrompt({ companyName: (company && company.name) || 'this company', adminName: actorName, writesAllowed }),
+      cache_control: { type: 'ephemeral' }
+    }];
+
+    const client = getAnthropicClient();
+    const messages = [...history, { role: 'user', content: message }];
+    const toolTrace = [];
+    const calledSignatures = new Set();
+    const deadline = Date.now() + CRM_SOFT_DEADLINE_MS;
+
+    let iterations = 0;
+    let complete = true;
+    let response = null;
+
+    while (true) {
+      iterations++;
+      const outOfBudget = iterations > CRM_MAX_ITERATIONS
+        || toolTrace.length >= CRM_MAX_TOOL_CALLS
+        || Date.now() > deadline - 45000;
+
+      try {
+        response = await client.messages.create({
+          model: CRM_MODEL,
+          max_tokens: 4096,
+          thinking: { type: 'adaptive' },
+          system: systemBlocks,
+          tools,
+          // Out of budget: one last call with tools switched off, so the admin
+          // gets an honest partial answer rather than a 504 or an empty reply.
+          ...(outOfBudget ? { tool_choice: { type: 'none' } } : {}),
+          messages: outOfBudget
+            ? [...messages, { role: 'user', content: 'Tool budget reached. Answer now from what you already have, and say plainly what you were not able to check.' }]
+            : messages
+        });
+      } catch (err) {
+        const status = err && err.status;
+        console.error('[crmAssistant] model call failed', status, err && err.message);
+        if (status === 429 || (status >= 500 && status < 600)) {
+          throw new HttpsError('unavailable', 'The assistant is busy right now. Try again in a moment.');
+        }
+        throw new HttpsError('internal', 'The assistant could not complete that request.');
+      }
+
+      if (outOfBudget) { complete = false; break; }
+      if (response.stop_reason !== 'tool_use') break;
+
+      // Push the assistant turn WHOLE — thinking blocks included. Dropping or
+      // reordering them breaks the next request on a thinking-enabled model.
+      messages.push({ role: 'assistant', content: response.content });
+
+      const toolUses = response.content.filter((b) => b.type === 'tool_use');
+      const results = [];
+      for (const use of toolUses) {
+        const signature = use.name + ':' + JSON.stringify(use.input || {});
+        let payload;
+        if (calledSignatures.has(signature)) {
+          // Cheap and very effective against a model stuck in a loop.
+          payload = { error: 'duplicate_call', note: 'You already called this tool with these exact arguments. The previous result stands — answer now, or call a different tool.' };
+        } else if (ctx.rowsUsed >= CRM_MAX_TOTAL_ROWS) {
+          payload = { error: 'row_budget_exhausted', rowsUsed: ctx.rowsUsed, note: 'You have pulled enough rows for one answer. Summarize what you have.' };
+        } else {
+          calledSignatures.add(signature);
+          const exec = EXECUTORS[use.name];
+          try {
+            payload = exec
+              ? await exec(scope, use.input || {}, ctx)
+              : { error: 'unknown_tool' };
+            if (payload && Array.isArray(payload.rows)) ctx.rowsUsed += payload.rows.length;
+          } catch (e) {
+            // A raw Firestore index error embeds a console URL we do not want
+            // surfacing in a chat reply.
+            const raw = String((e && e.message) || e);
+            console.error('[crmAssistant] tool failed', use.name, raw);
+            payload = {
+              error: 'tool_failed',
+              note: /index/i.test(raw)
+                ? 'That query is not available yet (a database index is still building). Say so and try a different angle.'
+                : 'That lookup failed. Say what you could not check.'
+            };
+          }
+        }
+        toolTrace.push({ name: use.name, input: use.input || {}, rows: (payload && payload.rows && payload.rows.length) || null, error: (payload && payload.error) || null });
+        results.push({ type: 'tool_result', tool_use_id: use.id, content: JSON.stringify(payload), ...(payload && payload.error ? { is_error: true } : {}) });
+      }
+      // All results in ONE user message — splitting them teaches the model to
+      // stop making parallel calls.
+      messages.push({ role: 'user', content: results });
+    }
+
+    let reply = (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+    if (!reply) reply = 'I could not put an answer together for that. Try rephrasing, or ask me something narrower.';
+
+    if (ctx.planStaged) {
+      try {
+        await scope.collection('aiPlans').doc(ctx.planStaged.planId).set({ toolTrace }, { merge: true });
+      } catch (e) {}
+    }
+
+    const usage = response.usage || {};
+    console.log('[crmAssistant]', JSON.stringify({
+      companyId, uid, iterations, tools: toolTrace.length,
+      in: usage.input_tokens, out: usage.output_tokens,
+      cacheRead: usage.cache_read_input_tokens, complete
+    }));
+
+    return {
+      reply,
+      complete,
+      plan: ctx.planStaged,
+      toolCalls: toolTrace.map((t) => ({ name: t.name, rows: t.rows, error: t.error })),
+      iterations
+    };
+  }
+);
+
+// ── crmAssistantApply ───────────────────────────────────────────
+//
+// Deterministic. No model in this path: the plan the admin approved is the
+// plan that executes, byte for byte.
+
+exports.crmAssistantApply = onCall({ timeoutSeconds: 120 }, async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  const companyId = String(data.companyId || '').trim();
+  const planId = String(data.planId || '').trim();
+  const runAutomations = data.runAutomations !== false;   // default on, as the CRM normally behaves
+  if (!companyId || !planId) throw new HttpsError('invalid-argument', 'companyId and planId are required.');
+
+  const { uid, isOwner } = await assertCompanyAdmin(db, companyId, request);
+  await rateLimitCaller(db, request, { action: 'crmAssistantApply', max: 10, windowSec: 600 });
+
+  const scope = db.collection('companies').doc(companyId);
+  const planRef = scope.collection('aiPlans').doc(planId);
+  const FV = admin.firestore.FieldValue;
+
+  // Claim the plan transactionally. This is the double-click and retry gate:
+  // anything not 'pending' has already been handled.
+  const plan = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(planRef);
+    if (!snap.exists) throw new HttpsError('not-found', 'That plan no longer exists.');
+    const p = snap.data();
+    if (p.status === 'applied') throw new HttpsError('failed-precondition', 'That plan has already been applied.');
+    if (p.status !== 'pending') throw new HttpsError('failed-precondition', `That plan is ${p.status}.`);
+    if (p.createdByUid !== uid && !isOwner) {
+      throw new HttpsError('permission-denied', 'Only the admin who staged this plan can apply it.');
+    }
+    const expires = msOf(p.expiresAt);
+    if (expires && expires < Date.now()) {
+      tx.set(planRef, { status: 'expired' }, { merge: true });
+      throw new HttpsError('failed-precondition', 'That plan expired. Ask again and I will restage it.');
+    }
+    tx.set(planRef, { status: 'applying', appliedByUid: uid }, { merge: true });
+    return p;
+  });
+
+  // Daily blast-radius counter. Unlike the read limiter this fails CLOSED: a
+  // read that fails open costs money, a write that fails open costs data.
+  const distinct = new Set((plan.items || []).map((i) => i.contactId));
+  const dayKey = new Date().toISOString().slice(0, 10);
+  const usageRef = scope.collection('aiUsage').doc(dayKey);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(usageRef);
+      const used = (snap.exists && Number(snap.data().contactsWritten)) || 0;
+      if (used + distinct.size > CRM_MAX_CONTACTS_PER_DAY) {
+        throw new HttpsError('resource-exhausted',
+          `Daily limit reached: the assistant may change at most ${CRM_MAX_CONTACTS_PER_DAY} contacts per day. Make this change manually or wait until tomorrow.`);
+      }
+      tx.set(usageRef, { contactsWritten: used + distinct.size, updatedAt: FV.serverTimestamp() }, { merge: true });
+    });
+  } catch (e) {
+    await planRef.set({ status: 'pending' }, { merge: true });
+    if (e instanceof HttpsError) throw e;
+    throw new HttpsError('unavailable', 'Could not reserve the daily change budget; nothing was applied.');
+  }
+
+  let actorName = (request.auth.token && (request.auth.token.name || request.auth.token.email)) || 'Admin';
+  const byLine = `${actorName} via CRM Assistant`;
+  const results = [];
+
+  for (let idx = 0; idx < (plan.items || []).length; idx++) {
+    const item = plan.items[idx];
+    const cRef = scope.collection('contacts').doc(item.contactId);
+    const baseMeta = {
+      source: 'ai_assistant',
+      planId,
+      itemIndex: idx,
+      model: plan.model || CRM_MODEL,
+      userPrompt: snip(plan.userPrompt, 500),
+      assistantRationale: snip(plan.assistantRationale, 300),
+      conversationId: plan.conversationId || null
+    };
+    try {
+      if (item.kind === 'stage' && !CRM_STAGE_WRITES_ENABLED) {
+        results.push({ idx, kind: 'stage', status: 'shadowed', note: 'Recorded for review; stage writes are not enabled.' });
+        continue;
+      }
+
+      const snap = await cRef.get();
+      if (!snap.exists) { results.push({ idx, kind: item.kind, status: 'skipped', reason: 'contact_deleted' }); continue; }
+      const c = snap.data() || {};
+
+      if (item.kind === 'task') {
+        const taskRef = scope.collection('tasks').doc();
+        await taskRef.set({
+          title: item.after.title,
+          contactId: item.contactId,
+          contactName: item.contactName || null,
+          opportunityId: null,
+          assigneeUid: item.after.assigneeUid || uid,
+          dueAt: item.after.dueAt || null,
+          status: 'open',
+          priority: item.after.priority || 'normal',
+          completedAt: null, completedByUid: null, remindedAt: null,
+          createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp(),
+          createdBy: uid, createdVia: 'ai_assistant', planId
+        });
+        await cRef.collection('activities').add({
+          type: 'task_created',
+          description: `Task: ${item.after.title}`,
+          // The approving human owns this, not 'system'. They clicked Apply.
+          actorUid: uid, actorName: byLine,
+          createdAt: FV.serverTimestamp(),
+          meta: { ...baseMeta, taskId: taskRef.id }
+        });
+        results.push({ idx, kind: 'task', status: 'applied', taskId: taskRef.id });
+        continue;
+      }
+
+      if (item.kind === 'tags') {
+        // Drift check: the admin approved a diff from a specific starting state.
+        const current = Array.isArray(c.tags) ? c.tags : [];
+        const add = (item.after.addTags || []).filter((t) => !current.some((x) => String(x).toLowerCase() === String(t).toLowerCase()));
+        const remove = (item.after.removeTags || []).filter((t) => current.some((x) => String(x).toLowerCase() === String(t).toLowerCase()));
+        if (!add.length && !remove.length) { results.push({ idx, kind: 'tags', status: 'skipped', reason: 'already_applied' }); continue; }
+        const next = current.filter((t) => !remove.some((r) => String(r).toLowerCase() === String(t).toLowerCase())).concat(add);
+        const patch = { tags: next, updatedAt: FV.serverTimestamp() };
+        // Suppression flag read by onContactWrittenForSequences.
+        if (!runAutomations) patch._automationSuppressed = true;
+        await cRef.set(patch, { merge: true });
+        if (!runAutomations) {
+          await cRef.set({ _automationSuppressed: FV.delete() }, { merge: true }).catch(() => {});
+        }
+        for (const t of add) {
+          await cRef.collection('activities').add({
+            type: 'tag_added', description: `Tag added: ${t}`,
+            actorUid: uid, actorName: byLine, createdAt: FV.serverTimestamp(),
+            meta: { ...baseMeta, tag: t, before: { tags: current }, automationsSuppressed: !runAutomations }
+          });
+        }
+        for (const t of remove) {
+          await cRef.collection('activities').add({
+            type: 'tag_removed', description: `Tag removed: ${t}`,
+            actorUid: uid, actorName: byLine, createdAt: FV.serverTimestamp(),
+            meta: { ...baseMeta, tag: t, before: { tags: current } }
+          });
+        }
+        results.push({ idx, kind: 'tags', status: 'applied', added: add, removed: remove, before: current });
+        continue;
+      }
+
+      if (item.kind === 'stage') {
+        if (c.stage !== (item.before && item.before.stage)) {
+          results.push({ idx, kind: 'stage', status: 'skipped', reason: 'changed_since_preview', now: c.stage, expected: item.before && item.before.stage });
+          continue;
+        }
+        const patch = { stage: item.after.stage, updatedAt: FV.serverTimestamp() };
+        if (!runAutomations) patch._automationSuppressed = true;
+        await cRef.set(patch, { merge: true });
+        if (!runAutomations) await cRef.set({ _automationSuppressed: FV.delete() }, { merge: true }).catch(() => {});
+        await cRef.collection('activities').add({
+          type: 'stage_changed',
+          description: `Stage: ${item.before.stage || '—'} → ${item.after.stage}`,
+          actorUid: uid, actorName: byLine, createdAt: FV.serverTimestamp(),
+          meta: { ...baseMeta, from: item.before.stage || null, to: item.after.stage, reason: item.after.reason, automationsSuppressed: !runAutomations }
+        });
+        results.push({ idx, kind: 'stage', status: 'applied', from: item.before.stage, to: item.after.stage });
+      }
+    } catch (e) {
+      console.error('[crmAssistantApply] item failed', idx, e && e.message);
+      results.push({ idx, kind: item.kind, status: 'failed', reason: (e && e.message) || 'unknown' });
+    }
+  }
+
+  const applied = results.filter((r) => r.status === 'applied').length;
+  const failed = results.filter((r) => r.status === 'failed').length;
+  await planRef.set({
+    status: failed ? 'partially_applied' : 'applied',
+    appliedAt: FV.serverTimestamp(),
+    appliedByUid: uid,
+    runAutomations,
+    results,
+    // Keep the applied plan around as the revert record.
+    expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 90 * 86400000)
+  }, { merge: true });
+
+  return { ok: true, applied, failed, results, revertible: applied > 0 };
+});
+
+// ── crmAssistantRevert ──────────────────────────────────────────
+//
+// What makes write access survivable. Restores the recorded before-state, and
+// is honest that a sent email cannot be unsent.
+
+exports.crmAssistantRevert = onCall({ timeoutSeconds: 120 }, async (request) => {
+  const db = admin.firestore();
+  const companyId = String((request.data || {}).companyId || '').trim();
+  const planId = String((request.data || {}).planId || '').trim();
+  if (!companyId || !planId) throw new HttpsError('invalid-argument', 'companyId and planId are required.');
+
+  const { uid, isOwner } = await assertCompanyAdmin(db, companyId, request);
+  await rateLimitCaller(db, request, { action: 'crmAssistantRevert', max: 10, windowSec: 600 });
+
+  const scope = db.collection('companies').doc(companyId);
+  const planRef = scope.collection('aiPlans').doc(planId);
+  const snap = await planRef.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'That plan no longer exists.');
+  const plan = snap.data();
+  if (!['applied', 'partially_applied'].includes(plan.status)) {
+    throw new HttpsError('failed-precondition', `Nothing to revert — that plan is ${plan.status}.`);
+  }
+  if (plan.createdByUid !== uid && plan.appliedByUid !== uid && !isOwner) {
+    throw new HttpsError('permission-denied', 'Only the admin who applied this plan can revert it.');
+  }
+  const appliedMs = msOf(plan.appliedAt);
+  if (appliedMs && Date.now() - appliedMs > 7 * 86400000) {
+    throw new HttpsError('failed-precondition', 'That plan is more than a week old; revert it by hand so the change is deliberate.');
+  }
+
+  const FV = admin.firestore.FieldValue;
+  let actorName = (request.auth.token && (request.auth.token.name || request.auth.token.email)) || 'Admin';
+  const byLine = `${actorName} via CRM Assistant (revert)`;
+  const out = [];
+
+  for (const r of (plan.results || [])) {
+    if (r.status !== 'applied') continue;
+    const item = (plan.items || [])[r.idx];
+    if (!item) continue;
+    const cRef = scope.collection('contacts').doc(item.contactId);
+    const meta = { source: 'ai_revert', revertsPlanId: planId, itemIndex: r.idx };
+    try {
+      if (r.kind === 'task' && r.taskId) {
+        const tRef = scope.collection('tasks').doc(r.taskId);
+        const t = await tRef.get();
+        if (!t.exists) { out.push({ idx: r.idx, status: 'skipped', reason: 'already_deleted' }); continue; }
+        if ((t.data() || {}).status === 'done') { out.push({ idx: r.idx, status: 'kept', reason: 'already_completed' }); continue; }
+        await tRef.delete();
+        out.push({ idx: r.idx, status: 'reverted', kind: 'task' });
+        continue;
+      }
+      if (r.kind === 'tags') {
+        // Inverse delta, not a whole-array restore — restoring the snapshot
+        // would clobber tags someone else added in the meantime.
+        const cur = await cRef.get();
+        if (!cur.exists) { out.push({ idx: r.idx, status: 'skipped', reason: 'contact_deleted' }); continue; }
+        const now = Array.isArray((cur.data() || {}).tags) ? cur.data().tags : [];
+        const next = now
+          .filter((t) => !(r.added || []).some((a) => String(a).toLowerCase() === String(t).toLowerCase()))
+          .concat((r.removed || []).filter((t) => !now.some((x) => String(x).toLowerCase() === String(t).toLowerCase())));
+        await cRef.set({ tags: next, _automationSuppressed: true, updatedAt: FV.serverTimestamp() }, { merge: true });
+        await cRef.set({ _automationSuppressed: FV.delete() }, { merge: true }).catch(() => {});
+        await cRef.collection('activities').add({
+          type: 'tag_removed', description: 'AI tag change reverted',
+          actorUid: uid, actorName: byLine, createdAt: FV.serverTimestamp(), meta
+        });
+        out.push({ idx: r.idx, status: 'reverted', kind: 'tags' });
+        continue;
+      }
+      if (r.kind === 'stage') {
+        const cur = await cRef.get();
+        if (!cur.exists) { out.push({ idx: r.idx, status: 'skipped', reason: 'contact_deleted' }); continue; }
+        if ((cur.data() || {}).stage !== r.to) { out.push({ idx: r.idx, status: 'skipped', reason: 'changed_since' }); continue; }
+        await cRef.set({ stage: r.from, _automationSuppressed: true, updatedAt: FV.serverTimestamp() }, { merge: true });
+        await cRef.set({ _automationSuppressed: FV.delete() }, { merge: true }).catch(() => {});
+        await cRef.collection('activities').add({
+          type: 'stage_changed', description: `Stage reverted: ${r.to} → ${r.from}`,
+          actorUid: uid, actorName: byLine, createdAt: FV.serverTimestamp(),
+          meta: { ...meta, from: r.to, to: r.from }
+        });
+        out.push({ idx: r.idx, status: 'reverted', kind: 'stage' });
+      }
+    } catch (e) {
+      out.push({ idx: r.idx, status: 'failed', reason: (e && e.message) || 'unknown' });
+    }
+  }
+
+  // Stop anything the original change set running. Delivered mail cannot be
+  // recalled, and the caller is told so rather than left to assume.
+  let stoppedEnrollments = 0;
+  try {
+    for (const cid of new Set((plan.items || []).map((i) => i.contactId))) {
+      const en = await scope.collection('enrollments').where('contactId', '==', cid).where('status', '==', 'active').get();
+      for (const d of en.docs) {
+        const started = msOf(d.data().startedAt) || msOf(d.data().createdAt);
+        if (appliedMs && started && started >= appliedMs) {
+          await d.ref.set({ status: 'stopped', stoppedReason: 'AI change reverted', stoppedAt: FV.serverTimestamp() }, { merge: true });
+          stoppedEnrollments++;
+        }
+      }
+    }
+  } catch (e) { console.warn('[crmAssistantRevert] enrollment stop failed', e && e.message); }
+
+  await planRef.set({ status: 'reverted', revertedAt: FV.serverTimestamp(), revertedByUid: uid, revertResults: out }, { merge: true });
+
+  return {
+    ok: true,
+    reverted: out.filter((r) => r.status === 'reverted').length,
+    results: out,
+    stoppedEnrollments,
+    note: stoppedEnrollments
+      ? `Stopped ${stoppedEnrollments} sequence enrolment(s). Any email or SMS already delivered cannot be recalled.`
+      : null
+  };
+});
+
 
 function getAnthropicClient() {
   let Anthropic;

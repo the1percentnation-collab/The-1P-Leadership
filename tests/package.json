@@ -7,7 +7,7 @@
     "emulator": "firebase emulators:exec --only firestore --project demo-1p \"node firestore-rules.test.mjs\"",
     "test:telnyx": "node telnyx-signature.test.cjs && node telnyx-send.test.cjs && node telnyx-texml.test.cjs",
     "test:email": "node inbound-email.test.cjs",
-    "test:crm": "node crm-freshness.test.cjs",
+    "test:crm": "node crm-freshness.test.cjs && node crm-assistant.test.cjs",
     "test": "npm run test:telnyx && npm run test:email && npm run test:crm && npm run emulator"
   },
   "devDependencies": {

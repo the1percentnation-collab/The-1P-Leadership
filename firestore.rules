@@ -438,6 +438,25 @@ service cloud.firestore {
       // Sales suite (GHL-style): pipelines, opportunities (deals), tasks.
       // Same owner/company-admin model as contacts.
       // ──────────────────────────────────────────────────────────────
+      // ──────────────────────────────────────────────────────────────
+      // CRM assistant. Plans are what the AI stages and the admin approves,
+      // so they are the audit record of every AI-driven change: readable by
+      // the company's admins, writable only by the Cloud Functions that
+      // create, apply and revert them. A client-writable plan would let a
+      // signed-in admin forge an approval trail, or edit a staged plan
+      // between preview and apply so the bytes approved are not the bytes
+      // executed — which is the entire point of the two-phase design.
+      // ──────────────────────────────────────────────────────────────
+      match /aiPlans/{planId} {
+        allow read: if isOwner() || isCompanyAdmin(cid);
+        allow write: if false;
+      }
+      // Daily change budget. Server-only in both directions: a client that
+      // could reset this could lift its own blast-radius cap.
+      match /aiUsage/{dayKey} {
+        allow read, write: if false;
+      }
+
       match /pipelines/{pipelineId} {
         allow read: if isOwner() || isCompanyAdmin(cid);
         allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
