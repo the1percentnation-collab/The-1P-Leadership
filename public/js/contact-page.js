@@ -1199,6 +1199,15 @@ async function main() {
   renderTopbar({ user: u, role: info.role, currentPage: null });
   if (!info.isAdmin) { location.replace('/index.html'); return; }
 
+  // The contact card renders its own chrome rather than going through
+  // crm-shell, so it needs the assistant mounted explicitly or it would be the
+  // one CRM screen without it — and it is the screen you are most often on
+  // when you want to ask about a lead. Dynamic import so a chatbot failure
+  // cannot stop the record loading.
+  import('./chatbot.js')
+    .then((m) => { try { m.init(); } catch (e) {} })
+    .catch(() => {});
+
   const contactId = new URLSearchParams(location.search).get('id');
   if (!contactId) { gate('Missing contact id.'); return; }
   state.contactId = contactId;
