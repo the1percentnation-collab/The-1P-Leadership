@@ -131,13 +131,14 @@ reason.
 The two boxes on `/webinar`, quoted for the submission:
 
 > By checking this box, you agree to receive text messages from The One Percent
-> related to your inquiry, bookings, or program updates. Message frequency may
-> vary. Message and data rates may apply. Reply HELP for assistance or STOP to
-> opt out.
+> Nation related to your inquiry, bookings, or program updates. Message
+> frequency may vary. Message and data rates may apply. Reply HELP for
+> assistance or STOP to opt out. Consent is not a condition of purchase.
 
 > By checking this box, you agree to receive marketing and promotional messages
-> from The One Percent, including special offers, discounts, and new program
-> updates. Reply STOP to opt out at any time.
+> from The One Percent Nation, including special offers, discounts, and new
+> program updates. Message frequency may vary. Message and data rates may
+> apply. Reply STOP to opt out at any time.
 
 Splitting transactional from marketing consent like this is exactly what
 reviewers want to see, so say so in the workflow description below.
