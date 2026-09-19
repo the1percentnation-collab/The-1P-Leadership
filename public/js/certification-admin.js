@@ -35,6 +35,54 @@ const RUBRIC = [
   { key: 'nonAdvising', label: 'Non-Advising' }
 ];
 
+// The published pass rule (docs/1p-clc-rubric.md). reviewCapstone enforces the
+// same numbers server side; this is here so the reviewer sees the verdict while
+// scoring instead of finding out on submit.
+const PASS_MIN_PER_CRITERION = 3;
+const PASS_MIN_TOTAL = 14;
+
+// Returns null when the scores pass, or the reason they do not.
+function passRuleFailure(scores) {
+  const missing = RUBRIC.filter((r) => !Number.isFinite(scores[r.key]));
+  if (missing.length) return 'Score every criterion before approving.';
+  if (scores.nonAdvising < PASS_MIN_PER_CRITERION) {
+    return 'Non-Advising is below 3. That is a revise on its own: the coach was '
+      + 'consulting rather than coaching. Return it and name that in the feedback.';
+  }
+  const low = RUBRIC.filter((r) => scores[r.key] < PASS_MIN_PER_CRITERION);
+  if (low.length) {
+    return `The pass rule needs a minimum of ${PASS_MIN_PER_CRITERION} on every `
+      + `criterion. Below that: ${low.map((r) => r.label).join(', ')}.`;
+  }
+  const total = RUBRIC.reduce((sum, r) => sum + scores[r.key], 0);
+  if (total < PASS_MIN_TOTAL) {
+    return `The pass rule needs ${PASS_MIN_TOTAL} or more out of 20. This one totals ${total}.`;
+  }
+  return null;
+}
+
+function readCapstoneScores(i) {
+  const scores = {};
+  document.querySelectorAll(`[data-cap="${i}"]`).forEach((inp) => {
+    scores[inp.dataset.crit] = Number(inp.value);
+  });
+  return scores;
+}
+
+// Live readout under the score inputs: the running total and whether the
+// current numbers clear both bars.
+function renderCapstoneVerdict(i) {
+  const el = document.querySelector(`[data-cap-verdict="${i}"]`);
+  if (!el) return;
+  const scores = readCapstoneScores(i);
+  const total = RUBRIC.reduce((sum, r) => sum + (Number.isFinite(scores[r.key]) ? scores[r.key] : 0), 0);
+  const failure = passRuleFailure(scores);
+  el.textContent = failure
+    ? `${total} of 20 · does not pass. ${failure}`
+    : `${total} of 20 · clears the pass rule.`;
+  el.style.color = failure ? 'var(--gray-mid)' : 'var(--green, #3BB273)';
+}
+
 let _queue = { hours: [], capstones: [], ceCredits: [], practice: [] };
 
 async function refreshQueue() {
@@ -152,6 +200,7 @@ function renderCapstones() {
               style="display:block;width:100%;margin-top:4px;">
           </label>`).join('')}
       </div>
+      <div data-cap-verdict="${i}" style="font-size:12px;margin-bottom:10px;color:var(--gray-mid);"></div>
       <label style="font-size:12px;color:var(--gray-light);display:block;margin-bottom:10px;">Feedback to the member
         <textarea data-cap-feedback="${i}" rows="2" style="display:block;width:100%;margin-top:4px;"></textarea>
       </label>
@@ -163,20 +212,27 @@ function renderCapstones() {
     b.addEventListener('click', () => decideCapstone(Number(b.dataset.capApprove), 'approved')));
   body.querySelectorAll('[data-cap-revise]').forEach((b) =>
     b.addEventListener('click', () => decideCapstone(Number(b.dataset.capRevise), 'revise')));
+  body.querySelectorAll('[data-cap]').forEach((inp) =>
+    inp.addEventListener('input', () => renderCapstoneVerdict(Number(inp.dataset.cap))));
+  (_queue.capstones || []).forEach((c, i) => renderCapstoneVerdict(i));
 }
 
 async function decideCapstone(i, decision) {
   const c = _queue.capstones[i];
   if (!c) return;
-  const scores = {};
-  document.querySelectorAll(`[data-cap="${i}"]`).forEach((inp) => {
-    scores[inp.dataset.crit] = Number(inp.value);
-  });
+  const scores = readCapstoneScores(i);
   const fb = document.querySelector(`[data-cap-feedback="${i}"]`);
   const feedback = fb ? fb.value.trim() : '';
   if (decision === 'revise' && !feedback) {
     alert('Give the member feedback before returning a recording.');
     return;
+  }
+  if (decision === 'approved') {
+    const failure = passRuleFailure(scores);
+    if (failure) {
+      alert(`${failure}\n\nReturn it for another take instead.`);
+      return;
+    }
   }
   try {
     await httpsCallable(functions, 'reviewCapstone')({

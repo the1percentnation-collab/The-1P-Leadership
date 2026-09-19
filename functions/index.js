@@ -8677,6 +8677,13 @@ exports.reviewCeCredits = onCall(async (request) => {
 });
 
 // reviewCapstone — admin scores a submitted recorded coaching session
+// Capstone pass rule, published in docs/1p-clc-rubric.md. Both bars must clear
+// for an approval. Anything below either one is a revise, not a fail, and the
+// student may resubmit without limit.
+const CAPSTONE_CRITERIA = ['presence', 'questions', 'structure', 'nonAdvising'];
+const CAPSTONE_MIN_PER_CRITERION = 3;
+const CAPSTONE_MIN_TOTAL = 14;
+
 // against the published rubric and approves or returns it for another take.
 exports.reviewCapstone = onCall(async (request) => {
   const db = admin.firestore();
@@ -8697,6 +8704,36 @@ exports.reviewCapstone = onCall(async (request) => {
     const v = Number(scores[k]);
     if (Number.isFinite(v)) clean[k] = Math.max(0, Math.min(5, v));
   });
+
+  // The published pass rule, enforced here so it cannot be approved around:
+  // a minimum of 3 on every criterion and a total of 14 or more out of 20.
+  // Non-Advising is called out separately because a 2 there is a stance
+  // failure, not a skill gap, and the feedback has to say so.
+  if (decision === 'approved') {
+    const missing = CAPSTONE_CRITERIA.filter((k) => !Number.isFinite(clean[k]));
+    if (missing.length) {
+      throw new HttpsError('invalid-argument',
+        `Score every criterion before approving. Missing: ${missing.join(', ')}.`);
+    }
+    if (clean.nonAdvising < CAPSTONE_MIN_PER_CRITERION) {
+      throw new HttpsError('failed-precondition',
+        'Non-Advising is below 3. That is a revise on its own: the coach was ' +
+        'consulting rather than coaching. Return it and name that in the feedback.');
+    }
+    const low = CAPSTONE_CRITERIA.filter((k) => clean[k] < CAPSTONE_MIN_PER_CRITERION);
+    if (low.length) {
+      throw new HttpsError('failed-precondition',
+        `The pass rule needs a minimum of ${CAPSTONE_MIN_PER_CRITERION} on every ` +
+        `criterion. Below that: ${low.join(', ')}. Return it for another take.`);
+    }
+    const total = CAPSTONE_CRITERIA.reduce((sum, k) => sum + clean[k], 0);
+    if (total < CAPSTONE_MIN_TOTAL) {
+      throw new HttpsError('failed-precondition',
+        `The pass rule needs ${CAPSTONE_MIN_TOTAL} or more out of 20. This one ` +
+        `totals ${total}. Return it for another take.`);
+    }
+  }
+
   const ref = db.collection('users').doc(uid).collection('capstone').doc(docId);
   const snap = await ref.get();
   if (!snap.exists) throw new HttpsError('not-found', 'Unknown capstone submission.');

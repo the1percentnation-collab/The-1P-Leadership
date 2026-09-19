@@ -83,6 +83,7 @@ module.exports = {
 <blockquote><p><strong>Client:</strong> What would you do?</p><p><strong>Coach:</strong> I will tell you at the end if you still want it. First, what do you already know you are going to do?</p><p><strong>Client:</strong> (pause) Tell her Thursday.</p></blockquote>
 
 <h2>What a revise decision means</h2>
+<p>The pass rule is published and it is not graded on a curve: a minimum of 3 on every criterion, and a total of 14 or more out of 20. Both have to clear. Four bare threes is a 12 and comes back as a revise, because the standard is competent across the board with real strength somewhere. Non-Advising below a 3 comes back on its own, whatever the total, because a coach who spends the session advising is consulting.</p>
 <p>Your submission comes back approved or revise. A revise is not a failure and not a judgment about whether you can coach. It means one or more criteria did not meet the standard on that recording, and the feedback names which and why.</p>
 <p>Some things return a revise regardless of the rest of the session: advising through the whole session, no session goal established, coach talk time clearly dominant, and any breach of confidentiality on the recording.</p>
 <p>To resubmit, read the feedback in full before you react to it, pick the one criterion that would change the session most, and record a different session rather than a second take of the same conversation. Submit the new link from the Certification tab. There is no limit on resubmissions.</p>

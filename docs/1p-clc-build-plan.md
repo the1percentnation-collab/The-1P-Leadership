@@ -82,10 +82,10 @@ first; they become portal resources once Anthony signs off.
 
 ## Decisions surfaced by the build (for Anthony)
 
-- Capstone pass rule proposed in `docs/1p-clc-rubric.md`: minimum 3 on every
-  criterion and 14 or more of 20; below either bar is a revise, resubmission
-  unlimited. Confirm, and decide whether a 2 on Non-Advising is an automatic
-  revise on its own.
+- ~~Capstone pass rule~~ Confirmed: minimum 3 on every criterion and 14 or more
+  of 20, below either bar is a revise with unlimited resubmission, and
+  Non-Advising below 3 is a revise on its own. Published in
+  `docs/1p-clc-rubric.md` and enforced by `reviewCapstone`.
 - How many of the 25 hours must be with clients who are not classmates.
   Modules ask for a growing share; the admin needs a number.
 - What happens after three failed exam attempts. Module 8 routes the student

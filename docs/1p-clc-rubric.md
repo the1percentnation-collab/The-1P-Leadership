@@ -49,21 +49,25 @@ Target about ninety minutes per review for a thirty to forty minute session.
 
 ---
 
-## Pass rule (proposed, for Anthony to confirm)
+## Pass rule
 
-**Proposal: a minimum of 3 on every criterion, and a total of 14 or more out of
-20.**
+**A minimum of 3 on every criterion, and a total of 14 or more out of 20.**
+Both bars must clear. Confirmed, and enforced by `reviewCapstone`: an approval
+that misses either one is rejected by the server, not left to the reviewer.
 
 The reasoning. The floor of 3 on every criterion prevents a coach from passing
 on strength in three areas while advising through the session or never
 establishing a goal. The total of 14 asks for more than four bare threes, so a
 pass means competent across the board with real strength somewhere.
 
+**Non-Advising below 3 is a revise on its own.** The minimum already catches it
+on points, but it is named separately because the feedback is a different
+conversation. A low Presence or Structure score is a skill that improves with
+reps. Advising through a session is a stance failure: the coach was consulting.
+Say that plainly rather than pointing at numbers.
+
 Anything below either bar is a `revise`, not a fail. The student resubmits a
 new session with no limit on resubmissions.
-
-Open for Anthony: whether 14 is the right total, and whether a single 2 on
-Non-Advising specifically should be an automatic revise regardless of total.
 
 ---
 
