@@ -27,17 +27,26 @@ const PANEL_HTML = `
     </div>
     <div class="crm-toolbar-spacer"></div>
     <input id="crm-search" class="c-input crm-search" placeholder="Search name or email…" />
-    <button class="btn btn-ghost" id="btn-export-csv" title="Download the contacts currently shown">Export CSV</button>
-    <a class="btn btn-ghost" id="btn-import-csv" href="/crm-import.html">Import CSV</a>
+    <div class="crm-toolbar-group">
+      <button type="button" class="crm-toolbar-more" id="crm-toolbar-more" aria-haspopup="true" aria-expanded="false" aria-label="More actions">
+        <svg viewBox="0 0 16 4" aria-hidden="true"><circle cx="2" cy="2" r="1.6"/><circle cx="8" cy="2" r="1.6"/><circle cx="14" cy="2" r="1.6"/></svg>
+      </button>
+      <div class="crm-toolbar-actions" id="crm-toolbar-actions">
+        <button class="btn btn-ghost" id="btn-export-csv" title="Download the contacts currently shown">Export CSV</button>
+        <a class="btn btn-ghost" id="btn-import-csv" href="/crm-import.html">Import CSV</a>
+      </div>
+    </div>
     <button class="btn btn-primary" id="btn-new-contact">+ New Contact</button>
   </div>
   <div class="crm-filters">
-    <div class="crm-chip-row" id="crm-owner-chips">
-      <button class="crm-chip active" data-owner-filter="all">All</button>
-      <button class="crm-chip" data-owner-filter="mine">Mine</button>
+    <div class="crm-seg" id="crm-owner-chips">
+      <button class="crm-seg-btn active" data-owner-filter="all">All</button>
+      <button class="crm-seg-btn" data-owner-filter="mine">Mine</button>
     </div>
-    <div class="crm-chip-row" id="crm-stage-chips"></div>
-    <div class="crm-chip-row" id="crm-tag-chips"></div>
+    <div class="crm-filter" id="crm-stage-filter"></div>
+    <div class="crm-filter" id="crm-tag-filter"></div>
+    <button type="button" class="crm-filter-clear" id="crm-clear-filters" hidden>Clear</button>
+    <span class="crm-filter-count" id="crm-filter-count"></span>
   </div>
   <div id="view-kanban" class="crm-view"></div>
   <div id="view-list" class="crm-view" style="display:none;"></div>
@@ -63,6 +72,46 @@ const state = {
 
 function gate(msg) {
   if (contentEl) contentEl.innerHTML = `<div class="card"><div class="auth-error">${escapeHtml(msg)}</div></div>`;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Filter state <-> URL
+//
+// Filters used to live only in memory, so a refresh — or coming back from a
+// contact page — dropped you to All / All stages / All tags. Keeping them in
+// the query string fixes that and makes a filtered board shareable: a link
+// can point a teammate straight at one tag inside one stage.
+// ────────────────────────────────────────────────────────────────
+const URL_KEYS = { owner: 'owner', stage: 'stage', tag: 'tag', search: 'q' };
+
+function readFiltersFromUrl() {
+  const p = new URLSearchParams(location.search);
+  if (p.get(URL_KEYS.owner) === 'mine') state.filters.owner = 'mine';
+  const stage = p.get(URL_KEYS.stage);
+  if (stage && STAGE_IDS.includes(stage)) state.filters.stage = stage;
+  const tag = p.get(URL_KEYS.tag);
+  if (tag) state.filters.tag = tag;
+  const q = (p.get(URL_KEYS.search) || '').trim();
+  if (q) state.filters.search = q;
+}
+
+/**
+ * Mirror the active filters into the address bar.
+ *
+ * replaceState rather than pushState: filtering is not navigation, and a
+ * dozen chip clicks should not mean a dozen taps of the back button. Other
+ * params (companyId, most importantly) are preserved.
+ */
+function syncFiltersToUrl() {
+  const p = new URLSearchParams(location.search);
+  const f = state.filters;
+  const set = (k, v) => { if (v) p.set(k, v); else p.delete(k); };
+  set(URL_KEYS.owner, f.owner === 'mine' ? 'mine' : null);
+  set(URL_KEYS.stage, f.stage);
+  set(URL_KEYS.tag, f.tag);
+  set(URL_KEYS.search, f.search);
+  const qs = p.toString();
+  history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -128,45 +177,207 @@ function exportVisibleContacts() {
   downloadCsv(`contacts-${stamp}.csv`, csv);
 }
 
+/** Past this many options, scrolling a list beats reading it — add a filter box. */
+const FILTER_SEARCH_THRESHOLD = 10;
+
+/**
+ * One compact dropdown filter (stage or tag).
+ *
+ * The filter bar used to be three wrapping rows of chips, which grew a row
+ * taller with every new tag and pushed the board down the page. A dropdown
+ * keeps the bar one line high no matter how many tags a company collects,
+ * and the trigger doubles as the readout of what is currently filtered.
+ *
+ * Long lists (tags, mostly) get a type-to-filter box so finding one among
+ * fifty is a few keystrokes instead of a scroll.
+ */
+function renderFilterMenu(hostId, opts) {
+  const host = $(hostId);
+  if (!host) return;
+  const { options, allLabel, value, onPick, searchPlaceholder } = opts;
+  if (!options.length) { host.innerHTML = ''; return; }
+
+  const current = options.find((o) => o.value === value) || null;
+  const label = current ? current.label : allLabel;
+  const dot = current && current.color
+    ? `<span class="crm-dot" style="background:${current.color}"></span>`
+    : '';
+  const searchable = options.length > FILTER_SEARCH_THRESHOLD;
+
+  host.innerHTML = `
+    <button type="button" class="crm-filter-btn ${current ? 'active' : ''}" aria-haspopup="true" aria-expanded="false">
+      ${dot}<span class="crm-filter-label">${escapeHtml(label)}</span>
+      <svg class="crm-filter-caret" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="crm-filter-pop" hidden>
+      ${searchable ? `
+        <div class="crm-filter-search-wrap">
+          <input type="text" class="crm-filter-search" placeholder="${escapeHtml(searchPlaceholder || 'Filter…')}" autocomplete="off" spellcheck="false" />
+        </div>` : ''}
+      <div class="crm-filter-opts">
+        <button type="button" class="crm-filter-opt ${!current ? 'selected' : ''}" data-value="">${escapeHtml(allLabel)}</button>
+        ${options.map((o) => `
+          <button type="button" class="crm-filter-opt ${o.value === value ? 'selected' : ''}" data-value="${escapeHtml(o.value)}" data-search="${escapeHtml(o.label.toLowerCase())}">
+            ${o.color ? `<span class="crm-dot" style="background:${o.color}"></span>` : ''}${escapeHtml(o.label)}
+          </button>`).join('')}
+        <div class="crm-filter-empty" hidden>No matches</div>
+      </div>
+    </div>
+  `;
+
+  const btn = host.querySelector('.crm-filter-btn');
+  const pop = host.querySelector('.crm-filter-pop');
+  const search = pop.querySelector('.crm-filter-search');
+  const empty = pop.querySelector('.crm-filter-empty');
+
+  const pick = (v) => { closeAllFilterMenus(); onPick(v || null); };
+
+  // Clicks inside the menu must not reach the document-level close handler,
+  // or typing in the search box would shut the menu it belongs to.
+  pop.addEventListener('click', (e) => e.stopPropagation());
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = pop.hidden;
+    closeAllFilterMenus();
+    pop.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+    if (open) {
+      alignPop(pop);
+      if (search) { search.value = ''; applySearch(); search.focus(); }
+    }
+  });
+
+  pop.querySelectorAll('[data-value]').forEach((b) => {
+    b.addEventListener('click', () => pick(b.getAttribute('data-value')));
+  });
+
+  function applySearch() {
+    if (!search) return;
+    const q = search.value.trim().toLowerCase();
+    let shown = 0;
+    pop.querySelectorAll('[data-search]').forEach((b) => {
+      const hit = !q || b.getAttribute('data-search').includes(q);
+      b.hidden = !hit;
+      if (hit) shown++;
+    });
+    // "All tags" is the way back out of a filter, so it stays put unless the
+    // user is actively searching for something narrower.
+    const allOpt = pop.querySelector('[data-value=""]');
+    if (allOpt) allOpt.hidden = !!q;
+    if (empty) empty.hidden = shown > 0;
+  }
+
+  if (search) {
+    search.addEventListener('input', applySearch);
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const first = Array.from(pop.querySelectorAll('[data-search]')).find((b) => !b.hidden);
+        if (first) pick(first.getAttribute('data-value'));
+      } else if (e.key === 'Escape') {
+        e.stopPropagation();
+        closeAllFilterMenus();
+        btn.focus();
+      }
+    });
+  }
+}
+
+/**
+ * Keep an open menu inside the viewport.
+ *
+ * The menus hang left-aligned under their trigger, which runs off the right
+ * edge on a phone once the trigger sits far enough along the row. Flip to
+ * right-aligned when that would happen, and back when it would not.
+ */
+function alignPop(pop) {
+  pop.style.left = '0';
+  pop.style.right = 'auto';
+  const r = pop.getBoundingClientRect();
+  if (r.right > window.innerWidth - 8) {
+    pop.style.left = 'auto';
+    pop.style.right = '0';
+  }
+}
+
+function closeAllFilterMenus() {
+  document.querySelectorAll('.crm-filter-pop').forEach((p) => { p.hidden = true; });
+  document.querySelectorAll('.crm-filter-btn').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+}
+
+document.addEventListener('click', closeAllFilterMenus);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAllFilterMenus(); });
+
 function renderStageChips() {
-  const el = $('crm-stage-chips');
-  if (!el) return;
-  el.innerHTML = [
-    `<button class="crm-chip ${!state.filters.stage ? 'active' : ''}" data-stage-filter="">All stages</button>`,
-    ...STAGES.map((s) => `
-      <button class="crm-chip ${state.filters.stage === s.id ? 'active' : ''}" data-stage-filter="${s.id}">
-        <span class="crm-dot" style="background:${s.color}"></span>${escapeHtml(s.label)}
-      </button>`)
-  ].join('');
-  el.querySelectorAll('[data-stage-filter]').forEach((b) => {
-    b.addEventListener('click', () => {
-      const v = b.getAttribute('data-stage-filter');
-      state.filters.stage = v || null;
+  renderFilterMenu('crm-stage-filter', {
+    allLabel: 'All stages',
+    value: state.filters.stage,
+    options: STAGES.map((s) => ({ value: s.id, label: s.label, color: s.color })),
+    onPick: (v) => {
+      state.filters.stage = v;
+      syncFiltersToUrl();
       renderStageChips();
       renderCurrentView();
-    });
+    }
   });
+  renderFilterBarState();
 }
 
 function renderTagChips() {
-  const el = $('crm-tag-chips');
-  if (!el) return;
-  const allTags = new Set();
-  state.contacts.forEach((c) => (c.tags || []).forEach((t) => allTags.add(t)));
-  if (!allTags.size) { el.innerHTML = ''; return; }
-  const tags = Array.from(allTags).sort();
-  el.innerHTML = [
-    `<button class="crm-chip ${!state.filters.tag ? 'active' : ''}" data-tag-filter="">All tags</button>`,
-    ...tags.map((t) => `<button class="crm-chip ${state.filters.tag === t ? 'active' : ''}" data-tag-filter="${escapeHtml(t)}">#${escapeHtml(t)}</button>`)
-  ].join('');
-  el.querySelectorAll('[data-tag-filter]').forEach((b) => {
-    b.addEventListener('click', () => {
-      const v = b.getAttribute('data-tag-filter');
-      state.filters.tag = v || null;
+  const all = new Set();
+  state.contacts.forEach((c) => (c.tags || []).forEach((t) => all.add(t)));
+  const tags = Array.from(all).sort();
+  // A tag can disappear when the last contact carrying it is filtered away or
+  // retagged; drop the selection instead of leaving a filter nothing matches.
+  if (state.filters.tag && !all.has(state.filters.tag)) {
+    state.filters.tag = null;
+    // A link can carry a tag this company no longer uses; drop it from the
+    // address bar too rather than leaving a param that filters nothing.
+    syncFiltersToUrl();
+  }
+  renderFilterMenu('crm-tag-filter', {
+    allLabel: 'All tags',
+    searchPlaceholder: 'Find a tag…',
+    value: state.filters.tag,
+    options: tags.map((t) => ({ value: t, label: '#' + t })),
+    onPick: (v) => {
+      state.filters.tag = v;
+      syncFiltersToUrl();
       renderTagChips();
       renderCurrentView();
-    });
+    }
   });
+  renderFilterBarState();
+}
+
+/** Clear button + "showing N of M" readout, both driven by the active filters. */
+function renderFilterBarState() {
+  const f = state.filters;
+  const active = f.owner !== 'all' || !!f.stage || !!f.tag || !!f.search;
+  const clear = $('crm-clear-filters');
+  if (clear) {
+    clear.hidden = !active;
+    clear.onclick = () => {
+      state.filters.owner = 'all';
+      state.filters.stage = null;
+      state.filters.tag = null;
+      state.filters.search = '';
+      const search = $('crm-search');
+      if (search) search.value = '';
+      syncFiltersToUrl();
+      renderOwnerChips();
+      renderStageChips();
+      renderTagChips();
+      renderCurrentView();
+    };
+  }
+  const count = $('crm-filter-count');
+  if (count) {
+    const total = state.contacts.length;
+    const shown = filteredContacts().length;
+    count.textContent = !total ? '' : (active ? `${shown} of ${total}` : `${total} contacts`);
+  }
 }
 
 function renderOwnerChips() {
@@ -176,10 +387,12 @@ function renderOwnerChips() {
     b.classList.toggle('active', state.filters.owner === b.getAttribute('data-owner-filter'));
     b.onclick = () => {
       state.filters.owner = b.getAttribute('data-owner-filter');
+      syncFiltersToUrl();
       renderOwnerChips();
       renderCurrentView();
     };
   });
+  renderFilterBarState();
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -593,6 +806,7 @@ async function main() {
   }
   state.companyId = companyId;
 
+  readFiltersFromUrl();
   contentEl.innerHTML = PANEL_HTML;
 
   // Wire tabs
@@ -607,8 +821,34 @@ async function main() {
   // Wire search
   $('crm-search').addEventListener('input', (e) => {
     state.filters.search = (e.target.value || '').trim();
+    syncFiltersToUrl();
     renderCurrentView();
   });
+
+  // Reflect filters that arrived in the URL back into the controls.
+  $('crm-search').value = state.filters.search;
+
+  // Wire the narrow-screen overflow menu. Export/Import sit inline on a wide
+  // toolbar and collapse behind this button on a phone, where four stacked
+  // full-width bars pushed the board off the first screen.
+  const moreBtn = $('crm-toolbar-more');
+  const moreMenu = $('crm-toolbar-actions');
+  if (moreBtn && moreMenu) {
+    moreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = !moreMenu.classList.contains('open');
+      moreMenu.classList.toggle('open', open);
+      moreBtn.setAttribute('aria-expanded', String(open));
+    });
+    moreMenu.addEventListener('click', () => {
+      moreMenu.classList.remove('open');
+      moreBtn.setAttribute('aria-expanded', 'false');
+    });
+    document.addEventListener('click', () => {
+      moreMenu.classList.remove('open');
+      moreBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
 
   // Wire new contact
   $('btn-new-contact').addEventListener('click', openNewContactModal);
