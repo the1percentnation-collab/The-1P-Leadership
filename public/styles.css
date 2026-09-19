@@ -3021,6 +3021,37 @@ textarea.mc-lines:focus { outline: none; border-color: rgba(204,27,27,0.5); }
 .crm-filter-opt:hover { background: var(--surface); color: var(--white); }
 .crm-filter-opt.selected { color: var(--white); background: rgba(204,27,27,0.16); }
 
+/* Type-to-filter, shown only on long option lists (tags). */
+.crm-filter-search-wrap {
+  position: sticky;
+  top: -5px;
+  margin: -5px -5px 4px;
+  padding: 8px 8px 6px;
+  background: var(--charcoal);
+  border-bottom: 1px solid var(--border);
+  z-index: 1;
+}
+.crm-filter-search {
+  width: 100%;
+  background: var(--black-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--white);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 7px 9px;
+  outline: none;
+  transition: border-color 0.12s;
+}
+.crm-filter-search::placeholder { color: var(--gray-mid); }
+.crm-filter-search:focus { border-color: rgba(204,27,27,0.45); }
+.crm-filter-empty {
+  color: var(--gray-mid);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 10px;
+}
+
 .crm-filter-clear {
   background: transparent;
   border: none;

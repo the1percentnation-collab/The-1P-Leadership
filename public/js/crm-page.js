@@ -130,6 +130,9 @@ function exportVisibleContacts() {
   downloadCsv(`contacts-${stamp}.csv`, csv);
 }
 
+/** Past this many options, scrolling a list beats reading it — add a filter box. */
+const FILTER_SEARCH_THRESHOLD = 10;
+
 /**
  * One compact dropdown filter (stage or tag).
  *
@@ -137,11 +140,14 @@ function exportVisibleContacts() {
  * taller with every new tag and pushed the board down the page. A dropdown
  * keeps the bar one line high no matter how many tags a company collects,
  * and the trigger doubles as the readout of what is currently filtered.
+ *
+ * Long lists (tags, mostly) get a type-to-filter box so finding one among
+ * fifty is a few keystrokes instead of a scroll.
  */
 function renderFilterMenu(hostId, opts) {
   const host = $(hostId);
   if (!host) return;
-  const { options, allLabel, value, onPick } = opts;
+  const { options, allLabel, value, onPick, searchPlaceholder } = opts;
   if (!options.length) { host.innerHTML = ''; return; }
 
   const current = options.find((o) => o.value === value) || null;
@@ -149,6 +155,7 @@ function renderFilterMenu(hostId, opts) {
   const dot = current && current.color
     ? `<span class="crm-dot" style="background:${current.color}"></span>`
     : '';
+  const searchable = options.length > FILTER_SEARCH_THRESHOLD;
 
   host.innerHTML = `
     <button type="button" class="crm-filter-btn ${current ? 'active' : ''}" aria-haspopup="true" aria-expanded="false">
@@ -156,29 +163,75 @@ function renderFilterMenu(hostId, opts) {
       <svg class="crm-filter-caret" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <div class="crm-filter-pop" hidden>
-      <button type="button" class="crm-filter-opt ${!current ? 'selected' : ''}" data-value="">${escapeHtml(allLabel)}</button>
-      ${options.map((o) => `
-        <button type="button" class="crm-filter-opt ${o.value === value ? 'selected' : ''}" data-value="${escapeHtml(o.value)}">
-          ${o.color ? `<span class="crm-dot" style="background:${o.color}"></span>` : ''}${escapeHtml(o.label)}
-        </button>`).join('')}
+      ${searchable ? `
+        <div class="crm-filter-search-wrap">
+          <input type="text" class="crm-filter-search" placeholder="${escapeHtml(searchPlaceholder || 'Filter…')}" autocomplete="off" spellcheck="false" />
+        </div>` : ''}
+      <div class="crm-filter-opts">
+        <button type="button" class="crm-filter-opt ${!current ? 'selected' : ''}" data-value="">${escapeHtml(allLabel)}</button>
+        ${options.map((o) => `
+          <button type="button" class="crm-filter-opt ${o.value === value ? 'selected' : ''}" data-value="${escapeHtml(o.value)}" data-search="${escapeHtml(o.label.toLowerCase())}">
+            ${o.color ? `<span class="crm-dot" style="background:${o.color}"></span>` : ''}${escapeHtml(o.label)}
+          </button>`).join('')}
+        <div class="crm-filter-empty" hidden>No matches</div>
+      </div>
     </div>
   `;
 
   const btn = host.querySelector('.crm-filter-btn');
   const pop = host.querySelector('.crm-filter-pop');
+  const search = pop.querySelector('.crm-filter-search');
+  const empty = pop.querySelector('.crm-filter-empty');
+
+  const pick = (v) => { closeAllFilterMenus(); onPick(v || null); };
+
+  // Clicks inside the menu must not reach the document-level close handler,
+  // or typing in the search box would shut the menu it belongs to.
+  pop.addEventListener('click', (e) => e.stopPropagation());
+
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     const open = pop.hidden;
     closeAllFilterMenus();
     pop.hidden = !open;
     btn.setAttribute('aria-expanded', String(open));
+    if (open && search) { search.value = ''; applySearch(); search.focus(); }
   });
+
   pop.querySelectorAll('[data-value]').forEach((b) => {
-    b.addEventListener('click', () => {
-      closeAllFilterMenus();
-      onPick(b.getAttribute('data-value') || null);
-    });
+    b.addEventListener('click', () => pick(b.getAttribute('data-value')));
   });
+
+  function applySearch() {
+    if (!search) return;
+    const q = search.value.trim().toLowerCase();
+    let shown = 0;
+    pop.querySelectorAll('[data-search]').forEach((b) => {
+      const hit = !q || b.getAttribute('data-search').includes(q);
+      b.hidden = !hit;
+      if (hit) shown++;
+    });
+    // "All tags" is the way back out of a filter, so it stays put unless the
+    // user is actively searching for something narrower.
+    const allOpt = pop.querySelector('[data-value=""]');
+    if (allOpt) allOpt.hidden = !!q;
+    if (empty) empty.hidden = shown > 0;
+  }
+
+  if (search) {
+    search.addEventListener('input', applySearch);
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const first = Array.from(pop.querySelectorAll('[data-search]')).find((b) => !b.hidden);
+        if (first) pick(first.getAttribute('data-value'));
+      } else if (e.key === 'Escape') {
+        e.stopPropagation();
+        closeAllFilterMenus();
+        btn.focus();
+      }
+    });
+  }
 }
 
 function closeAllFilterMenus() {
@@ -212,6 +265,7 @@ function renderTagChips() {
   if (state.filters.tag && !all.has(state.filters.tag)) state.filters.tag = null;
   renderFilterMenu('crm-tag-filter', {
     allLabel: 'All tags',
+    searchPlaceholder: 'Find a tag…',
     value: state.filters.tag,
     options: tags.map((t) => ({ value: t, label: '#' + t })),
     onPick: (v) => {
