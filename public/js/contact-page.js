@@ -25,7 +25,7 @@ import {
   listActivities, addManualActivity,
   listCompanyAdmins,
   ensureDefaultPipeline, listOpportunities, createOpportunity,
-  listTasks, createTask, completeTask,
+  listTasks, createTask, completeTask, reopenTask, taskBucket,
   listAppointments, createAppointment, setAppointmentStatus,
   listMessages, sendSms,
   listContactEmails, sendContactEmail, markContactEmailsRead, groupEmailThreads,
@@ -65,7 +65,9 @@ const state = {
   emailReply: null,
   // Thread keys the reader has expanded. Long threads collapse by default so
   // the timeline stays scannable.
-  openThreads: new Set()
+  openThreads: new Set(),
+  // Completed follow-ups are history, not work — hidden until asked for.
+  showDoneTasks: false
 };
 
 function gate(msg) {
@@ -187,10 +189,7 @@ function renderSideUpcoming() {
   const rows = state.appts
     .filter((a) => a.status === 'scheduled' && (toDate(a.startAt)?.getTime() || 0) >= now - 3600000)
     .sort((a, b) => (toDate(a.startAt)?.getTime() || 0) - (toDate(b.startAt)?.getTime() || 0));
-  const openTasks = state.tasks.filter((t) => t.status !== 'done')
-    .sort((a, b) => (toDate(a.dueAt)?.getTime() || Infinity) - (toDate(b.dueAt)?.getTime() || Infinity));
-
-  if (!rows.length && !openTasks.length) {
+  if (!rows.length) {
     host.innerHTML = `<div class="crm-subpanel-empty">Nothing scheduled.</div>`;
     return;
   }
@@ -205,17 +204,6 @@ function renderSideUpcoming() {
         </div>
         <button class="crm-chip" data-appt-done="${a.id}">Done</button>
       </div>`;
-    }),
-    ...openTasks.map((t) => {
-      const due = toDate(t.dueAt);
-      const overdue = due && due < new Date();
-      return `<div class="crm-mini-row">
-        <button class="task-check" data-toggle-task="${t.id}" aria-label="Complete"></button>
-        <div class="crm-mini-main">
-          <div class="crm-mini-title">${escapeHtml(t.title)}</div>
-          <div class="crm-mini-sub ${overdue ? 'task-due-overdue' : ''}">${t.dueAt ? 'Due ' + fmtDate(t.dueAt) : 'No due date'}</div>
-        </div>
-      </div>`;
     })
   ].join('');
 
@@ -225,6 +213,69 @@ function renderSideUpcoming() {
       await reloadAll();
     } catch (e) { alert('Could not update: ' + (e.message || e)); }
   }));
+}
+
+const TASK_BUCKET_LABEL = { overdue: 'Overdue', today: 'Today', upcoming: 'Upcoming', nodate: 'No due date' };
+
+/**
+ * Follow-ups, in their own card rather than mixed into Upcoming.
+ *
+ * They used to share a list with appointments, which read as one undifferentiated
+ * pile: a booked call and an overdue promise to ring someone back are not the
+ * same kind of thing and do not deserve the same row. Grouped by urgency, using
+ * the same bucketing the standalone Tasks page uses.
+ */
+function renderSideFollowups() {
+  const host = $('side-followups');
+  if (!host) return;
+
+  const byDue = (a, b) => (toDate(a.dueAt)?.getTime() || Infinity) - (toDate(b.dueAt)?.getTime() || Infinity);
+  const open = state.tasks.filter((t) => t.status !== 'done');
+  const done = state.tasks.filter((t) => t.status === 'done')
+    .sort((a, b) => (toDate(b.completedAt)?.getTime() || 0) - (toDate(a.completedAt)?.getTime() || 0))
+    .slice(0, 20);
+
+  const groups = ['overdue', 'today', 'upcoming', 'nodate']
+    .map((k) => ({ key: k, rows: open.filter((t) => taskBucket(t) === k).sort(byDue) }))
+    .filter((g) => g.rows.length);
+
+  const taskRow = (t) => {
+    const overdue = taskBucket(t) === 'overdue';
+    return `<div class="crm-mini-row">
+      <button class="task-check" data-toggle-task="${t.id}" aria-label="Complete"></button>
+      <div class="crm-mini-main">
+        <div class="crm-mini-title">${escapeHtml(t.title)}${t.priority === 'high' ? ' <span class="task-priority-high">!</span>' : ''}</div>
+        <div class="crm-mini-sub ${overdue ? 'task-due-overdue' : ''}">${t.dueAt ? 'Due ' + fmtDate(t.dueAt) : 'No due date'}${assigneeSuffix(t)}</div>
+      </div>
+    </div>`;
+  };
+
+  const doneRow = (t) => `<div class="crm-mini-row ct-task-done">
+      <button class="task-check done" data-reopen-task="${t.id}" aria-label="Reopen"></button>
+      <div class="crm-mini-main">
+        <div class="crm-mini-title">${escapeHtml(t.title)}</div>
+        <div class="crm-mini-sub">${t.completedAt ? 'Done ' + fmtDate(t.completedAt) : 'Done'}</div>
+      </div>
+    </div>`;
+
+  const parts = [];
+  if (!groups.length) {
+    parts.push(`<div class="crm-subpanel-empty">No follow-ups. Add one so this lead does not go quiet.</div>`);
+  } else {
+    groups.forEach((g) => {
+      parts.push(`<div class="ct-task-group ${g.key === 'overdue' ? 'is-overdue' : ''}">${TASK_BUCKET_LABEL[g.key]}</div>`);
+      parts.push(...g.rows.map(taskRow));
+    });
+  }
+  if (done.length) {
+    parts.push(`<button class="em-more" id="ct-toggle-done">${state.showDoneTasks ? 'Hide' : 'Show'} ${done.length} completed</button>`);
+    if (state.showDoneTasks) parts.push(...done.map(doneRow));
+  }
+  host.innerHTML = parts.join('');
+
+  const toggle = $('ct-toggle-done');
+  if (toggle) toggle.addEventListener('click', () => { state.showDoneTasks = !state.showDoneTasks; renderSideFollowups(); });
+
   host.querySelectorAll('[data-toggle-task]').forEach((b) => b.addEventListener('click', async () => {
     const t = state.tasks.find((x) => x.id === b.getAttribute('data-toggle-task'));
     if (!t) return;
@@ -233,6 +284,20 @@ function renderSideUpcoming() {
       await reloadAll();
     } catch (e) { alert('Could not update task: ' + (e.message || e)); }
   }));
+  host.querySelectorAll('[data-reopen-task]').forEach((b) => b.addEventListener('click', async () => {
+    try {
+      await reopenTask(state.companyId, b.getAttribute('data-reopen-task'));
+      await reloadAll();
+    } catch (e) { alert('Could not reopen: ' + (e.message || e)); }
+  }));
+}
+
+/** " · Dana" when the task belongs to someone other than the reader. */
+function assigneeSuffix(t) {
+  if (!t.assigneeUid || t.assigneeUid === state.uid) return '';
+  const a = state.admins.find((x) => x.uid === t.assigneeUid);
+  const name = a ? (a.displayName || a.email || '') : '';
+  return name ? ' · ' + escapeHtml(name.split(' ')[0]) : '';
 }
 
 function dealStageLabel(stageId) {
@@ -773,6 +838,7 @@ async function refreshSide() {
   state.appts = appts;
   state.tasks = tasks;
   renderSideUpcoming();
+  renderSideFollowups();
 }
 
 async function refreshDeals() {
@@ -876,10 +942,16 @@ function openContactTaskModal() {
           <input class="c-input" id="ctk-due" type="datetime-local" value="${localVal}" /></div>
         <div class="crm-form-row"><label>Priority</label>
           <select class="c-input crm-select" id="ctk-priority">
-            <option value="normal">Normal</option>
+            <option value="low">Low</option>
+            <option value="normal" selected>Normal</option>
             <option value="high">High</option>
           </select></div>
       </div>
+      <div class="crm-form-row"><label>Assign to</label>
+        <select class="c-input crm-select" id="ctk-assignee">
+          ${(state.admins.length ? state.admins : [{ uid: state.uid, displayName: 'Me' }]).map((a) =>
+            `<option value="${escapeHtml(a.uid)}" ${a.uid === (c.ownerUid || state.uid) ? 'selected' : ''}>${escapeHtml(a.displayName || a.email || a.uid)}</option>`).join('')}
+        </select></div>
       <div id="ctk-err" class="auth-error" style="display:none;"></div>
       <div class="crm-modal-actions">
         <button type="button" class="btn btn-ghost" id="ctk-cancel">Cancel</button>
@@ -897,7 +969,7 @@ function openContactTaskModal() {
         priority: $('ctk-priority').value,
         contactId: state.contactId,
         contactName: c.name || null,
-        assigneeUid: c.ownerUid || state.uid
+        assigneeUid: $('ctk-assignee').value || c.ownerUid || state.uid
       });
       closeModal();
       await Promise.all([refreshSide(), refreshTimeline()]);
@@ -1028,6 +1100,8 @@ function wire() {
   $('btn-send-email').addEventListener('click', () => { state.emailReply = null; setComposeTab('email'); });
   $('btn-schedule-contact').addEventListener('click', openContactApptModal);
   $('btn-add-task').addEventListener('click', openContactTaskModal);
+  const addFollowup = $('btn-add-followup');
+  if (addFollowup) addFollowup.addEventListener('click', openContactTaskModal);
   $('btn-sequence-contact').addEventListener('click', openSequenceModal);
   $('btn-add-appt').addEventListener('click', openContactApptModal);
   $('btn-add-deal').addEventListener('click', openContactDealModal);

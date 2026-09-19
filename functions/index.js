@@ -6,7 +6,6 @@
 
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
-const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
@@ -5663,100 +5662,6 @@ function reminderHtml(title, lines) {
   </div>`;
 }
 
-// NOTE: Scheduled (cron) reminders are temporarily NOT exported because the CI
-// deploy service account lacks the "Cloud Scheduler Admin" IAM role
-// (cloudscheduler.jobs.update). To re-enable: grant that role to the deploy
-// service account in GCP IAM, then rename `_disabled_taskReminders` /
-// `_disabled_appointmentReminders` back to `exports.taskReminders` /
-// `exports.appointmentReminders` and redeploy.
-const _disabled_taskReminders = onSchedule(
-  { schedule: 'every 60 minutes', secrets: [sendgridKey] },
-  async () => {
-    const db = admin.firestore();
-    const now = admin.firestore.Timestamp.now();
-    const horizon = admin.firestore.Timestamp.fromMillis(now.toMillis() + 24 * 3600 * 1000);
-    let snap;
-    try {
-      snap = await db.collectionGroup('tasks')
-        .where('status', '==', 'open')
-        .where('dueAt', '<=', horizon)
-        .limit(200).get();
-    } catch (e) { console.warn('[taskReminders] query failed (index?):', e && e.message); return; }
-    sgMail.setApiKey(sendgridKey.value());
-    let sent = 0;
-    for (const d of snap.docs) {
-      const t = d.data();
-      if (t.remindedAt || !t.dueAt) continue;
-      const email = await emailForUid(db, t.assigneeUid);
-      if (!email) { await d.ref.set({ remindedAt: now }, { merge: true }); continue; }
-      try {
-        const due = t.dueAt.toDate ? t.dueAt.toDate() : new Date(t.dueAt);
-        await sgMail.send({
-          to: email,
-          from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
-          replyTo: REPLY_TO,
-          subject: `Reminder: ${t.title}`,
-          html: reminderHtml('Task reminder', [
-            `<strong>${t.title}</strong>`,
-            t.contactName ? `Contact: ${t.contactName}` : '',
-            `Due: ${due.toLocaleString()}`,
-            `<a href="${APP_BASE_URL}/tasks.html" style="color:#E60306;">Open Tasks →</a>`
-          ].filter(Boolean)),
-          text: `Task reminder: ${t.title} — due ${due.toLocaleString()}`
-        });
-        sent++;
-      } catch (e) { console.warn('[taskReminders] send failed', e && e.message); }
-      await d.ref.set({ remindedAt: now }, { merge: true });
-    }
-    console.log(`[taskReminders] processed ${snap.size}, emailed ${sent}`);
-  }
-);
-
-const _disabled_appointmentReminders = onSchedule(
-  { schedule: 'every 60 minutes', secrets: [sendgridKey] },
-  async () => {
-    const db = admin.firestore();
-    const now = admin.firestore.Timestamp.now();
-    const horizon = admin.firestore.Timestamp.fromMillis(now.toMillis() + 24 * 3600 * 1000);
-    let snap;
-    try {
-      snap = await db.collectionGroup('appointments')
-        .where('status', '==', 'scheduled')
-        .where('startAt', '<=', horizon)
-        .limit(200).get();
-    } catch (e) { console.warn('[appointmentReminders] query failed (index?):', e && e.message); return; }
-    sgMail.setApiKey(sendgridKey.value());
-    let sent = 0;
-    for (const d of snap.docs) {
-      const a = d.data();
-      if (a.remindedAt || !a.startAt) continue;
-      if (a.startAt.toMillis && a.startAt.toMillis() < now.toMillis()) { await d.ref.set({ remindedAt: now }, { merge: true }); continue; }
-      const email = await emailForUid(db, a.ownerUid);
-      if (!email) { await d.ref.set({ remindedAt: now }, { merge: true }); continue; }
-      try {
-        const start = a.startAt.toDate ? a.startAt.toDate() : new Date(a.startAt);
-        await sgMail.send({
-          to: email,
-          from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
-          replyTo: REPLY_TO,
-          subject: `Upcoming: ${a.title}`,
-          html: reminderHtml('Appointment reminder', [
-            `<strong>${a.title}</strong>`,
-            a.contactName ? `With: ${a.contactName}` : '',
-            `When: ${start.toLocaleString()}`,
-            a.location ? `Where: ${a.location}` : '',
-            `<a href="${APP_BASE_URL}/calendar.html" style="color:#E60306;">Open Calendar →</a>`
-          ].filter(Boolean)),
-          text: `Appointment: ${a.title} at ${start.toLocaleString()}`
-        });
-        sent++;
-      } catch (e) { console.warn('[appointmentReminders] send failed', e && e.message); }
-      await d.ref.set({ remindedAt: now }, { merge: true });
-    }
-    console.log(`[appointmentReminders] processed ${snap.size}, emailed ${sent}`);
-  }
-);
-
 // ════════════════════════════════════════════════════════════════
 // Twilio 2-way SMS — send (callable) + inbound/status webhooks.
 // Conversations live at companies/{cid}/conversations/{contactId} with a
@@ -7630,8 +7535,7 @@ exports.registerVoicemailDrop = onCall(async (request) => {
 //      task), advancing currentStep / nextRunAt, and completing enrollments
 //      that ran out of steps;
 //   2. renews Google Calendar watch channels inside their last 24 hours;
-//   3. sends task and appointment reminders — the job the two stranded
-//      onSchedule functions were written for.
+//   3. sends task and appointment reminders.
 // ════════════════════════════════════════════════════════════════
 
 function renderMergeServer(text, ctx) {
@@ -7881,8 +7785,17 @@ async function renewAllGoogleWatches(db) {
 }
 
 /**
- * The reminder work that _disabled_taskReminders / _disabled_appointmentReminders
- * were written for, run from the tick instead of Cloud Scheduler.
+ * Task and appointment reminders: one email to the assignee 24h before a task
+ * is due or an appointment starts, `remindedAt` stamped so it only ever goes
+ * out once.
+ *
+ * Runs from the tick rather than Cloud Scheduler because this project's deploy
+ * service account lacks roles/cloudscheduler.admin (see scripts/deploy-functions.sh
+ * and .github/workflows/crm-tick.yml). A pair of onSchedule twins used to sit
+ * unexported further up this file as the "real" version; they were dead code
+ * whose comment claimed reminders were switched off, which is a much more
+ * expensive kind of wrong than a missing feature — anyone reading it concluded
+ * the reminders did not work. Deleted. This is the live implementation.
  */
 async function sendReminders(db) {
   const now = admin.firestore.Timestamp.now();

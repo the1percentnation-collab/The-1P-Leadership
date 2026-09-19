@@ -10401,6 +10401,21 @@ body.has-call-dock .crm-content { padding-bottom: 190px; }
 .tl-item-sms.tl-out .tl-time { margin-left: 0; }
 .tl-item-call.tl-in .tl-ico { color: #56D4A8; }
 .tl-item-note { background: color-mix(in srgb, #E8C547 6%, transparent); }
+/* Follow-ups panel on the contact card. Grouped by urgency, because an
+   overdue promise to ring someone back and a task due next week are not the
+   same call to action and should not share a row style. */
+.ct-task-group {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--gray-mid);
+  padding: 10px 0 2px;
+}
+.ct-task-group:first-child { padding-top: 2px; }
+.ct-task-group.is-overdue { color: var(--red); }
+.ct-task-done { opacity: .55; }
+.ct-task-done .crm-mini-title { text-decoration: line-through; }
+.task-check.done { background: var(--gray-mid); border-color: var(--gray-mid); }
+.task-priority-high { color: var(--red); font-weight: 700; }
+
 /* Contact recency.
    Deliberately distinct from `.crm-stage-badge` in shape — a pill, not a
    rectangle — because the two sit side by side on the contact card and mean

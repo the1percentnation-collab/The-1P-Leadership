@@ -666,6 +666,22 @@ export async function listTasks(companyId, { assigneeUid = null, status = null, 
   }
 }
 
+/**
+ * Which pile a task belongs in. Lifted out of tasks.js so the standalone task
+ * list and the contact card cannot drift on what "overdue" means — they were
+ * about to grow two copies of this.
+ */
+export function taskBucket(t) {
+  if (!t || t.status === 'done') return 'done';
+  const due = toDate(t.dueAt);
+  if (!due) return 'nodate';
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+  const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
+  if (due < startOfToday) return 'overdue';
+  if (due <= endOfToday) return 'today';
+  return 'upcoming';
+}
+
 export async function createTask(companyId, data = {}) {
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
