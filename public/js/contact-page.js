@@ -748,8 +748,10 @@ async function refreshTimeline() {
   state.emails = emails;
   renderTimeline();
 
-  // Opening the card is reading the mail. Clears the unread badge here and on
-  // the CRM list, server-side (the docs are not client-writable).
+  // Opening the card is reading the mail. Cleared server-side because the
+  // documents are not client-writable. Note the CRM contact list does not
+  // surface emailUnreadCount yet — until it does, a reply is discovered by
+  // opening the card or by the "forward inbound replies to" copy.
   if (emails.some((e) => e.direction === 'in' && e.read === false)) {
     markContactEmailsRead(state.companyId, state.contactId);
     state.emails = emails.map((e) => (e.direction === 'in' ? { ...e, read: true } : e));

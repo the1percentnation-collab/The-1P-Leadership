@@ -147,6 +147,14 @@ Contact card ──sendContactEmail──▶ SendGrid ──▶ lead's inbox
   SendGrid delivers events out of order.
 - **Inbound HTML is stored but never rendered.** The timeline draws the plain
   text, escaped, so untrusted remote markup has no path into the page.
+- **Attachments are dropped.** The parser reads the message text and skips any
+  part with a filename, so a lead who replies with a PDF has their words
+  captured but not the file. Set *forward inbound replies to* if attachments
+  matter to you — the forwarded copy is not a workaround either, so treat this
+  as a known limit.
+- **Nothing badges an unread reply outside the card yet.** `emailUnreadCount`
+  is written to the contact document, but the CRM contact list does not read
+  it. Today a reply is discovered by opening the card or by the forwarded copy.
 - **An inbound reply stops any running sequence** for that contact, the same
   rule as an inbound text: no automated cadence fires over a live conversation.
 - **Unsubscribes are honored on 1-on-1 sends**, not just campaigns.
