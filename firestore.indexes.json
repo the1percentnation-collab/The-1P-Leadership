@@ -385,16 +385,6 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "lastContactedAt",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "contacts",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
           "fieldPath": "stage",
           "order": "ASCENDING"
         },
