@@ -10629,6 +10629,58 @@ body.has-call-dock .crm-content { padding-bottom: 190px; }
   background: rgba(0,0,0,.3); padding: 1px 6px; border-radius: 4px;
 }
 
+/* AI activity log. Mostly reuses the report card and drill-down styles below;
+   only the evidence list and the detail blocks need anything of their own. */
+.ai-note {
+  padding: 10px 16px; font-size: 12px; line-height: 1.5; color: var(--gray-light);
+  border-bottom: 1px solid var(--border);
+}
+.ai-note code {
+  font-family: var(--font-mono); font-size: 11px;
+  background: rgba(0,0,0,.3); padding: 1px 5px; border-radius: 4px;
+}
+/* The evidence set gets a warm edge: it is the one thing on this page that is
+   asking the reader for a decision rather than reporting a fact. */
+.ai-evidence { border-color: rgba(232,197,71,.35); }
+.ai-evidence-row { padding: 9px 16px; border-bottom: 1px solid var(--border); }
+.ai-evidence-row:last-child { border-bottom: 0; }
+.ai-ev-main { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ai-ev-move { font-size: 13px; color: var(--white-dim); }
+.ai-ev-warn {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .06em;
+  color: var(--red); border: 1px solid rgba(230,3,6,.4); border-radius: 999px; padding: 1px 7px;
+}
+.ai-ev-prompt { font-style: italic; }
+
+.ai-plan-row { grid-template-columns: minmax(0, 1fr) auto auto 62px; }
+.ai-plan-meta { font-family: var(--font-mono); font-size: 11px; color: var(--gray-mid); white-space: nowrap; }
+.ai-block { padding: 8px 16px 8px 26px; }
+.ai-block-h {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--gray-mid); margin-bottom: 4px;
+}
+.ai-quote {
+  font-size: 13px; color: var(--white-dim); line-height: 1.5;
+  border-left: 2px solid var(--border); padding-left: 10px;
+}
+.ai-items { margin: 0; padding-left: 16px; font-size: 13px; color: var(--white-dim); }
+.ai-items li { margin: 2px 0; }
+.ai-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 16px 12px 26px; }
+.ai-undo:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+.ai-status { padding: 0 16px 10px 26px; font-size: 12px; color: var(--gray-light); }
+
+/* Plan states reuse the campaign badge shape. */
+.camp-status-applied { color: #56D4A8; border-color: rgba(86,212,168,.4); }
+.camp-status-partially_applied { color: #E8C547; border-color: rgba(232,197,71,.4); }
+.camp-status-pending { color: #5AA8E6; border-color: rgba(90,168,230,.4); }
+.camp-status-expired { color: var(--gray-mid); border-color: var(--border); }
+.camp-status-reverted { color: var(--gray-light); border-color: var(--border); }
+
+@media (max-width: 720px) {
+  .ai-plan-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .ai-plan-row .ai-plan-meta { display: none; }
+}
+
 /* CRM reports. Deterministic, computed from the company's own data — no
    model, no API cost, and exact rather than summarized. Every row is a button
    because a count is only useful once you can see who is behind it. */

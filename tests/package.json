@@ -8,7 +8,7 @@
     "test:telnyx": "node telnyx-signature.test.cjs && node telnyx-send.test.cjs && node telnyx-texml.test.cjs && node call-gate.test.cjs && node sms-consent.test.cjs",
     "test:email": "node inbound-email.test.cjs",
     "test:indexes": "node firestore-indexes.test.cjs",
-    "test:crm": "node crm-freshness.test.cjs && node crm-assistant.test.cjs",
+    "test:crm": "node crm-freshness.test.cjs && node crm-assistant.test.cjs && node crm-ai-log.test.cjs",
     "test": "npm run test:indexes && npm run test:telnyx && npm run test:email && npm run test:crm && npm run emulator"
   },
   "devDependencies": {

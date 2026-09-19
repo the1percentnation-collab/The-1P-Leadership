@@ -94,9 +94,13 @@ up" reads to a model like `lost`, and if you have a stage-change sequence — a
 breakup email is the most common one there is — forty people who were merely
 slow get told it sounds like now isn't the right time.
 
-Shadowing gives you a free evaluation set. Read what the assistant *would* have
-done to real contacts, in `companies/{cid}/aiPlans`, and flip the flag with
-evidence rather than hope.
+Shadowing gives you a free evaluation set, and **CRM → AI Activity** is where
+you read it. The top section lists every stage change the assistant proposed
+and was not allowed to make: the contact, the move, its reasoning, the prompt
+that produced it, and whether it would have triggered a sequence. Read it top to
+bottom and you can answer the only question that matters — would I have been
+happy if these had gone through? — then flip the flag with evidence rather than
+hope.
 
 ### Caps
 
@@ -122,6 +126,17 @@ The plan document at `companies/{cid}/aiPlans/{planId}` keeps the whole story:
 your prompt, the assistant's reasoning, every item, every result, and the tool
 calls that selected the contacts. Plans are readable by company admins and
 writable only by the Cloud Functions.
+
+**CRM → AI Activity** renders all of it, so none of this needs the Firestore
+console. Every plan expands to show the prompt, the reasoning, each change, the
+automations it would have triggered, what actually happened, and how the
+assistant chose those contacts. A plan staged and never approved shows as
+*expired unapproved* rather than sitting there looking live — nothing sweeps
+them server-side, so the page derives that from the expiry itself.
+
+Undo lives there too. It used to exist only on the chat bubble in the session
+that applied the plan, so a refresh lost it even though the record keeps
+everything the revert needs for the full seven days.
 
 Undo works for 7 days. It restores tags by inverse delta rather than
 overwriting, so it will not clobber edits someone else made in between, and it
