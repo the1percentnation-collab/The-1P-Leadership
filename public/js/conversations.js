@@ -1,22 +1,71 @@
-// Conversations — SMS inbox (left) + thread (right). Sending goes through the
-// sendSms callable (Twilio). Admin/owner only. Works once Twilio is configured;
-// until then the list is empty and sending shows a "not configured" message.
+// Conversations — unified inbox (left) + thread (right). Admin/owner only.
+//
+// SMS threads open in place; email threads open on the contact card, which is
+// where the composer and the full history already live. Duplicating the email
+// thread UI here would mean two places to fix every time it changes, and the
+// card is the better surface for it anyway.
+//
+// Email rows are derived from `lastEmailAt` / `emailUnreadCount` on the contact
+// documents, which listContacts already loaded — asking Firestore for every
+// contact's emails subcollection just to build a list would be one query per
+// contact for information the parent document already carries.
 
 import { db, firebaseReady } from './firebase.js';
 import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
-import { renderCrmShell } from './crm-shell.js';
+import { renderCrmShell, setCrmUnreadCount } from './crm-shell.js';
 import { collection, getDocs, query, where, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.js';
 import { mountTemplatePicker } from './merge-fields.js';
 import { dialer } from './dialer-core.js';
 import {
   listConversations, listMessages, sendSms, markConversationRead,
-  listContacts, escapeHtml, fmtDateTime
+  listContacts, escapeHtml, fmtDateTime, fmtDate, toDate
 } from './crm.js';
 
 const $ = (id) => document.getElementById(id);
-const state = { uid: null, companyId: null, convs: [], contacts: {}, activeId: null, messages: [] };
+const state = { uid: null, companyId: null, convs: [], contacts: {}, activeId: null, messages: [], rows: [] };
+
+function ms(ts) {
+  const d = toDate(ts);
+  return d ? d.getTime() : 0;
+}
+
+/**
+ * One list, both channels, newest first. An SMS thread and an email thread with
+ * the same contact stay separate rows: they are different conversations and
+ * merging them would imply a continuity that is not there.
+ */
+function buildRows() {
+  const rows = [];
+  state.convs.forEach((c) => {
+    rows.push({
+      kind: 'sms',
+      id: c.id,
+      contactId: c.contactId || c.id,
+      name: contactName(c.contactId, c.contactPhone),
+      sub: c.contactPhone || '',
+      preview: (c.lastDirection === 'out' ? 'You: ' : '') + (c.lastMessageText || ''),
+      at: ms(c.lastMessageAt),
+      unread: Number(c.unreadCount) || 0
+    });
+  });
+  Object.values(state.contacts).forEach((c) => {
+    if (!c.lastEmailAt) return;
+    rows.push({
+      kind: 'email',
+      id: 'em_' + c.id,
+      contactId: c.id,
+      name: c.name || c.email || 'Unknown',
+      sub: c.email || '',
+      preview: 'Email · ' + fmtDate(c.lastEmailAt),
+      at: ms(c.lastEmailAt),
+      unread: Number(c.emailUnreadCount) || 0
+    });
+  });
+  rows.sort((a, b) => b.at - a.at);
+  return rows;
+}
 
 function contactName(contactId, phone) {
   const c = state.contacts[contactId];
@@ -33,21 +82,34 @@ function renderShellLayout() {
     </div>`;
 }
 
+const CHANNEL_ICON = { sms: '\u{1F4AC}', email: '\u2709' };
+
 function renderList() {
   const host = $('sms-list');
-  if (!state.convs.length) {
-    host.innerHTML = `<div class="crm-subpanel-empty" style="padding:16px;">No conversations yet. Inbound texts and SMS you send appear here.</div>`;
+  state.rows = buildRows();
+  if (!state.rows.length) {
+    host.innerHTML = `<div class="crm-subpanel-empty" style="padding:16px;">No conversations yet. Texts and emails, sent or received, appear here.</div>`;
     return;
   }
-  host.innerHTML = state.convs.map((c) => `
-    <button class="sms-list-item ${c.id === state.activeId ? 'active' : ''}" data-conv="${escapeHtml(c.id)}">
+  host.innerHTML = state.rows.map((r) => `
+    <button class="sms-list-item ${r.id === state.activeId ? 'active' : ''}" data-row="${escapeHtml(r.id)}">
       <div class="sms-list-top">
-        <span class="sms-list-name">${escapeHtml(contactName(c.contactId, c.contactPhone))}</span>
-        ${c.unreadCount ? `<span class="sms-unread">${c.unreadCount}</span>` : ''}
+        <span class="sms-chan" title="${r.kind === 'sms' ? 'Text message' : 'Email'}">${CHANNEL_ICON[r.kind]}</span>
+        <span class="sms-list-name">${escapeHtml(r.name)}</span>
+        ${r.unread ? `<span class="sms-unread">${r.unread}</span>` : ''}
       </div>
-      <div class="sms-list-preview">${c.lastDirection === 'out' ? 'You: ' : ''}${escapeHtml((c.lastMessageText || '').slice(0, 60))}</div>
+      <div class="sms-list-preview">${escapeHtml(r.preview.slice(0, 60))}</div>
     </button>`).join('');
-  host.querySelectorAll('[data-conv]').forEach((b) => b.addEventListener('click', () => openThread(b.getAttribute('data-conv'))));
+  host.querySelectorAll('[data-row]').forEach((b) => b.addEventListener('click', () => {
+    const row = state.rows.find((r) => r.id === b.getAttribute('data-row'));
+    if (!row) return;
+    // Email lives on the contact card, where the thread view and composer are.
+    if (row.kind === 'email') {
+      location.href = `/contact.html?id=${encodeURIComponent(row.contactId)}&compose=email`;
+      return;
+    }
+    openThread(row.contactId);
+  }));
 }
 
 async function openThread(convId) {
@@ -151,6 +213,7 @@ async function main() {
 
   const contacts = await listContacts(companyId);
   contacts.forEach((c) => { state.contacts[c.id] = c; });
+  setCrmUnreadCount(contacts.reduce((n, c) => n + (Number(c.emailUnreadCount) || 0), 0));
   try { await dialer.configure({ companyId, uid: u.uid }); } catch (e) {}
   renderShellLayout();
   await refresh();

@@ -4,6 +4,7 @@
 
 import { functions } from './firebase.js';
 import { onAuthReady } from './auth.js';
+import { getRoleInfo } from './roles.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 let _init = false;
@@ -13,7 +14,53 @@ let _init = false;
 // auth state and tell an anonymous visitor to sign in instead of greeting them
 // with "ask me anything" and then failing with "Something went wrong".
 let _signedIn = false;
-onAuthReady((u) => { _signedIn = !!u; });
+
+// CRM mode. When an admin opens the widget with a company in scope, the same
+// chat box answers questions about the pipeline through a different callable
+// with a different prompt and different tools.
+//
+// Deliberately a separate backend rather than an admin branch of
+// courseAdvisorChat: that prompt contains "You never share other members'
+// data", and an admin branch would mean conditionally deleting a security rule
+// based on a runtime boolean — the shape that fails open when the boolean is
+// wrong. A member sees no change here whatsoever.
+let _isAdmin = false;
+let _crmCompanyId = null;
+
+onAuthReady(async (u) => {
+  _signedIn = !!u;
+  _isAdmin = false;
+  if (!u) return;
+  try {
+    const info = await getRoleInfo();
+    _isAdmin = !!info.isAdmin;
+    if (_isAdmin) _crmCompanyId = crmCompanyIdFromPage(info);
+  } catch (e) { /* no CRM mode is a fine outcome */ }
+});
+
+/**
+ * Which company the assistant should answer about: whatever the CRM is
+ * currently showing. Reading it from the page rather than resolving our own
+ * means the assistant and the screen behind it can never disagree, and an
+ * admin of two companies cannot get an answer about the wrong one.
+ */
+function crmCompanyIdFromPage(info) {
+  const fromUrl = new URLSearchParams(location.search).get('companyId');
+  if (fromUrl) return fromUrl;
+  try {
+    // Same key company-resolver.js writes, so the assistant follows the CRM
+    // company switcher rather than keeping its own idea of "current".
+    const remembered = localStorage.getItem('1p_crm_company');
+    if (remembered) return remembered;
+  } catch (e) {}
+  return (info && info.companyId) || null;
+}
+
+const CRM_STARTERS = [
+  "Who's gone stagnant?",
+  "What's overdue?",
+  'Audit my pipeline'
+];
 
 const SIGN_IN_PROMPT =
   'Hi — I\'m 1PN. Sign in and I can answer questions about the courses, your progress, '
@@ -294,13 +341,35 @@ function wireUp(root) {
     // Start wave on first open (after layout is painted)
     if (!stopWave) requestAnimationFrame(() => { stopWave = startWave(canvas, waveState); });
     input.focus();
+    markCrmMode();
     if (!greeted) {
       greeted = true;
-      const greeting = _signedIn
-        ? 'Hi — I\'m 1PN. Ask me anything about our courses, your progress, or what you\'d like to learn next. You can type or tap the mic to speak.'
-        : SIGN_IN_PROMPT;
-      setTimeout(() => addMsg('assistant', greeting), 350);
+      const crmMode = _isAdmin && !!_crmCompanyId;
+      const greeting = crmMode
+        ? 'CRM mode. Ask me who needs contacting, who has gone quiet, what is overdue, or for an audit of the pipeline. I can also stage follow-up tasks and tags for you to approve.'
+        : (_signedIn
+          ? 'Hi — I\'m 1PN. Ask me anything about our courses, your progress, or what you\'d like to learn next. You can type or tap the mic to speak.'
+          : SIGN_IN_PROMPT);
+      setTimeout(() => {
+        addMsg('assistant', greeting);
+        // A blank box invites nothing. Three starters make the capability
+        // legible without a paragraph explaining it.
+        if (crmMode) addStarters();
+      }, 350);
     }
+  }
+
+  // Visible mode marker: an admin should never have to guess whether the box
+  // in front of them is answering about courses or about their pipeline.
+  function markCrmMode() {
+    if (!(_isAdmin && _crmCompanyId)) return;
+    const head = root.querySelector('.opn-hdr-left');
+    if (!head || head.querySelector('.opn-crm-pill')) return;
+    const pill = document.createElement('span');
+    pill.className = 'opn-crm-pill';
+    pill.textContent = 'CRM';
+    pill.title = 'Answering about your CRM pipeline';
+    head.appendChild(pill);
   }
 
   function closePanel() {
@@ -359,18 +428,28 @@ function wireUp(root) {
     setS(S.THINK);
     const thinkRow = addThinking();
 
+    const crmMode = _isAdmin && !!_crmCompanyId;
     try {
-      const call = httpsCallable(functions, 'courseAdvisorChat');
-      const res  = await call({ message: text, history: history.slice(0, -1) });
+      const call = httpsCallable(functions, crmMode ? 'crmAssistantChat' : 'courseAdvisorChat');
+      const res  = await call(crmMode
+        ? { companyId: _crmCompanyId, message: text, history: history.slice(0, -1) }
+        : { message: text, history: history.slice(0, -1) });
       const reply = (res.data && res.data.reply) || 'Sorry, I didn\'t catch that. Please try again.';
       history.push({ role: 'assistant', content: reply });
       thinkRow.remove();
-      addMsg('assistant', reply);
+      addMsg('assistant', reply, false, crmMode);
 
       // Show confirmation if the bot updated the member's profile.
       if (res.data && res.data.profileUpdated) {
         const fields = Object.keys(res.data.profileUpdated);
         if (fields.length) showProfileToast(fields);
+      }
+
+      // A staged CRM change waits for an explicit click. Nothing has been
+      // written at this point and the card says so.
+      if (res.data && res.data.plan) addPlanCard(res.data.plan);
+      if (res.data && res.data.complete === false) {
+        addMsg('assistant', 'That answer is partial — I ran out of lookups before I could check everything. Ask me something narrower for the rest.', false);
       }
 
       if (voiceOut) {
@@ -395,16 +474,209 @@ function wireUp(root) {
   }
 
   // ── Message helpers ──
-  function addMsg(role, text, isErr = false) {
+
+  /**
+   * Render a small Markdown subset — bullets, numbered lists and **bold** —
+   * into a bubble, built entirely from createElement and textContent.
+   *
+   * CRM answers are lists of names, so plain textContent reads as a wall. But
+   * this text comes out of a model reading contact records that anyone who can
+   * email the business can influence, so there is deliberately no innerHTML
+   * path here at all: the worst a crafted lead name can do is render as bold.
+   */
+  function renderRich(container, text) {
+    const bold = (line, parent) => {
+      String(line).split(/(\*\*[^*]+\*\*)/g).forEach((part) => {
+        if (/^\*\*[^*]+\*\*$/.test(part)) {
+          const b = document.createElement('strong');
+          b.textContent = part.slice(2, -2);
+          parent.appendChild(b);
+        } else if (part) {
+          parent.appendChild(document.createTextNode(part));
+        }
+      });
+    };
+    const lines = String(text).split('\n');
+    let list = null;
+    lines.forEach((raw) => {
+      const line = raw.replace(/\s+$/, '');
+      const bullet = /^\s*[-*•]\s+(.*)$/.exec(line);
+      const numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+      if (bullet || numbered) {
+        const want = bullet ? 'ul' : 'ol';
+        if (!list || list.tagName.toLowerCase() !== want) {
+          list = document.createElement(want);
+          list.className = 'opn-list';
+          container.appendChild(list);
+        }
+        const li = document.createElement('li');
+        bold((bullet || numbered)[1], li);
+        list.appendChild(li);
+        return;
+      }
+      list = null;
+      if (!line.trim()) { container.appendChild(document.createElement('br')); return; }
+      const p = document.createElement('div');
+      p.className = 'opn-para';
+      bold(line, p);
+      container.appendChild(p);
+    });
+  }
+
+  function addMsg(role, text, isErr = false, rich = false) {
     const row = document.createElement('div');
     row.className = `opn-row opn-row-${role}`;
     const bub = document.createElement('div');
     bub.className = `opn-bub opn-bub-${role}${isErr ? ' opn-bub-err' : ''}`;
-    bub.textContent = text;
+    if (rich && role === 'assistant') renderRich(bub, text);
+    else bub.textContent = text;
     row.appendChild(bub);
     msgs.appendChild(row);
     msgs.scrollTop = msgs.scrollHeight;
     return row;
+  }
+
+  /**
+   * The confirmation card for a staged CRM change.
+   *
+   * Nothing has been written when this appears. The card is the approval step:
+   * it names every contact affected, shows which automated sequences the change
+   * would set off (a tag add can start an email sequence — that is not obvious
+   * and must not be a surprise), and offers one tick to suppress them.
+   */
+  function addPlanCard(plan) {
+    const card = document.createElement('div');
+    card.className = 'opn-plan';
+
+    const head = document.createElement('div');
+    head.className = 'opn-plan-head';
+    head.textContent = plan.summary || 'Proposed changes';
+    card.appendChild(head);
+
+    const nothing = document.createElement('div');
+    nothing.className = 'opn-plan-note';
+    nothing.textContent = 'Nothing has changed yet.';
+    card.appendChild(nothing);
+
+    const list = document.createElement('ul');
+    list.className = 'opn-plan-items';
+    (plan.items || []).slice(0, 25).forEach((i) => {
+      const li = document.createElement('li');
+      const who = i.contactName || i.contactId;
+      if (i.kind === 'task') li.textContent = `${who} — task "${i.after.title}", due in ${i.after.dueInDays}d`;
+      else if (i.kind === 'tags') {
+        const bits = [];
+        if ((i.after.addTags || []).length) bits.push('+' + i.after.addTags.join(' +'));
+        if ((i.after.removeTags || []).length) bits.push('−' + i.after.removeTags.join(' −'));
+        li.textContent = `${who} — ${bits.join('  ')}`;
+      } else if (i.kind === 'stage') {
+        li.textContent = `${who} — stage ${i.before.stage || '—'} → ${i.after.stage}`;
+        if (i.shadowed) { li.className = 'opn-plan-shadowed'; li.textContent += '  (recorded only, not applied)'; }
+      }
+      list.appendChild(li);
+    });
+    card.appendChild(list);
+
+    // The fan-out warning goes ABOVE the button, in red, because it is the
+    // thing most likely to be regretted.
+    let runAutomations = true;
+    if ((plan.automationWarnings || []).length) {
+      const warn = document.createElement('div');
+      warn.className = 'opn-plan-warn';
+      const total = plan.counts ? plan.counts.distinctContacts : (plan.items || []).length;
+      warn.textContent = 'This will also trigger: '
+        + plan.automationWarnings.map((w) => `${w.sequenceName} (${w.sendingSteps} sending step${w.sendingSteps === 1 ? '' : 's'})`).join(', ')
+        + ` — up to ${total} contact(s) could be emailed or texted automatically.`;
+      card.appendChild(warn);
+
+      const label = document.createElement('label');
+      label.className = 'opn-plan-check';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = true;
+      box.addEventListener('change', () => { runAutomations = box.checked; });
+      label.appendChild(box);
+      label.appendChild(document.createTextNode(' Also run matching automations'));
+      card.appendChild(label);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'opn-plan-actions';
+    const cancel = document.createElement('button');
+    cancel.className = 'opn-plan-btn';
+    cancel.textContent = 'Cancel';
+    const apply = document.createElement('button');
+    apply.className = 'opn-plan-btn opn-plan-apply';
+    apply.textContent = 'Apply';
+    actions.appendChild(cancel);
+    actions.appendChild(apply);
+    card.appendChild(actions);
+
+    const status = document.createElement('div');
+    status.className = 'opn-plan-note';
+    card.appendChild(status);
+
+    cancel.addEventListener('click', () => {
+      actions.remove();
+      status.textContent = 'Cancelled — nothing was changed.';
+    });
+
+    apply.addEventListener('click', async () => {
+      apply.disabled = true; cancel.disabled = true;
+      apply.textContent = 'Applying…';
+      try {
+        const call = httpsCallable(functions, 'crmAssistantApply');
+        const res = await call({ companyId: _crmCompanyId, planId: plan.planId, runAutomations });
+        const d = res.data || {};
+        actions.remove();
+        status.textContent = `Applied ${d.applied} change${d.applied === 1 ? '' : 's'}`
+          + (d.failed ? `, ${d.failed} failed` : '') + '.';
+        if (d.revertible) {
+          const undo = document.createElement('button');
+          undo.className = 'opn-plan-btn';
+          undo.textContent = 'Undo';
+          undo.addEventListener('click', async () => {
+            undo.disabled = true; undo.textContent = 'Undoing…';
+            try {
+              const rev = await httpsCallable(functions, 'crmAssistantRevert')({ companyId: _crmCompanyId, planId: plan.planId });
+              const r = rev.data || {};
+              undo.remove();
+              status.textContent = `Reverted ${r.reverted} change${r.reverted === 1 ? '' : 's'}.`
+                + (r.note ? ' ' + r.note : '');
+            } catch (e) {
+              undo.disabled = false; undo.textContent = 'Undo';
+              status.textContent = 'Could not undo: ' + ((e && e.message) || e);
+            }
+          });
+          card.appendChild(undo);
+        }
+      } catch (e) {
+        apply.disabled = false; cancel.disabled = false;
+        apply.textContent = 'Apply';
+        status.textContent = (e && e.message) || String(e);
+      }
+    });
+
+    msgs.appendChild(card);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function addStarters() {
+    const wrap = document.createElement('div');
+    wrap.className = 'opn-starters';
+    CRM_STARTERS.forEach((q) => {
+      const b = document.createElement('button');
+      b.className = 'opn-starter';
+      b.textContent = q;
+      b.addEventListener('click', () => {
+        wrap.remove();
+        input.value = q;
+        doSend();
+      });
+      wrap.appendChild(b);
+    });
+    msgs.appendChild(wrap);
+    msgs.scrollTop = msgs.scrollHeight;
   }
 
   function addThinking() {
@@ -1172,6 +1444,65 @@ function injectStyles() {
   max-width: 85%;
   animation: opn-msg-in .22s ease;
 }
+
+/* ── CRM mode ─────────────────────────────────────────────────
+   Admin-only surface: the same widget answering about the pipeline. */
+.opn-crm-pill {
+  font-family: 'Space Mono', monospace;
+  font-size: 9px; letter-spacing: .14em; text-transform: uppercase;
+  color: #E60306; border: 1px solid rgba(230,3,6,.45);
+  border-radius: 999px; padding: 1px 7px; margin-left: 8px;
+}
+.opn-starters { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
+.opn-starter {
+  font-family: 'Space Mono', monospace; font-size: 11px;
+  color: rgba(255,255,255,.75); background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.14); border-radius: 999px;
+  padding: 5px 11px; cursor: pointer; transition: all .15s ease;
+}
+.opn-starter:hover { color: #fff; border-color: rgba(230,3,6,.5); background: rgba(230,3,6,.1); }
+
+/* Rich-but-safe assistant text. Built with createElement only — never
+   innerHTML — because this renders a model's reading of contact records that
+   anyone who can email the business can influence. */
+.opn-para { margin: 0 0 4px; }
+.opn-para:last-child { margin-bottom: 0; }
+.opn-list { margin: 4px 0; padding-left: 18px; }
+.opn-list li { margin: 2px 0; }
+
+/* The confirmation card. Nothing is written until Apply is clicked. */
+.opn-plan {
+  border: 1px solid rgba(230,3,6,.35); border-radius: 10px;
+  background: rgba(230,3,6,.05); padding: 10px 12px; margin: 6px 0;
+  animation: opn-msg-in .22s ease;
+}
+.opn-plan-head { font-size: 13px; font-weight: 600; color: #fff; }
+.opn-plan-note {
+  font-family: 'Space Mono', monospace; font-size: 10px;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: rgba(255,255,255,.55); margin-top: 3px;
+}
+.opn-plan-items { margin: 8px 0 0; padding-left: 16px; font-size: 12px; color: rgba(255,255,255,.8); }
+.opn-plan-items li { margin: 2px 0; }
+.opn-plan-shadowed { opacity: .55; font-style: italic; }
+/* The fan-out warning sits above the button, loudly, because it is the part
+   most likely to be regretted: a tag add can start an email sequence. */
+.opn-plan-warn {
+  margin-top: 10px; padding: 8px 10px; border-radius: 6px;
+  background: rgba(230,3,6,.14); border: 1px solid rgba(230,3,6,.4);
+  color: #ff9a9c; font-size: 12px; line-height: 1.4;
+}
+.opn-plan-check { display: flex; gap: 7px; align-items: center; margin-top: 8px; font-size: 12px; color: rgba(255,255,255,.8); cursor: pointer; }
+.opn-plan-actions { display: flex; gap: 8px; margin-top: 10px; }
+.opn-plan-btn {
+  font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; padding: 6px 14px; border-radius: 6px; cursor: pointer;
+  background: transparent; color: rgba(255,255,255,.7); border: 1px solid rgba(255,255,255,.2);
+}
+.opn-plan-btn:hover:not(:disabled) { color: #fff; border-color: rgba(255,255,255,.45); }
+.opn-plan-btn:disabled { opacity: .5; cursor: default; }
+.opn-plan-apply { background: #E60306; border-color: #E60306; color: #fff; }
+.opn-plan-apply:hover:not(:disabled) { background: #ff1c1f; border-color: #ff1c1f; }
 
 /* ── Mobile ──────────────────────────────────────────────────── */
 @media (max-width: 600px) {

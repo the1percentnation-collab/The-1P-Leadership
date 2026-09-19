@@ -8,7 +8,7 @@ import { renderCrmShell } from './crm-shell.js';
 import { collection, getDocs, query, where, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import {
   listTasks, createTask, completeTask, reopenTask, deleteTask,
-  listContacts, listCompanyAdmins, escapeHtml, fmtDate, toDate
+  listContacts, listCompanyAdmins, taskBucket, escapeHtml, fmtDate, toDate
 } from './crm.js';
 
 const $ = (id) => document.getElementById(id);
@@ -19,17 +19,9 @@ const state = {
   filterMine: false, showDone: false
 };
 
-function startOfToday() { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
-function endOfToday() { const d = new Date(); d.setHours(23, 59, 59, 999); return d; }
-
-function bucketFor(t) {
-  if (t.status === 'done') return 'done';
-  const due = toDate(t.dueAt);
-  if (!due) return 'nodate';
-  if (due < startOfToday()) return 'overdue';
-  if (due <= endOfToday()) return 'today';
-  return 'upcoming';
-}
+// Bucketing now lives in crm.js so this page and the contact card agree on
+// what "overdue" means.
+const bucketFor = taskBucket;
 
 function assigneeLabel(uid) {
   if (uid === state.uid) return 'Me';

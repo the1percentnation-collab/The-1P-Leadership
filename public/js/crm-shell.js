@@ -102,5 +102,39 @@ export function renderCrmShell({ active = 'contacts', title = 'CRM', user = null
   });
   if (scrim) scrim.addEventListener('click', close);
 
+  // The assistant, on every CRM screen. Mounting it here rather than on each
+  // page means one place to add it and no page that quietly lacks it. It is
+  // admin-gated inside the widget, and every CRM page is already admin-only,
+  // so this adds no surface a member can reach.
+  //
+  // Dynamic import so a chatbot failure cannot stop the CRM shell rendering —
+  // the pipeline has to load even if the assistant does not.
+  import('./chatbot.js')
+    .then((m) => { try { m.init(); } catch (e) { console.warn('[crm-shell] assistant init failed', e); } })
+    .catch((e) => console.warn('[crm-shell] assistant unavailable', e));
+
   return document.getElementById('crm-content');
+}
+
+/**
+ * Badge the Conversations nav item with the number of unread inbound replies.
+ *
+ * Called by pages that have already loaded the contact list, so this costs no
+ * extra read — `emailUnreadCount` rides on the contact documents. Without it
+ * an inbound reply is only discoverable by opening the one card it landed on,
+ * which was the gap that made two-way email feel one-way.
+ */
+export function setCrmUnreadCount(n) {
+  const count = Number(n) || 0;
+  const link = document.querySelector('.crm-nav-item[href="/conversations.html"]');
+  if (!link) return;
+  let badge = link.querySelector('.crm-nav-unread');
+  if (!count) { if (badge) badge.remove(); return; }
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'sms-unread crm-nav-unread';
+    link.appendChild(badge);
+  }
+  badge.textContent = count > 99 ? '99+' : String(count);
+  badge.title = `${count} unread ${count === 1 ? 'reply' : 'replies'}`;
 }

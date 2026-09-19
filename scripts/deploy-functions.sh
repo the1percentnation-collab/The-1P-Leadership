@@ -7,8 +7,11 @@
 # -------------
 # taskReminders and appointmentReminders are deployed in the project but are
 # no longer exported from functions/index.js — they were un-exported because
-# the CI service account lacks the Cloud Scheduler Admin role (see the note
-# above _disabled_taskReminders in functions/index.js).
+# the CI service account lacks the Cloud Scheduler Admin role. The reminder
+# work itself is alive and well: sendReminders() runs it from the automation
+# tick (see functions/index.js and .github/workflows/crm-tick.yml), and the
+# once-only `remindedAt` stamp means the stranded deployed copies and the tick
+# cannot double-send even while both exist.
 #
 # That workaround created a worse problem. Firebase now sees two functions
 # that exist in the project but not in source, tries to delete them, and the
@@ -26,11 +29,17 @@
 #
 # THE REAL FIX
 # ------------
-# Grant the deploy service account roles/cloudscheduler.admin in GCP IAM.
-# Then rename _disabled_taskReminders / _disabled_appointmentReminders back to
-# exports.taskReminders / exports.appointmentReminders, redeploy, and delete
-# this script's tolerance. Until then those two functions keep running the
-# code they were last deployed with, which is not the code in this repo.
+# Grant the deploy service account roles/cloudscheduler.admin in GCP IAM, then
+# redeploy: Firebase will finally be able to delete the two stranded functions,
+# after which this script's tolerance can go too. Until then those two keep
+# running the code they were last deployed with, which is not the code in this
+# repo — harmless today only because `remindedAt` dedupes them against the tick.
+#
+# (The unexported onSchedule twins that used to sit in functions/index.js as
+# the "real" version were deleted in September 2026. They were dead code whose
+# comment claimed reminders were switched off, so every reader concluded the
+# feature was broken when it was running fine from the tick. Re-enabling means
+# exporting a scheduled function afresh, not restoring them.)
 
 set -uo pipefail
 
