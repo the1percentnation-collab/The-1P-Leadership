@@ -5,7 +5,7 @@
 //   - an "Hours Log" tab (25 approved practice hours requirement)
 //   - a "Certification" tab (requirement checklist, written exam,
 //     recorded-session submission)
-//   - a sidebar footer with the live weekly call details
+//   - a sidebar footer with the live call details
 //     (join link read from courses/1p-clc/private/cohort — enrolled only)
 //
 // Everything that decides certification is server-side: hour approval,
@@ -453,7 +453,7 @@ function renderExam(root, course, exam) {
   });
 }
 
-// ─── Sidebar footer: live weekly call ─────────────────────────────────────
+// ─── Sidebar footer: live call ────────────────────────────────────────────
 
 async function cohortFooterHtml(course) {
   const cohort = (course && course.cohort) || {};
@@ -468,7 +468,7 @@ async function cohortFooterHtml(course) {
   if (!when && !joinUrl) return '';
   return `
     <div style="padding:12px;background:#111;border:1px solid #222;border-radius:10px;">
-      <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:6px;">LIVE WEEKLY CALL</div>
+      <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:6px;">LIVE CALL</div>
       ${when ? `<div style="color:#CCC;font-size:12px;margin-bottom:${joinUrl ? '8px' : '0'};">${esc(when)}</div>` : ''}
       ${joinUrl ? `<a href="${esc(joinUrl)}" target="_blank" rel="noopener" style="color:#fff;background:#E60306;border-radius:6px;padding:6px 12px;font-size:12px;text-decoration:none;display:inline-block;">Join the call →</a>` : ''}
     </div>`;

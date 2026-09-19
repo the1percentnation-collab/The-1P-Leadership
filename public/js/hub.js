@@ -426,7 +426,7 @@ async function renderUpcoming() {
     });
   } catch (e) { /* non-fatal */ }
 
-  // CLC live weekly call, for enrolled members.
+  // CLC live call, for enrolled members.
   try {
     if (isEnrolled('1p-clc')) {
       const courseSnap = await getDoc(doc(db, 'courses', '1p-clc'));
@@ -440,7 +440,7 @@ async function renderUpcoming() {
       if (when || joinUrl) {
         rows.push({
           when: null,
-          whenLabel: when ? `Weekly · ${when}` : 'Weekly live call',
+          whenLabel: when || 'Live call',
           title: 'Life Coach Certification live call',
           joinUrl,
           href: '/courses.html?course=1p-clc'

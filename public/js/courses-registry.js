@@ -100,7 +100,7 @@ export const COURSES = [
     ],
     includes: [
       'Eight modules mapped to the A.L.I.G.N. framework',
-      'Live weekly coaching call for twelve weeks',
+      'Eight live coaching calls across twelve weeks, one for every module',
       'Four-week practicum: exam, recorded session review, certification',
       'Coaching hour log with 25-hour certification requirement',
       'Written certification exam and published session rubric',
@@ -108,7 +108,7 @@ export const COURSES = [
       'First-year A.L.I.G.N. Practitioner License included'
     ],
     description: [
-      'Certified in 16 weeks. Four to five hours per week. Live weekly coaching, a certification exam, ' +
+      'Certified in 16 weeks. Four to five hours per week. Eight live coaching calls, a certification exam, ' +
       'and a reviewed coaching session. You finish with a credential, a framework license, and a ' +
       'client-ready program to sell.',
       'This is a proprietary certification in the A.L.I.G.N. framework. You earn the credential once. ' +

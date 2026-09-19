@@ -38,7 +38,8 @@ Leadership) split in v1. That is a v2 concern once the founding cohort is
 through.
 
 Sell the founding cohort before the course is finished. Enrollment closes on a
-fixed date, module one drops two weeks later, delivery is live and weekly.
+fixed date, module one drops two weeks later, delivery is live on a fixed day,
+one call per module.
 Recordings become the evergreen asset. Module 6 does not need to exist when
 enrollment opens.
 
@@ -55,7 +56,7 @@ enrollment opens.
 
 **16-week cohort. 65 to 70 total hours. 4 to 5 hours per week.**
 
-- Weeks 1 to 12: eight modules, live weekly call on a fixed day
+- Weeks 1 to 12: eight modules, eight live calls on a fixed day, one per module
 - Weeks 13 to 16: practicum, exam, recorded session review, certification
 
 Market it as a single fixed number ("Certified in 16 weeks"), never a range.
@@ -163,7 +164,7 @@ cost. Price the certification to acquire. Price the renewal to compound.
 
 ## 9. Sales page core copy
 
-> Certified in 16 weeks. Four to five hours per week. Live weekly coaching, a
+> Certified in 16 weeks. Four to five hours per week. Eight live coaching calls, a
 > certification exam, and a reviewed coaching session. You finish with a
 > credential, a framework license, and a client-ready program to sell.
 
