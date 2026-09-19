@@ -14,6 +14,7 @@ import {
   DEFAULT_DIALER_SETTINGS, getDialerSettings, updateDialerSettings,
   getAgentPrefs, updateAgentPrefs,
   getGoogleCalendarStatus, startGoogleCalendarConnect, disconnectGoogleCalendar,
+  DEFAULT_EMAIL_SETTINGS, getEmailSettings, updateEmailSettings,
   listTemplates, createTemplate, updateTemplate, deleteTemplate,
   listVoicemailDrops, registerVoicemailDrop, setDefaultVoicemailDrop, deleteVoicemailDrop,
   fmtDateTime
@@ -28,6 +29,7 @@ const state = {
   dialer: { ...DEFAULT_DIALER_SETTINGS },
   prefs: { callMode: 'softphone', mobilePhone: null },
   google: { connected: false },
+  email: { ...DEFAULT_EMAIL_SETTINGS },
   templates: [],
   editingTemplate: null,  // null = new, else a template id
   drops: [],
@@ -71,6 +73,7 @@ function render() {
     </div>
 
     ${callingCardHtml()}
+    ${emailCardHtml()}
     ${googleCardHtml()}
     ${templatesCardHtml()}
     ${voicemailCardHtml()}
@@ -492,6 +495,77 @@ function callingCardHtml() {
 }
 
 // ── Google Calendar ──────────────────────────────────────────────────────
+// ── Email identity ───────────────────────────────────────────────────────
+//
+// What a lead sees in their inbox, and where their reply goes. Blank fields
+// fall back to the CRM default (anthonybrown@the1pnation.com) rather than
+// failing, so a half-filled form never silently stops email working.
+function emailCardHtml() {
+  const e = state.email;
+  return `
+    <div class="card" style="max-width:760px;">
+      <label class="crm-field-label" style="display:block;margin-bottom:8px;">Email</label>
+      <div class="crm-import-note" style="margin-top:0;">
+        The identity on 1-on-1 emails sent from a contact card. The sending domain must be
+        authenticated in SendGrid or messages land in spam — see <code>docs/email-setup.md</code>.
+        Replies come back into the CRM and appear on the contact's timeline.
+      </div>
+      <div class="crm-field" style="margin-top:16px;">
+        <label>From address</label>
+        <input class="c-input" id="em-from" type="email" placeholder="anthonybrown@the1pnation.com" value="${escapeHtml(e.fromEmail || '')}" />
+      </div>
+      <div class="crm-field" style="margin-top:12px;">
+        <label>From name</label>
+        <input class="c-input" id="em-name" placeholder="Anthony Brown" value="${escapeHtml(e.fromName || '')}" />
+      </div>
+      <div class="crm-field" style="margin-top:12px;">
+        <label>Reply-to (used only when inbound email is not configured)</label>
+        <input class="c-input" id="em-replyto" type="email" placeholder="anthonybrown@the1pnation.com" value="${escapeHtml(e.replyTo || '')}" />
+      </div>
+      <div class="crm-field" style="margin-top:12px;">
+        <label>Forward inbound replies to</label>
+        <input class="c-input" id="em-forward" type="email" placeholder="anthonybrown@the1pnation.com" value="${escapeHtml(e.forwardInboundTo || '')}" />
+        <div class="crm-mini-sub" style="margin-top:4px;">
+          Optional. Sends a copy of every reply to a real mailbox, so the CRM is not the only place it exists.
+        </div>
+      </div>
+      <div class="crm-field" style="margin-top:12px;">
+        <label>Signature</label>
+        <textarea class="c-textarea" id="em-signature" rows="3" placeholder="Anthony Brown&#10;The One Percent Nation">${escapeHtml(e.signature || '')}</textarea>
+        <div class="crm-mini-sub" style="margin-top:4px;">Appended to every 1-on-1 email after a <code>--</code> separator.</div>
+      </div>
+      <div class="crm-save-row" style="margin-top:20px;">
+        <span id="set-email-status" class="crm-save-status"></span>
+        <button class="btn btn-primary" id="save-email">Save email settings</button>
+      </div>
+    </div>`;
+}
+
+async function saveEmail() {
+  const st = $('set-email-status');
+  const from = $('em-from').value.trim();
+  const forward = $('em-forward').value.trim();
+  const replyTo = $('em-replyto').value.trim();
+  const bad = [from, forward, replyTo].find((v) => v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v));
+  if (bad) {
+    st.textContent = `Not a valid email address: ${bad}`; st.className = 'crm-save-status err';
+    return;
+  }
+  try {
+    await updateEmailSettings(state.companyId, {
+      fromEmail: from,
+      fromName: $('em-name').value.trim(),
+      replyTo,
+      forwardInboundTo: forward,
+      signature: $('em-signature').value
+    });
+    state.email = await getEmailSettings(state.companyId);
+    st.textContent = 'Saved'; st.className = 'crm-save-status ok';
+  } catch (e) {
+    st.textContent = 'Error: ' + (e.message || e); st.className = 'crm-save-status err';
+  }
+}
+
 function googleCardHtml() {
   const g = state.google;
   const flash = new URLSearchParams(location.search).get('google');
@@ -593,6 +667,7 @@ function wire() {
   $('save-pipeline').addEventListener('click', save);
 
   $('save-calling').addEventListener('click', saveCalling);
+  $('save-email').addEventListener('click', saveEmail);
   wireTemplates();
   wireVoicemail();
   $('set-recording').addEventListener('change', (e) => {
@@ -713,14 +788,16 @@ async function main() {
 
   state.pipeline = await ensureDefaultPipeline(companyId);
   state.stages = (state.pipeline.stages || DEFAULT_PIPELINE_STAGES).map((s) => ({ ...s }));
-  const [opps, dialer, prefs, google, templates, drops] = await Promise.all([
+  const [opps, dialer, prefs, google, templates, drops, email] = await Promise.all([
     listOpportunities(companyId, { pipelineId: state.pipeline.id }),
     getDialerSettings(companyId),
     getAgentPrefs(u.uid),
     getGoogleCalendarStatus(companyId),
     listTemplates(companyId),
-    listVoicemailDrops(companyId)
+    listVoicemailDrops(companyId),
+    getEmailSettings(companyId)
   ]);
+  state.email = email;
   state.templates = templates;
   state.drops = drops;
   state.oppCountByStage = {};

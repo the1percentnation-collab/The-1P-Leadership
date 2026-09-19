@@ -126,7 +126,16 @@ export async function createContact(companyId, data = {}) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     createdBy: user.uid,
-    lastActivityAt: serverTimestamp()
+    lastActivityAt: serverTimestamp(),
+    // Written as an explicit null, never left absent. Firestore range queries
+    // skip documents where the ordered field is missing, so an absent field
+    // would make a brand-new lead invisible to every "who needs contacting?"
+    // query — under-reporting silently, which is the worst way to be wrong.
+    // Null is queryable: `where('lastContactedAt','==',null)` is the
+    // never-contacted cohort.
+    lastContactedAt: null,
+    lastContactChannel: null,
+    lastContactDirection: null
   };
   const ref = await addDoc(contactsCol(companyId), payload);
   // Log initial activity.
@@ -345,8 +354,85 @@ export async function listActivities(companyId, contactId) {
 }
 
 // Exposed so the contact-page can log manual interactions (call, meeting, etc).
+// ────────────────────────────────────────────────────────────────
+// Contact recency — `lastContactedAt`, the honest one.
+//
+// `lastActivityAt` is touched by logActivity on every mutation: a tag edit, a
+// stage move, a field save, a CSV import, even an unsubscribe. That makes it a
+// record-changed timestamp, not a relationship timestamp, and a lead nobody has
+// spoken to in six weeks reads as freshly worked. `lastContactedAt` moves only
+// when someone actually reached the lead or the lead reached us.
+//
+// Server-side writers live in functions/index.js (lastContactedFields).
+// ────────────────────────────────────────────────────────────────
+
+/** Manual activity types that represent a human actually reaching the lead. */
+const MANUAL_CONTACT_CHANNELS = {
+  manual_call: 'call',
+  manual_meeting: 'meeting',
+  manual_email: 'email'
+};
+
+/** Dispositions where a human being was actually on the other end.
+ *  A voicemail is a message delivered, so it counts; a no-answer or a dead
+ *  number is an attempt, and an attempt is not contact. */
+const CONTACTED_DISPOSITIONS = new Set(['connected', 'booked', 'callback', 'voicemail']);
+
+export function markContacted(companyId, contactId, channel, direction = 'out') {
+  if (!firebaseReady || !companyId || !contactId || !channel) return Promise.resolve();
+  return updateDoc(contactRef(companyId, contactId), {
+    lastContactedAt: serverTimestamp(),
+    lastContactChannel: channel,
+    lastContactDirection: direction
+  }).catch(() => { /* the contact may be mid-deletion */ });
+}
+
+export const CONTACT_FRESHNESS = [
+  { id: 'warm',     maxDays: 7,    label: 'Warm',     color: '#56D4A8' },
+  { id: 'cooling',  maxDays: 14,   label: 'Cooling',  color: '#E8C547' },
+  { id: 'stagnant', maxDays: 30,   label: 'Stagnant', color: '#E89A47' },
+  { id: 'cold',     maxDays: null, label: 'Cold',     color: '#8B4A4A' }
+];
+
+const CHANNEL_WORD = { email: 'Emailed', sms: 'Texted', call: 'Called', meeting: 'Met' };
+
+/**
+ * How long since anyone actually reached this lead.
+ *
+ * A contact that has never been reached is its own state, not "cold": a lead
+ * that arrived this morning and a lead ignored for six weeks are different
+ * problems and should not share a colour.
+ */
+export function contactFreshness(contact) {
+  const at = toDate(contact && contact.lastContactedAt);
+  if (!at) {
+    return { id: 'never', label: 'Never contacted', short: 'Never', color: '#6E6E6E', days: null, never: true };
+  }
+  const days = Math.floor((Date.now() - at.getTime()) / 86400000);
+  const band = CONTACT_FRESHNESS.find((b) => b.maxDays === null || days < b.maxDays);
+  const verb = CHANNEL_WORD[contact.lastContactChannel]
+    || (contact.lastContactDirection === 'in' ? 'Heard from' : 'Contacted');
+  const ago = days === 0 ? 'today' : (days === 1 ? 'yesterday' : `${days}d ago`);
+  return {
+    id: band.id,
+    label: band.label,
+    short: days === 0 ? 'Today' : `${days}d`,
+    color: band.color,
+    days,
+    never: false,
+    // "Emailed 12d ago" / "Heard from them yesterday" — the tooltip text.
+    detail: contact.lastContactDirection === 'in'
+      ? `They reached out ${ago}`
+      : `${verb} ${ago}`
+  };
+}
+
 export async function addManualActivity(companyId, contactId, { type, description, meta }) {
-  return logActivity(companyId, contactId, { type, description, meta });
+  await logActivity(companyId, contactId, { type, description, meta });
+  // Logging "I called them" is a record of real contact, so it resets the
+  // clock. Logging a note or a stage move is not, and does not.
+  const channel = MANUAL_CONTACT_CHANNELS[type];
+  if (channel) await markContacted(companyId, contactId, channel, 'out');
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -608,6 +694,22 @@ export async function listTasks(companyId, { assigneeUid = null, status = null, 
   }
 }
 
+/**
+ * Which pile a task belongs in. Lifted out of tasks.js so the standalone task
+ * list and the contact card cannot drift on what "overdue" means — they were
+ * about to grow two copies of this.
+ */
+export function taskBucket(t) {
+  if (!t || t.status === 'done') return 'done';
+  const due = toDate(t.dueAt);
+  if (!due) return 'nodate';
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+  const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
+  if (due < startOfToday) return 'overdue';
+  if (due <= endOfToday) return 'today';
+  return 'upcoming';
+}
+
 export async function createTask(companyId, data = {}) {
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
@@ -813,6 +915,102 @@ export async function markConversationRead(companyId, contactId) {
 }
 
 // ════════════════════════════════════════════════════════════════
+// EMAIL — two-way, per contact.
+//
+// Outbound goes through the sendContactEmail callable (SendGrid); inbound
+// arrives on the inboundEmailWebhook (SendGrid Inbound Parse) addressed to
+// reply+<companyId>.<contactId>@<reply domain>. Both land in the same
+// contacts/{id}/emails collection, which is server-written and client-read:
+// nothing here can forge or edit a message, only read the record.
+// ════════════════════════════════════════════════════════════════
+
+export const DEFAULT_EMAIL_SETTINGS = {
+  fromEmail: '',       // blank = the CRM default (anthonybrown@the1pnation.com)
+  fromName: '',
+  replyTo: '',
+  signature: '',
+  forwardInboundTo: '' // a copy of every inbound reply to a real mailbox
+};
+
+export async function listContactEmails(companyId, contactId) {
+  if (!firebaseReady || !companyId || !contactId) return [];
+  try {
+    const col = collection(db, 'companies', companyId, 'contacts', contactId, 'emails');
+    const snap = await getDocs(query(col, orderBy('createdAt', 'asc')));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) { console.warn('[crm] listContactEmails failed', e); return []; }
+}
+
+/**
+ * Send from a contact card. `threadKey`/`inReplyTo` are set when replying
+ * from an existing thread so the message stays in it — both in our own
+ * timeline and in the lead's mail client.
+ */
+export async function sendContactEmail(companyId, contactId, { subject, bodyText, bodyHtml, threadKey, inReplyTo } = {}) {
+  if (!firebaseReady) throw new Error('Offline');
+  const call = httpsCallable(functions, 'sendContactEmail');
+  const res = await call({
+    companyId, contactId, subject,
+    bodyText: bodyText || '',
+    bodyHtml: bodyHtml || '',
+    threadKey: threadKey || '',
+    inReplyTo: inReplyTo || ''
+  });
+  return res.data || { ok: true };
+}
+
+export async function markContactEmailsRead(companyId, contactId) {
+  if (!firebaseReady) return;
+  try {
+    const call = httpsCallable(functions, 'markContactEmailsRead');
+    await call({ companyId, contactId });
+  } catch (e) { /* best-effort: a stale badge is not worth an error toast */ }
+}
+
+/** Group a flat email list into threads, newest thread first. */
+export function groupEmailThreads(emails) {
+  const byKey = new Map();
+  (emails || []).forEach((e) => {
+    const k = e.threadKey || e.id;
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(e);
+  });
+  const at = (e) => (e && e.createdAt && e.createdAt.toMillis ? e.createdAt.toMillis() : 0);
+  const threads = [...byKey.entries()].map(([key, msgs]) => {
+    msgs.sort((a, b) => at(a) - at(b));
+    const last = msgs[msgs.length - 1];
+    return {
+      key,
+      messages: msgs,
+      subject: msgs[0].subject || last.subject || '(no subject)',
+      lastAt: at(last),
+      unread: msgs.some((m) => m.direction === 'in' && m.read === false)
+    };
+  });
+  threads.sort((a, b) => b.lastAt - a.lastAt);
+  return threads;
+}
+
+/** Company-wide sending identity. Stored on the company doc, like `dialer`. */
+export async function getEmailSettings(companyId) {
+  if (!firebaseReady || !companyId) return { ...DEFAULT_EMAIL_SETTINGS };
+  try {
+    const snap = await getDoc(doc(db, 'companies', companyId));
+    const d = snap.exists() ? (snap.data().email || {}) : {};
+    return { ...DEFAULT_EMAIL_SETTINGS, ...d };
+  } catch (e) { return { ...DEFAULT_EMAIL_SETTINGS }; }
+}
+
+export async function updateEmailSettings(companyId, patch = {}) {
+  const clean = {};
+  Object.keys(DEFAULT_EMAIL_SETTINGS).forEach((k) => {
+    if (patch[k] !== undefined) clean[`email.${k}`] = String(patch[k] || '').trim();
+  });
+  if (!Object.keys(clean).length) return;
+  await updateDoc(doc(db, 'companies', companyId), clean);
+}
+
+// ════════════════════════════════════════════════════════════════
 // CALLS — dialer call logs. A call doc is created client-side the moment
 // dialing starts (the softphone knows the state before any webhook fires)
 // and is then enriched server-side by voiceStatusWebhook with the duration
@@ -912,8 +1110,12 @@ export async function updateCallLog(companyId, callId, patch = {}) {
 /**
  * Close out a call. Writes the outcome onto the call doc and mirrors it into
  * the contact's activity feed via the same logActivity path every other
- * mutation uses, so `lastActivityAt` stays honest and the dialer's "coldest
- * first" ordering keeps working.
+ * mutation uses.
+ *
+ * A connecting disposition also stamps `lastContactedAt`. This used to claim
+ * `lastActivityAt` "stays honest" and drive the dialer's coldest-first order
+ * off it — it does not: that field moves on tag edits and stage saves too, so
+ * the coldest-first queue was sorting on record churn as much as on outreach.
  */
 export async function setCallDisposition(companyId, callId, { disposition, note, contactId, durationSec } = {}) {
   if (!DISPOSITION_IDS.includes(disposition)) throw new Error('Unknown disposition');
@@ -934,6 +1136,9 @@ export async function setCallDisposition(companyId, callId, { disposition, note,
         meta: { callId, disposition, durationSec: durationSec || null }
       });
     } catch (e) { /* the contact may have been deleted mid-call */ }
+    if (CONTACTED_DISPOSITIONS.has(disposition)) {
+      await markContacted(companyId, contactId, 'call', 'out');
+    }
   }
 }
 

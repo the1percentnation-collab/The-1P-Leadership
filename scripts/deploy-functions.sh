@@ -6,11 +6,12 @@
 # THE SITUATION
 # -------------
 # taskReminders and appointmentReminders are deployed in the project but are
-# not in source. They were un-exported because the CI service account lacks the
-# Cloud Scheduler Admin role, and their source has since been deleted outright:
-# runAutomationTick's sendReminders() does the same work against the same
-# remindedAt dedupe, so re-exporting them would put two senders in a race on a
-# read-then-write flag.
+# no longer exported from functions/index.js — they were un-exported because
+# the CI service account lacks the Cloud Scheduler Admin role. The reminder
+# work itself is alive and well: sendReminders() runs it from the automation
+# tick (see functions/index.js and .github/workflows/crm-tick.yml), and the
+# once-only `remindedAt` stamp means the stranded deployed copies and the tick
+# cannot double-send even while both exist.
 #
 # That leaves one problem. Firebase sees two functions that exist in the
 # project but not in source, tries to delete them, and the very same missing
@@ -26,21 +27,30 @@
 # exits clean. Anything else — including a third function getting stranded the
 # same way — still fails the build.
 #
-# THE REAL FIX, AND HOW TO FINISH IT
-# ----------------------------------
-# Grant the deploy service account roles/cloudscheduler.admin in GCP IAM:
+# THE REAL FIX
+# ------------
+# Grant the deploy service account roles/cloudscheduler.admin in GCP IAM, then
+# redeploy: Firebase will finally be able to delete the two stranded functions,
+# after which this script's tolerance can go too. Until then those two keep
+# running the code they were last deployed with, which is not the code in this
+# repo — harmless today only because `remindedAt` dedupes them against the tick.
+#
+# (The unexported onSchedule twins that used to sit in functions/index.js as
+# the "real" version were deleted in September 2026. They were dead code whose
+# comment claimed reminders were switched off, so every reader concluded the
+# feature was broken when it was running fine from the tick. Re-enabling means
+# exporting a scheduled function afresh, not restoring them.)
+#
+# The grant itself:
 #
 #   gcloud projects add-iam-policy-binding the-1p-leadership \
 #     --member="serviceAccount:<the CI deploy service account>" \
 #     --role="roles/cloudscheduler.admin"
 #
-# The next deploy then succeeds in deleting both functions, and they stop
-# running the June 2026 code they were last deployed with. Confirm that in the
-# deploy log, then empty KNOWN_STRANDED below and delete the ::warning:: at the
-# end of this script.
-#
-# Do it in that order. Emptying the list before the grant lands just turns
-# every deploy red again, because the delete still fails.
+# Then confirm in the next deploy log that both functions were deleted, and
+# only then empty KNOWN_STRANDED below and drop the ::warning:: at the end of
+# this script. Do it in that order: emptying the list before the grant lands
+# just turns every deploy red again, because the delete still fails.
 
 set -uo pipefail
 
