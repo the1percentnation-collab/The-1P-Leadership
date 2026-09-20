@@ -7,6 +7,7 @@
 // accordion → Requirements → Description → Instructor → More courses.
 
 import { loadCourses, getCourses, getCourseBySlug, priceInfo } from './courses-data.js';
+import { launchDateMs, fmtLaunchDate, launchCountdown } from './launch-date.js';
 import { onAuthReady, currentUser } from './auth.js';
 import { firebaseReady, functions } from './firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
@@ -260,6 +261,18 @@ function moreCoursesHtml(course) {
 
 // ─── Purchase card ────────────────────────────────────────────────────────
 
+// What a course that isn't open yet tells the visitor. With a launch date set
+// it commits to a day; without one it falls back to the original line. A date
+// already gone by falls back too, rather than advertising a launch that
+// visibly did not happen.
+function soonNote(course) {
+  const ms = launchDateMs(course);
+  const countdown = ms == null ? '' : launchCountdown(ms);
+  return countdown
+    ? `Opens ${fmtLaunchDate(ms)} — ${countdown}. Enrollment isn't open yet.`
+    : "Coming soon — enrollment isn't open yet.";
+}
+
 function purchaseCardHtml(course, { enrolled }) {
   const p = priceInfo(course);
   const isBundle = course.status === 'bundle' || !!course.bundleHref;
@@ -283,7 +296,7 @@ function purchaseCardHtml(course, { enrolled }) {
     </div>
     ${course.priceNote ? `<div class="cl-price-note">${escapeHtml(course.priceNote)}</div>` : ''}
     ${course.shipsBook ? `<div class="cl-price-note">Includes a paperback of <em>I Can't: Is Not A Strategy</em>. We ask for your US shipping address at checkout.</div>` : ''}
-    ${!live && !isBundle ? `<div class="cl-soon-note">Coming soon — enrollment isn't open yet.</div>` : ''}`;
+    ${!live && !isBundle ? `<div class="cl-soon-note">${escapeHtml(soonNote(course))}</div>` : ''}`;
 
   // The Life Coach certification offers fixed-count payment plans. Pay in
   // full is the default; a plan can't be combined with a promo code, which

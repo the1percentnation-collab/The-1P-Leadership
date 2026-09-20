@@ -27,11 +27,13 @@
 //      blank. index.html exposes __1pObserveFades / __1pAttachTilt for that.
 
 import { loadCourses, getCourses } from './courses-data.js';
+import { launchDateMs, fmtLaunchDate, launchCountdown, nextLaunch } from './launch-date.js';
 
 // Firebase is already initialised on this page (chatbot.js imports
 // firebase.js), so pulling in courses-data.js costs no extra connection.
 
 const GRID_ID = 'home-courses-grid';
+const BANNER_ID = 'launch-banner';
 
 // No cap on the number of cards, deliberately: the "On main site" switch is
 // meant to be the single control over what the public sees, and a silent
@@ -109,8 +111,16 @@ function metaLines(course) {
 // The badge is the card's one-word status. Availability wins over kind: a
 // bundle that isn't open yet reads "Coming Soon", not "Best Value", because
 // the visitor can't buy it either way.
+//
+// A course with a launch date says the date instead of the word. "Coming Soon"
+// is a promise nobody can plan around; "Coming Mar 3" is a reason to come back.
+// A date that has already passed falls back to the word rather than
+// advertising a launch that visibly did not happen.
 function badgeLabel(course) {
-  if (course.status !== 'live') return 'Coming Soon';
+  if (course.status !== 'live') {
+    const ms = launchDateMs(course);
+    return (ms != null && launchCountdown(ms)) ? `Coming ${fmtLaunchDate(ms, { short: true })}` : 'Coming Soon';
+  }
   return course.bundleHref ? 'Best Value' : 'Enroll Now';
 }
 
@@ -176,6 +186,42 @@ function hideCoursesSection(section) {
   });
 }
 
+// ── Launch banner ──────────────────────────────────────────────────────────
+//
+// The strip under the hero announcing the next course to open. It is the one
+// place on the marketing site that answers "when?" above the fold, so it is
+// driven by the same launchDate the owner types on the course card and
+// nothing else: no date, no banner.
+//
+// Only the soonest future launch is shown. Stacking every upcoming course
+// here would turn the loudest slot on the page into a list, and the visitor
+// only has to care about the next one.
+function renderLaunchBanner(courses) {
+  const banner = document.getElementById(BANNER_ID);
+  if (!banner) return;
+
+  const next = nextLaunch(courses);
+  if (!next) {
+    banner.hidden = true;
+    return;
+  }
+
+  const { course, ms } = next;
+  const countdown = launchCountdown(ms);
+  banner.innerHTML = `
+    <div class="container-wide launch-banner-inner">
+      <div class="launch-banner-copy">
+        <span class="launch-banner-label">Opening ${escapeHtml(countdown)}</span>
+        <span class="launch-banner-title">${escapeHtml(course.title || 'A new course')}</span>
+        <span class="launch-banner-date">${escapeHtml(fmtLaunchDate(ms))}</span>
+      </div>
+      <a class="launch-banner-cta" href="/course.html?course=${encodeURIComponent(course.slug)}">
+        Join the waitlist →
+      </a>
+    </div>`;
+  banner.hidden = false;
+}
+
 export async function init() {
   const grid = document.getElementById(GRID_ID);
   const section = document.getElementById('courses');
@@ -188,6 +234,8 @@ export async function init() {
     // unpublished one on the marketing site is worse than showing none.
     console.warn('[home-courses] catalog load failed; hiding the section', e);
     hideCoursesSection(section);
+    const banner = document.getElementById(BANNER_ID);
+    if (banner) banner.hidden = true;
     return;
   }
 
@@ -204,6 +252,10 @@ export async function init() {
   const courses = getCourses().filter(
     (c) => PUBLIC_STATUSES.includes(c.status) && c.showOnSite !== false && c.sellable !== false
   );
+
+  // Independent of the grid: a launch is worth announcing even in the odd
+  // case where the section below it ends up empty.
+  renderLaunchBanner(getCourses());
 
   if (!courses.length) {
     hideCoursesSection(section);
