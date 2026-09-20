@@ -324,7 +324,7 @@ async function lookupStatus(ev) {
       ${reqRow(s.examPassed, 'Written exam passed', `${s.attemptsUsed}/${s.attemptsAllowed} attempts used`)}
       ${reqRow(s.capstoneApproved, 'Recorded session approved', s.capstoneSubmitted && !s.capstoneApproved ? 'Submitted, in queue above' : '')}
       ${reqRow(s.hoursMet, `${s.requiredHours} approved practice hours`, `${s.approvedHours}h approved, ${s.pendingHours}h pending`)}
-      ${reqRow(s.outsideHoursMet, `${s.requiredOutsideHours} of those from outside the cohort`, `${s.approvedOutsideHours}h approved, ${s.pendingOutsideHours}h pending`)}
+      ${reqRow(s.outsideHoursMet, `${s.requiredOutsideHours} of those with clients outside the program`, `${s.approvedOutsideHours}h approved, ${s.pendingOutsideHours}h pending`)}
       <div style="margin-top:14px;">
         ${s.certified
           ? `<span class="auth-ok">Certified — ${escapeHtml(s.certification.certNumber)}, license valid through ${escapeHtml((s.certification.licenseExpiresAt || '').slice(0, 10))}</span>`

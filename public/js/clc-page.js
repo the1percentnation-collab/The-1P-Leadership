@@ -110,49 +110,34 @@ function cleanText(value) {
   return s;
 }
 
-function renderCohortFacts(cohort, seatsTaken, status) {
+// The fact bar. The course is self-paced, so there is no enrollment close
+// date, no module 1 drop date and no seat count any more — those described a
+// cohort the checkout never enforced. What is left is the one date that is
+// still news before launch, and the standing coaching lab.
+function renderCohortFacts(cohort, lab, status) {
   const el = $('clc-cohort-facts');
   if (!el) return;
   const facts = [];
 
-  // Lead with the date the campaign is advertising. It lives in Firestore so
-  // it can move without a deploy, and it disappears on its own once the
-  // course is live and the fact is no longer news.
+  // Disappears on its own once the course is live and the fact is no longer
+  // news. After that, enrollment simply stays open.
   const opens = fmtDate(cohort.enrollOpensAt);
   if (opens && status !== 'live') {
     facts.push(`Enrollment opens <strong>${escapeHtml(opens)}</strong>`);
+  } else if (status === 'live') {
+    facts.push('<strong>Start any day</strong>');
   }
 
-  const closes = fmtDate(cohort.enrollCloseAt);
-  if (closes) facts.push(`Enrollment closes <strong>${escapeHtml(closes)}</strong>`);
+  // Falls back to the old cohort call fields for a course configured before
+  // the lab fields existed.
+  const schedule = cleanText(lab.schedule)
+    || [cleanText(cohort.callDay), cleanText(cohort.callTime)].filter(Boolean).join(' at ');
+  if (schedule) facts.push(`Coaching lab <strong>${escapeHtml(schedule)}</strong>`);
 
-  const starts = fmtDate(cohort.startAt);
-  if (starts) facts.push(`Module 1 drops <strong>${escapeHtml(starts)}</strong>`);
-
-  const day = cleanText(cohort.callDay);
-  const time = cleanText(cohort.callTime);
-  if (day && time) facts.push(`Live call <strong>${escapeHtml(day)} at ${escapeHtml(time)}</strong>`);
-  else if (day) facts.push(`Live call <strong>${escapeHtml(day)}</strong>`);
-
-  const capacity = typeof cohort.capacity === 'number' ? cohort.capacity : null;
-  if (capacity && typeof seatsTaken === 'number') {
-    const taken = Math.max(0, Math.min(capacity, seatsTaken));
-    facts.push(`<strong>${taken} of ${capacity}</strong> founding seats claimed`);
-  }
+  facts.push('<strong>Lifetime</strong> access');
 
   if (!facts.length) { el.hidden = true; return; }
   el.innerHTML = facts.map((f) => `<span class="fact">${f}</span>`).join('');
-  el.hidden = false;
-}
-
-function renderSeatsNote(capacity, seatsTaken) {
-  const el = $('clc-seats-note');
-  if (!el) return;
-  if (typeof capacity !== 'number' || typeof seatsTaken !== 'number') { el.hidden = true; return; }
-  const remaining = Math.max(0, capacity - seatsTaken);
-  el.textContent = remaining === 0
-    ? 'All 20 founding seats are claimed.'
-    : `${remaining} of ${capacity} founding seats remaining.`;
   el.hidden = false;
 }
 
@@ -160,20 +145,6 @@ function escapeHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-// Coupon docs are commonly admin-read-only. A denied read is expected, not an
-// error: the seat count simply does not render.
-async function readFoundingRedemptions() {
-  if (!firebaseReady || !db) return null;
-  try {
-    const snap = await withTimeout(getDoc(doc(db, 'coupons', 'FOUNDING')), 4000);
-    if (!snap || !snap.exists()) return null;
-    const data = snap.data() || {};
-    return typeof data.redemptions === 'number' ? data.redemptions : null;
-  } catch (e) {
-    return null;
-  }
 }
 
 // ─── CTA rendering ────────────────────────────────────────────────────────
@@ -369,13 +340,16 @@ async function main() {
   const priceNoteEl = $('clc-price-note');
   if (priceNoteEl && cleanText(course.priceNote)) priceNoteEl.textContent = course.priceNote;
 
-  // Seat count is best effort: capacity from the course doc, redemptions from
-  // the coupon doc, which non-admins may not be allowed to read.
-  const capacity = typeof cohort.capacity === 'number' ? cohort.capacity : null;
-  let seatsTaken = null;
-  if (capacity) seatsTaken = await readFoundingRedemptions();
-  renderCohortFacts(cohort, seatsTaken, course.status);
-  renderSeatsNote(capacity, seatsTaken);
+  // No seat count any more. The course is self-paced, so cohort capacity is
+  // meaningless, and the live counter it used to render never reached the
+  // people it was meant to persuade: it came from coupons/FOUNDING, which
+  // firestore.rules restricts to admins, so a signed-out visitor always got
+  // null and the line silently vanished.
+  //
+  // The scarcity that IS real is the founding coupon's own 20-redemption cap,
+  // enforced server-side in createCheckoutSession. That is stated as static
+  // copy on the page rather than counted live.
+  renderCohortFacts(cohort, course.lab || {}, course.status);
 
   let enrolled = false;
   if (user) {

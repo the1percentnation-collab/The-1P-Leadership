@@ -4208,6 +4208,114 @@ exports.removeChannelMember = onCall(async (request) => {
   return { ok: true };
 });
 
+
+// ════════════════════════════════════════════════════════════════
+// Course community channels
+//
+// The Life Coach certification is self-paced, so students never share a
+// calendar and the old fixed peer triad cannot work. The practice partner
+// channel replaces it: everyone enrolled lands in one private channel and
+// pairs off there on their own schedule.
+//
+// The glue that was missing is this trigger. Channel membership
+// (channels/{key}.memberUids) had no connection to course access
+// (users/{uid}.enrolledCourseSlugs), so a buyer had to be added by hand.
+//
+// A trigger on the user doc rather than a hook at each enrollment write site
+// is deliberate. Access is granted in four places — the Stripe webhook, the
+// 100%-off coupon path, enrollFree and the admin grant — plus removed on a
+// refund, and applyPendingGrants can add one at signup. Six call sites to keep
+// in sync, one of them inside a payment webhook where a throw is expensive.
+// One diff on the user doc covers all of them and anything added later.
+//
+// Cost: this fires on every write to users/{uid}, which is a hot document.
+// The first check is a cheap array comparison that returns immediately, which
+// is the common case by a wide margin.
+//
+// Ceiling: memberUids is one array on one document, and isChannelMember does a
+// get() on that doc for every read. Fine into the hundreds. Somewhere in the
+// low thousands this has to move to a subcollection, which is a rules rewrite.
+// ════════════════════════════════════════════════════════════════
+
+const COURSE_CHANNELS = {
+  '1p-clc': 'clc-practice'
+};
+
+function slugArray(data) {
+  const v = data && data.enrolledCourseSlugs;
+  return Array.isArray(v) ? v.filter((s) => typeof s === 'string') : [];
+}
+
+exports.onUserEnrollmentWritten = onDocumentWritten('users/{uid}', async (event) => {
+  const after = event.data && event.data.after && event.data.after.exists
+    ? event.data.after.data() : null;
+  const before = event.data && event.data.before && event.data.before.exists
+    ? event.data.before.data() : null;
+
+  const now = slugArray(after);
+  const was = slugArray(before);
+  const added = now.filter((s) => !was.includes(s) && COURSE_CHANNELS[s]);
+  const removed = was.filter((s) => !now.includes(s) && COURSE_CHANNELS[s]);
+  if (!added.length && !removed.length) return;
+
+  const db = admin.firestore();
+  const FV = admin.firestore.FieldValue;
+  const uid = event.params.uid;
+
+  for (const slug of added) {
+    try {
+      await db.collection('channels').doc(COURSE_CHANNELS[slug]).set({
+        memberUids: FV.arrayUnion(uid),
+        updatedAt: FV.serverTimestamp()
+      }, { merge: true });
+    } catch (e) {
+      console.warn('[courseChannel] join failed', slug, e && e.message);
+    }
+  }
+
+  // A refund removes the slug (see the subscription-deleted handler). Leaving
+  // them in the channel would let someone who was refunded keep reading other
+  // students' posts.
+  for (const slug of removed) {
+    try {
+      await db.collection('channels').doc(COURSE_CHANNELS[slug]).set({
+        memberUids: FV.arrayRemove(uid),
+        updatedAt: FV.serverTimestamp()
+      }, { merge: true });
+    } catch (e) {
+      console.warn('[courseChannel] leave failed', slug, e && e.message);
+    }
+  }
+});
+
+// Everyone enrolled before the trigger existed needs adding once. Also the
+// repair tool if the trigger ever misses someone.
+exports.backfillCourseChannelMembers = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  }
+  const slug = String((request.data && request.data.slug) || '').trim();
+  const channelKey = COURSE_CHANNELS[slug];
+  if (!channelKey) throw new HttpsError('invalid-argument', 'That course has no channel.');
+
+  const snap = await db.collection('users')
+    .where('enrolledCourseSlugs', 'array-contains', slug).get();
+  const uids = snap.docs.map((d) => d.id);
+  if (!uids.length) return { ok: true, added: 0 };
+
+  const FV = admin.firestore.FieldValue;
+  const ref = db.collection('channels').doc(channelKey);
+  // arrayUnion caps at a sane payload size, so chunk it.
+  for (let i = 0; i < uids.length; i += 200) {
+    await ref.set({
+      memberUids: FV.arrayUnion(...uids.slice(i, i + 200)),
+      updatedAt: FV.serverTimestamp()
+    }, { merge: true });
+  }
+  return { ok: true, added: uids.length };
+});
+
 // ────────────────────────────────────────────────────────────────
 // Search (Stage 2 — topbar search overlay).
 //
@@ -8812,15 +8920,17 @@ const CERT_CONFIG_DEFAULTS = {
   passingScorePercent: 80,
   maxExamAttempts: 3,
   requiredHours: 25,          // minimum logged + approved practice coaching hours
-  requiredOutsideHours: 12,   // of those, the minimum coached outside the cohort
+  requiredOutsideHours: 12,   // of those, the minimum coached outside the program
   examQuestionCount: 25,
   renewalHours: 10,           // approved hours since last issuance/renewal
   renewalCeCredits: 10        // approved CE credits since last issuance/renewal
 };
 
-// An hour entry is either 'cohort' (a classmate, usually the peer triad) or
-// 'outside' (anyone who is not in the program). Entries written before the
-// field existed count as cohort, which is the conservative reading.
+// An hour entry is either 'cohort' (another student, usually their practice
+// partner) or 'outside' (anyone not in the program). The key names are
+// historical, from when this ran as a cohort; renaming them would cost a data
+// migration and a rules deploy to change a string nobody reads. Entries
+// written before the field existed count as 'cohort', the conservative read.
 function isOutsideEntry(e) {
   return String((e && e.clientType) || 'cohort') === 'outside';
 }
@@ -9296,14 +9406,16 @@ exports.issueCertification = onCall(async (request) => {
       `Only ${Math.floor(approvedMinutes / 60)} of ${cfg.requiredHours} approved practice hours.`);
   }
   // Peer practice builds the mechanics; clients who never read the rubric are
-  // what prove they hold. A log made entirely of classmates does not certify.
+  // what prove they hold. This matters more now the course is self-paced:
+  // partner swaps are unlimited and unsupervised, so this floor is the only
+  // thing stopping someone certifying without ever coaching a stranger.
   const approvedOutsideMinutes = hoursSnap.docs
     .filter((d) => isOutsideEntry(d.data()))
     .reduce((sum, d) => sum + (Number(d.data().minutes) || 0), 0);
   if (approvedOutsideMinutes < cfg.requiredOutsideHours * 60) {
     throw new HttpsError('failed-precondition',
       `Only ${Math.floor(approvedOutsideMinutes / 60)} of ${cfg.requiredOutsideHours} ` +
-      'approved hours are with clients outside the cohort.');
+      'approved hours are with clients outside the program.');
   }
   if (capsSnap.empty) {
     throw new HttpsError('failed-precondition', 'No approved recorded-session review.');

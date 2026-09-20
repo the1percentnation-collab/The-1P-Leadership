@@ -1022,13 +1022,19 @@ function realOrBlank(v) {
   return /^(tbd|tba|n\/a|none)$/i.test(s) ? '' : s;
 }
 
+// The coaching lab: a standing drop-in call for a self-paced course. This
+// replaced the old cohort form (enrollment close, module 1 drop date, seat
+// count, fixed call day and time), which described a cohort the code never
+// actually enforced — checkout read none of those fields.
+//
+// Falls back to the old cohort.callDay/callTime pair so a course configured
+// before this change still shows its schedule instead of an empty box.
 async function fillCohortForm(c) {
   const co = (c && c.cohort) || {};
-  $('f-enrollclose').value = tsToLocalInput(co.enrollCloseAt);
-  $('f-startat').value = tsToLocalInput(co.startAt);
-  $('f-callday').value = realOrBlank(co.callDay);
-  $('f-calltime').value = realOrBlank(co.callTime);
-  $('f-capacity').value = typeof co.capacity === 'number' ? co.capacity : '';
+  const lab = (c && c.lab) || {};
+  $('f-labschedule').value = realOrBlank(lab.schedule)
+    || [realOrBlank(co.callDay), realOrBlank(co.callTime)].filter(Boolean).join(' \u00b7 ');
+  $('f-labnext').value = tsToLocalInput(lab.nextAt);
   $('f-joinurl').value = '';
   $('cohort-result').innerHTML = '';
 
@@ -1050,27 +1056,14 @@ async function saveCohort() {
       throw new Error('The join link must start with http:// or https://');
     }
 
-    const capRaw = $('f-capacity').value.trim();
-    const capacity = capRaw === '' ? null : Number(capRaw);
-    if (capacity !== null && (!Number.isFinite(capacity) || capacity < 0)) {
-      throw new Error('Seats must be a whole number.');
-    }
-
-    const enrollCloseAt = localInputToDate($('f-enrollclose').value);
-    const startAt = localInputToDate($('f-startat').value);
-    if (enrollCloseAt && startAt && enrollCloseAt > startAt) {
-      throw new Error('Enrollment closes after module 1 drops. Check the two dates.');
-    }
+    const nextAt = localInputToDate($('f-labnext').value);
 
     // Written as one map so a cleared field becomes null and actually clears,
-    // instead of leaving a stale value the sales page would keep showing.
+    // instead of leaving a stale value the player would keep showing.
     await setDoc(doc(db, 'courses', S.slug), {
-      cohort: {
-        enrollCloseAt,
-        startAt,
-        callDay: $('f-callday').value || null,
-        callTime: $('f-calltime').value.trim() || null,
-        capacity
+      lab: {
+        schedule: $('f-labschedule').value.trim() || null,
+        nextAt
       },
       updatedAt: serverTimestamp(),
       updatedBy: _userEmail
@@ -1082,7 +1075,7 @@ async function saveCohort() {
       updatedBy: _userEmail
     }, { merge: true });
 
-    ok(out, url ? 'Cohort settings saved, join link included.' : 'Cohort settings saved.');
+    ok(out, url ? 'Coaching lab saved, join link included.' : 'Coaching lab saved.');
     await reloadCourse();
   } catch (e) { err(out, e); }
 }

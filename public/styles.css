@@ -5312,6 +5312,14 @@ body.academy-course #course-workspace {
 .cp-mod.is-active .cp-mod-num { background: var(--red); color: var(--white); }
 .cp-mod.is-done .cp-mod-num { background: #00AA00; color: var(--white); }
 
+/* Sequential unlock. A locked module stays listed, with the reason, so the
+   member sees the shape of the course and what opens it next. The hover
+   override has to come after .cp-mod:hover above to win. */
+.cp-mod.is-locked { cursor: default; opacity: 0.45; }
+.cp-mod.is-locked:hover { background: none; }
+.cp-mod.is-locked .cp-mod-num { background: #1E1E1E; font-size: 12px; }
+.cp-mod.is-locked .cp-mod-meta { font-style: italic; }
+
 .cp-mod-text { flex: 1; min-width: 0; display: block; }
 
 .cp-mod-title {

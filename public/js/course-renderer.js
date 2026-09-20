@@ -8,7 +8,7 @@
 
 import { auth, db, firebaseReady } from './firebase.js';
 import {
-  doc, setDoc, getDocs, collection, serverTimestamp
+  doc, getDoc, setDoc, getDocs, collection, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { loadModuleDocs } from './courses-data.js';
 import { mountCoursePlayer, escPlayer } from './course-player.js';
@@ -69,6 +69,57 @@ async function markComplete(slug, moduleId, completedSet) {
       console.warn('[course-renderer] markComplete remote write failed', e);
     }
   }
+}
+
+// ─── Coaching lab: the standing drop-in call ──────────────────────────────
+//
+// Any course can have one. It is a recurring open session, not a cohort call:
+// a member drops in at whatever point they have reached, so nothing here is
+// tied to a start date or a group.
+//
+// The join link lives at courses/{slug}/private/cohort, which the rules
+// already restrict to admins and enrolled members. That path keeps its old
+// name on purpose — renaming a Firestore path buys nothing and breaks every
+// reader of it.
+async function coachingLabFooterHtml(course) {
+  const lab = (course && course.lab) || {};
+  const cohort = (course && course.cohort) || {};
+  // Falls back to the old cohort.callDay/callTime pair so a course configured
+  // before the lab fields existed still renders.
+  const schedule = lab.schedule
+    || [cohort.callDay, cohort.callTime].filter(Boolean).join(' \u00b7 ');
+
+  let joinUrl = null;
+  try {
+    if (firebaseReady && auth && auth.currentUser) {
+      const snap = await getDoc(doc(db, 'courses', course.slug, 'private', 'cohort'));
+      if (snap.exists()) joinUrl = snap.data().joinUrl || null;
+    }
+  } catch (e) { /* not enrolled, or no link configured */ }
+
+  if (!schedule && !joinUrl) return '';
+
+  // A single next-session date rather than a recurrence rule. One field to
+  // keep current, and if it goes stale the schedule line still stands on its
+  // own rather than showing a date in the past.
+  let nextLine = '';
+  const raw = lab.nextAt;
+  if (raw) {
+    const d = typeof raw.toDate === 'function' ? raw.toDate() : new Date(raw);
+    if (!isNaN(d.getTime()) && d.getTime() > Date.now()) {
+      nextLine = 'Next: ' + d.toLocaleDateString(undefined, {
+        weekday: 'long', month: 'long', day: 'numeric'
+      });
+    }
+  }
+
+  return `
+    <div style="padding:12px;background:#111;border:1px solid #222;border-radius:10px;">
+      <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:6px;">COACHING LAB</div>
+      ${schedule ? `<div style="color:#CCC;font-size:12px;margin-bottom:4px;">${escPlayer(schedule)}</div>` : ''}
+      ${nextLine ? `<div style="color:#888;font-size:11px;margin-bottom:${joinUrl ? '8px' : '0'};">${escPlayer(nextLine)}</div>` : ''}
+      ${joinUrl ? `<a href="${escPlayer(joinUrl)}" target="_blank" rel="noopener" style="color:#fff;background:#E60306;border-radius:6px;padding:6px 12px;font-size:12px;text-decoration:none;display:inline-block;">Join the lab \u2192</a>` : ''}
+    </div>`;
 }
 
 // ─── Workbook + Summary tabs ──────────────────────────────────────────────
@@ -242,9 +293,8 @@ export async function mountFirestoreCourse(course, { startAt, includeDrafts = fa
   }
 
   // Course-specific player extras. The Life Coach certification course adds
-  // an ALIGN bar, an Hours Log tab, a Certification tab, and the live-call
-  // sidebar footer — all defined in clc-certification.js so this renderer
-  // stays generic.
+  // an ALIGN bar, an Hours Log tab and a Certification tab, all defined in
+  // clc-certification.js so this renderer stays generic.
   let extras = null;
   if (course.slug === '1p-clc') {
     try {
@@ -255,9 +305,15 @@ export async function mountFirestoreCourse(course, { startAt, includeDrafts = fa
     }
   }
 
+  const labFooter = await coachingLabFooterHtml(course);
+
   mountCoursePlayer({
     container,
     courseTitle: String(course.short || course.title || '').toUpperCase(),
+    // Opt-in per course, off the course doc, so it moves without a deploy.
+    // Owner preview bypasses it the same way it bypasses draft filtering:
+    // an admin checking a course should not have to complete it first.
+    sequential: course.sequentialUnlock === true && !includeDrafts,
     modules: modules.map((m) => {
       // In preview, a draft is labelled everywhere it appears so the owner is
       // never left guessing which lessons members can actually reach.
@@ -281,7 +337,7 @@ export async function mountFirestoreCourse(course, { startAt, includeDrafts = fa
     // preview never offers the certificate.
     certificateHref: includeDrafts ? null : certificateHref,
     ...(extras && extras.moduleHeaderHtml ? { moduleHeaderHtml: extras.moduleHeaderHtml } : {}),
-    ...(extras && extras.sidebarFooterHtml ? { sidebarFooterHtml: extras.sidebarFooterHtml } : {}),
+    ...(labFooter ? { sidebarFooterHtml: () => labFooter } : {}),
     startAt
   });
 }

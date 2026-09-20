@@ -188,20 +188,46 @@ async function main() {
   }, { merge: true });
   console.log('config/certification seeded');
 
+  // The practice partner channel. The course is self-paced, so students never
+  // share a calendar and the old fixed peer triad cannot work; they pair off
+  // here instead. Unlisted and private, so nobody outside the program sees it
+  // or gets a "Request access" button for something only enrolling can open.
+  //
+  // Created here rather than in the community console because channel writes
+  // are owner-only in the rules, and the Admin SDK bypasses that. The
+  // onUserEnrollmentWritten trigger adds each buyer on enrollment; run the
+  // backfillCourseChannelMembers callable once for anyone who enrolled before
+  // that trigger shipped.
+  await db.collection('channels').doc('clc-practice').set({
+    name: 'CLC Practice Partners',
+    description: 'Find a practice partner and run the module drills together.',
+    emoji: '\u{1F91D}',
+    listed: false,
+    visibility: 'private',
+    order: 90,
+    memberUids: admin.firestore.FieldValue.arrayUnion(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  console.log('channels/clc-practice seeded (unlisted, private)');
+
   // Everything above is data this script can write. Everything below needs a
   // decision only Anthony can make, so print it rather than leave it buried in
   // TODO comments that nobody re-reads after the run.
   console.log('\nSeeded. Still required before the Life Coach can sell:');
-  console.log('  1. Cohort dates on courses/1p-clc: enrollCloseAt, startAt,');
-  console.log('     callDay, callTime (all placeholders right now).');
+  console.log('  1. Coaching lab on courses/1p-clc: lab.schedule and lab.nextAt,');
+  console.log('     set in /manage-courses.html. It is a standing drop-in call,');
+  console.log('     not a cohort session, so there is no start date or seat cap.');
   console.log('  2. Zoom link on courses/1p-clc/private/cohort: joinUrl (empty).');
-  console.log('  3. Modules 2-8 are seeded as DRAFTS, so members see only');
-  console.log('     module 1. Publish each one in /manage-courses.html as its');
-  console.log('     week opens. There is no automatic drip: a module stays');
-  console.log('     invisible until that toggle is flipped.');
-  console.log('  4. STRIPE_WEBHOOK_SECRET must be a real whsec_ value, or a');
+  console.log('     Use a recurring meeting link.');
+  console.log('  3. Modules unlock in order as members complete them');
+  console.log('     (sequentialUnlock on the course doc). All eight are');
+  console.log('     published, so nothing needs flipping week by week.');
+  console.log('  4. Pin a board post in the CLC Practice Partners channel telling');
+  console.log('     students what to post: timezone, two windows they are free,');
+  console.log('     and which module they are on.');
+  console.log('  5. STRIPE_WEBHOOK_SECRET must be a real whsec_ value, or a');
   console.log('     purchase is charged and never enrolled. See the runbook.');
-  console.log('  5. Set the course status to live in /manage-courses.html.');
+  console.log('  6. Set the course status to live in /manage-courses.html.');
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });

@@ -101,6 +101,9 @@ async function renderHoursTab(root) {
     console.warn('[clc] hours load failed', e);
   }
 
+  // The stored values are still 'cohort' and 'outside'. Those key names are
+  // historical, from when this course ran as a cohort. They are not worth a
+  // data migration and a rules deploy to rename; only the labels changed.
   const isOutside = (e) => String(e.clientType || 'cohort') === 'outside';
   const approvedMin = entries.filter((e) => e.status === 'approved')
     .reduce((s, e) => s + (Number(e.minutes) || 0), 0);
@@ -117,7 +120,7 @@ async function renderHoursTab(root) {
     <div style="display:flex;gap:12px;align-items:center;padding:12px 14px;background:#111;border:1px solid #1E1E1E;border-radius:8px;">
       <div style="flex:1;min-width:0;">
         <div style="color:#EEE;font-size:13px;">${esc(e.clientLabel || 'Practice client')}</div>
-        <div style="color:#777;font-size:11px;">${esc(e.date || '')} · ${isOutside(e) ? 'Outside the cohort' : 'Classmate'}${e.notes ? ' · ' + esc(e.notes) : ''}</div>
+        <div style="color:#777;font-size:11px;">${esc(e.date || '')} · ${isOutside(e) ? 'Outside the program' : 'Practice partner'}${e.notes ? ' · ' + esc(e.notes) : ''}</div>
       </div>
       <div style="color:#CCC;font-size:13px;flex-shrink:0;">${fmtHours(Number(e.minutes) || 0)}</div>
       ${statusChip(e.status)}
@@ -126,7 +129,7 @@ async function renderHoursTab(root) {
   slot.innerHTML = `
     <div style="margin-bottom:20px;">
       <h2 style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:#fff;margin-bottom:6px;letter-spacing:0.5px;">PRACTICE HOUR LOG</h2>
-      <p style="color:#AAAAAA;font-size:13px;margin:0;">Certification requires ${REQUIRED_HOURS} approved practice coaching hours, and at least ${REQUIRED_OUTSIDE_HOURS} of them with clients who are not in this cohort. Log each session here; your program admin reviews and approves them.</p>
+      <p style="color:#AAAAAA;font-size:13px;margin:0;">Certification requires ${REQUIRED_HOURS} approved practice coaching hours, and at least ${REQUIRED_OUTSIDE_HOURS} of them with clients who are not in the program. Practice partners build the mechanics. People who never read the rubric are where you find out whether they hold. Log each session here; your program admin reviews and approves them.</p>
     </div>
     <div style="background:#111;border:1px solid #222;border-radius:12px;padding:18px;margin-bottom:18px;">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:#AAA;margin-bottom:8px;">
@@ -137,7 +140,7 @@ async function renderHoursTab(root) {
         <div style="height:100%;width:${pct}%;background:#E60306;"></div>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:12px;color:#AAA;margin-bottom:8px;">
-        <span>${fmtHours(approvedOutsideMin)} of ${REQUIRED_OUTSIDE_HOURS}h from outside the cohort</span>
+        <span>${fmtHours(approvedOutsideMin)} of ${REQUIRED_OUTSIDE_HOURS}h with clients outside the program</span>
         <span>${outsidePct}%</span>
       </div>
       <div style="height:8px;background:#0D0D0D;border-radius:4px;overflow:hidden;">
@@ -157,8 +160,8 @@ async function renderHoursTab(root) {
       </label>
       <label style="grid-column:1/-1;font-size:12px;color:#AAA;">Who did you coach?
         <select name="clientType" required style="display:block;width:100%;margin-top:4px;background:#0D0D0D;border:1px solid #2A2A2A;border-radius:8px;color:#fff;padding:8px 10px;font-size:13px;box-sizing:border-box;">
-          <option value="cohort">A classmate in this cohort</option>
-          <option value="outside">Someone outside the cohort</option>
+          <option value="cohort">A practice partner in the program</option>
+          <option value="outside">A client outside the program</option>
         </select>
       </label>
       <label style="grid-column:1/-1;font-size:12px;color:#AAA;">Session notes (optional)
@@ -477,38 +480,19 @@ function renderExam(root, course, exam) {
   });
 }
 
-// ─── Sidebar footer: live call ────────────────────────────────────────────
-
-async function cohortFooterHtml(course) {
-  const cohort = (course && course.cohort) || {};
-  let joinUrl = null;
-  try {
-    if (firebaseReady && auth.currentUser) {
-      const snap = await getDoc(doc(db, 'courses', CLC_SLUG, 'private', 'cohort'));
-      if (snap.exists()) joinUrl = snap.data().joinUrl || null;
-    }
-  } catch (e) { /* not enrolled or not configured */ }
-  const when = [cohort.callDay, cohort.callTime].filter(Boolean).join(' · ');
-  if (!when && !joinUrl) return '';
-  return `
-    <div style="padding:12px;background:#111;border:1px solid #222;border-radius:10px;">
-      <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:6px;">LIVE CALL</div>
-      ${when ? `<div style="color:#CCC;font-size:12px;margin-bottom:${joinUrl ? '8px' : '0'};">${esc(when)}</div>` : ''}
-      ${joinUrl ? `<a href="${esc(joinUrl)}" target="_blank" rel="noopener" style="color:#fff;background:#E60306;border-radius:6px;padding:6px 12px;font-size:12px;text-decoration:none;display:inline-block;">Join the call →</a>` : ''}
-    </div>`;
-}
+// The coaching lab footer used to live here. It is generic now — any course
+// can have a standing drop-in call — so it moved to coachingLabFooterHtml in
+// course-renderer.js and this module no longer supplies a sidebar footer.
 
 // ─── Entry point ──────────────────────────────────────────────────────────
 
 /**
  * Extras merged into the mountCoursePlayer config by course-renderer.js when
- * the course is 1p-clc. Returns { tabs, moduleHeaderHtml, sidebarFooterHtml }.
+ * the course is 1p-clc. Returns { tabs, moduleHeaderHtml }.
  */
 export async function clcPlayerExtras(course) {
-  const footer = await cohortFooterHtml(course);
   return {
     moduleHeaderHtml: (pm) => alignBarHtml(alignKeyFromText(pm && pm.eyebrow)),
-    sidebarFooterHtml: footer ? () => footer : null,
     tabs: [
       {
         id: 'clc-hours',

@@ -426,22 +426,29 @@ async function renderUpcoming() {
     });
   } catch (e) { /* non-fatal */ }
 
-  // CLC live call, for enrolled members.
+  // CLC coaching lab, for enrolled members. The course is self-paced, so this
+  // is a standing drop-in call rather than a cohort's weekly session: same
+  // link every time, join at whatever point you have reached.
   try {
     if (isEnrolled('1p-clc')) {
       const courseSnap = await getDoc(doc(db, 'courses', '1p-clc'));
-      const cohort = courseSnap.exists() ? (courseSnap.data().cohort || {}) : {};
+      const data = courseSnap.exists() ? courseSnap.data() : {};
+      const lab = data.lab || {};
+      const cohort = data.cohort || {};
       let joinUrl = null;
       try {
         const priv = await getDoc(doc(db, 'courses', '1p-clc', 'private', 'cohort'));
         if (priv.exists()) joinUrl = priv.data().joinUrl || null;
       } catch (e) {}
-      const when = [cohort.callDay, cohort.callTime].filter((v) => v && v !== 'TBD').join(' · ');
+      // Falls back to the old cohort call fields so a course configured before
+      // the lab fields existed still shows a schedule.
+      const when = lab.schedule
+        || [cohort.callDay, cohort.callTime].filter((v) => v && v !== 'TBD').join(' · ');
       if (when || joinUrl) {
         rows.push({
           when: null,
-          whenLabel: when || 'Live call',
-          title: 'Life Coach Certification live call',
+          whenLabel: when || 'Drop in any time',
+          title: 'Life Coach Certification coaching lab',
           joinUrl,
           href: '/courses.html?course=1p-clc'
         });

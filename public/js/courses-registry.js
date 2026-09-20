@@ -86,6 +86,10 @@ export const COURSES = [
     // /course.html landing page, which would offer an enroll button for
     // something that is not for sale yet.
     landingPath: '/clc',
+    // A.L.I.G.N. is a sequence, not five topics you can shuffle, and module 2
+    // says outright that you never build on a stage you skipped. So the course
+    // is self-paced but ordered: the next module opens when this one is done.
+    sequentialUnlock: true,
     eyebrow: 'Certification \u00b7 16 Weeks',
     category: 'Leadership & Coaching',
     price: 3497,

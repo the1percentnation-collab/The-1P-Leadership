@@ -16,6 +16,8 @@
 //     labels?,              // { complete, completeLast, completed, completedLast }
 //     certificateHref?,     // when every module is done, the last module shows a
 //                           // completion panel and the footer CTA links here
+//     sequential?,          // true → a module opens only once the one before it
+//                           // is complete. Self-paced but ordered.
 //     startAt               // module id to open first
 //   })
 
@@ -54,13 +56,45 @@ export function mountCoursePlayer(config) {
     sidebarOpen: window.innerWidth > 900
   };
 
-  if (config.startAt != null && modules.some((m) => m.id === config.startAt)) {
-    state.activeId = config.startAt;
-  }
+  // startAt is applied after the lock helpers are defined, further down, so a
+  // deep link into a locked module falls back to the furthest one that is
+  // open rather than opening a module the member has not earned.
 
   const idx = () => modules.findIndex((m) => m.id === state.activeId);
   const current = () => modules[idx()];
   const completedCount = () => modules.filter((m) => progress.isComplete(m.id)).length;
+
+  // Sequential unlock. The frontier is the first module the member has not
+  // finished; everything up to and including it is open, everything after is
+  // locked. Finishing the frontier moves it forward by one.
+  //
+  // This is a pacing affordance, not a paywall. An enrolled member can read
+  // the whole modules subcollection straight from the database — the rules
+  // grant the collection, not individual modules. The point is to stop people
+  // skipping a stage the next one builds on, which is the framework's own
+  // rule, not to withhold anything they paid for.
+  const frontier = () => {
+    if (!config.sequential) return modules.length - 1;
+    for (let i = 0; i < modules.length; i++) {
+      if (!progress.isComplete(modules[i].id)) return i;
+    }
+    return modules.length - 1;
+  };
+  const isLockedIndex = (i) => {
+    if (config.sequential !== true) return false;
+    // Never take back a module someone already finished. Progress predating
+    // this flag, or a module reordered in the builder, would otherwise lock a
+    // member out of work they have already done.
+    if (progress.isComplete(modules[i].id)) return false;
+    return i > frontier();
+  };
+
+  if (config.startAt != null) {
+    const want = modules.findIndex((m) => m.id === config.startAt);
+    if (want >= 0) {
+      state.activeId = isLockedIndex(want) ? modules[frontier()].id : config.startAt;
+    }
+  }
 
   function sidebarHtml() {
     const done = completedCount();
@@ -69,12 +103,19 @@ export function mountCoursePlayer(config) {
     const items = modules.map((m, i) => {
       const isActive = m.id === state.activeId;
       const isDone = progress.isComplete(m.id);
+      const locked = isLockedIndex(i);
+      // A locked module stays in the list with the reason it is locked.
+      // Hiding it would read as missing content rather than as pacing.
+      const meta = locked
+        ? `Finish ${esc(modules[i - 1] ? modules[i - 1].title : 'the previous module')} first`
+        : esc(m.meta || m.duration || '');
       return `
-        <button class="cp-mod ${isActive ? 'is-active' : ''} ${isDone ? 'is-done' : ''}" data-mod="${esc(m.id)}">
-          <span class="cp-mod-num">${isDone ? '✓' : i + 1}</span>
+        <button class="cp-mod ${isActive ? 'is-active' : ''} ${isDone ? 'is-done' : ''} ${locked ? 'is-locked' : ''}"
+                data-mod="${esc(m.id)}"${locked ? ' aria-disabled="true"' : ''}>
+          <span class="cp-mod-num">${isDone ? '\u2713' : (locked ? '\u{1F512}' : i + 1)}</span>
           <span class="cp-mod-text">
             <span class="cp-mod-title">${esc(m.title)}</span>
-            <span class="cp-mod-meta">${esc(m.meta || m.duration || '')}</span>
+            <span class="cp-mod-meta">${meta}</span>
           </span>
         </button>`;
     }).join('');
@@ -165,7 +206,13 @@ export function mountCoursePlayer(config) {
   }
 
   function goTo(id) {
-    if (!modules.some((m) => m.id === id)) return;
+    const i = modules.findIndex((m) => m.id === id);
+    if (i < 0) return;
+    // Every navigation path funnels through here, so one check covers the
+    // sidebar, the prev button, and the advance after marking complete. That
+    // last one is safe: markComplete updates the progress set before this
+    // runs, so the next module is already unlocked by the time we arrive.
+    if (isLockedIndex(i)) return;
     state.activeId = id;
     state.tab = tabs.length ? tabs[0].id : null;
     if (progress.onNavigate) { try { progress.onNavigate(id); } catch (e) {} }

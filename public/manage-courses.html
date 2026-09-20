@@ -331,43 +331,35 @@
               <div id="settings-result" style="margin-top:10px;"></div>
 
               <div style="margin-top:28px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.12);">
-                <h4 style="margin:0 0 6px;">Cohort &amp; live calls</h4>
+                <h4 style="margin:0 0 6px;">Coaching lab</h4>
                 <p style="font-size:12px; color:var(--gray-light); margin:0 0 14px;">
-                  Only used by courses sold as a cohort. The sales page hides any line you leave
-                  blank, so a half-filled cohort never shows a broken half sentence.
+                  The standing drop-in call for a self-paced course. Members join at whatever
+                  point they have reached, so there is no start date and no seat count. The
+                  sales page hides any line you leave blank.
                 </p>
                 <div class="inline-form" style="flex-wrap:wrap;">
-                  <div class="field"><label for="f-enrollclose">Enrollment closes</label><input id="f-enrollclose" type="datetime-local"></div>
-                  <div class="field"><label for="f-startat">Module 1 drops</label><input id="f-startat" type="datetime-local"></div>
-                  <div class="field" style="max-width:110px;"><label for="f-capacity">Seats</label><input id="f-capacity" type="number" step="1" min="0"></div>
-                </div>
-                <div class="inline-form" style="flex-wrap:wrap; margin-top:12px;">
-                  <div class="field" style="max-width:190px;">
-                    <label for="f-callday">Live call day</label>
-                    <select id="f-callday">
-                      <option value="">Not set</option>
-                      <option>Monday</option>
-                      <option>Tuesday</option>
-                      <option>Wednesday</option>
-                      <option>Thursday</option>
-                      <option>Friday</option>
-                      <option>Saturday</option>
-                      <option>Sunday</option>
-                    </select>
+                  <div class="field" style="min-width:260px;">
+                    <label for="f-labschedule">When it runs</label>
+                    <input id="f-labschedule" type="text" placeholder="Every other Tuesday, 7:00pm CT">
                   </div>
-                  <div class="field" style="max-width:190px;"><label for="f-calltime">Live call time</label><input id="f-calltime" type="text" placeholder="7:00pm CT"></div>
+                  <div class="field"><label for="f-labnext">Next session</label><input id="f-labnext" type="datetime-local"></div>
+                </div>
+                <div class="mc-field-note">
+                  "When it runs" is what members read. "Next session" is the one date shown
+                  alongside it; update it as you go. If it slips into the past it simply stops
+                  showing, and the schedule line stands on its own.
                 </div>
                 <div class="field" style="margin-top:12px;">
                   <label for="f-joinurl">Zoom join link</label>
                   <input id="f-joinurl" type="url" placeholder="https://us02web.zoom.us/j/…">
                 </div>
                 <div class="mc-field-note">
-                  Use a recurring meeting link, since members keep it for the whole cohort. It is
-                  stored privately and only enrolled members and admins can read it. It never
-                  appears on the public sales page.
+                  Use a recurring meeting link, since members keep it for as long as they are
+                  enrolled. It is stored privately and only enrolled members and admins can read
+                  it. It never appears on the public sales page.
                 </div>
                 <div style="display:flex; gap:10px; margin-top:16px;">
-                  <button class="btn btn-primary" type="button" id="btn-save-cohort">Save cohort settings</button>
+                  <button class="btn btn-primary" type="button" id="btn-save-cohort">Save coaching lab</button>
                 </div>
                 <div id="cohort-result" style="margin-top:10px;"></div>
               </div>
