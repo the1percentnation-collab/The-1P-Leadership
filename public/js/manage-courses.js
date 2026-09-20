@@ -12,6 +12,9 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { COURSES } from './courses-registry.js';
 import { loadCourses, getCourses, priceInfo } from './courses-data.js';
+import {
+  launchDateMs, toDateInput, fromDateInput, fmtLaunchDate, launchCountdown, hasLaunched
+} from './launch-date.js';
 import { functions } from './firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import {
@@ -74,6 +77,15 @@ const STATUS_OPTS = [
 
 const STATUS_LABELS = { live: 'Live', 'coming-soon': 'Coming soon', inactive: 'Inactive', bundle: 'Bundle' };
 
+// The one-line hint beside the date input. It says what the public will
+// actually see, including the two states that are easy to create by accident:
+// no date on a coming-soon course, and a date that has already gone by.
+function launchNote(ms) {
+  if (ms == null) return 'No date set — the homepage banner stays hidden.';
+  if (hasLaunched(ms)) return 'This date has passed. Set the course Live, or pick a new date.';
+  return `Opens ${fmtLaunchDate(ms)} · ${launchCountdown(ms)}`;
+}
+
 function courseCardHtml(c) {
   const slug = escapeHtml(c.slug);
   const cur = c.status || 'coming-soon';
@@ -98,6 +110,20 @@ function courseCardHtml(c) {
     STATUS_OPTS.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('') +
     `</select>`;
 
+  // Launch date — only meaningful while a course is coming soon, so the row
+  // is rendered for every card but shown only for that status. Rendering it
+  // unconditionally is what lets the status dropdown reveal it instantly
+  // instead of waiting on a save and a re-render.
+  const launchMs = launchDateMs(c);
+  const launchRow = `
+        <label class="mc-launch" data-launch-row="${slug}"${cur === 'coming-soon' ? '' : ' hidden'}>
+          <span class="mc-launch-label">Launches</span>
+          <input type="date" class="mc-launch-input" data-launch="${slug}"
+                 value="${escapeHtml(toDateInput(launchMs))}"
+                 title="The date this course opens. Shown on the public homepage.">
+          <span class="mc-launch-note" data-launch-note="${slug}">${escapeHtml(launchNote(launchMs))}</span>
+        </label>`;
+
   return `
     <div class="mc-card" data-slug="${slug}">
       <div class="mc-card-cover" data-open="${slug}" title="Open the course builder">
@@ -115,6 +141,7 @@ function courseCardHtml(c) {
       </div>
       <div class="mc-card-actions">
         ${statusSel}
+        ${launchRow}
         <label class="mc-switch" title="Show this course in the Courses section of the public homepage">
           <input type="checkbox" data-onsite="${slug}"${c.showOnSite !== false ? ' checked' : ''}>
           <span class="mc-switch-track"></span>
@@ -155,6 +182,8 @@ function renderDashboard() {
     b.addEventListener('click', () => deleteCourse(b.dataset.delCourse)));
   grid.querySelectorAll('[data-status]').forEach((sel) =>
     sel.addEventListener('change', () => setCourseStatus(sel.dataset.status, sel.value)));
+  grid.querySelectorAll('[data-launch]').forEach((input) =>
+    input.addEventListener('change', () => setCourseLaunchDate(input.dataset.launch, input.value, input)));
   grid.querySelectorAll('[data-onsite]').forEach((cb) =>
     cb.addEventListener('change', () => setCourseOnSite(cb.dataset.onsite, cb.checked, cb)));
   grid.querySelectorAll('[data-kebab-toggle]').forEach((b) =>
@@ -195,6 +224,11 @@ async function deleteCourse(slug) {
 // Quick status flip from a dashboard card.
 async function setCourseStatus(slug, status) {
   if (!slug) return;
+  // Reveal (or hide) the launch-date row immediately rather than after the
+  // round-trip: picking "Coming soon" and then waiting to be told where to
+  // type the date reads as a broken control.
+  const row = document.querySelector(`[data-launch-row="${CSS.escape(slug)}"]`);
+  if (row) row.hidden = status !== 'coming-soon';
   try {
     await setDoc(doc(db, 'courses', slug), {
       status,
@@ -204,6 +238,39 @@ async function setCourseStatus(slug, status) {
     await refreshCourses();
   } catch (e) {
     alert(`Could not update status: ${e && e.message ? e.message : e}`);
+  }
+}
+
+// The launch date a coming-soon course advertises. Stored as a real Timestamp
+// at local midnight (see launch-date.js on why the string is never stored
+// raw), and cleared to null when the field is emptied so the homepage banner
+// actually goes away rather than keeping a stale date.
+//
+// No full re-render: the note beside the input is its own feedback, and
+// rebuilding the grid mid-edit would steal focus from the field. The merged
+// cache is still force-reloaded so the rest of the console agrees.
+async function setCourseLaunchDate(slug, value, input) {
+  if (!slug) return;
+  const date = fromDateInput(value);
+  if (value && !date) {
+    alert('That date could not be read. Please pick one from the calendar.');
+    return;
+  }
+  const note = document.querySelector(`[data-launch-note="${CSS.escape(slug)}"]`);
+  try {
+    await setDoc(doc(db, 'courses', slug), {
+      launchDate: date,
+      updatedAt: serverTimestamp(),
+      updatedBy: _userEmail
+    }, { merge: true });
+    await loadCourses({ force: true });
+    if (note) note.textContent = launchNote(date ? date.getTime() : null);
+  } catch (e) {
+    // Put the field back to whatever is actually stored, so the console never
+    // shows a date the site is not using.
+    const current = getCourses({ includeInactive: true }).find((c) => c.slug === slug);
+    if (input) input.value = toDateInput(launchDateMs(current));
+    alert(`Could not update the launch date: ${e && e.message ? e.message : e}`);
   }
 }
 

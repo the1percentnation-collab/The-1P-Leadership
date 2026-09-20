@@ -627,6 +627,60 @@
       color: #fff;
       padding: 3px 9px;
     }
+    /* ── Launch banner ──
+       Announces the next course to open. Red-edged rather than red-filled:
+       it sits directly under the hero and a solid bar there would compete
+       with the hero's own call to action instead of supporting it. */
+    .launch-banner {
+      border-top: 1px solid rgba(230,3,6,0.35);
+      border-bottom: 1px solid rgba(230,3,6,0.35);
+      background: linear-gradient(90deg, rgba(230,3,6,0.10) 0%, rgba(230,3,6,0.03) 55%, transparent 100%);
+    }
+    .launch-banner-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding-top: 18px;
+      padding-bottom: 18px;
+    }
+    .launch-banner-copy {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      min-width: 0;
+    }
+    .launch-banner-label {
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--red); white-space: nowrap;
+    }
+    .launch-banner-title {
+      font-family: var(--font-display); font-size: 26px; letter-spacing: 0.03em;
+      line-height: 1.05; color: var(--white);
+    }
+    .launch-banner-date {
+      font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.7); white-space: nowrap;
+    }
+    .launch-banner-cta {
+      flex-shrink: 0;
+      background: var(--red); color: var(--white);
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em;
+      text-transform: uppercase; text-decoration: none;
+      padding: 11px 20px; border-radius: 3px;
+      transition: background 0.2s;
+    }
+    .launch-banner-cta:hover { background: #B30205; }
+    @media (max-width: 680px) {
+      /* Stack rather than wrap mid-sentence, and let the CTA take the row so
+         it stays a thumb-sized target. */
+      .launch-banner-inner { flex-direction: column; align-items: flex-start; }
+      .launch-banner-title { font-size: 22px; }
+      .launch-banner-cta { width: 100%; text-align: center; }
+    }
+
     .course-body { padding: 24px; flex: 1; display: flex; flex-direction: column; }
     .course-cat {
       font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.18em;
@@ -1906,6 +1960,14 @@
     </div>
   </div>
 </section>
+
+<!-- LAUNCH BANNER
+     The next course to open, announced above the fold. Filled by
+     /js/home-courses.js from the launchDate the owner sets on the course card
+     in /manage-courses.html. Starts hidden and stays hidden when no
+     coming-soon course has a date, so the page loses nothing when there is
+     nothing to announce. -->
+<section id="launch-banner" class="launch-banner" hidden></section>
 
 <!-- SOCIAL PROOF BAR -->
 <div class="proof-bar">

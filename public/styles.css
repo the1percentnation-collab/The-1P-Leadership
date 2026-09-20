@@ -1880,6 +1880,50 @@ gmp-place-autocomplete,
 
 .mc-card-actions .row-status { max-width: 130px; }
 
+/* Launch date — shown on a card only while the course is Coming soon.
+   Takes the full width of the wrapped actions row so the date input and its
+   hint sit on their own line rather than fighting the buttons for space. */
+.mc-launch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-basis: 100%;
+  cursor: pointer;
+}
+
+.mc-launch-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+}
+
+.mc-launch-input {
+  background: var(--black-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 12px;
+  padding: 6px 8px;
+  /* The dark theme leaves the native picker glyph almost invisible. */
+  color-scheme: dark;
+}
+
+.mc-launch-input:focus {
+  outline: none;
+  border-color: var(--border-red);
+}
+
+.mc-launch-note {
+  flex-basis: 100%;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--gray-mid);
+}
+
 /* ── Builder header ── */
 .mc-bhead {
   display: flex;
