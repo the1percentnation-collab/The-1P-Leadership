@@ -10,7 +10,8 @@ The order matters. Each step assumes the ones above it are done.
 | 1P Certified Leader Coach ($497) | ✅ 7 modules | ❌ | slug fix + Stripe + flip live |
 | I Can't: The Course | ✅ 11 modules | n/a | sold only inside the bundle |
 | 1P Certified Life Coach ($3,497) | ✅ 8 modules seeded + exam bank | ❌ | status is `coming-soon`; cohort dates + Stripe |
-| Mindset Foundations, Business Alignment, Faith & Leadership, Performance & Discipline | ❌ none | ❌ | copy only, no lessons |
+| Mindset Foundations ($197) | ✅ 7 modules written | ❌ | not seeded yet; Stripe + flip live |
+| Business Alignment, Faith & Leadership, Performance & Discipline | ❌ none | ❌ | outline only, no lessons |
 | Silence The Voice | 6 modules | ❌ | superseded draft, archived by step 1 |
 
 ## 1. Fix the CLC slug collision — ALREADY DONE
@@ -171,6 +172,50 @@ the codebase: a module stays invisible until that toggle is flipped by hand. If
 you would rather ship all eight at once, publish them all in the builder after
 seeding, and drop the weekly gating from how you sell it.
 
+## 6. Seed Mindset Foundations
+
+**The curriculum is written and has never been seeded.** Seven modules live in
+`scripts/course-content/mindset-foundations/`: Start Here with the 25 statement
+Mindset Baseline Assessment, five teaching modules each ending in a rewirement,
+and the four week 1% Challenge with the retake.
+
+```bash
+cd scripts
+npm install                                        # one time
+export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/key.json
+node seed-course.js mindset-foundations --dry-run  # prints the plan, writes nothing
+node seed-course.js mindset-foundations            # commits it
+```
+
+If the run refuses because `courses/mindset-foundations` does not exist, open
+the `...` menu in `/manage-courses.html` and choose **Seed built-in courses to
+database**. It creates a doc for every registry course that does not have one
+yet and skips the ones that do. Then re-run the seed.
+
+`seed-course.js` is the reusable one. It takes a slug, reads the matching
+content pack, and writes lesson content only. It refuses to run if
+`courses/mindset-foundations` does not exist, or is titled something else, or
+already holds lessons from another program. It will not touch price, copy or
+status, so it cannot put anything on sale by accident.
+
+All seven modules seed as **published**, unlike the Life Coach. This course is
+self-paced with no weekly drip, so a draft module would be an invisible hole in
+the middle of a $197 product. The course `status` is what keeps buyers out
+until you are ready.
+
+Before you flip it live:
+
+- Read modules 1 and 7 side by side. The 25 assessment statements are identical
+  on purpose, and `tests/course-content.test.cjs` fails if they ever drift. Edit
+  one, edit both.
+- Confirm `STRIPE_WEBHOOK_SECRET` per step 2, or a purchase is charged and never
+  enrolled.
+- Set `courses/mindset-foundations` to `live` in `/manage-courses.html`.
+
+The other three self-paced courses (Business Alignment $297, Faith & Leadership
+$197, Performance & Discipline $197) are now content work only. The pipeline,
+the seeder and the tests are built. See `docs/course-content-pipeline.md`.
+
 ## Known open items
 
 - The A.L.I.G.N. letters in `public/js/align.js` were written into code, not
@@ -182,3 +227,9 @@ seeding, and drop the weekly gating from how you sell it.
   the Zoom scheduler URL is hardcoded as a fallback.
 - The Social Media Matrix is priced and promoted but sits at `waitlist` with no
   sessions scheduled and no join link.
+- Four courses promise a scored baseline assessment, a final retake and daily
+  1% Challenge tracking. There is no assessment engine or habit tracker in the
+  codebase. Mindset Foundations delivers all three as workbook instruments the
+  member scores themselves, which is honest but stores no history and renders no
+  before and after. Building it properly is a portal feature, not a content
+  problem. See the last section of `docs/course-content-pipeline.md`.

@@ -32,8 +32,8 @@ The project (`the-1p-leadership`) is read from `.firebaserc` automatically by
 credential carries no project id, so without it a script cannot tell which
 project it is pointed at.
 
-The two scripts you actually need to run, `fix-clc-slugs.js` and
-`seed-clc.js`, both print the project before doing anything and prove the
+The scripts you actually need to run, `fix-clc-slugs.js`, `seed-clc.js` and
+`seed-course.js`, all print the project before doing anything and prove the
 credentials work before they write. The three unrun seeds
 (`seed-booking.js`, `seed-resale-products.js`, `seed-financial-partner.js`)
 still call `admin.initializeApp()` bare, so they need option (a), a service
@@ -77,3 +77,29 @@ gcloud firestore export gs://the-1p-leadership.appspot.com/backups/$(date +%F)
 `courses/1p-clc` becomes the Life Coach at $3,497 with no lessons yet. Neither
 can be bought until Stripe is connected. See `docs/launch-runbook.md` for the
 rest of the sequence.
+
+## seed-course.js
+
+The reusable lesson seeder. Takes a course slug, reads the matching content
+pack from `course-content/{slug}/`, and writes lesson content into
+`courses/{slug}/modules/{id}`.
+
+```bash
+node seed-course.js --list                          # available content packs
+node seed-course.js mindset-foundations --dry-run   # prints the plan, writes nothing
+node seed-course.js mindset-foundations             # commits it
+```
+
+Safe to re-run: every module writes with merge, so re-running is how you pick
+up edited lesson copy. Member progress is never touched.
+
+It refuses to run if the course doc does not exist, is titled something other
+than the pack expects, or already holds lessons from another program. It writes
+lesson content only, never price, copy or status, so it cannot put a product on
+sale by accident.
+
+`seed-clc.js` stays separate. The Life Coach is a cohort program with dates, an
+exam bank, a coupon and certification config, and its modules seed as drafts
+because its weeks open one at a time. None of that belongs in the generic path.
+
+How to build a new pack: `docs/course-content-pipeline.md`.

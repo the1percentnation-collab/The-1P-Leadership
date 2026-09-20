@@ -390,12 +390,15 @@ export const COURSES = [
     short: 'Mindset',
     subtitle: 'Rewire how you relate to success, setbacks, and self.',
     status: 'coming-soon',
+    // Lessons live in Firestore, seeded from scripts/course-content/
+    // mindset-foundations by `node seed-course.js mindset-foundations`.
+    contentSource: 'firestore',
     eyebrow: 'Self-paced · 5 Modules',
     category: 'Mindset & Personal Growth',
     price: 197,
     priceLabel: '$197',
     whatYoullLearn: [
-      'Take a mindset baseline assessment first — so the change you make is measurable, not a feeling.',
+      'Take a mindset baseline assessment first, so the change you make is measurable, not a feeling.',
       'See the operating system underneath your behavior: how beliefs drive decisions before you notice.',
       'Redefine success on your terms instead of inheriting someone else\'s scoreboard.',
       'Build a setback response that turns failure into data instead of identity.',
@@ -430,15 +433,15 @@ export const COURSES = [
       {
         title: 'The Five Foundations',
         lessons: [
-          { t: 'Module 1 — The Operating System: how beliefs drive behavior', d: '20 min' },
+          { t: 'Module 1: The Operating System · how beliefs drive behavior', d: '20 min' },
           { t: 'Rewirement: The decision replay', d: '8 min', kind: 'practice' },
-          { t: 'Module 2 — Success, Redefined: whose scoreboard are you on?', d: '22 min' },
+          { t: 'Module 2: Success, Redefined · whose scoreboard are you on?', d: '22 min' },
           { t: 'Rewirement: Write your own definition', d: '10 min', kind: 'practice' },
-          { t: 'Module 3 — The Setback Response: failure as data', d: '20 min' },
+          { t: 'Module 3: The Setback Response · failure as data', d: '20 min' },
           { t: 'Rewirement: The 24-hour reset rule', d: '8 min', kind: 'practice' },
-          { t: 'Module 4 — Self-Talk & Identity: the voice becomes the person', d: '22 min' },
+          { t: 'Module 4: Self-Talk & Identity · the voice becomes the person', d: '22 min' },
           { t: 'Rewirement: The evidence journal', d: '10 min', kind: 'practice' },
-          { t: 'Module 5 — The Consistency Loop: make showing up automatic', d: '20 min' },
+          { t: 'Module 5: The Consistency Loop · make showing up automatic', d: '20 min' },
           { t: 'Rewirement: Your minimum daily rep', d: '8 min', kind: 'practice' }
         ]
       },

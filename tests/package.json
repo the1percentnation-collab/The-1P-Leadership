@@ -8,8 +8,9 @@
     "test:telnyx": "node telnyx-signature.test.cjs && node telnyx-send.test.cjs && node telnyx-texml.test.cjs && node call-gate.test.cjs && node sms-consent.test.cjs && node sms-gate.test.cjs && node consent-labels.test.cjs",
     "test:email": "node inbound-email.test.cjs",
     "test:indexes": "node firestore-indexes.test.cjs",
+    "test:courses": "node course-content.test.cjs",
     "test:crm": "node crm-freshness.test.cjs && node crm-assistant.test.cjs && node crm-ai-log.test.cjs",
-    "test": "npm run test:indexes && npm run test:telnyx && npm run test:email && npm run test:crm && npm run emulator"
+    "test": "npm run test:indexes && npm run test:courses && npm run test:telnyx && npm run test:email && npm run test:crm && npm run emulator"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
