@@ -1130,6 +1130,22 @@ service cloud.firestore {
       }
     }
 
+    // ────────────────────────────────────────────────────────────────
+    // Announcements — the owner-authored slides that lead the member
+    // dashboard. Distinct from the #announcements community channel: these
+    // carry an image, a CTA and a publish window, and they are curated
+    // rather than conversational.
+    //
+    // Members read; only owner/admin write. `active`, `publishAt` and
+    // `expiresAt` are filtered client-side after the query — an announcement
+    // scheduled for next week is not a secret, it simply has not been
+    // rendered yet, so there is nothing here worth a second index to hide.
+    // ────────────────────────────────────────────────────────────────
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAnyAdmin();
+    }
+
     // Site configuration. config/booking (the public booking page settings:
     // scheduler URL, current webinar event id) is world-readable so public
     // pages can render without auth; everything else under config

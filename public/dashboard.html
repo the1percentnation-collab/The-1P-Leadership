@@ -55,67 +55,88 @@
       <h1 id="hub-greeting">Welcome back.</h1>
       <div class="hub-quote-label"><span class="hub-quote-dot"></span>Quote of the day</div>
       <p id="hub-subtitle">Continue your work. Stay grounded in purpose. Move forward with intention — one percent better every day.</p>
+
+      <!-- Status chips: streak, level, courses, next call. Populated by hub.js;
+           stays empty (and invisible) until there is something true to say. -->
+      <div class="hub-statbar" id="hub-statbar"></div>
+
       <div class="academy-tagline">
         <strong>Redefining Success.</strong> Realigning Purpose.
       </div>
     </section>
 
+    <!-- Owner/admin only. getOwnerPulse rejects everyone else, so a member
+         never sees this section at all. -->
+    <section class="hub-pulse" id="hub-pulse" hidden>
+      <div class="academy-section-head">
+        <h2>This week at a glance</h2>
+        <a class="academy-section-meta" href="/crm.html" style="text-decoration:none;">Open CRM →</a>
+      </div>
+      <div class="hub-pulse-grid" id="hub-pulse-grid"></div>
+    </section>
+
+    <section class="hub-spotlight" id="hub-spotlight" hidden></section>
+
+    <section id="hub-nextup" hidden>
+      <div class="academy-section-head">
+        <h2>Your next step</h2>
+        <span class="academy-section-meta">Picked for you</span>
+      </div>
+      <div class="hub-nextup-grid" id="hub-nextup-list"></div>
+    </section>
+
     <section id="hub-continue-slot"></section>
 
-    <section id="hub-upcoming" hidden>
-      <div class="academy-section-head">
-        <h2>Upcoming</h2>
-        <a class="academy-section-meta" href="/events" style="text-decoration:none;">All events →</a>
+    <section class="academy-split">
+      <div>
+        <div class="academy-section-head">
+          <h2>Activity</h2>
+          <a class="academy-section-meta" href="/community.html" style="text-decoration:none;">View all →</a>
+        </div>
+        <div class="hub-activity-tabs" id="hub-activity-tabs" role="tablist" aria-label="Activity filter">
+          <button class="hub-activity-tab is-active" type="button" role="tab" aria-selected="true" data-feed="community">Community</button>
+          <button class="hub-activity-tab" type="button" role="tab" aria-selected="false" data-feed="you">For you</button>
+        </div>
+        <div id="hub-activity-list" class="academy-list">
+          <div class="academy-empty">Loading activity…</div>
+        </div>
       </div>
-      <div id="hub-upcoming-list"></div>
+
+      <div class="hub-rail">
+        <div class="academy-section-head">
+          <h2>Coming up</h2>
+          <a class="academy-section-meta" href="/events" style="text-decoration:none;">All events →</a>
+        </div>
+        <div id="hub-events-list" class="academy-list">
+          <div class="academy-empty">Loading events…</div>
+        </div>
+
+        <div class="academy-section-head" style="margin-top:28px;">
+          <h2>This week</h2>
+          <a class="academy-section-meta" href="/community.html" style="text-decoration:none;">Leaderboard →</a>
+        </div>
+        <div id="hub-leaderboard" class="academy-list">
+          <div class="academy-empty">Loading leaderboard…</div>
+        </div>
+      </div>
     </section>
 
     <section id="hub-progress" class="hub-progress" hidden>
       <div class="academy-section-head">
         <h2>Your course arc</h2>
-        <a class="academy-section-meta" href="/courses.html?course=1p-clc-leader" style="text-decoration:none;">Open course →</a>
+        <a class="academy-section-meta" id="hub-progress-link" href="/courses.html" style="text-decoration:none;">Open course →</a>
       </div>
+      <!-- Course switcher, shown only when enrolled in more than one course. -->
+      <div class="hub-course-switch" id="hub-course-switch" hidden></div>
       <div id="hub-module-map" class="hub-module-map"></div>
     </section>
 
-    <section>
+    <section id="hub-explore" hidden>
       <div class="academy-section-head">
-        <h2>Quick access</h2>
-        <span class="academy-section-meta">Explore the Academy</span>
+        <h2>Explore next</h2>
+        <a class="academy-section-meta" href="/courses.html" style="text-decoration:none;">All courses →</a>
       </div>
-      <div class="academy-grid">
-        <a class="academy-tile" href="/courses.html">
-          <span class="academy-tile-label">01 · Courses</span>
-          <span class="academy-tile-title">Your Courses</span>
-          <span class="academy-tile-desc">Pick up where you left off, or browse the Academy library and sign up for what's next.</span>
-          <span class="academy-tile-cta">Open courses</span>
-        </a>
-        <a class="academy-tile" href="/community.html">
-          <span class="academy-tile-label">02 · Community</span>
-          <span class="academy-tile-title">Members Community</span>
-          <span class="academy-tile-desc">Share wins, ask questions, and stay accountable alongside other members.</span>
-          <span class="academy-tile-cta">Enter community</span>
-          <span class="academy-tile-badge" id="hub-community-badge" style="display:none;">New</span>
-        </a>
-        <a class="academy-tile" href="/resources.html">
-          <span class="academy-tile-label">03 · Resources</span>
-          <span class="academy-tile-title">Resource Library</span>
-          <span class="academy-tile-desc">Frameworks, worksheets, and reference material to put the work into practice.</span>
-          <span class="academy-tile-cta">Browse resources</span>
-        </a>
-        <a class="academy-tile" href="/book-a-call.html">
-          <span class="academy-tile-label">Zoom · 1:1</span>
-          <span class="academy-tile-title">Book Time with Anthony</span>
-          <span class="academy-tile-desc">Pick a time on the calendar and meet on Zoom. Bring the real question.</span>
-          <span class="academy-tile-cta">Book a call</span>
-        </a>
-        <a class="academy-tile" href="/profile.html">
-          <span class="academy-tile-label">04 · Profile</span>
-          <span class="academy-tile-title">Your Profile</span>
-          <span class="academy-tile-desc">Update your display name, bio, and avatar. Manage how you show up in the community.</span>
-          <span class="academy-tile-cta">Edit profile</span>
-        </a>
-      </div>
+      <div class="hub-explore-row" id="hub-explore-list"></div>
     </section>
 
     <section id="hub-referral" class="hub-referral" hidden>
@@ -152,25 +173,37 @@
       </div>
     </section>
 
-    <section class="academy-split">
-      <div>
-        <div class="academy-section-head">
-          <h2>Latest in Community</h2>
-          <a class="academy-section-meta" href="/community.html" style="text-decoration:none;">View all →</a>
-        </div>
-        <div id="hub-community-list" class="academy-list">
-          <div class="academy-empty">Loading community activity…</div>
-        </div>
+    <section>
+      <div class="academy-section-head">
+        <h2>Quick access</h2>
+        <span class="academy-section-meta">Explore the Academy</span>
       </div>
-
-      <div>
-        <div class="academy-section-head">
-          <h2>Your courses</h2>
-          <a class="academy-section-meta" href="/courses.html" style="text-decoration:none;">All courses →</a>
-        </div>
-        <div id="hub-courses-list" class="academy-list">
-          <div class="academy-empty">Loading your courses…</div>
-        </div>
+      <div class="academy-grid">
+        <a class="academy-tile" href="/courses.html">
+          <span class="academy-tile-label">01 · Courses</span>
+          <span class="academy-tile-title">Your Courses</span>
+          <span class="academy-tile-desc">Pick up where you left off, or browse the Academy library and sign up for what's next.</span>
+          <span class="academy-tile-cta">Open courses</span>
+        </a>
+        <a class="academy-tile" href="/community.html">
+          <span class="academy-tile-label">02 · Community</span>
+          <span class="academy-tile-title">Members Community</span>
+          <span class="academy-tile-desc">Share wins, ask questions, and stay accountable alongside other members.</span>
+          <span class="academy-tile-cta">Enter community</span>
+          <span class="academy-tile-badge" id="hub-community-badge" style="display:none;">New</span>
+        </a>
+        <a class="academy-tile" href="/resources.html">
+          <span class="academy-tile-label">03 · Resources</span>
+          <span class="academy-tile-title">Resource Library</span>
+          <span class="academy-tile-desc">Frameworks, worksheets, and reference material to put the work into practice.</span>
+          <span class="academy-tile-cta">Browse resources</span>
+        </a>
+        <a class="academy-tile" href="/book-a-call.html">
+          <span class="academy-tile-label">Zoom · 1:1</span>
+          <span class="academy-tile-title">Book Time with Anthony</span>
+          <span class="academy-tile-desc">Pick a time on the calendar and meet on Zoom. Bring the real question.</span>
+          <span class="academy-tile-cta">Book a call</span>
+        </a>
       </div>
     </section>
 
