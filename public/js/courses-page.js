@@ -14,6 +14,7 @@
 import { loadCourses, getCourseBySlug, priceInfo } from './courses-data.js';
 import { onAuthReady, currentUser } from './auth.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
+import { renderShell } from './academy-shell.js';
 import { getRoleInfo } from './roles.js';
 import { firebaseReady, functions } from './firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
@@ -534,6 +535,7 @@ async function main() {
 
   // Header first — it carries the Admin/Owner menu and must survive a slow or
   // failed load below.
+  renderShell({ current: 'courses', compact: true });
   renderTopbarEarly({ user: currentUser(), currentPage: null, links: [] });
 
   // Load courses + progress + enrollments before deciding what to render.
@@ -623,7 +625,8 @@ async function main() {
   } catch (e) {}
   // courses.html has its own primary nav (academy-tabs); chip carries
   // only the bell + avatar + sign-out so we don't duplicate the nav.
-  renderTopbar({ user: currentUser(), profile, role, currentPage: null, links: [] });
+  renderShell({ current: 'courses', role, compact: true });
+  renderTopbar({ user: currentUser(), profile, role, currentPage: null, links: [], withSignOut: false });
 }
 
 main();

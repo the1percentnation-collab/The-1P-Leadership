@@ -4797,6 +4797,27 @@ body.academy-course #course-workspace {
   overflow: hidden;
 }
 
+/* ── The course library/player inside the Academy shell ──
+   This page is a fixed-height app, not a scrolling document: the workspace
+   scrolls internally and the page itself must not. So the shell takes the
+   viewport height, its main column becomes the two-row grid the body used to
+   be, and the top bar stops being sticky — there is nothing to stick to when
+   the column never scrolls. */
+body.academy-course .ak-shell {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.academy-course .ak-main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.academy-course .ak-topbar { position: static; }
+
 /* Course-library sidebar (replaces the old per-course sidebar) */
 .courses-sidebar {
   width: 320px;
@@ -10266,6 +10287,8 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 
   .cert-noprint,
   .academy-header,
+  .ak-sidebar,
+  .ak-topbar,
   .cert-actions,
   .cert-styles,
   .cert-note,
@@ -10273,6 +10296,11 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
   .consent-banner { display: none !important; }
 
   .cert-page { padding: 0; max-width: none; }
+
+  /* No sidebar column on paper — collapse the shell to a single column so
+     the certificate uses the full sheet. */
+  .ak-shell, .ak-shell.has-rail, .ak-shell.is-compact { display: block; }
+  .ak-content { padding: 0; }
 
   .cert-sheet {
     max-width: none;
@@ -11474,4 +11502,660 @@ a.cp-crumb:hover { color: var(--white); }
   .hub-stat { flex: 1 1 calc(50% - 10px); min-width: 0; }
   .hub-stat-value { font-size: 20px; }
   .hub-explore-card { flex-basis: 78vw; }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Academy shell — sidebar + content + optional right rail.
+   Replaces the `academy-header` tab strip on the member pages. Built
+   from the tokens at the top of this file; the layout is borrowed,
+   the palette is not.
+   ════════════════════════════════════════════════════════════════ */
+
+.ak-shell {
+  display: grid;
+  grid-template-columns: var(--ak-side, 248px) minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--black);
+}
+
+/* Pages that carry a right rail opt in with this class; everything else
+   keeps the two-column form and the full content width. */
+.ak-shell.has-rail { grid-template-columns: var(--ak-side, 248px) minmax(0, 1fr) 320px; }
+
+.ak-shell.is-compact { --ak-side: 74px; }
+
+/* ── Sidebar ── */
+.ak-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 22px 14px 18px;
+  background: var(--black-2);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+}
+
+.ak-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 18px;
+  text-decoration: none;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.ak-brand-mark { width: 34px; height: 34px; object-fit: contain; flex-shrink: 0; }
+
+.ak-brand-text { display: flex; flex-direction: column; min-width: 0; }
+
+.ak-brand-1 {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+  white-space: nowrap;
+}
+
+.ak-brand-2 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--white);
+  line-height: 1;
+}
+
+.ak-nav { display: flex; flex-direction: column; gap: 18px; flex: 1; }
+
+.ak-nav-group { display: flex; flex-direction: column; gap: 2px; }
+
+/* Pins the sign-out group to the bottom of the rail, whatever the nav
+   above it adds up to — an owner sees nine more items than a member. */
+.ak-nav-foot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border); }
+
+.ak-nav-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+  padding: 0 10px 8px;
+}
+
+.ak-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--white-dim);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ak-nav-item:hover { background: var(--surface); color: var(--white); }
+
+/* The active item is the one place in the rail that earns the red. */
+.ak-nav-item.is-active {
+  background: rgba(230, 3, 6, 0.10);
+  color: var(--white);
+  box-shadow: inset 2px 0 0 var(--red);
+}
+
+.ak-nav-item.is-active .ak-ico { color: var(--red); }
+
+.ak-ico { width: 19px; height: 19px; flex-shrink: 0; }
+
+.ak-signout { color: var(--gray-light); }
+.ak-signout:hover { background: #170202; color: var(--red); }
+
+.ak-collapse {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin: 6px 0 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gray-mid);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, transform 0.2s;
+}
+
+.ak-collapse:hover { color: var(--white); border-color: var(--border-red); }
+
+/* ── Compact rail ──
+   Icons only. The labels stay in the DOM for screen readers and become the
+   hover title; the rail keeps its hit targets rather than shrinking them. */
+.ak-shell.is-compact .ak-nav-text,
+.ak-shell.is-compact .ak-brand-text,
+.ak-shell.is-compact .ak-nav-label { display: none; }
+
+.ak-shell.is-compact .ak-sidebar { padding-left: 10px; padding-right: 10px; align-items: center; }
+.ak-shell.is-compact .ak-brand { padding: 0 0 18px; justify-content: center; }
+.ak-shell.is-compact .ak-nav { width: 100%; }
+.ak-shell.is-compact .ak-nav-item { justify-content: center; padding: 11px 0; gap: 0; }
+.ak-shell.is-compact .ak-collapse { align-self: center; margin-left: 0; transform: rotate(180deg); }
+
+/* ── Main column ── */
+.ak-main { display: flex; flex-direction: column; min-width: 0; }
+
+.ak-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 32px;
+  background: rgba(8, 8, 8, 0.92);
+  backdrop-filter: saturate(140%) blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Looks like a field, behaves like a button — it opens the existing search
+   overlay rather than running a second search implementation inline. */
+.ak-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  max-width: 560px;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--gray-mid);
+  font-size: 13px;
+  cursor: text;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.ak-search:hover,
+.ak-search:focus-visible { border-color: var(--border-red); color: var(--white-dim); outline: none; }
+
+.ak-search .ak-ico { width: 16px; height: 16px; }
+
+.ak-content { padding: 32px; flex: 1; min-width: 0; }
+
+@media (min-width: 1400px) {
+  .ak-content { padding: 36px 40px 96px; }
+}
+
+/* ── Right rail ── */
+.ak-rail {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 24px 22px 40px;
+  background: var(--black-2);
+  border-left: 1px solid var(--border);
+  scrollbar-width: thin;
+}
+
+/* ── Narrow screens ──
+   Below 1200px the rail moves under the content instead of squeezing it;
+   below 900px the sidebar becomes a horizontal strip across the top, which
+   is the one shape that stays usable on a phone. */
+@media (max-width: 1200px) {
+  .ak-shell.has-rail { grid-template-columns: var(--ak-side, 248px) minmax(0, 1fr); }
+  .ak-rail {
+    position: static;
+    height: auto;
+    grid-column: 2;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    padding: 24px 32px 48px;
+  }
+}
+
+@media (max-width: 900px) {
+  .ak-shell,
+  .ak-shell.has-rail,
+  .ak-shell.is-compact { grid-template-columns: minmax(0, 1fr); }
+
+  .ak-sidebar {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 12px 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .ak-brand { padding: 0 10px 0 0; flex-shrink: 0; }
+  .ak-brand-text { display: none; }
+  .ak-nav { flex-direction: row; gap: 6px; flex-wrap: nowrap; flex: 0 0 auto; }
+  .ak-nav-group { flex-direction: row; gap: 4px; flex-shrink: 0; }
+  /* The strip scrolls rather than squashing: a squashed icon is unreadable,
+     and an off-screen one is at least still reachable. */
+  .ak-nav-item { flex-shrink: 0; }
+  /* Group headings and the collapse toggle have no meaning in a strip. */
+  .ak-nav-label, .ak-collapse { display: none; }
+  .ak-nav-foot { margin: 0; padding: 0; border: 0; }
+  .ak-nav-item { padding: 9px 12px; }
+  .ak-nav-item.is-active { box-shadow: inset 0 -2px 0 var(--red); }
+  /* Labels would make the strip scroll for a page or two; icons do not. */
+  .ak-nav-text { display: none; }
+
+  .ak-topbar { padding: 12px 16px; }
+  .ak-content { padding: 20px 16px 64px; }
+  .ak-rail { grid-column: 1; padding: 20px 16px 48px; }
+}
+
+/* ── Rail section headings ── */
+.ak-rail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.ak-rail-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--white);
+  margin: 0;
+}
+
+.ak-rail-more,
+.ak-rail-note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+  text-decoration: none;
+}
+
+.ak-rail-more:hover { color: var(--red); }
+
+/* ── Profile block ── */
+.hub-me {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 22px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+/* The ring is level progress, drawn with a conic gradient so it needs no SVG
+   and no second element per segment. --ring is set inline as a percentage. */
+.hub-me-avatar { position: relative; width: 92px; height: 92px; margin-bottom: 14px; }
+
+.hub-me-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(var(--red) 0 var(--ring, 0%), var(--gray-dark) var(--ring, 0%) 100%);
+}
+
+.hub-me-face {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--black-2);
+  border: 3px solid var(--surface);
+  font-family: var(--font-mono);
+  font-size: 26px;
+  color: var(--white);
+}
+
+.hub-me-face img { width: 100%; height: 100%; object-fit: cover; }
+
+.hub-me-name {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--white);
+  line-height: 1.1;
+}
+
+.hub-me-sub { font-size: 12px; color: var(--gray-light); margin-top: 6px; }
+
+.hub-me-facts {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.hub-me-fact { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.hub-me-fact-value {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1;
+  color: var(--red);
+}
+
+.hub-me-fact-label {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+}
+
+/* ── Weekly bar chart ── */
+.hub-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  height: 116px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.hub-bar {
+  flex: 1;
+  height: var(--h, 10%);
+  min-width: 0;
+  border-radius: 4px 4px 2px 2px;
+  background: var(--gray-dark);
+  transition: background 0.15s;
+}
+
+.hub-bar:hover { background: var(--gray-mid); }
+
+/* The member's own bar is the only red one, so the chart answers "where am
+   I?" at a glance rather than needing to be read. */
+.hub-bar.is-me { background: var(--red); }
+.hub-bar.is-me:hover { background: var(--red-dark); }
+
+.hub-chart-empty {
+  align-self: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--gray-mid);
+}
+
+/* ── People list ── */
+.hub-people { display: flex; flex-direction: column; gap: 4px; }
+
+.hub-person {
+  display: grid;
+  grid-template-columns: 16px 34px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.hub-person:hover { background: var(--surface); }
+.hub-person.is-me { background: rgba(230, 3, 6, 0.09); }
+
+.hub-person-rank {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-mid);
+  text-align: right;
+}
+
+.hub-person-face {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gray-dark);
+  color: var(--white);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.hub-person-face img { width: 100%; height: 100%; object-fit: cover; }
+
+.hub-person-main { min-width: 0; display: flex; flex-direction: column; }
+
+.hub-person-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--white);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hub-person-sub { font-size: 10.5px; color: var(--gray-mid); }
+
+.hub-person-week {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--red);
+}
+
+/* ── Continue-watching shelf ── */
+.hub-watch-row {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+  margin-bottom: 48px;
+}
+
+.hub-watch-row::-webkit-scrollbar { display: none; }
+
+.hub-watch-card {
+  flex: 0 0 280px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  text-decoration: none;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.hub-watch-card:hover { border-color: var(--border-red); transform: translateY(-2px); }
+
+.hub-watch-art {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 132px;
+  background: linear-gradient(140deg, var(--charcoal), var(--black));
+  overflow: hidden;
+}
+
+.hub-watch-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+/* Always rendered under the cover, so a cover URL that 404s degrades to the
+   course's short name rather than a broken-image icon. */
+.hub-watch-mark {
+  font-family: var(--font-display);
+  font-size: 26px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(230, 3, 6, 0.4);
+  text-align: center;
+  padding: 0 14px;
+}
+
+.hub-watch-body { display: flex; flex-direction: column; gap: 9px; padding: 16px; }
+
+.hub-watch-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--white);
+}
+
+.hub-watch-body .progress-bar { margin: 2px 0 0; }
+
+.hub-watch-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--gray-mid);
+}
+
+/* ── Pill ── */
+.hub-pill {
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--red);
+  background: rgba(230, 3, 6, 0.12);
+  border-radius: 3px;
+  padding: 4px 8px;
+}
+
+.hub-pill.is-going { color: #56D4A8; background: rgba(86, 212, 168, 0.12); }
+
+/* ── Table ── */
+.hub-table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-x: auto;
+  margin-bottom: 48px;
+}
+
+.hub-table { width: 100%; border-collapse: collapse; min-width: 520px; }
+
+.hub-table th {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+  text-align: left;
+  font-weight: 400;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.hub-table td {
+  padding: 14px 18px;
+  font-size: 13px;
+  color: var(--white-dim);
+  vertical-align: middle;
+}
+
+.hub-table tbody tr + tr td { border-top: 1px solid var(--border); }
+.hub-table tbody tr:hover td { background: var(--surface2); }
+
+.hub-td-strong { font-size: 13px; color: var(--white); font-weight: 500; }
+.hub-td-sub { font-family: var(--font-mono); font-size: 10px; color: var(--gray-mid); margin-top: 2px; }
+.hub-td-action { text-align: right; white-space: nowrap; }
+
+.hub-rowbtn {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--white);
+  background: transparent;
+  border: 1px solid var(--border-red);
+  border-radius: 999px;
+  padding: 6px 14px;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.hub-rowbtn:hover { background: var(--red); }
+
+/* On a phone the rail sits under the content, where a centred profile block
+   floating full-width reads as a gap. Cap it. */
+@media (max-width: 900px) {
+  .hub-me { max-width: 420px; margin: 0 auto; }
+  .hub-watch-card { flex-basis: 78vw; }
+}
+
+/* ── Fit the dashboard content to the shell's column ──
+   These blocks were sized for the old full-width 1280px container. Inside the
+   shell the content column is ~870px with a sidebar and a rail either side,
+   so the hero has to come down and the card grids need lower floors or they
+   wrap one card onto a lonely second row. */
+.ak-content .academy-hero h1 {
+  font-size: clamp(34px, 4vw, 56px);
+  margin-bottom: 14px;
+}
+
+.ak-content .academy-hero { margin-bottom: 36px; }
+
+/* The next-step engine returns at most four cards, and auto-fit in an ~800px
+   column always lands on three plus an orphan. Two by two is deterministic
+   and reads as a deliberate block; the column has to get genuinely wide
+   before four across is comfortable. */
+.ak-content .hub-nextup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+@media (min-width: 1700px) {
+  .ak-content .hub-nextup-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+.ak-content .hub-pulse-grid { grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
+
+/* The activity feed is the one section whose container carried no bottom
+   margin, so the heading under it sat noticeably tighter than every other. */
+.ak-content #hub-activity-list { margin-bottom: 48px; }
+
+.ak-content .hub-activity-tabs { margin-bottom: 14px; }
+
+@media (max-width: 900px) {
+  .ak-content .academy-hero h1 { font-size: 34px; }
+  .ak-content .hub-nextup-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 900px) {
+  /* The chip already carries a search button of its own on every page, and at
+     this width the two together left the field 135px wide — narrow enough to
+     wrap its own placeholder over four lines. Keep the chip's, drop the
+     shell's, and let the row breathe. */
+  .ak-search { display: none; }
+  .ak-topbar { justify-content: flex-end; }
+  /* The display name is the widest thing in the chip and the least useful
+     when the avatar is right beside it. */
+  .ak-topbar .user-chip-email { display: none; }
 }

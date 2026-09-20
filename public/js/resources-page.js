@@ -1,4 +1,4 @@
-// Resources page — stub for now. Just renders the shared user chip.
+// Resources page — stub for now. Renders the Academy shell and the user chip.
 
 import { onAuthReady, currentUser } from './auth.js';
 import { ensureOnboarded } from './onboarding-guard.js';
@@ -6,6 +6,7 @@ import { getRoleInfo } from './roles.js';
 import { firebaseReady } from './firebase.js';
 import { getUserProfile } from './community.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
+import { renderShell } from './academy-shell.js';
 
 async function main() {
   if (firebaseReady) {
@@ -17,8 +18,9 @@ async function main() {
     if (!(await ensureOnboarded(user))) return;
   }
 
-  // Header first — it carries the Admin/Owner menu and must survive a slow or
-  // failed load below.
+  // Shell first — it carries navigation and must survive a slow or failed
+  // load below. It paints from the role cached in localStorage.
+  renderShell({ current: 'resources' });
   renderTopbarEarly({ user: currentUser(), currentPage: null, links: [] });
 
   let role = null;
@@ -31,9 +33,10 @@ async function main() {
     }
   } catch (e) {}
 
-  // resources.html has its own primary nav (academy-tabs); chip carries
-  // only the bell + avatar + sign-out so we don't duplicate the nav.
-  renderTopbar({ user: currentUser(), profile, role, currentPage: null, links: [] });
+  // Nav and sign-out live in the sidebar, so the chip keeps only search,
+  // the bell and the avatar.
+  renderShell({ current: 'resources', role });
+  renderTopbar({ user: currentUser(), profile, role, currentPage: null, links: [], withSignOut: false });
 }
 
 main();
