@@ -6,7 +6,8 @@
 // Usage:
 //   mountCoursePlayer({
 //     container,            // element to render into (defaults to #workspace-player)
-//     brand,                // small eyebrow above the course title in the sidebar
+//     brand,                // small eyebrow under the Academy lockup in the sidebar
+//                           // (the lockup itself is fixed: every course reads as Academy)
 //     courseTitle,          // sidebar course title
 //     modules,              // [{ id, title, subtitle, eyebrow, duration, meta }]
 //     tabs,                 // [{ id, label, html(mod), bind?(rootEl, mod) }]
@@ -81,7 +82,14 @@ export function mountCoursePlayer(config) {
 
     return `
       <div class="cp-sidebar-head">
-        <div class="cp-brand">${esc(config.brand || 'THE ONE PERCENT NATION')}</div>
+        <a class="cp-academy-lockup" href="/dashboard.html" aria-label="The One Percent Academy">
+          <img class="cp-academy-mark" src="/assets/academy-logo.png" alt="">
+          <span class="cp-academy-words">
+            <span class="cp-academy-line1">The One Percent</span>
+            <span class="cp-academy-line2">Academy</span>
+          </span>
+        </a>
+        <div class="cp-brand">${esc(config.brand || 'COURSE')}</div>
         <div class="cp-course-title">${esc(config.courseTitle || '')}</div>
         <div class="cp-progress">
           <div class="cp-progress-bar"><div class="cp-progress-fill" style="width:${pct}%"></div></div>
@@ -89,7 +97,8 @@ export function mountCoursePlayer(config) {
         </div>
       </div>
       <div class="cp-modlist">${items}</div>
-      ${config.sidebarFooterHtml ? `<div class="cp-sidebar-foot">${config.sidebarFooterHtml()}</div>` : ''}`;
+      ${config.sidebarFooterHtml ? `<div class="cp-sidebar-foot">${config.sidebarFooterHtml()}</div>` : ''}
+      <a class="cp-sidebar-exit" href="/courses.html">← All Academy courses</a>`;
   }
 
   function moduleHtml(mod) {
@@ -155,6 +164,14 @@ export function mountCoursePlayer(config) {
         <div class="cp-main">
           <div class="cp-topbar">
             <button class="cp-toggle" id="cp-toggle" aria-label="Toggle module list">≡</button>
+            <nav class="cp-crumbs" aria-label="Breadcrumb">
+              <img class="cp-crumb-mark" src="/assets/academy-logo.png" alt="">
+              <a class="cp-crumb" href="/dashboard.html">The One Percent Academy</a>
+              <span class="cp-crumb-sep">/</span>
+              <a class="cp-crumb cp-crumb-mid" href="/courses.html">Courses</a>
+              <span class="cp-crumb-sep cp-crumb-sep-mid">/</span>
+              <span class="cp-crumb is-current" aria-current="page">${esc(config.courseTitle || 'Course')}</span>
+            </nav>
             <div class="cp-topbar-spacer"></div>
             <span class="cp-topbar-count">${done}/${modules.length} complete</span>
             <div class="cp-minibar"><div class="cp-minibar-fill" style="width:${pct}%"></div></div>
