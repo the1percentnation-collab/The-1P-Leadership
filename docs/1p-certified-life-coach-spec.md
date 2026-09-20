@@ -34,12 +34,12 @@ Life track first. Inbound demand is for life coach certification, not the
 leadership version. Nothing is built yet, so there is no sunk cost to protect.
 
 Build as a single linear course. Do NOT architect the two-track (Life /
-Leadership) split in v1. That is a v2 concern once the founding cohort is
+Leadership) split in v1. That is a v2 concern once the founding students are
 through.
 
-Sell the founding cohort before the course is finished. Enrollment closes on a
-fixed date, module one drops two weeks later, delivery is live on a fixed day,
-one call per module.
+Sell the founding price before the course is finished. Enrollment opens on a
+fixed date, and after that it simply stays open. Delivery is self-paced:
+modules unlock in order, with one recurring coaching lab anyone can drop into.
 Recordings become the evergreen asset. Module 6 does not need to exist when
 enrollment opens.
 
@@ -54,16 +54,28 @@ enrollment opens.
 
 ## 3. Program structure
 
-**16-week cohort. 65 to 70 total hours. 4 to 5 hours per week.**
+**Self-paced. 65 to 70 total hours. Start any day.**
 
-- Weeks 1 to 12: eight modules, eight live calls on a fixed day, one per module
-- Weeks 13 to 16: practicum, exam, recorded session review, certification
+- Eight modules that unlock in order as the student completes each one
+- One recurring open coaching lab, drop in at any point in your progress
+- A practice partner matched inside the portal
+- Certification whenever the evidence is in: 25 approved hours with at least 12
+  outside the program, the written exam at 80 percent, and one recorded session
+  reviewed against the published rubric
 
-Market it as a single fixed number ("Certified in 16 weeks"), never a range.
-Ranges make buyers default to the long end and hesitate.
+The cohort model was dropped because nothing enforced it. Checkout never read
+the enrollment close date or the seat cap, access was granted the moment Stripe
+paid, and a second cohort would have overwritten the first. Self-paced removes
+the need for machinery that was never built.
 
-**12-week fast track** for existing coaches and professional leaders. Same
-requirements, compressed cadence, identical price. No discount.
+**On the fixed-number rule.** Market a single number, never a range, because
+ranges make buyers default to the long end. Self-pacing does not break that:
+lead with what the work costs ("about forty hours of module work, plus your 25
+practice hours"), not with how long the student takes to do it. "Most certify
+in three to six months" is the answer to a question, not the headline.
+
+**Already coaching?** Nothing holds you back. There is no cadence to compress,
+so an experienced coach simply finishes faster. Same requirements, same price.
 
 ### Benchmarks this was set against
 
@@ -83,14 +95,14 @@ $3,497.
 
 ## 4. Certification requirements
 
-Lock these before the first cohort. Retrofitting rigor onto sold students is the
+Lock these before the first sale. Retrofitting rigor onto sold students is the
 one genuinely hard-to-undo mistake.
 
 - Completion of all eight modules
 - Written exam
 - One recorded coaching session, reviewed against a published rubric
 - Minimum 25 logged practice coaching hours, at least 12 of them with clients
-  outside the cohort
+  outside the program
 
 Do not compress these to shorten the program. Compress lecture time and push into
 application instead. These four items are the entire difference between a
@@ -102,7 +114,7 @@ certification and a course.
 
 | Item | Price | Notes |
 |---|---|---|
-| Founding cohort | $1,997 | 20 seats, publicly capped, never repeated |
+| Founding price | $1,997 | First 20 students, capped on the coupon, never repeated |
 | 1P-CLC standard | $3,497 | Includes year one license |
 | Certified + Practice Build | $5,997 | Adds acquisition system, 6mo mentorship, observed coaching |
 | Master Trainer License | $9,500 | Requires 1P-CLC first |
@@ -122,7 +134,7 @@ with $497 programs. The moment you do, you have invited the comparison.
 ## 6. Portal requirements (build these in v1)
 
 - **Coaching hour log.** Gated. Renewal button does not activate without minimum
-  hours plus CE credits. Ship this before the first cohort starts.
+  hours plus CE credits. Ship this before the first student certifies.
 - **Stripe subscriptions** for payment plans and annual renewal.
 - **Public coach directory.** Listing is a renewal benefit, which makes renewal
   feel like an asset instead of a fee. Route inbound 1P leads to listed coaches.
@@ -165,9 +177,10 @@ cost. Price the certification to acquire. Price the renewal to compound.
 
 ## 9. Sales page core copy
 
-> Certified in 16 weeks. Four to five hours per week. Eight live coaching calls, a
-> certification exam, and a reviewed coaching session. You finish with a
-> credential, a framework license, and a client-ready program to sell.
+> Certified on evidence, not attendance. Start any day and move at your pace.
+> Eight modules, a written exam, and one coaching session reviewed against a
+> published rubric. You finish with a credential, a framework license, and a
+> client-ready program to sell.
 
 Lead with what it is, not with what it is not. The audience wants permission and
 a path, not ICF accreditation.
@@ -179,5 +192,5 @@ a path, not ICF accreditation.
 - [ ] Eight-module outline mapped to A.L.I.G.N.
 - [ ] Certification exam and rubric
 - [ ] Client-facing resale product set
-- [ ] Founding cohort enrollment dates
+- [ ] Enrollment open date and the coaching lab cadence
 - [ ] Portal hour-logging schema

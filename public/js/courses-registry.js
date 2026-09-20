@@ -77,7 +77,7 @@ export const COURSES = [
     slug: '1p-clc',
     title: '1P Certified Life Coach',
     short: 'Life Coach Certification',
-    subtitle: 'Certified in 16 weeks. A credential, a framework license, and a client-ready program to sell.',
+    subtitle: 'Self-paced. A credential, a framework license, and a client-ready program to sell.',
     status: 'coming-soon',
     // Coming-soon courses are hidden from the homepage unless they opt in;
     // this is the one being promoted ahead of its enrollment date.
@@ -90,7 +90,7 @@ export const COURSES = [
     // says outright that you never build on a stage you skipped. So the course
     // is self-paced but ordered: the next module opens when this one is done.
     sequentialUnlock: true,
-    eyebrow: 'Certification \u00b7 16 Weeks',
+    eyebrow: 'Certification \u00b7 Self-paced',
     category: 'Leadership & Coaching',
     price: 3497,
     priceLabel: '$3,497',
@@ -100,28 +100,30 @@ export const COURSES = [
       'Coach real clients through the A.L.I.G.N. framework: Awareness, Leadership, Identity, Growth, Navigation.',
       'Run coaching conversations with a repeatable session structure that creates real movement.',
       'Build client engagements: discovery calls, packages, and a six-week client program you can deliver day one.',
-      'Log 25 real practice coaching hours, at least 12 with clients outside your cohort, and get certified on evidence, not attendance.',
+      'Log 25 real practice coaching hours, at least 12 with clients outside the program, and get certified on evidence, not attendance.',
       'Pass a written certification exam and a reviewed, recorded coaching session scored against a published rubric.',
       'Leave with the 1P Certified Life Coach credential and a license to deliver A.L.I.G.N. commercially.'
     ],
     requirements: [
       'No prior coaching experience required. Come ready to practice, not just watch.',
-      'Four to five hours per week for sixteen weeks: live calls, module work, and real coaching practice.',
+      'Around forty hours of module work, at whatever pace you set, plus your 25 practice coaching hours.',
       'A willingness to coach real people during the program. Your 25 practice hours are part of certification.'
     ],
     includes: [
       'Eight modules mapped to the A.L.I.G.N. framework',
-      'Eight live coaching calls across twelve weeks, one for every module',
-      'Four-week practicum: exam, recorded session review, certification',
+      'An open coaching lab, recurring, drop in at any point in your progress',
+      'A practice partner matched inside the portal',
+      'Modules unlock in order as you complete them',
       'Coaching hour log with 25-hour certification requirement',
       'Written certification exam and published session rubric',
       'Certificate: 1P Certified Life Coach, with track designation',
-      'First-year A.L.I.G.N. Practitioner License included'
+      'First-year A.L.I.G.N. Practitioner License included',
+      'Lifetime access to the course material'
     ],
     description: [
-      'Certified in 16 weeks. Four to five hours per week. Eight live coaching calls, a certification exam, ' +
-      'and a reviewed coaching session. You finish with a credential, a framework license, and a ' +
-      'client-ready program to sell.',
+      'Self-paced. Start any day and move at your pace. Eight modules, a written exam, and one ' +
+      'coaching session reviewed against a published rubric. You finish with a credential, a ' +
+      'framework license, and a client-ready program to sell.',
       'This is a proprietary certification in the A.L.I.G.N. framework. You earn the credential once. ' +
       'The practitioner license that comes with it is what lets you deliver A.L.I.G.N. commercially, ' +
       'under The One Percent name, with client-facing products built for you.',

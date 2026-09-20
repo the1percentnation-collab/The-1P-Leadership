@@ -9,7 +9,7 @@ module.exports = {
   "title": "Identity Work",
   "subtitle": "Beliefs, story rewriting, and coaching values back into alignment.",
   "pillar": "Module 4 · Identity",
-  "duration": "Weeks 5 to 6",
+  "duration": "≈ 5 hours",
   "published": true,
   "html": `
 <p>These two weeks take you to the layer where change either holds or slides off. Up to now you have learned the stance, the map, and the session. All of that gets a client moving. Identity work is what keeps them moving after the motivation of a new plan wears out. It is also the deepest water you will coach in, so this module teaches the tools and the edges at the same time.</p>
@@ -99,19 +99,23 @@ module.exports = {
 <p>Tears are not automatically outside your scope. Adults cry when something true lands. Stay calm, stay quiet, offer a pause, and let the client tell you what they need. What matters is not the emotion. It is whether the client can move with it, and whether the work belongs to coaching.</p>
 <p>Two more edges worth holding: never diagnose anything, and never coach someone out of therapy. If a client is already working with a clinician, your job is to stay in your lane and be glad they have both.</p>
 
-<h2>This week's live call</h2>
-<ul>
-<li><strong>Demonstration:</strong> Anthony takes a volunteer from a surfaced belief through the fact and verdict split to a rewritten sentence, then names the four decisions he made along the way.</li>
-<li><strong>Teaching block:</strong> values elicitation from anger and admiration, and how to run a values audit without a verdict.</li>
-<li><strong>Breakouts:</strong> pairs, twenty five minutes each way. Round one, surface a belief and trace the story. Round two, rewrite the sentence and tune it to a six.</li>
-<li><strong>Scope clinic:</strong> three anonymized scenarios where the line between coaching and clinical is genuinely unclear, worked in the open.</li>
-</ul>
-<p>Bring: your own values, ranked, your own two-week calendar audit, and the rewritten identity sentence you wrote about yourself. You will coach this material better once you have sat on the other side of it.</p>
+<h2>Watch this module</h2>
+<p>The one to rewatch. Anthony takes a real surfaced belief through the fact and verdict split to a rewritten sentence, then names the four decisions he made along the way. Then the teaching block: values elicitation from anger and admiration, and how to run a values audit without delivering a verdict.</p>
+<p>This is the spine of the whole framework. Watch it twice before you run it on anyone.</p>
 
-<h2>Practice this week</h2>
+<h2>The drill</h2>
+<ol>
+<li><strong>The rep.</strong> Twenty five minutes each way with your practice partner, in two rounds. Round one, surface a belief and trace the story that installed it. Round two, rewrite the sentence and tune it until it lands at a six.</li>
+<li><strong>Do it on yourself first.</strong> Your own values, ranked. Your own two-week calendar audit. Your own rewritten identity sentence. You will coach this material better once you have sat on the other side of it, and it is the one module where that is not optional.</li>
+<li><strong>Self-review.</strong> Write down the new sentence your partner landed on, word for word, and the number they gave it. If it was above an eight, it was not a change.</li>
+<li><strong>Partner feedback.</strong> Two minutes each way against the four rubric criteria, with one extra question: did the new sentence come from the client's language or yours?</li>
+<li><strong>Bring it to the lab.</strong> Bring any scenario where the line between coaching and clinical felt genuinely unclear. Drop into the coaching lab any week and ask it live.</li>
+</ol>
+
+<h2>Practice assignment</h2>
 <p>Target: <strong>5 practice coaching hours</strong> across these two weeks.</p>
-<p>The triad keeps rotating, with the observer working from the four rubric criteria and giving two minutes of specific feedback after each round. Only the coach seat counts toward logged hours. By the end of this module you want <strong>2 of your 12 outside hours logged</strong>. Peer practice builds the mechanics; people outside the cohort are what build a coach.</p>
-<p>One more thing this week: record a short session, 15 to 20 minutes, with the client's written consent, and submit the link after this week in the Certification tab, under Practice recordings, for feedback only. It is not scored and it does not affect certification. The point is that your graded capstone recording in week 13 is never the first recording anyone has reviewed.</p>
+<p>Keep swapping seats, two minutes of feedback against the four rubric criteria after each round. Only the coach seat counts toward logged hours. By the end of this module you want <strong>2 of your 12 outside hours logged</strong>. Partner practice builds the mechanics; people outside the program are what build a coach.</p>
+<p>One more thing: record a short session, 15 to 20 minutes, with the client's written consent, and submit the link in the Certification tab, under Practice recordings, for feedback only. It is not scored and it does not affect certification. The point is that your graded capstone recording is never the first recording anyone has reviewed.</p>
 <ol>
 <li>Run the full values elicitation and the values versus behavior audit with two practice clients. Use their calendar and their spending, not their memory.</li>
 <li>In at least two sessions, take a surfaced belief through the fact and verdict split, then draft and tune a new sentence to a five or above. Write the final wording down word for word.</li>

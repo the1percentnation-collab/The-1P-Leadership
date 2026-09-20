@@ -9,12 +9,12 @@ module.exports = {
   "title": "Navigation and Accountability",
   "subtitle": "Execution systems, habit design, and progress reviews that keep change alive.",
   "pillar": "Module 6 · Navigation",
-  "duration": "Weeks 9 to 10",
+  "duration": "≈ 5 hours",
   "published": true,
   "html": `
 <p>Last week you learned to build a plan the client owns. This week you learn why that plan dies, and what to put around it so it does not.</p>
 <p>Here is the pattern every coach eventually meets. The session is good. The client leaves clear, motivated, committed. Six days later they arrive at the next session having done almost none of it, and they open with an apology. If you handle that moment badly, the engagement becomes a weekly confession booth. The client starts managing your opinion of them instead of their own life.</p>
-<p>What changes this week is that you stop treating follow-through as a character trait and start treating it as a design problem. The N of A.L.I.G.N. is Navigation: executing the path forward. Navigation is not motivation. It is structure, measurement, and belief, applied to the six days you are not in the room.</p>
+<p>What changes here is that you stop treating follow-through as a character trait and start treating it as a design problem. The N of A.L.I.G.N. is Navigation: executing the path forward. Navigation is not motivation. It is structure, measurement, and belief, applied to the six days you are not in the room.</p>
 
 <h2>Why coaching fails between sessions</h2>
 <p>When a client does not do what they said, there are usually four possible causes and only one of them is about willingness.</p>
@@ -104,20 +104,21 @@ module.exports = {
 <p>What not to do: do not reassure so quickly that the lesson disappears, do not scold even gently, do not use guilt as fuel, and do not let a client conclude that they are someone who never finishes. That conclusion is an Identity problem you would then have to spend three sessions undoing.</p>
 <p>Say this to clients plainly and often: progress over perfection, one percent better, and the only week that counts is the one in front of you.</p>
 
-<h2>This week's live call</h2>
-<p>Agenda, ninety minutes on the cohort's fixed call day.</p>
-<ul>
-<li>Opening: the four causes of a missed commitment, and how to diagnose which one you are looking at in under three questions.</li>
-<li>Demonstration: naming the pattern with the agreeable client. You will watch how short and calm that sentence is, and how much silence follows it.</li>
-<li>Breakout practice: pairs, twenty-five minutes. One coach runs a friction audit on a real habit the other has dropped. Redesign the anchor, the floor, the setup and the signal. Swap.</li>
-<li>Cadence clinic: each coach reads out their proposed accountability cadence in one sentence. The group flags anything that will not survive a busy month.</li>
-<li>Close: open questions and next week's assignment.</li>
-</ul>
-<p>What to bring: one real habit of your own that you have dropped at least twice, your draft accountability cadence written as a single sentence, and one practice client's goal stack from Module 5.</p>
+<h2>Watch this module</h2>
+<p>Opens with the four causes of a missed commitment and how to diagnose which one you are looking at in under three questions. Then the demonstration that matters most here: naming the pattern with the agreeable client. Watch how short and calm that sentence is, and how much silence follows it.</p>
 
-<h2>Practice this week</h2>
+<h2>The drill</h2>
+<ol>
+<li><strong>The rep.</strong> Twenty five minutes each way with your practice partner. Run a friction audit on a real habit they have dropped, and redesign the anchor, the floor, the setup and the signal. Use a habit they have actually abandoned twice, not a hypothetical.</li>
+<li><strong>The cadence test.</strong> Write your proposed accountability cadence as a single sentence and read it to your partner. Their only job is to say whether it survives a busy month. Most first drafts do not.</li>
+<li><strong>Self-review.</strong> Write which of the four causes you diagnosed, and how many questions it took you to get there. If it took more than three, name what you were fishing for.</li>
+<li><strong>Partner feedback.</strong> Two minutes each way against the four rubric criteria.</li>
+<li><strong>Bring it to the lab.</strong> Bring a cadence you are not sure about, or a client who agrees with everything and changes nothing. Drop into the coaching lab any week and ask it live.</li>
+</ol>
+
+<h2>Practice assignment</h2>
 <p>Run three practice coaching sessions, thirty to sixty minutes each. Target three hours logged. At least two should be second or later sessions with the same practice client, because you cannot practice accountability on someone you are meeting for the first time.</p>
-<p>Keep the peer triad running, roles rotating as usual, with two minutes of observer feedback against the four rubric criteria. At least two of your three sessions this week should be with clients who are not classmates, putting you at <strong>7 of your 12 outside hours</strong> by the end of this module. If you are short here, this is the week to fix it, not week thirteen.</p>
+<p>Keep the partner practice running, seats swapping as usual, with two minutes of feedback against the four rubric criteria. At least two of every three sessions should now be with clients outside the program, putting you at <strong>7 of your 12 outside hours</strong> by the end of this module. If you are short here, fix it now, not at the certification step.</p>
 <h3>Your second feedback-only recording</h3>
 <p>Submit a second practice recording this week, fifteen to twenty minutes, from any practice session. Your first went in after Module 4. Submit the link in the Certification tab, under Practice recordings. This one is reviewed the same way: feedback only, no score recorded, and it has no effect on your certification.</p>
 <p>You will get back one strength and one specific change for each of the four criteria. Read the change items next to your first recording's feedback and look for what repeated. The repeats are your real pattern, and they are what to work on before the graded capstone.</p>

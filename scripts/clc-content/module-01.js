@@ -9,10 +9,10 @@ module.exports = {
   "title": "Foundations of 1P Coaching",
   "subtitle": "What coaching is, what it is not, and the stance that makes it work.",
   "pillar": "Module 1 · Awareness",
-  "duration": "Week 1",
+  "duration": "≈ 3 hours",
   "published": true,
   "html": `
-<p>This week changes what you do with your own knowledge. Most people who want to coach are already the person friends come to for answers. You are good at answers. That skill is the first thing you will have to set down, because the moment you hand someone your answer, you take their growth and keep it for yourself. By the end of this week you will know what coaching is, where it ends, and how to sit in a conversation without rescuing anyone.</p>
+<p>This module changes what you do with your own knowledge. Most people who want to coach are already the person friends come to for answers. You are good at answers. That skill is the first thing you will have to set down, because the moment you hand someone your answer, you take their growth and keep it for yourself. By the end of it you will know what coaching is, where it ends, and how to sit in a conversation without rescuing anyone.</p>
 
 <h2>What coaching actually is</h2>
 <p>Coaching is a structured partnership that helps a person close the gap between who they are and how they operate. That is the 1P definition and it is worth reading twice. The gap is the work. Your client usually has real achievement already. Title, income, responsibility, a life that looks correct from the outside. What they are missing is alignment between that life and what actually matters to them.</p>
@@ -59,7 +59,7 @@ module.exports = {
 </ul>
 <p>Referral is a skill, not a rejection. Say it plainly and warmly.</p>
 <blockquote><strong>Coach:</strong> What you are describing matters and it deserves real support. It also sits outside what coaching can hold well. I would like to help you find a therapist who works with this, and I am glad to keep coaching you on the goals we set, if you want both. How does that land?</blockquote>
-<p>Build your referral list this week, before you need it: two or three local or virtual therapists, a crisis line number for your country, and one financial or legal professional you trust. A coach who fumbles a referral in the moment usually did not do this quiet work in advance.</p>
+<p>Build your referral list before you need it: two or three local or virtual therapists, a crisis line number for your country, and one financial or legal professional you trust. A coach who fumbles a referral in the moment usually did not do this quiet work in advance.</p>
 
 <h2>Confidentiality and the ethics you hold</h2>
 <p>Your client will tell you things they have not said out loud. Treat that as the serious thing it is.</p>
@@ -82,29 +82,32 @@ module.exports = {
 <p>The A of A.L.I.G.N. is Awareness: seeing the belief clearly. Nothing changes that the client cannot yet see. Your first job in any engagement is not motion. It is sight.</p>
 <p>This is why new coaches feel slow in early sessions. The client arrives wanting a plan and you are still helping them see what is actually true. Stay there. A plan built on an unexamined belief will be abandoned in eleven days, and the client will call themselves undisciplined when the real issue was that they never saw the belief driving the behavior.</p>
 <p>Awareness has a sound. Intellectual agreement sounds fast and tidy: "Right, yes, I know I do that." Real awareness sounds slower. The client pauses. The language gets specific. Sometimes they say something they clearly have not said before. When you hear that, do not rush to the next question. Let it sit.</p>
-<p>Modules 2 and 4 take Awareness deeper, into the full framework and into identity. This week you only need the discipline: see first, move second.</p>
+<p>Modules 2 and 4 take Awareness deeper, into the full framework and into identity. Here you only need the discipline: see first, move second.</p>
 
-<h2>This week's live call</h2>
-<p>Come with your scope statement drafted and one question you are unsure about.</p>
-<ul>
-<li><strong>Demonstration:</strong> Anthony coaches a live volunteer for ten minutes on a real misalignment, then narrates the choices he made and the three moments he almost gave advice.</li>
-<li><strong>Teaching block:</strong> the four disguises of advice, and the permission-plus-brevity move when information is genuinely needed.</li>
-<li><strong>Breakouts:</strong> pairs, fifteen minutes each way. Coach with one rule: no statements, only questions. Your partner raises a hand every time you slide into advice. Expect several hands. That is the point of the drill.</li>
-<li><strong>Debrief:</strong> what it felt like to sit with the urge to solve and not act on it.</li>
-<li><strong>Scope clinic:</strong> bring real referral gray areas and we work them in the open.</li>
-</ul>
-<p>Bring: your draft scope statement, your referral list, and your coaching agreement draft if you have one started.</p>
+<h2>Watch this module</h2>
+<p>Anthony coaches a real misalignment for ten minutes, then walks back through the choices he made and the three moments he almost gave advice. After the demonstration, the teaching block: the four disguises of advice, and the permission-plus-brevity move for when information is genuinely needed.</p>
+<p>Watch for the pauses. The work is in what he does not say.</p>
 
-<h2>Practice this week</h2>
-<p>Target: <strong>2 practice coaching hours</strong> this week.</p>
-<p>Certification needs 25 approved hours, and <strong>at least 12 of them with people who are not in this cohort</strong>. Peer practice is where you learn the mechanics. Clients who never read the rubric are where you find out whether they hold. Every module from here gives you the running number you should be at, so the gap never surprises you in week thirteen.</p>
-<p>From this week on you practice in a fixed peer triad: one coach, one client, one observer, rotating roles every week so you sit in all three seats. The observer watches against the four rubric criteria (Presence and Listening, Question Quality, Session Structure, Non-Advising) and gives two minutes of specific feedback after each round. Specific means the moment and the words, not a grade. Being observed early is how you avoid discovering your habits in week 13. Triad practice counts toward your logged hours only for the person in the coach seat.</p>
+<h2>The drill</h2>
 <ol>
-<li>Meet your triad once this week and run one round in each seat.</li>
+<li><strong>The rep.</strong> Fifteen minutes each way with your practice partner. Coach with one rule: no statements, only questions. Your partner raises a hand every time you slide into advice. Expect several hands. That is the point of the drill.</li>
+<li><strong>Self-review.</strong> Three lines in your workbook: what it felt like to sit with the urge to solve and not act on it, the moment you came closest to solving, and what you did instead.</li>
+<li><strong>Partner feedback.</strong> Two minutes after each round, against the four rubric criteria. Specific means the moment and the words, not a grade. Then swap seats.</li>
+<li><strong>Bring it to the lab.</strong> Bring one referral gray area you are genuinely unsure about, with your scope statement drafted. Drop into the coaching lab any week and ask it live.</li>
+</ol>
+
+<h2>Practice assignment</h2>
+<p>Target: <strong>2 practice coaching hours</strong> from this module.</p>
+<p>Certification needs 25 approved hours, and <strong>at least 12 of them with people who are not in the program</strong>. Peer practice is where you learn the mechanics. Clients who never read the rubric are where you find out whether they hold. Every module from here gives you the running number you should be at, so the gap never surprises you at the certification step.</p>
+<p><strong>Get a practice partner before you go further.</strong> Post in the Practice Partners channel in the portal: your timezone, two windows you are usually free, and which module you are on. Someone will claim you. This is not optional, and it is the single thing most likely to decide whether you finish.</p>
+<p>You work in a pair, not a group. One of you coaches, the other is the client, then you swap. The observer's job does not disappear, it moves: after each round the person in the client seat gives two minutes of specific feedback against the four rubric criteria (Presence and Listening, Question Quality, Session Structure, Non-Advising). Specific means the moment and the words, not a grade. Record your own sessions and score yourself as well, which catches what a partner sitting inside the conversation cannot see.</p>
+<p>Being watched early is how you avoid discovering your habits at the certification step. Partner practice counts toward your logged hours only for whoever is in the coach seat.</p>
+<ol>
+<li>Meet your practice partner once and run one round in each seat.</li>
 <li>Find two practice clients. A friend, a colleague, anyone with a real goal who is not in crisis. Send them your one-page agreement first.</li>
-<li>Run two sessions of roughly 30 minutes each, or four of 20 minutes. One rule for the whole week: you may not give advice. If you feel the urge, ask a question instead and note it afterward.</li>
+<li>Run two sessions of roughly 30 minutes each, or four of 20 minutes. One rule for the whole module: you may not give advice. If you feel the urge, ask a question instead and note it afterward.</li>
 <li>After each session, write three lines: the moment you most wanted to advise, what you asked instead, and what the client saw that they did not see at the start.</li>
-<li>Log every session in the <strong>Hours</strong> tab of this portal, using the client's initials only. Never full names. Hours are admin approved, and the 25 you need for certification start now, not in week 12.</li>
+<li>Log every session in the <strong>Hours</strong> tab of this portal, using the client's initials only. Never full names. Hours are admin approved, and the 25 you need for certification start now, not at the end.</li>
 </ol>
 <p>If a practice session raises anything clinical, stop coaching that thread, name your scope with care, and use the referral language above. That is a successful session, not a failed one.</p>
 
@@ -119,7 +122,7 @@ module.exports = {
       "Write your referral sentence word for word, the one you would say to a client whose situation belongs with a therapist.",
       "What will you include in your confidentiality standard, and what are the exceptions you will state up front?",
       "Where does your own need to be useful show up, and how might it pull you out of the coaching stance?",
-      "After your first practice session this week: what did the client see that they did not see at the start, and what did you do that made room for it?"
+      "After your first practice session: what did the client see that they did not see at the start, and what did you do that made room for it?"
     ]
   },
   "summary": [

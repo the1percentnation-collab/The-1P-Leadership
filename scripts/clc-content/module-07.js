@@ -9,7 +9,7 @@ module.exports = {
   "title": "The Client Engagement",
   "subtitle": "Discovery calls, packages, and the six-week client program you will deliver.",
   "pillar": "Module 7 · Your Practice",
-  "duration": "Week 11",
+  "duration": "≈ 4 hours",
   "published": true,
   "html": `
 <p>You can coach. That is not the same as having a practice. A certified coach without clients is a certificate in a drawer, and the gap is almost never skill. It is structure and nerve.</p>
@@ -98,21 +98,22 @@ module.exports = {
 <p><strong>Coach:</strong> Six weeks ago Awareness was your lowest of the five areas. Today it is your second highest. What moved?</p>
 <p><strong>Client:</strong> I stopped asking everyone else what they thought before I decided anything.</p>
 
-<h2>This week's live call</h2>
-<p>Agenda, ninety minutes on the cohort's fixed call day.</p>
-<ul>
-<li>Opening: the four ways a discovery call gets away from you.</li>
-<li>Demonstration: a full discovery call with a volunteer, compressed to twenty-five minutes, including the price sentence and the close. You will watch what happens after the number is said.</li>
-<li>Walkthrough: the six-week client program session by session, with the workbook pieces on screen and the assessment debrief demonstrated live.</li>
-<li>Breakout practice: pairs, twenty-five minutes. Each coach runs the first four moves of a discovery call, then says their price in a full sentence and stops. The partner reports back on what happened in the three seconds after the number.</li>
-<li>Close: open questions, and the practicum briefing for Module 8.</li>
-</ul>
-<p>What to bring: your draft discovery call script, your pricing worked through the five steps with a number written down, and your draft coaching agreement.</p>
+<h2>Watch this module</h2>
+<p>Opens with the four ways a discovery call gets away from you. Then a full discovery call compressed to twenty five minutes, including the price sentence and the close. Watch what happens in the three seconds after the number is said, and watch who speaks first. Then the walkthrough of the six-week client program, session by session, with the workbook pieces on screen and the assessment debrief demonstrated end to end.</p>
 
-<h2>Practice this week</h2>
+<h2>The drill</h2>
+<ol>
+<li><strong>The rep.</strong> Twenty five minutes each way with your practice partner. Run the first four moves of a discovery call, then say your price in a full sentence and stop talking. Your partner reports back on exactly what happened in the three seconds after the number.</li>
+<li><strong>Say it out loud until it is boring.</strong> The price sentence is the one most coaches rush or apologize for. Say yours ten times before you say it to anyone who might pay it.</li>
+<li><strong>Self-review.</strong> Write your price sentence word for word in the workbook, then write what you did with your hands and your face while saying it. Record it if you can.</li>
+<li><strong>Partner feedback.</strong> Two minutes each way against the four rubric criteria, plus one question: did the call feel like a conversation or a pitch?</li>
+<li><strong>Bring it to the lab.</strong> Bring your discovery script, your pricing worked through the five steps with a number written down, and your draft agreement. Drop into the coaching lab any week and ask it live.</li>
+</ol>
+
+<h2>Practice assignment</h2>
 <p>Run two practice coaching sessions and two practice discovery calls. Target two to three hours logged. Only coaching sessions count as coaching hours. Log discovery calls separately for your own records and note them as business development, not coaching.</p>
-<p>Your peer triad continues, roles rotating, with two minutes of observer feedback against the four rubric criteria. This week the triad also observes one discovery call each, because a discovery call that turns into a pitch fails Non-Advising first.</p>
-<p>By the end of this module you want <strong>9 of your 12 outside hours</strong> logged. If you are short, that is the gap to close before the practicum weeks. Your graded session should not be the first time you coach someone who has never read this rubric.</p>
+<p>Partner practice continues, seats swapping, with two minutes of feedback against the four rubric criteria. This module you each also sit through one of the other's discovery calls, because a discovery call that turns into a pitch fails Non-Advising first.</p>
+<p>By the end of this module you want <strong>9 of your 12 outside hours</strong> logged. If you are short, that is the gap to close before you record. Your graded session should not be the first time you coach someone who has never read this rubric.</p>
 <p>In the discovery calls:</p>
 <ul>
 <li>Run all six moves in order.</li>
@@ -122,7 +123,7 @@ module.exports = {
 <p>Log coaching sessions in the Hours tab with the date, the duration, and the client's initials only. No full names and no identifying details.</p>
 
 <h2>Where this goes next</h2>
-<p>You have a practice on paper. Module 8 is the last module before the practicum weeks, and it is entirely practical: the four certification requirements, exactly how the exam works, how to record and submit your session, the hour log rules, and the full rubric with what a 2, a 3 and a 5 sound like on every criterion. Nothing about the review will be a surprise. Read it before you record.</p>`,
+<p>You have a practice on paper. Module 8 is the last one, and it is entirely practical: the four certification requirements, exactly how the exam works, how to record and submit your session, the hour log rules, and the full rubric with what a 2, a 3 and a 5 sound like on every criterion. Nothing about the review will be a surprise. Read it before you record.</p>`,
   "workbook": {
     "reflection": "What is your honest hesitation about charging for coaching? Name it in writing so it stops running the business. Then write what you would say to a client who had the same hesitation about investing in themselves.",
     "action": "Complete three documents this week: your discovery call script, your price worked through the five-step method, and your coaching agreement covering all eight items. Then run the script twice with real people.",

@@ -160,16 +160,19 @@ node seed-clc.js
 
 Then set, in `/manage-courses.html` or directly in Firestore:
 
-- `courses/1p-clc` → `cohort.enrollCloseAt`, `cohort.startAt`, `cohort.callDay`,
-  `cohort.callTime`. All four are placeholders after seeding.
-- `courses/1p-clc/private/cohort` → `joinUrl`, the Zoom link. Empty after seeding.
+- `courses/1p-clc` → `lab.schedule` (free text, e.g. "Every other Tuesday,
+  7:00pm CT") and `lab.nextAt` (the next session's date).
+- `courses/1p-clc` → `cohort.enrollOpensAt`, the one date the launch campaign
+  uses. It stops rendering once the course is live.
+- `courses/1p-clc/private/cohort` → `joinUrl`, a recurring Zoom link. Empty
+  after seeding.
 
-**Modules 2 through 8 are seeded as drafts on purpose.** The program is a
-cohort with weekly module drops, so members see only module 1 until you publish
-each next one in `/manage-courses.html`. There is no automatic drip anywhere in
-the codebase: a module stays invisible until that toggle is flipped by hand. If
-you would rather ship all eight at once, publish them all in the builder after
-seeding, and drop the weekly gating from how you sell it.
+**The course is self-paced now, so all eight modules are published.** They
+unlock in order as a member completes each one (`sequentialUnlock` on the course
+doc), which means there is nothing to flip week by week. The old cohort model
+was dropped because nothing enforced it: checkout never read the enrollment
+close date or the seat cap, and a second cohort would have overwritten the
+first. See section 7.
 
 ## 6. Pre-registration and the announcement bar
 
@@ -235,6 +238,73 @@ everyone on the list. Then set `config/announcement.enabled` to false, or let
 rather send the launch mail by hand, set `launchNotifiedAt` on the course doc
 to any timestamp BEFORE flipping the status. That disarms the trigger, and you
 send with `notifyCoursePrereg` when you are ready.
+
+## 7. Self-paced conversion
+
+The Life Coach was sold as a fixed 16-week cohort and none of it was enforced.
+`createCheckoutSession` never read `cohort.enrollCloseAt` or `cohort.capacity`,
+so enrollment never closed and seats never ran out. Access was granted the
+instant Stripe paid. There is one cohort map on one course document, so a
+second group would have overwritten the first. Someone buying in week 14 got
+every module at once and could sit the exam that afternoon.
+
+Rather than build the missing cohort machinery, the course became self-paced.
+
+### What changed
+
+- **Sequential unlock.** A module opens when the one before it is complete.
+  Driven by `sequentialUnlock` on the course doc, so it is per course and
+  settable without a deploy. A locked module still renders, with the reason.
+  It is a pacing affordance, not a paywall: the rules grant an enrolled member
+  the whole modules subcollection.
+- **The cohort call became a coaching lab.** Same private join link at
+  `courses/{slug}/private/cohort`, same enrollment gating, but generic to any
+  course now rather than hardcoded to `1p-clc`. Set `lab.schedule` and
+  `lab.nextAt` in the builder. Use a recurring meeting link.
+- **Gone:** enrollment close date, module 1 drop date, seat capacity. The seat
+  counter never even rendered for visitors, since it read a coupon doc the
+  rules restrict to admins. The scarcity that is real is the FOUNDING coupon's
+  20-redemption cap, enforced at checkout, and that is what the page now says.
+- **Practice partners replaced the peer triad.** Self-paced students never
+  share a calendar. `channels/clc-practice` is unlisted and private, and
+  `onUserEnrollmentWritten` adds each member on enrollment and removes them on
+  refund. Run `backfillCourseChannelMembers({ slug: '1p-clc' })` once for
+  anyone who enrolled before that trigger shipped.
+- **All eight modules rewritten.** Each one now has Watch this module, The
+  drill, and Practice assignment in place of the old live-call agenda.
+  Durations are effort estimates instead of calendar positions.
+
+### What you still have to do
+
+1. **Pin a board post** in the CLC Practice Partners channel: tell students to
+   post their timezone, two windows they are free, and which module they are
+   on. For the first handful of buyers, pair them by hand. It is a few emails
+   and it tells you whether the board is worth automating.
+2. **Pick a coaching lab cadence and stand up a recurring Zoom link.** This is
+   now the main thing justifying $3,497 against on-demand competitors, so put
+   the first three dates on the page before launch. It is also a permanent
+   commitment: phrase it as "while you are enrolled", never as a lifetime
+   guarantee of a specific day and time.
+3. **Record the eight sessions.** No code needed. Paste an unlisted Vimeo link
+   into each module's video field in the builder. Use Vimeo with domain
+   privacy, not a Storage upload: `getDownloadURL()` returns a token URL that
+   bypasses Storage rules, so an uploaded video plays for anyone the link
+   reaches. Until the recordings exist the modules render exactly as they do
+   now, so this does not block launch. But the page must not claim
+   "pre-recorded video lessons" until they are live.
+4. **Re-run curriculum sync** from the builder after reseeding, or `/clc` keeps
+   advertising the old module durations. The sales page renders its curriculum
+   from the `curriculum` array on the parent course doc, not from the module
+   docs.
+5. **Diff before reseeding.** `node scripts/inspect-clc.js` first. If any
+   lesson body was edited in the builder since the last seed, reseeding
+   overwrites it silently.
+
+### One thing to watch
+
+`clc-page.js` merges the Firestore course doc over the static registry, so a
+stale field in Firestore silently reinstates old copy on a page whose source
+says otherwise. Verify the rendered page, not the file.
 
 ## Known open items
 

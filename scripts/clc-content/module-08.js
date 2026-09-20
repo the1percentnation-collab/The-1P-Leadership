@@ -13,10 +13,10 @@ module.exports = {
   "title": "Practicum Preparation",
   "subtitle": "The rubric, the recording, and the hour log: exactly how certification works.",
   "pillar": "Module 8 · Your Practice",
-  "duration": "Week 12",
+  "duration": "≈ 3 hours",
   "published": true,
   "html": `
-<p>This is the last module before the practicum weeks, and the least theoretical thing in the program. No new technique. You learn exactly how you get certified, how your recorded session is scored, and what happens after. Read it before you record. Nothing here is meant to be a surprise.</p>
+<p>This is the last module, and the least theoretical thing in the program. No new technique. You learn exactly how you get certified, how your recorded session is scored, and what happens after. Read it before you record. Nothing here is meant to be a surprise.</p>
 
 <h2>The four requirements</h2>
 <p>Four things, all reviewed. No exceptions and no substitutions.</p>
@@ -35,16 +35,16 @@ module.exports = {
 <h2>The recorded session</h2>
 <p>One full coaching session, thirty minutes or longer, with a practice client who has given written permission to be recorded.</p>
 <p><strong>Consent first, always.</strong> In writing, before you record, tell the client three things: the session is recorded, your admin will review it for your certification, and it will not be published, shared further, or used in marketing. Keep their written agreement. Verbal consent on the recording is not enough. If the client is hesitant, find another client.</p>
-<p><strong>Who to record.</strong> A real practice client you have coached before, ideally not a classmate. A peer who knows the rubric produces a performance rather than a session. Do not record someone in acute distress, and do not stage a session around an invented issue.</p>
+<p><strong>Who to record.</strong> A real practice client you have coached before, ideally not your practice partner. Someone who knows the rubric produces a performance rather than a session. Do not record someone in acute distress, and do not stage a session around an invented issue.</p>
 <p><strong>Setup.</strong> Zoom, Loom, a phone recorder or a shared drive link all work. Test your audio first. Submit one continuous session, not a highlight reel, from the Certification tab.</p>
 <p><strong>This is not your first reviewed recording.</strong> You submitted feedback-only recordings after Module 4 and Module 6, reviewed against these same four criteria with no score recorded. The capstone is never a student's first reviewed recording. Read both sets of feedback side by side. What the reviewer named twice is what to work on now.</p>
 
 <h2>The hour log rules</h2>
 <p>Twenty-five approved hours. Approved, not logged. Your admin reviews each entry.</p>
-<p><strong>What counts.</strong> Real coaching sessions where you held the coach's chair, paid or unpaid, in person or on video, including triad sessions where you were the coach.</p>
+<p><strong>What counts.</strong> Real coaching sessions where you held the coach's chair, paid or unpaid, in person or on video, including practice partner sessions where you were the coach.</p>
 <p><strong>What does not.</strong> Cohort calls, time as the client or the observer, discovery calls, preparation, notes, reading, or coaching yourself.</p>
 <p><strong>How to log.</strong> Date, duration, a one-line note, and the client's initials only. Never a full name, never a detail that would identify the client. Log within a few days while the detail is accurate.</p>
-<p><strong>Twelve of the twenty-five from outside the cohort.</strong> Peers are where you learned the mechanics. Clients who have never seen this rubric are where you find out whether they hold. This is a hard requirement, not a preference: the system will not issue your credential until 12 approved hours are logged against clients who are not classmates. You mark that on every entry when you log it. By the end of this module you want 11 of the 12, with the last one coming during the practicum weeks.</p>
+<p><strong>Twelve of the twenty-five from outside the program.</strong> Your practice partner is where you learned the mechanics. Clients who have never seen this rubric are where you find out whether they hold. This matters more because the course is self-paced: partner swaps are unlimited and nobody is watching, so this floor is the only thing standing between you and a credential earned without ever coaching a stranger. It is enforced, not encouraged: the system will not issue your credential until 12 approved hours are logged against clients outside the program. You mark that on every entry when you log it. By the end of this module you want 11 of the 12.</p>
 
 <h2>The rubric: how your session is scored</h2>
 <p>Your session is scored 0 to 5 on four criteria: Presence and Listening, Question Quality, Session Structure, and Non-Advising. The anchors below describe what a 2, a 3 and a 5 sound like on each one. A 4 sits between the 3 and the 5. A 1 sits below the 2. A 0 means the criterion was not demonstrated at all.</p>
@@ -95,26 +95,33 @@ module.exports = {
 <p><strong>You are listed in the public coach directory.</strong> The directory is where inbound 1P leads are routed, and listing continues as long as your license is active. Keep logging hours after you certify so renewal is a formality.</p>
 <p>How to describe it: you are certified in a proprietary framework. Not a state license, because no state licenses life coaches, and not ICF accreditation. Say it plainly and without apology.</p>
 
-<h2>This week's live call</h2>
-<p>Agenda, ninety minutes on the cohort's fixed call day. This is the practicum briefing.</p>
-<ul>
-<li>Opening: the four requirements and the timeline for weeks thirteen through sixteen.</li>
-<li>Rubric walk: all four criteria read out loud, with the 2, 3 and 5 anchors.</li>
-<li>Scored listening: we hear an anonymized session segment, everyone scores it privately, then we compare. The spread in the room is what calibrates you to the standard.</li>
-<li>Exam clinic: how the questions are built and the two modules students most often skim.</li>
-<li>Breakout practice: triads, twenty-five minutes, a dry run of the graded session, with the observer scoring all four criteria and giving one reason per number.</li>
-<li>Close: consent language, recording logistics, open questions.</li>
-</ul>
-<p>What to bring: your feedback notes from the Module 4 and Module 6 recordings, a shortlist of clients you could record, and your current hour count.</p>
+<h2>Watch this module</h2>
+<p>The certification briefing. All four requirements, then the rubric walk: every criterion read out loud with the 2, 3 and 5 anchors, so nothing about the review is a surprise. Then the scored listening exercise. You hear an anonymized session segment and score it yourself before the scores are revealed. Where your number differs from the published one is where you are not yet calibrated to the standard. Closes with the exam clinic, the consent language, and the recording logistics.</p>
 
-<h2>Practice this week</h2>
-<p>Run two practice coaching sessions, thirty to sixty minutes each. Target two hours logged. Both with clients who are not classmates, which should put you at 11 of your 12 outside hours, because that is the condition your graded session will be recorded under.</p>
+<h2>The drill</h2>
+<ol>
+<li><strong>The dry run.</strong> Twenty five minutes each way with your practice partner, a full rehearsal of the graded session. Your partner scores all four criteria and gives one reason per number. Do this before you record the real one.</li>
+<li><strong>Score yourself first.</strong> Watch your own recording and score it against the rubric before you read your partner's numbers. The gap between your score and theirs is the most useful thing in this module.</li>
+<li><strong>Self-review.</strong> Write which criterion you are weakest on and the one specific change that would move it. One criterion, one change.</li>
+<li><strong>Partner feedback.</strong> Full rubric, all four criteria, with a reason for each number. This is the last rehearsal before the real thing.</li>
+<li><strong>Bring it to the lab.</strong> Bring your feedback notes from the Module 4 and Module 6 recordings, a shortlist of clients you could record, and your current hour count. Drop into the coaching lab any week and ask it live.</li>
+</ol>
+
+<h2>Practice assignment</h2>
+<p>Run two practice coaching sessions, thirty to sixty minutes each. Target two hours logged. Both with clients outside the program, which should put you at 11 of your 12 outside hours, because that is the condition your graded session will be recorded under.</p>
 <p>Self-score each session against all four criteria immediately afterward: the number plus one sentence of evidence. Then compare against your Module 4 and Module 6 feedback. Where you are generous with yourself is where the reviewer will not be.</p>
 <p>Four setup items: choose your recording client and get written consent, book the session date with room for a resubmission, reconcile your hour log, and schedule your exam attempt.</p>
 <p>Log your sessions in the Hours tab with the date, the duration, and the client's initials only.</p>
 
-<h2>Into the practicum weeks</h2>
-<p>Modules are done. Weeks thirteen through sixteen are yours to execute. Week thirteen: coach, and get your entries approved rather than sitting in pending. Week fourteen: sit the exam. Week fifteen: record and submit. Week sixteen: respond to feedback if a revise comes back, close out remaining hours, and certify. The live call continues as office hours. Bring what is stuck.</p>
+<h2>The certification step</h2>
+<p>Modules are done. What is left has no calendar on it, and nothing expires. Four things, in the order that wastes the least of your time:</p>
+<ol>
+<li><strong>Close out your hours.</strong> Get entries approved rather than sitting in pending, and make sure at least 12 of the 25 are with clients outside the program. This is the requirement people discover late.</li>
+<li><strong>Sit the exam.</strong> Eighty percent to pass, three attempts, drawn from a tagged question bank.</li>
+<li><strong>Record and submit.</strong> One full session, thirty minutes or longer, with written consent.</li>
+<li><strong>Respond to feedback</strong> if a revise comes back, and certify.</li>
+</ol>
+<p>Take as long as you need. The credential is earned on evidence, not on a schedule. The coaching lab keeps running the whole time, so bring what is stuck.</p>
 <p>One last thing, and it matters most. You have spent twelve weeks learning to stay out of someone's answer so they can find their own. That discipline is the whole product. Your first real client will not know the framework's name and will not care about the rubric. They will notice that somebody asked them a question and then waited.</p>`,
   "workbook": {
     "reflection": "Read the rubric as a client rather than as a student. Which of the four criteria would you most want your own coach to hold, and what does that tell you about the coach you are becoming?",
@@ -122,7 +129,7 @@ module.exports = {
     "prompts": [
       "Which rubric criterion is currently your weakest, and what specifically will you practice before you record?",
       "What repeated across your Module 4 and Module 6 feedback? That repeat is your pattern. Name it.",
-      "What is your plan to reach 25 approved hours, week by week, and where do the 12 outside the cohort come from?",
+      "What is your plan to reach 25 approved hours, and where do the 12 from outside the program come from?",
       "Write the written consent message you will send your recording client, word for word.",
       "Self-score your last practice session on all four criteria and write one sentence of evidence for each.",
       "If your session comes back as revise, what is your first move, and what will you not do?",

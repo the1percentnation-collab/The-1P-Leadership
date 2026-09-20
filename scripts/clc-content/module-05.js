@@ -9,11 +9,11 @@ module.exports = {
   "title": "Powerful Questions and Growth Plans",
   "subtitle": "Question craft, and turning insight into a plan the client owns.",
   "pillar": "Module 5 · Growth",
-  "duration": "Weeks 7 to 8",
+  "duration": "≈ 5 hours",
   "published": true,
   "html": `
-<p>You have the stance, the framework, the session spine, and the identity layer. This week you pick up the instrument. The question is the only tool you carry that a client cannot easily use on themselves, and most coaches never learn to build one properly. They ask long questions, leading questions, three questions at once. The client answers the easiest one and the session stays on the surface.</p>
-<p>What changes this week is your default. You will ask fewer questions, shorter ones, and better ones. You will learn to sit in the silence after them instead of filling it. And you will learn what to do with the insight a good question produces, because insight that never becomes a plan is just a nice moment the client forgets by Thursday.</p>
+<p>You have the stance, the framework, the session spine, and the identity layer. Now you pick up the instrument. The question is the only tool you carry that a client cannot easily use on themselves, and most coaches never learn to build one properly. They ask long questions, leading questions, three questions at once. The client answers the easiest one and the session stays on the surface.</p>
+<p>What changes here is your default. You will ask fewer questions, shorter ones, and better ones. You will learn to sit in the silence after them instead of filling it. And you will learn what to do with the insight a good question produces, because insight that never becomes a plan is just a nice moment the client forgets by Thursday.</p>
 <p>The G of A.L.I.G.N. is Growth: choosing expansion over comfort. Growth is not a feeling. It is a decision the client makes repeatedly, and your questions are what make that decision visible enough to choose.</p>
 
 <h2>What makes a question powerful</h2>
@@ -33,7 +33,7 @@ module.exports = {
 <li><strong>One at a time.</strong> Never stack. Two questions in one breath means the client picks the safer one.</li>
 <li><strong>Then silence.</strong> Ask, then stop talking. The good answer is usually the second one.</li>
 </ol>
-<p>The fifth rule is the hardest and it is the one that separates a coach from a friendly conversationalist. You will practice it deliberately this week.</p>
+<p>The fifth rule is the hardest and it is the one that separates a coach from a friendly conversationalist. You will practice it deliberately here.</p>
 
 <h2>Silence is part of the question</h2>
 <p>When you ask something real, the client's first answer is usually the rehearsed one. The one they have told other people. If you respond to it, the session stays in the rehearsal. If you wait, they often correct themselves.</p>
@@ -118,21 +118,22 @@ module.exports = {
 <p>You did not tell them to have the conversation. You asked one question that named the pattern, and one that asked for the harder option. The client picked it. That is Growth in a session.</p>
 <p>Stretch has a ceiling. A step that is too big produces shame when it is missed, and shame produces avoidance, not growth. Calibrate to something the client is about seventy percent confident they will do. High enough to matter, low enough to be real.</p>
 
-<h2>This week's live call</h2>
-<p>Agenda, ninety minutes on the cohort's fixed call day.</p>
-<ul>
-<li>Opening: the three question failures I hear most in submitted recordings, and the fix for each.</li>
-<li>Demonstration: a live fifteen-minute coaching segment with a volunteer from the cohort, run with a hard constraint of no question longer than twelve words. You will watch the silence do most of the work.</li>
-<li>Teardown: we replay the demo out loud, question by question, and name which A.L.I.G.N. family each one came from and why it was chosen there.</li>
-<li>Breakout practice: triads, thirty minutes. One coach, one client, one observer. Fifteen-minute segment, then the observer reads back every question the coach asked, verbatim, with no commentary. Hearing your own questions read back is the fastest correction in this program. Rotate once if time allows.</li>
-<li>Close: open questions and next week's assignment.</li>
-</ul>
-<p>What to bring: one real goal of your own, your written question bank in progress, and a recording setup you are comfortable with. Volunteers for the demonstration are taken in the first five minutes.</p>
+<h2>Watch this module</h2>
+<p>Opens with the three question failures that show up most in submitted recordings, and the fix for each. Then a fifteen-minute coaching segment run under a hard constraint: no question longer than twelve words. You will watch the silence do most of the work. The teardown replays it question by question and names which A.L.I.G.N. family each one came from and why it was chosen there.</p>
 
-<h2>Practice this week</h2>
-<p>Run three practice coaching sessions this week, thirty to sixty minutes each. Target three hours logged.</p>
-<p>Keep your peer triad running. Same three people, rotating roles each week: one coach, one client, one observer. The observer gives two minutes of feedback at the end, spoken against the four rubric criteria in order: Presence and Listening, Question Quality, Session Structure, Non-Advising. No general praise. One observation per criterion.</p>
-<p>From this week forward, at least one of your three sessions should be with a client who is not a classmate, which puts you at <strong>4 of your 12 outside hours</strong> by the end of this module. Peers are a safe place to learn mechanics. People outside the cohort are where you find out whether the mechanics hold when the client is not also studying the rubric. That share keeps growing through Module 8.</p>
+<h2>The drill</h2>
+<ol>
+<li><strong>The rep.</strong> Fifteen minutes each way with your practice partner. Same constraint: no question longer than twelve words. Count them if you have to.</li>
+<li><strong>The read-back.</strong> This is the fastest correction in the program. Record the segment, then have your partner read every question you asked back to you, verbatim, with no commentary. Just the questions, out loud, in order. Most people hear the problem before the third one.</li>
+<li><strong>Self-review.</strong> Write each question you asked into your question bank, sorted by A.L.I.G.N. family. The gaps in that bank are the families you avoid.</li>
+<li><strong>Partner feedback.</strong> Two minutes each way against the four rubric criteria.</li>
+<li><strong>Bring it to the lab.</strong> Bring one real goal of your own and your question bank in progress. Drop into the coaching lab any week and ask it live.</li>
+</ol>
+
+<h2>Practice assignment</h2>
+<p>Run three practice coaching sessions, thirty to sixty minutes each. Target three hours logged.</p>
+<p>Keep your practice partner. Same person, swapping seats each session. Two minutes of feedback at the end, spoken against the four rubric criteria in order: Presence and Listening, Question Quality, Session Structure, Non-Advising. No general praise. One observation per criterion.</p>
+<p>From here on, at least one of every three sessions should be with a client who is not in the program, which puts you at <strong>4 of your 12 outside hours</strong> by the end of this module. A practice partner is a safe place to learn mechanics. People outside the program are where you find out whether the mechanics hold when the client is not also studying the rubric. That share keeps growing through Module 8.</p>
 <p>Constraints for these three sessions:</p>
 <ul>
 <li>Write down every question you ask, during or immediately after. Longhand is fine.</li>

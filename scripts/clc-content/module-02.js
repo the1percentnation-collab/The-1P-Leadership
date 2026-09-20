@@ -9,10 +9,10 @@ module.exports = {
   "title": "The A.L.I.G.N. Framework",
   "subtitle": "The full arc your clients will move through, and the map you will coach from.",
   "pillar": "Module 2 · Awareness",
-  "duration": "Week 2",
+  "duration": "≈ 4 hours",
   "published": true,
   "html": `
-<p>Last week you learned the stance. This week you get the map. After this module you will never again sit in a session wondering what to do next, because you will know which stage the client is standing in, what that stage produces, and what has to be true before you move. A coach without a framework runs on instinct and has a good week and a bad week. A coach with a framework runs on a process and gets a repeatable result.</p>
+<p>The last module gave you the stance. This one gives you the map. After this module you will never again sit in a session wondering what to do next, because you will know which stage the client is standing in, what that stage produces, and what has to be true before you move. A coach without a framework runs on instinct and has a good week and a bad week. A coach with a framework runs on a process and gets a repeatable result.</p>
 
 <h2>The order is the method</h2>
 <p>A.L.I.G.N. is the spine of every 1P engagement: <strong>Awareness</strong> (seeing the belief clearly), <strong>Leadership</strong> (taking ownership of your story), <strong>Identity</strong> (rewriting who you believe you are), <strong>Growth</strong> (choosing expansion over comfort), and <strong>Navigation</strong> (executing the path forward).</p>
@@ -84,23 +84,26 @@ module.exports = {
 </ul>
 <p>The baseline in session one is what makes session six land. Capture it in the client's own language and read it back to them at the end. Progress the client can see is what makes them renew, refer, and keep going after you are gone.</p>
 
-<h2>This week's live call</h2>
-<ul>
-<li><strong>Demonstration:</strong> Anthony coaches a volunteer and stops at four points to name the stage he is in and the signal he is listening for.</li>
-<li><strong>Teaching block:</strong> readiness signals for each stage, side by side, and the two most common sequencing errors on real transcripts.</li>
-<li><strong>Breakouts:</strong> trios. One coaches for fifteen minutes, one is the client, one is the observer whose only job is to write down which stage the conversation is in, minute by minute. Rotate all three seats.</li>
-<li><strong>Map workshop:</strong> bring your draft six-session map and we pressure test one deliverable per session.</li>
-</ul>
-<p>Bring: your draft six-session journey map, and one real client situation (anonymized) where you are not sure which stage the person is in.</p>
+<h2>Watch this module</h2>
+<p>Anthony coaches a session and stops at four points to name the stage he is in and the signal he is listening for. Then the teaching block: readiness signals for each stage side by side, and the two most common sequencing errors, worked on real transcripts.</p>
+<p>Watch for the moment he decides someone is ready to move, and what told him.</p>
 
-<h2>Practice this week</h2>
-<p>Target: <strong>3 practice coaching hours</strong> this week.</p>
-<p>Your triad rotates again this week: new seat for each of you. The observer scores nothing, but watches against the four rubric criteria and gives two minutes of specific feedback after each round. This week the observer also names, minute by minute, which A.L.I.G.N. stage the conversation was in. Remember that triad practice counts toward logged hours only for whoever is in the coach seat.</p>
+<h2>The drill</h2>
+<ol>
+<li><strong>The rep.</strong> Fifteen minutes each way with your practice partner. Coach normally, but every time the stage changes, say it out loud: "we just moved into Leadership." Saying it forces you to know it.</li>
+<li><strong>Self-review.</strong> Play your recording back and write the stage, minute by minute, down the margin. That is the observer's job, and you can do it for yourself afterwards more accurately than anyone can do it live.</li>
+<li><strong>Partner feedback.</strong> Two minutes each way on one question only: did the stages come in order, and if not, where did it jump?</li>
+<li><strong>Bring it to the lab.</strong> Bring your draft six-session map, or one anonymized client situation where you cannot tell which stage the person is in. Drop into the coaching lab any week and ask it live.</li>
+</ol>
+
+<h2>Practice assignment</h2>
+<p>Target: <strong>3 practice coaching hours</strong> from this module.</p>
+<p>Swap seats with your practice partner again. Two minutes of specific feedback after each round, against the four rubric criteria. This module add one thing: name, minute by minute, which A.L.I.G.N. stage the conversation was in. Do it live if you can and off the recording if you cannot. Partner practice counts toward logged hours only for whoever is in the coach seat.</p>
 <ol>
 <li>Run three sessions of roughly 45 minutes, or four shorter ones. Use the same practice client for at least two of them so you can feel a stage transition instead of only a single conversation.</li>
-<li>Before each session, write down which stage you believe the client is in. After each session, write down which stage they were actually in and what told you. The gap between those two notes is this week's learning.</li>
+<li>Before each session, write down which stage you believe the client is in. After each session, write down which stage they were actually in and what told you. The gap between those two notes is this module's learning.</li>
 <li>In one session, deliberately stay in Awareness for the full time even when the client asks for a plan. Notice what that costs you and what it produces for them.</li>
-<li>Log every session in the <strong>Hours</strong> tab with the client's initials only. You should be near five approved hours by the end of this week.</li>
+<li>Log every session in the <strong>Hours</strong> tab with the client's initials only. You should be near five approved hours by the end of this module.</li>
 </ol>
 
 <p>Next module turns to you. Presence, regulation, the three levels of listening, and the session spine minute by minute, because a map is only as good as the coach holding it.</p>`,

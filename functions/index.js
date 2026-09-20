@@ -2423,7 +2423,7 @@ const PREREG_COURSES = {
   '1p-clc': {
     title: '1P Certified Life Coach',
     source: 'CLC Pre-Registration',
-    blurb: 'Sixteen weeks: eight modules, a written exam, one recorded coaching session reviewed against a published rubric, and 25 logged practice coaching hours.'
+    blurb: 'Self-paced: eight modules that unlock in order, a written exam, one recorded coaching session reviewed against a published rubric, and 25 logged practice coaching hours.'
   }
 };
 
@@ -2447,7 +2447,7 @@ async function sendPreregConfirmation(db, slug, course, { name, email }) {
       <h2 style="color:#E60306;margin:0 0 10px;">You are on the list.</h2>
       <p style="font-size:15px;color:#222;">${first ? escapeHtmlBasic(first) + ', you' : 'You'} will be among the first to know when enrollment for the ${escapeHtmlBasic(course.title)} opens${opensLabel ? ' on ' + escapeHtmlBasic(opensLabel) : ''}.</p>
       <p style="font-size:14px;color:#444;">${escapeHtmlBasic(course.blurb)}</p>
-      <p style="font-size:14px;color:#444;">Seats are limited and the founding cohort is capped, so the email you get on opening day is worth opening.</p>
+      <p style="font-size:14px;color:#444;">The founding price is capped at the first twenty students, so the email you get on opening day is worth opening.</p>
       <p style="margin:18px 0;"><a href="${APP_BASE_URL}/clc" style="background:#E60306;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:600;">See what is included &rarr;</a></p>
       <p style="font-size:12px;color:#888;">&mdash; The One Percent Nation</p>
     </div>`;
@@ -8094,7 +8094,7 @@ async function sendCoursePreregLaunchEmails(db, slug, course, { force = false } 
     <h2 style="color:#E60306;margin:0 0 10px;">Enrollment is open.</h2>
     <p style="font-size:15px;color:#222;">You asked to be the first to know. The ${escapeHtmlBasic(title)} is open for enrollment now.</p>
     ${course.subtitle ? `<p style="font-size:14px;color:#444;">${escapeHtmlBasic(course.subtitle)}</p>` : ''}
-    <p style="font-size:14px;color:#444;">Seats in the founding cohort are limited, and they are taken in the order people enroll.</p>
+    <p style="font-size:14px;color:#444;">It is self-paced, so you start the day you enroll. The founding price is capped at the first twenty students and goes in the order people enroll.</p>
     <p style="margin:18px 0;"><a href="${url}" style="background:#E60306;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Enroll now &rarr;</a></p>
     <p style="font-size:12px;color:#888;">&mdash; The One Percent Nation</p>
   </div>`;

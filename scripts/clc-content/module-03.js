@@ -9,7 +9,7 @@ module.exports = {
   "title": "Leadership of Self and Session",
   "subtitle": "Presence, listening, and the structure that makes a session produce movement.",
   "pillar": "Module 3 · Leadership",
-  "duration": "Weeks 3 to 4",
+  "duration": "≈ 5 hours",
   "published": true,
   "html": `
 <p>These two weeks change how you show up and how you run the hour. Most new coaches think the skill is in the questions. The questions matter, and they come in module 5. What decides whether a session produces movement is simpler and harder: whether you are actually present, whether you heard what was underneath the words, and whether the conversation had a spine. Get those three right and an average question will do fine work. Get them wrong and a brilliant question lands on nothing.</p>
@@ -33,7 +33,7 @@ module.exports = {
 <li>Write down anything of your own that is loud right now, in one line, on paper. Naming it parks it.</li>
 <li>Ask yourself one question: what does this person need from me for the next forty five minutes?</li>
 </ol>
-<p>Inside the session, you need a reset you can run in three seconds without the client noticing: feel your feet on the floor, one slow exhale, and return to their last sentence. Practice it this week in ordinary conversations so it is available when you need it.</p>
+<p>Inside the session, you need a reset you can run in three seconds without the client noticing: feel your feet on the floor, one slow exhale, and return to their last sentence. Practice it in ordinary conversations so it is available when you need it.</p>
 <p><strong>Common mistake:</strong> coaching when you are not fit to coach. If you are in genuine distress, reschedule. One honest reschedule costs less than a session where you were absent.</p>
 
 <h2>The three levels of listening</h2>
@@ -101,19 +101,21 @@ module.exports = {
 <li><strong>The client wants your opinion.</strong> Ask permission, be brief, hand it back: "I can give you my read in thirty seconds if it is useful. But first, what is your read?"</li>
 </ul>
 
-<h2>This week's live call</h2>
-<ul>
-<li><strong>Demonstration:</strong> a full forty five minute session, run start to finish with the clock visible, then a walk back through each spine step and why it got the time it got.</li>
-<li><strong>Listening drill:</strong> Anthony plays a short recorded exchange twice. Round one, everyone writes what they heard at level one. Round two, level three. The gap between the two rounds is the lesson.</li>
-<li><strong>Breakouts:</strong> pairs, twenty minutes each way, full spine, with one hard rule: no question may be rephrased once asked. You ask, then you wait.</li>
-<li><strong>Silence drill:</strong> partner counts your average wait time after a question. Most people start near two seconds. The target is five.</li>
-<li><strong>Debrief:</strong> presence resets, and what pulled each of you out.</li>
-</ul>
-<p>Bring: your written pre-session routine, your opening question word for word, and your two closing questions.</p>
+<h2>Watch this module</h2>
+<p>A full forty five minute session, start to finish with the clock visible, then a walk back through each step of the spine and why it got the time it got. After that, the listening drill: a short recorded exchange played twice. Write what you heard at level one, then again at level three. The gap between your two answers is the lesson.</p>
 
-<h2>Practice this week</h2>
+<h2>The drill</h2>
+<ol>
+<li><strong>The rep.</strong> Twenty minutes each way with your practice partner, full spine, one hard rule: no question may be rephrased once asked. You ask, then you wait.</li>
+<li><strong>The silence drill.</strong> Your partner counts your average wait time after a question. Most people start near two seconds. The target is five. Do this one every module until five is automatic.</li>
+<li><strong>Self-review.</strong> Write your presence resets in the workbook, and name what pulled you out of the session. There is always something.</li>
+<li><strong>Partner feedback.</strong> Two minutes each way against the four rubric criteria, plus the wait-time number.</li>
+<li><strong>Bring it to the lab.</strong> Bring your written pre-session routine, your opening question word for word, and your two closing questions. Drop into the coaching lab any week and ask it live.</li>
+</ol>
+
+<h2>Practice assignment</h2>
 <p>Target: <strong>4 practice coaching hours</strong> across these two weeks.</p>
-<p>Keep the triad rotating, and keep the observer working from the four rubric criteria with two minutes of specific feedback after each round. Coach seat hours are the ones that count in your log. Starting now, widen your practice beyond your classmates. By the end of this module you want <strong>1 hour of the 12 from outside the cohort</strong>, because 25 hours of peer practice will not prepare you for a real client who did not read the same material you did. One person who says yes is enough to start.</p>
+<p>Keep swapping seats with your partner, with two minutes of specific feedback against the four rubric criteria after each round. Coach seat hours are the ones that count in your log. Starting now, widen your practice beyond the program: by the end of this module you want <strong>1 hour of the 12 from outside it</strong>, because 25 hours of partner practice will not prepare you for a real client who never read the same material you did. One person who says yes is enough to start.</p>
 <ol>
 <li>Run four sessions of forty five minutes using the full spine and the timings above. Keep a clock where you can see it.</li>
 <li>Run your pre-session routine before every one of them, including the sessions you do not think you need it for.</li>
