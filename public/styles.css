@@ -30,6 +30,10 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* The academy header is sticky and the marketing nav is fixed, so an anchor
+   jump would otherwise land the target's top edge underneath the bar. */
+html { scroll-padding-top: 104px; }
+
 /* The HTML `hidden` attribute must always win over author `display` rules on
    the same element — otherwise sections we toggle via el.hidden still render. */
 [hidden] { display: none !important; }

@@ -25,7 +25,11 @@
    display:flex) silently overrides it. Without this, elements the
    page marks hidden still render. */
 [hidden] { display: none !important; }
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  /* The nav is position:fixed at 68px, so anchor jumps must clear it. */
+  scroll-padding-top: 92px;
+}
 body {
   background: var(--black); color: var(--white);
   font-family: var(--font-body); overflow-x: hidden;
