@@ -207,9 +207,10 @@ Nothing new to set up. It uses the existing `ANTHROPIC_API_KEY` secret.
 
 Two things must be true before the answers are trustworthy:
 
-1. **The `lastContactedAt` backfill has run** —
-   `node scripts/backfill-last-contacted.js`. Firestore range queries silently
-   skip documents missing the ordered field, so without it "who has gone cold?"
+1. **The `lastContactedAt` backfill has run** — click **Backfill now** in the
+   banner on the CRM dashboard, or run `node backfill-last-contacted.js` from
+   `scripts/` for every company at once. Firestore range queries silently skip
+   documents missing the ordered field, so without it "who has gone cold?"
    returns almost nothing and looks healthy doing it.
 2. **The new indexes have finished building** — deploy `firestore:indexes` and
    wait. Until then staleness queries report that a database index is still

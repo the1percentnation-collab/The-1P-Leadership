@@ -9,7 +9,8 @@
 // The CRM assistant (the chatbot in CRM mode) is for the questions this page
 // cannot anticipate — "what's the story with Jane Cole" — not for these.
 
-import { db, firebaseReady } from './firebase.js';
+import { db, functions, firebaseReady } from './firebase.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { renderCrmShell } from './crm-shell.js';
@@ -277,13 +278,15 @@ function sourceReport() {
  *
  * A contact that has never been written by the new code has NO lastContactedAt
  * field at all, as distinct from one explicitly set to null, which means
- * genuinely never contacted. Before scripts/backfill-last-contacted.js runs,
- * every existing contact falls in the first group and the recency reports read
- * "Never contacted" for the whole book — wrong, alarming, and the kind of
- * first impression that makes someone stop trusting a feature.
+ * genuinely never contacted. Before the backfill runs, every existing contact
+ * falls in the first group and the recency reports read "Never contacted" for
+ * the whole book — wrong, alarming, and the kind of first impression that makes
+ * someone stop trusting a feature.
  *
- * Saying so is better than rendering a confident lie. The banner disappears on
- * its own once the backfill has run.
+ * Saying so is better than rendering a confident lie. The banner carries the
+ * fix rather than a terminal command: whoever sees it is an admin in a browser,
+ * not necessarily someone with a checkout and a service account key. The
+ * banner disappears on its own once the backfill has run.
  */
 function backfillBannerHtml() {
   if (!state.contacts.length) return '';
@@ -292,10 +295,65 @@ function backfillBannerHtml() {
   return `<div class="card rep-banner">
     <strong>Contact history has not been backfilled yet.</strong>
     ${missing} of ${state.contacts.length} contacts have no outreach history recorded, so the
-    recency figures below are not meaningful yet. Run
-    <code>node scripts/backfill-last-contacted.js</code> to derive it from existing
-    emails, texts, calls and logged activity. This notice clears itself once that is done.
+    recency figures below are not meaningful yet. Deriving it from existing emails, texts,
+    calls and logged activity takes a few seconds and changes nothing else.
+    <div class="rep-banner-actions">
+      <button type="button" class="btn btn-sm" id="backfill-preview">Preview</button>
+      <button type="button" class="btn btn-sm btn-primary" id="backfill-run">Backfill now</button>
+      <span class="rep-banner-status" id="backfill-status"></span>
+    </div>
   </div>`;
+}
+
+/**
+ * Drive the chunked callable to completion.
+ *
+ * The function pages 100 contacts per call so no single invocation can hit the
+ * timeout, which means the client owns the loop. Progress is reported after
+ * every page: a silent spinner on a long book is indistinguishable from a dead
+ * one. The page cap is a runaway guard, not an expected limit — 200 pages is
+ * 20,000 contacts, well past any real book.
+ */
+async function runBackfill({ dryRun }) {
+  const statusEl = $('backfill-status');
+  const buttons = ['backfill-preview', 'backfill-run'].map($).filter(Boolean);
+  buttons.forEach((b) => { b.disabled = true; });
+  const say = (msg) => { if (statusEl) statusEl.textContent = msg; };
+
+  const totals = { scanned: 0, stamped: 0, never: 0, unchanged: 0 };
+  let cursor = null;
+  let pages = 0;
+
+  try {
+    const call = httpsCallable(functions, 'backfillLastContacted');
+    do {
+      const res = await call({ companyId: state.companyId, cursor, dryRun });
+      const d = res.data || {};
+      totals.scanned += d.scanned || 0;
+      totals.stamped += d.stamped || 0;
+      totals.never += d.never || 0;
+      totals.unchanged += d.unchanged || 0;
+      cursor = d.done ? null : d.cursor;
+      say(`${dryRun ? 'Previewing' : 'Backfilling'}… ${totals.scanned} contacts scanned`);
+      if (++pages > 200) break;
+    } while (cursor);
+
+    const summary = `${totals.stamped} with history · ${totals.never} never contacted · ${totals.unchanged} already correct`;
+    if (dryRun) {
+      say(`Preview: ${summary}. Nothing written.`);
+      buttons.forEach((b) => { b.disabled = false; });
+      return;
+    }
+
+    say(`Done — ${summary}. Reloading…`);
+    // Reload rather than patching state: every report on this page reads
+    // lastContactedAt, and a half-refreshed view is the same lie the banner
+    // exists to prevent.
+    setTimeout(() => location.reload(), 900);
+  } catch (e) {
+    say((e && e.message) || 'Backfill failed. Try again.');
+    buttons.forEach((b) => { b.disabled = false; });
+  }
 }
 
 function renderReports() {
@@ -310,6 +368,11 @@ function renderReports() {
     ownerReport(),
     sourceReport()
   ].filter(Boolean).join('');
+
+  const preview = $('backfill-preview');
+  if (preview) preview.addEventListener('click', () => runBackfill({ dryRun: true }));
+  const run = $('backfill-run');
+  if (run) run.addEventListener('click', () => runBackfill({ dryRun: false }));
 
   host.querySelectorAll('[data-report-row]').forEach((b) => b.addEventListener('click', () => {
     const k = b.getAttribute('data-report-row');

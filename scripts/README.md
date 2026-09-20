@@ -45,6 +45,7 @@ account key. Move them onto `lib/init.js` before running any of them.
 |---|---|---|
 | `fix-clc-slugs.js` | Moves the Leader Coach off the `1p-clc` slug onto `1p-clc-leader` with its lessons, members and purchases; resets `1p-clc` to the Life Coach identity; archives the superseded `silence-the-voice` draft. | **Yes, once.** See below. |
 | `seed-clc.js` | Writes the 8 written modules, the 48-question exam bank, the FOUNDING coupon and certification config for the $3,497 Life Coach program. | **Yes, once — but only AFTER `fix-clc-slugs.js`.** It refuses to run before that and tells you so. |
+| `backfill-last-contacted.js` | Derives `lastContactedAt` on every contact from existing emails, texts, connected calls and logged activity, across every company. | **Only for bulk/offline runs.** The CRM dashboard has a **Backfill now** button that does the same thing per company. |
 | `seed-booking.js` | Writes `config/booking` with the Zoom scheduler URL. | Optional. `/book-a-call.html` already works from a hardcoded fallback. |
 | `seed-resale-products.js` | Creates the A.L.I.G.N. client workbook, assessment and six-week program as draft products. | Not yet. They have no content or final pricing. |
 | `seed-financial-partner.js` | Creates the financial services partner company and its waitlist products. | Not yet. The partner name is still a placeholder. |
@@ -77,3 +78,24 @@ gcloud firestore export gs://the-1p-leadership.appspot.com/backups/$(date +%F)
 `courses/1p-clc` becomes the Life Coach at $3,497 with no lessons yet. Neither
 can be bought until Stripe is connected. See `docs/launch-runbook.md` for the
 rest of the sequence.
+
+## The contact-history backfill
+
+The CRM dashboard shows a banner when most contacts have no `lastContactedAt`
+field, with **Preview** and **Backfill now** buttons that call the
+`backfillLastContacted` function. That is the normal way to run it: it works in
+the browser, needs no credentials, and is scoped to the company you are looking
+at.
+
+Use the script when you want every company in one pass, or a dry run you can
+read line by line:
+
+```bash
+cd scripts
+node backfill-last-contacted.js --dry-run     # prints every contact, writes nothing
+node backfill-last-contacted.js
+node backfill-last-contacted.js --company=<companyId>
+```
+
+Both paths apply identical rules and both are idempotent, so running one after
+the other is harmless.

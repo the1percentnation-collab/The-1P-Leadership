@@ -924,6 +924,166 @@ exports.importContacts = onCall(async (request) => {
   return { ok: true, created, updated, skipped, errors };
 });
 
+// ────────────────────────────────────────────────────────────────
+// backfillLastContacted({ companyId, cursor?, dryRun? })
+// ────────────────────────────────────────────────────────────────
+/**
+ * The in-app version of scripts/backfill-last-contacted.js.
+ *
+ * WHY IT EXISTS TWICE
+ * The script needs a terminal, a service account key and a checkout of this
+ * repo. The person who notices the dashboard banner is an admin looking at a
+ * browser, so the fix has to be reachable from there. The script stays for
+ * bulk/offline runs across every company; this runs one company at a time,
+ * under the caller's own admin permission, with the same derivation rules.
+ *
+ * WHAT COUNTS AS CONTACT — identical to the script and to lastContactedFields():
+ * a human reached the lead or the lead reached us. Emails, SMS, connected
+ * calls, and manually logged calls/meetings/emails. Notes, stage changes, tag
+ * edits, imports and unsubscribes are ignored, which is the entire point of
+ * the field.
+ *
+ * CHUNKED, not all-at-once. Each contact costs four subcollection reads, so a
+ * large book would blow the function timeout. The caller pages with the
+ * returned cursor until `done` is true, which also lets the UI show progress
+ * instead of a spinner that might be dead.
+ *
+ * Contacts with no history get an explicit `null`, never a deleted field:
+ * `where('lastContactedAt','==',null)` has to be a reliable "never contacted"
+ * cohort, and Firestore range queries silently drop documents missing the
+ * ordered field.
+ *
+ * Idempotent: re-running recomputes the same values and skips writes where
+ * nothing changed, so a double-click costs reads and nothing else.
+ */
+const BACKFILL_PAGE_SIZE = 100;
+
+const BACKFILL_CONTACTED_DISPOSITIONS = new Set(['connected', 'booked', 'callback', 'voicemail']);
+const BACKFILL_MANUAL_CONTACT = { manual_call: 'call', manual_meeting: 'meeting', manual_email: 'email' };
+
+function backfillMs(ts) {
+  if (!ts) return 0;
+  if (typeof ts.toMillis === 'function') return ts.toMillis();
+  if (ts instanceof Date) return ts.getTime();
+  const n = Date.parse(ts);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+/** Newest real contact for one contact across every channel, or null. */
+async function newestContactFor(db, companyId, contactRef) {
+  let best = null; // { at, ms, channel, direction }
+  const consider = (ts, channel, direction) => {
+    const m = backfillMs(ts);
+    if (!m) return;
+    if (!best || m > best.ms) best = { at: ts, ms: m, channel, direction };
+  };
+
+  const companyRef = db.collection('companies').doc(companyId);
+  const [emails, messages, calls, activities] = await Promise.all([
+    contactRef.collection('emails').orderBy('createdAt', 'desc').limit(1).get().catch(() => null),
+    companyRef.collection('conversations').doc(contactRef.id)
+      .collection('messages').orderBy('createdAt', 'desc').limit(1).get().catch(() => null),
+    companyRef.collection('calls')
+      .where('contactId', '==', contactRef.id).orderBy('createdAt', 'desc').limit(20).get().catch(() => null),
+    contactRef.collection('activities').orderBy('createdAt', 'desc').limit(50).get().catch(() => null)
+  ]);
+
+  if (emails && !emails.empty) {
+    const e = emails.docs[0].data();
+    consider(e.createdAt, 'email', e.direction === 'in' ? 'in' : 'out');
+  }
+  if (messages && !messages.empty) {
+    const m = messages.docs[0].data();
+    consider(m.createdAt, 'sms', m.direction === 'in' ? 'in' : 'out');
+  }
+  if (calls) {
+    for (const d of calls.docs) {
+      const c = d.data();
+      const connected = BACKFILL_CONTACTED_DISPOSITIONS.has(c.disposition)
+        || (Number(c.durationSec) > 0 && c.status === 'completed');
+      if (connected) consider(c.createdAt, 'call', c.direction === 'in' ? 'in' : 'out');
+    }
+  }
+  if (activities) {
+    for (const d of activities.docs) {
+      const a = d.data();
+      const channel = BACKFILL_MANUAL_CONTACT[a.type];
+      if (channel) consider(a.createdAt, channel, 'out');
+      if (a.type === 'sms_received') consider(a.createdAt, 'sms', 'in');
+      if (a.type === 'email_received') consider(a.createdAt, 'email', 'in');
+      if (a.type === 'call_inbound') consider(a.createdAt, 'call', 'in');
+    }
+  }
+  return best;
+}
+
+exports.backfillLastContacted = onCall({ timeoutSeconds: 300 }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const data = request.data || {};
+  const companyId = (data.companyId || '').toString().trim();
+  if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+  const cursor = (data.cursor || '').toString().trim() || null;
+  const dryRun = data.dryRun === true;
+
+  const db = admin.firestore();
+  await assertCompanyAdmin(db, companyId, request);
+  // A full book of 10k contacts is 100 pages. 200 calls / 10 min leaves room
+  // to run it twice over and still bounds the read cost of a stuck client.
+  await rateLimitCaller(db, request, { action: 'backfillLastContacted', max: 200, windowSec: 600 });
+
+  // Ordered by document id so the cursor is stable across pages even while
+  // contacts are being created underneath the walk.
+  let q = db.collection('companies').doc(companyId).collection('contacts')
+    .orderBy(admin.firestore.FieldPath.documentId())
+    .limit(BACKFILL_PAGE_SIZE);
+  if (cursor) q = q.startAfter(cursor);
+
+  const page = await q.get();
+  if (page.empty) {
+    return { ok: true, done: true, cursor: null, scanned: 0, stamped: 0, never: 0, unchanged: 0 };
+  }
+
+  let stamped = 0, never = 0, unchanged = 0;
+  let batch = db.batch();
+  let pending = 0;
+
+  for (const c of page.docs) {
+    const found = await newestContactFor(db, companyId, c.ref);
+    const current = c.data().lastContactedAt;
+
+    // Idempotence: leave a row alone when the derived value already matches.
+    // `undefined` (never written) is distinct from `null` (never contacted),
+    // so a missing field always gets written even when the answer is null.
+    if (found && backfillMs(current) === found.ms) { unchanged++; continue; }
+    if (!found && current === null) { unchanged++; continue; }
+
+    if (found) stamped++; else never++;
+    if (dryRun) continue;
+
+    batch.set(c.ref, found
+      ? { lastContactedAt: found.at, lastContactChannel: found.channel, lastContactDirection: found.direction }
+      : { lastContactedAt: null, lastContactChannel: null, lastContactDirection: null },
+    { merge: true });
+
+    if (++pending >= 400) { await batch.commit(); batch = db.batch(); pending = 0; }
+  }
+
+  if (!dryRun && pending) await batch.commit();
+
+  const done = page.size < BACKFILL_PAGE_SIZE;
+  return {
+    ok: true,
+    done,
+    cursor: done ? null : page.docs[page.docs.length - 1].id,
+    scanned: page.size,
+    stamped,
+    never,
+    unchanged
+  };
+});
+
 /**
  * deleteUser({ uid })
  *
