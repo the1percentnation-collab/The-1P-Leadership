@@ -79,6 +79,13 @@ export const COURSES = [
     short: 'Life Coach Certification',
     subtitle: 'Certified in 16 weeks. A credential, a framework license, and a client-ready program to sell.',
     status: 'coming-soon',
+    // Coming-soon courses are hidden from the homepage unless they opt in;
+    // this is the one being promoted ahead of its enrollment date.
+    showOnSite: true,
+    // It has a bespoke sales page, so the homepage card skips the generic
+    // /course.html landing page, which would offer an enroll button for
+    // something that is not for sale yet.
+    landingPath: '/clc',
     eyebrow: 'Certification \u00b7 16 Weeks',
     category: 'Leadership & Coaching',
     price: 3497,

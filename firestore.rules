@@ -932,6 +932,17 @@ service cloud.firestore {
         allow create, update, delete: if isAnyAdmin();
       }
 
+      // Public pre-registration list. Written ONLY by the
+      // registerCoursePreregistration callable (Admin SDK), which is what
+      // keeps an open, unauthenticated form from becoming an arbitrary
+      // write into this database. Nobody reads it from the browser either:
+      // it is a list of other people's names, emails and phone numbers, and
+      // the only consumer is the launch mailer running server-side.
+      match /preregistrations/{entryId} {
+        allow read: if isAnyAdmin();
+        allow write: if false;
+      }
+
       // Cohort configuration that must not be world-readable — today the
       // live weekly call join link (courses/{slug}/private/cohort). The
       // public cohort facts (dates, capacity) stay on the course doc.
@@ -1100,7 +1111,10 @@ service cloud.firestore {
     // pages can render without auth; everything else under config
     // (certification thresholds, lead routing) stays admin-only.
     match /config/{docId} {
-      allow read: if docId == 'booking' || isAnyAdmin();
+      // 'announcement' drives the site-wide banner on public marketing pages,
+      // so a signed-out visitor has to be able to read it. It holds campaign
+      // copy and dates, nothing sensitive.
+      allow read: if docId == 'booking' || docId == 'announcement' || isAnyAdmin();
       allow write: if isAnyAdmin();
     }
 

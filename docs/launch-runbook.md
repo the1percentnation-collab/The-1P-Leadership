@@ -171,6 +171,71 @@ the codebase: a module stays invisible until that toggle is flipped by hand. If
 you would rather ship all eight at once, publish them all in the builder after
 seeding, and drop the weekly gating from how you sell it.
 
+## 6. Pre-registration and the announcement bar
+
+Built for the September 25 enrollment date. Three pieces, and two Firestore
+documents you have to create by hand.
+
+### What ships in the code
+
+- `registerCoursePreregistration` — a PUBLIC callable. No sign-in. Takes name,
+  email, optional phone and a consent flag; writes
+  `courses/{slug}/preregistrations/{emailKey}` (doc id is the sanitized email,
+  so one person is one row however many times they submit), upserts a CRM
+  contact tagged `Waitlist: 1P Certified Life Coach`, emails the registrant a
+  confirmation and emails you an alert. Rate limited to 5 per 10 minutes.
+  Refuses new entries once the course is `live`.
+- `onCourseWritten` — fires when a course flips to `status: 'live'` and mails
+  the pre-registration list once. Guarded by `launchNotifiedAt` on the course
+  doc AND per recipient, so it cannot double-send. Skips anyone who
+  unsubscribed.
+- `notifyCoursePrereg({ slug, force })` — admin-only manual resend, for the day
+  the trigger does not fire. `force: true` re-mails people already notified.
+- `public/js/announce-bar.js` — the site-wide bar plus the pre-registration
+  modal. Registered on 23 public pages. It reads its config from Firestore and
+  falls back to hardcoded copy if that read fails.
+
+### Create `config/announcement`
+
+Public-readable (the rules allow it). Fields:
+
+```
+enabled       true
+version       1                 bump to re-show the bar to everyone who dismissed it
+message       The 1P Certified Life Coach opens enrollment September 25.
+messageShort  Life Coach Certification opens September 25.
+ctaText       Pre-register
+ctaHref       /clc
+courseSlug    1p-clc
+courseTitle   1P Certified Life Coach
+opensAt       2026-09-25T00:00:00-05:00
+startAt       2026-09-01T00:00:00-05:00
+endAt         2026-10-02T00:00:00-05:00
+showDaysLeft  true
+dismissible   true
+```
+
+Setting `enabled` to false kills the bar site-wide with no deploy. That is the
+escape hatch if it causes a layout problem on a page nobody checked.
+
+### Add `cohort.enrollOpensAt`
+
+On `courses/1p-clc`, alongside the other cohort fields in section 5. The `/clc`
+fact bar renders "Enrollment opens <date>" from it, and the confirmation email
+uses it. Both omit the date rather than invent one if it is missing.
+
+### September 25 cutover
+
+One Firestore edit: `courses/1p-clc` → `status: 'live'`. That single write
+flips the sales page from Pre-register to Enroll, and fires the launch email to
+everyone on the list. Then set `config/announcement.enabled` to false, or let
+`endAt` expire it on its own.
+
+**Decide before the 25th whether you want that to be automatic.** If you would
+rather send the launch mail by hand, set `launchNotifiedAt` on the course doc
+to any timestamp BEFORE flipping the status. That disarms the trigger, and you
+send with `notifyCoursePrereg` when you are ready.
+
 ## Known open items
 
 - The A.L.I.G.N. letters in `public/js/align.js` were written into code, not

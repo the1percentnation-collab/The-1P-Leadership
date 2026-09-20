@@ -495,10 +495,23 @@ function bindEnroll(course) {
   });
 }
 
+// Same reasoning as clc-page.js: prefer the public pre-registration form so a
+// signed-out visitor is not bounced to a login screen to join a free waitlist.
+// registerCourseInterest stays as the fallback for a signed-in member when
+// announce-bar.js did not load.
 function bindNotify(course) {
   const btn = document.getElementById('cl-notify');
   if (!btn) return;
-  btn.addEventListener('click', async () => {
+  btn.addEventListener('click', async (ev) => {
+    const prereg = window.OnePPreReg;
+    if (prereg && typeof prereg.open === 'function') {
+      prereg.open({
+        courseSlug: course.slug,
+        courseTitle: course.title,
+        invoker: (ev && ev.currentTarget) || null
+      });
+      return;
+    }
     if (firebaseReady && !currentUser()) { requireLoginRedirect(); return; }
     btn.disabled = true;
     btn.textContent = 'Adding you…';

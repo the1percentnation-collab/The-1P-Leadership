@@ -34,7 +34,10 @@
     var bar = document.createElement('div');
     bar.setAttribute('role', 'dialog');
     bar.setAttribute('aria-label', 'Cookie consent');
-    bar.style.cssText = [
+      // styles.css already has an @media print rule for .consent-banner; it
+    // never matched because this class was never set.
+    bar.className = 'consent-banner';
+  bar.style.cssText = [
       'position:fixed', 'left:16px', 'right:16px', 'bottom:16px', 'z-index:99999',
       'max-width:720px', 'margin:0 auto', 'background:#111', 'color:#fff',
       'border:1px solid rgba(255,255,255,.15)', 'border-radius:14px',

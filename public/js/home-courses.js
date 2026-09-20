@@ -104,7 +104,11 @@ function metaLines(course) {
 // rather than whether it's available — a bundle gets called out as the value
 // pick, everything else is simply buyable.
 function badgeLabel(course) {
-  return course.bundleHref ? 'Best Value' : 'Enroll Now';
+  if (course.bundleHref) return 'Best Value';
+  // A coming-soon card must not say "Enroll Now" when there is nothing to
+  // enroll in yet.
+  if (course.status !== 'live') return 'Coming Soon';
+  return 'Enroll Now';
 }
 
 function cardHtml(course, i) {
@@ -123,7 +127,9 @@ function cardHtml(course, i) {
 
   // Bundles have their own sales page; everything else uses the shared
   // public course landing page.
-  const href = course.bundleHref || `/course.html?course=${slug}`;
+  const href = course.bundleHref
+    || course.landingPath
+    || `/course.html?course=${slug}`;
 
   return `
       <div class="course-card fade-up${delay}">
@@ -181,14 +187,20 @@ export async function init() {
     return;
   }
 
-  // Only genuinely published courses are advertised. `status` is the publish
-  // state set from the builder's Publish menu — 'live' means members can
-  // actually enroll and take it; 'coming-soon' and 'inactive' are not public.
-  // `showOnSite` is the owner's per-course override on top of that, a
+  // Which courses get advertised here. `status` is the publish state set from
+  // the builder's Publish menu. 'live' means members can enroll and take it,
+  // and is advertised unless the owner opted the course out; `showOnSite` is a
   // default-true opt-out so existing courses needed no backfill.
-  const courses = getCourses().filter(
-    (c) => c.status === 'live' && c.showOnSite !== false && c.sellable !== false
-  );
+  //
+  // 'coming-soon' is advertised too, but only opt-IN. A course being drafted
+  // is also 'coming-soon', and half-written drafts must not appear on the
+  // homepage just because a launch campaign needed one of them to. So the
+  // owner sets showOnSite explicitly on the one being promoted.
+  const courses = getCourses().filter((c) => {
+    if (c.status === 'live') return c.showOnSite !== false && c.sellable !== false;
+    if (c.status === 'coming-soon') return c.showOnSite === true;
+    return false;
+  });
 
   if (!courses.length) {
     hideCoursesSection(section);

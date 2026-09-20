@@ -2401,6 +2401,196 @@ exports.registerCourseInterest = onCall(async (request) => {
   return { ok: true, slug };
 });
 
+// ────────────────────────────────────────────────────────────────
+// Public course pre-registration
+//
+// registerCourseInterest (above) is the signed-in member's "notify me"
+// button and stays that way: the member library dedupes its buttons off
+// users/{uid}/courseInterests. This is the public path, for a visitor who
+// arrived from an ad and has no account. Making them sign up before they
+// can join a waitlist is the whole conversion, so this one takes no auth.
+//
+// Entries live under the COURSE rather than the user, at
+// courses/{slug}/preregistrations/{emailKey}, for two reasons: the doc id
+// is the sanitized email, which dedupes for free, and the launch mailer
+// (onCourseWritten) needs to enumerate everyone waiting on one course.
+// The per-user path cannot answer that question.
+// ────────────────────────────────────────────────────────────────
+
+// Allowlist. An open callable must not be able to write an arbitrary
+// course's subcollection, so a slug that is not here is rejected.
+const PREREG_COURSES = {
+  '1p-clc': {
+    title: '1P Certified Life Coach',
+    source: 'CLC Pre-Registration',
+    blurb: 'Sixteen weeks: eight modules, a written exam, one recorded coaching session reviewed against a published rubric, and 25 logged practice coaching hours.'
+  }
+};
+
+// Same key formula registerProductInterest uses, so the two collections
+// behave identically and one email is always one row.
+function preregEmailKey(email) {
+  return email.replace(/[^a-z0-9]/g, '_').slice(0, 120);
+}
+
+// Confirmation to the person who just signed up. Best-effort: a mail
+// failure must not fail their registration, which is already stored.
+async function sendPreregConfirmation(db, slug, course, { name, email }) {
+  try {
+    const key = sendgridKey.value();
+    if (!key) return;
+    sgMail.setApiKey(key);
+
+    const opensLabel = await preregOpensLabel(db, slug);
+    const first = (name || '').trim().split(/\s+/)[0] || '';
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:540px;margin:0 auto;">
+      <h2 style="color:#E60306;margin:0 0 10px;">You are on the list.</h2>
+      <p style="font-size:15px;color:#222;">${first ? escapeHtmlBasic(first) + ', you' : 'You'} will be among the first to know when enrollment for the ${escapeHtmlBasic(course.title)} opens${opensLabel ? ' on ' + escapeHtmlBasic(opensLabel) : ''}.</p>
+      <p style="font-size:14px;color:#444;">${escapeHtmlBasic(course.blurb)}</p>
+      <p style="font-size:14px;color:#444;">Seats are limited and the founding cohort is capped, so the email you get on opening day is worth opening.</p>
+      <p style="margin:18px 0;"><a href="${APP_BASE_URL}/clc" style="background:#E60306;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:600;">See what is included &rarr;</a></p>
+      <p style="font-size:12px;color:#888;">&mdash; The One Percent Nation</p>
+    </div>`;
+    await sgMail.send({
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      to: email,
+      subject: `You are on the list for the ${course.title}`,
+      html,
+      text: `You are on the list. Enrollment for the ${course.title} opens${opensLabel ? ' on ' + opensLabel : ' soon'}. ${APP_BASE_URL}/clc`,
+      customArgs: { type: 'course_prereg_confirmation' }
+    });
+  } catch (e) {
+    console.warn('[prereg] confirmation send failed:', e && e.message);
+  }
+}
+
+// The opening date is editable without a deploy: it is whatever the course
+// doc's cohort.enrollOpensAt says. Absent, the email just omits the date
+// rather than inventing one.
+async function preregOpensLabel(db, slug) {
+  try {
+    const snap = await db.collection('courses').doc(slug).get();
+    const cohort = (snap.exists && snap.data().cohort) || {};
+    const raw = cohort.enrollOpensAt;
+    if (!raw) return null;
+    const d = typeof raw.toDate === 'function' ? raw.toDate() : new Date(raw);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'America/Chicago' });
+  } catch (e) {
+    return null;
+  }
+}
+
+// registerCoursePreregistration({ slug, name, email, phone, consent })
+exports.registerCoursePreregistration = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  const slug = (data.slug || '').toString().trim();
+  const course = PREREG_COURSES[slug];
+  if (!course) throw new HttpsError('invalid-argument', 'That course is not open for pre-registration.');
+
+  const name = (data.name || '').toString().trim().slice(0, 120);
+  const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
+  const phone = (data.phone || '').toString().trim().slice(0, 40) || null;
+  const consent = !!data.consent;
+  const consentText = (data.consentText || '').toString().trim().slice(0, 1000) || null;
+  if (!name) throw new HttpsError('invalid-argument', 'Please enter your name.');
+  if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
+
+  // Tighter than the shared 10/600 on lead forms: this one is reachable from
+  // every page on the site with no sign-in, and App Check is not enforced.
+  await rateLimitCaller(db, request, { action: 'registerCoursePreregistration', max: 5, windowSec: 600 });
+
+  const FV = admin.firestore.FieldValue;
+  const uid = (request.auth && request.auth.uid) || null;
+  const courseRef = db.collection('courses').doc(slug);
+
+  // Once enrollment opens there is nothing to wait for, and anyone who joined
+  // after the launch mail went out would never hear from us again.
+  const courseSnap = await courseRef.get();
+  if (courseSnap.exists && courseSnap.data().status === 'live') {
+    throw new HttpsError('failed-precondition', 'Enrollment is open. You can enroll now.');
+  }
+
+  const entryRef = courseRef.collection('preregistrations').doc(preregEmailKey(email));
+
+  const existing = await entryRef.get();
+  const isNew = !existing.exists;
+  await entryRef.set({
+    name: name || null,
+    email,
+    phone,
+    uid,
+    consent,
+    source: course.source,
+    createdAt: existing.exists ? existing.data().createdAt : FV.serverTimestamp(),
+    updatedAt: FV.serverTimestamp()
+  }, { merge: true });
+
+  if (isNew) {
+    await courseRef.set({ preregCount: FV.increment(1) }, { merge: true });
+  }
+
+  // A signed-in visitor gets the member-library button flipped too, so the
+  // two waitlists never disagree about whether they are on it.
+  if (uid) {
+    try {
+      await db.collection('users').doc(uid).collection('courseInterests').doc(slug).set({
+        slug, title: course.title, createdAt: FV.serverTimestamp()
+      }, { merge: true });
+    } catch (e) {
+      console.warn('[prereg] member mirror failed:', e && e.message);
+    }
+  }
+
+  // CRM upsert (best-effort: the registration is already saved).
+  try {
+    const companyId = await resolveAcademyCompanyId(db);
+    if (companyId) {
+      const tags = [`Waitlist: ${course.title}`.slice(0, 40)];
+      if (consent) tags.push('Opt-In: Calls/SMS/Email');
+      const ref = await upsertCrmContact(db, companyId, {
+        name: name || null, email, phone,
+        source: course.source,
+        tags,
+        memberUid: uid
+      });
+      if (consent) {
+        await ref.set({
+          marketingConsent: true,
+          marketingConsentAt: FV.serverTimestamp(),
+          marketingConsentText: consentText || `Opted in via ${course.title} pre-registration`
+        }, { merge: true });
+      }
+      await ref.collection('activities').add({
+        type: 'course_prereg',
+        description: `Pre-registered for "${course.title}"`,
+        actorUid: 'system',
+        actorName: 'Course pre-registration',
+        createdAt: FV.serverTimestamp(),
+        meta: { courseSlug: slug, courseTitle: course.title, consent, repeat: !isNew }
+      });
+    }
+  } catch (e) {
+    console.warn('[prereg] CRM upsert failed:', e && e.message);
+  }
+
+  // Only on a first registration. A repeat submit is usually someone
+  // checking they are on the list, and re-mailing them reads as a bug.
+  if (isNew) {
+    await sendPreregConfirmation(db, slug, course, { name, email });
+    await notifyOwnerOfLead({
+      source: course.source,
+      name, email, phone,
+      fields: { Course: course.title, 'Marketing consent': consent ? 'Yes' : 'No' },
+      contactUrl: `${APP_BASE_URL}/crm`
+    });
+  }
+
+  return { ok: true, alreadyJoined: !isNew };
+});
+
 // submitOnboarding({ displayName, phone, address, company, industry, location, goals })
 // Required after member-portal signup. Updates the user profile and upserts
 // the member into the CRM with everything they entered. Also the safety net
@@ -7731,6 +7921,150 @@ exports.notifyProductInterest = onCall({ secrets: [sendgridKey] }, async (reques
   const snap = await db.collection('products').doc(productId).get();
   if (!snap.exists) throw new HttpsError('not-found', 'Product not found.');
   const n = await sendProductLaunchEmails(db, productId, snap.data());
+  return { ok: true, sent: n };
+});
+
+// ════════════════════════════════════════════════════════════════
+// Course launch mail — the other half of registerCoursePreregistration.
+//
+// Products have had this since they shipped (sendProductLaunchEmails /
+// onProductWritten above); courses never did, so a course waitlist was a
+// list nobody could mail. This is the same machine pointed at
+// courses/{slug}/preregistrations.
+// ════════════════════════════════════════════════════════════════
+
+// Emails that must not be mailed: anyone who used an unsubscribe link, or
+// who is tagged Unsubscribed in the CRM. Suppression lives on the CRM
+// contact rather than on the prereg row, so it has to be looked up. A
+// lookup failure suppresses nothing rather than silently dropping the
+// whole send, but it is logged.
+async function suppressedEmailSet(db, emails) {
+  const out = new Set();
+  try {
+    const companyId = await resolveAcademyCompanyId(db);
+    if (!companyId) return out;
+    const colRef = db.collection('companies').doc(companyId).collection('contacts');
+    for (let i = 0; i < emails.length; i += 10) {
+      const slice = emails.slice(i, i + 10);
+      const snap = await colRef.where('email', 'in', slice).get();
+      snap.docs.forEach((d) => {
+        const c = d.data() || {};
+        if (isEmailSuppressed(c) && c.email) out.add(String(c.email).toLowerCase());
+      });
+    }
+  } catch (e) {
+    console.warn('[courseLaunch] suppression lookup failed:', e && e.message);
+  }
+  return out;
+}
+
+// `force` re-mails people already stamped; the default skips them, which is
+// what makes the automatic trigger and the manual resend safe to both run.
+async function sendCoursePreregLaunchEmails(db, slug, course, { force = false } = {}) {
+  const snap = await db.collection('courses').doc(slug).collection('preregistrations').get();
+  const all = [];
+  const refByEmail = new Map();
+  snap.forEach((d) => {
+    const row = d.data() || {};
+    const e = row.email;
+    if (!e || !EMAIL_RE.test(e)) return;
+    if (!force && row.launchNotifiedAt) return;
+    const key = String(e).toLowerCase();
+    all.push(key);
+    refByEmail.set(key, d.ref);
+  });
+  if (!all.length) return 0;
+
+  const suppressed = await suppressedEmailSet(db, all);
+  const recipients = all.filter((e) => !suppressed.has(e));
+  if (!recipients.length) return 0;
+
+  sgMail.setApiKey(sendgridKey.value());
+  const title = course.title || slug;
+  const url = `${APP_BASE_URL}/clc`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:540px;margin:0 auto;">
+    <h2 style="color:#E60306;margin:0 0 10px;">Enrollment is open.</h2>
+    <p style="font-size:15px;color:#222;">You asked to be the first to know. The ${escapeHtmlBasic(title)} is open for enrollment now.</p>
+    ${course.subtitle ? `<p style="font-size:14px;color:#444;">${escapeHtmlBasic(course.subtitle)}</p>` : ''}
+    <p style="font-size:14px;color:#444;">Seats in the founding cohort are limited, and they are taken in the order people enroll.</p>
+    <p style="margin:18px 0;"><a href="${url}" style="background:#E60306;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Enroll now &rarr;</a></p>
+    <p style="font-size:12px;color:#888;">&mdash; The One Percent Nation</p>
+  </div>`;
+
+  let sent = 0;
+  for (let i = 0; i < recipients.length; i += 900) {
+    const chunk = recipients.slice(i, i + 900);
+    try {
+      await sgMail.send({
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject: `Enrollment is open: ${title}`,
+        html,
+        text: `Enrollment for the ${title} is open. ${url}`,
+        isMultiple: true,
+        personalizations: chunk.map((to) => ({ to })),
+        customArgs: { type: 'course_launch' }
+      });
+      sent += chunk.length;
+      // Stamp only what actually went out. A chunk that threw stays
+      // unstamped and a resend picks it up.
+      let batch = db.batch();
+      let n = 0;
+      for (const addr of chunk) {
+        const ref = refByEmail.get(addr);
+        if (!ref) continue;
+        batch.set(ref, { launchNotifiedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        if (++n >= 400) { await batch.commit(); batch = db.batch(); n = 0; }
+      }
+      if (n) await batch.commit();
+    } catch (e) {
+      console.warn('[courseLaunch] send failed', e && e.message);
+    }
+  }
+  return sent;
+}
+
+// When a course flips to "live", mail its pre-registration list once.
+// launchNotifiedAt is the re-send guard: flipping the status back and
+// forth, or any later edit to the doc, must not mail anyone twice.
+exports.onCourseWritten = onDocumentWritten(
+  { document: 'courses/{slug}', secrets: [sendgridKey] },
+  async (event) => {
+    const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+    const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+    if (!after) return;
+    const becameLive = after.status === 'live' && (!before || before.status !== 'live');
+    if (!becameLive || after.launchNotifiedAt) return;
+    const db = admin.firestore();
+    const slug = event.params.slug;
+    try {
+      const n = await sendCoursePreregLaunchEmails(db, slug, after);
+      await db.collection('courses').doc(slug).set({
+        launchNotifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+        launchNotifiedCount: n
+      }, { merge: true });
+    } catch (e) {
+      console.warn('[onCourseWritten]', e && e.message);
+    }
+  }
+);
+
+// Manual resend (admin). The trigger above fires once, on a status flip
+// performed live on launch day, which makes it a single point of failure
+// on the one day it matters. This is the hand crank.
+exports.notifyCoursePrereg = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admin or owner role required.');
+  const slug = (request.data && request.data.slug || '').toString().trim();
+  if (!slug) throw new HttpsError('invalid-argument', 'A course slug is required.');
+  const snap = await db.collection('courses').doc(slug).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Course not found.');
+  const force = !!(request.data && request.data.force);
+  const n = await sendCoursePreregLaunchEmails(db, slug, snap.data(), { force });
+  await db.collection('courses').doc(slug).set({
+    launchNotifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+    launchNotifiedCount: n
+  }, { merge: true });
   return { ok: true, sent: n };
 });
 

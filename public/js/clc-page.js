@@ -110,10 +110,18 @@ function cleanText(value) {
   return s;
 }
 
-function renderCohortFacts(cohort, seatsTaken) {
+function renderCohortFacts(cohort, seatsTaken, status) {
   const el = $('clc-cohort-facts');
   if (!el) return;
   const facts = [];
+
+  // Lead with the date the campaign is advertising. It lives in Firestore so
+  // it can move without a deploy, and it disappears on its own once the
+  // course is live and the fact is no longer news.
+  const opens = fmtDate(cohort.enrollOpensAt);
+  if (opens && status !== 'live') {
+    facts.push(`Enrollment opens <strong>${escapeHtml(opens)}</strong>`);
+  }
 
   const closes = fmtDate(cohort.enrollCloseAt);
   if (closes) facts.push(`Enrollment closes <strong>${escapeHtml(closes)}</strong>`);
@@ -203,12 +211,31 @@ function bindCtas(handler) {
 
 // ─── Waitlist (course is not live yet) ────────────────────────────────────
 
+// The CTAs open the public pre-registration form from announce-bar.js rather
+// than calling registerCourseInterest directly. That callable requires a
+// signed-in account, and sending a visitor who just read the sales page to a
+// login screen before they can join a free waitlist loses most of them.
+//
+// The form is the same one the site-wide banner opens, so there is one code
+// path and one consent wording. The signed-in fallbacks below stay for the
+// case where announce-bar.js did not load.
 function bindNotify(course) {
-  setCtaLabel('Notify me when enrollment opens');
+  setCtaLabel('Pre-register, enrollment opens soon');
   setCtaDisabled(false);
-  bindCtas(async () => {
+  bindCtas(async (ev) => {
+    const prereg = window.OnePPreReg;
+    if (prereg && typeof prereg.open === 'function') {
+      prereg.open({
+        courseSlug: SLUG,
+        courseTitle: course.title,
+        invoker: (ev && ev.currentTarget) || null
+      });
+      return;
+    }
+
+    // Fallbacks, in order of how much is broken.
     if (!firebaseReady) {
-      setMsg(`The waitlist is unavailable right now. Email ${CONTACT_EMAIL} and we will add you directly.`, true);
+      setMsg(`Pre-registration is unavailable right now. Email ${CONTACT_EMAIL} and we will add you directly.`, true);
       return;
     }
     if (!currentUser()) { requireLoginRedirect(); return; }
@@ -221,7 +248,7 @@ function bindNotify(course) {
     } catch (err) {
       console.warn('[clc-page] notify failed', err);
       setCtaDisabled(false);
-      setCtaLabel('Notify me when enrollment opens');
+      setCtaLabel('Pre-register, enrollment opens soon');
       setMsg((err && err.message) || 'Could not add you to the waitlist. Please try again.', true);
     }
   });
@@ -347,7 +374,7 @@ async function main() {
   const capacity = typeof cohort.capacity === 'number' ? cohort.capacity : null;
   let seatsTaken = null;
   if (capacity) seatsTaken = await readFoundingRedemptions();
-  renderCohortFacts(cohort, seatsTaken);
+  renderCohortFacts(cohort, seatsTaken, course.status);
   renderSeatsNote(capacity, seatsTaken);
 
   let enrolled = false;
