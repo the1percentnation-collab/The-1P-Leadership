@@ -36,6 +36,37 @@ export const PRODUCT_TYPES = ['course', 'book', 'physical', 'service', 'other'];
 export const PRODUCT_STATUSES = ['planned', 'interest', 'preorder', 'live', 'archived'];
 export const VISIBLE_STATUSES = ['interest', 'preorder', 'live'];
 
+// What the admin sees. The stored values stay as they are — the read rule in
+// firestore.rules, VISIBLE_STATUSES, the owner digest and affiliate.js all
+// match on them — so only the words change. 'interest' has always meant
+// "announced, not yet buyable", which is what everyone else calls coming soon.
+export const STATUS_LABELS = {
+  planned: 'Draft',
+  interest: 'Coming soon',
+  preorder: 'Pre-order',
+  live: 'Live',
+  archived: 'Archived'
+};
+
+// A date field arrives from a <input type="date"> as "YYYY-MM-DD" (local, no
+// zone), from Firestore as a Timestamp, or from code as a Date. Only a Date
+// or null is ever stored, at local midnight — see launch-date.js for why a
+// date-only string must never be parsed with new Date(str).
+function toStoredDate(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  if (typeof v.toDate === 'function') return v.toDate();
+  const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? null : new Date(t);
+}
+
+function toUrlOrNull(v) {
+  const s = (v == null ? '' : String(v)).trim();
+  return s || null;
+}
+
 function productsCol() { return collection(db, 'products'); }
 function productRef(id) { return doc(db, 'products', id); }
 
@@ -82,8 +113,20 @@ export async function createProduct(data = {}) {
     inventory: data.inventory === '' || data.inventory == null ? null : Number(data.inventory),
     preorderMode: ['interest', 'deposit', 'prepay'].includes(data.preorderMode) ? data.preorderMode : 'interest',
     depositAmount: data.depositAmount ? Number(data.depositAmount) : null,
-    launchAt: data.launchAt || null,
     sortOrder: Number(data.sortOrder) || 0,
+    // The publishing contract, shared with courses/{slug}. Channels are
+    // default-true opt-outs so an existing product needs no backfill; the
+    // rest are null until set. `launchAt` used to sit here, written as null
+    // and never read by anything — `launchDate` replaces it, same name as
+    // the course field so launch-date.js reads both.
+    showOnSite: data.showOnSite !== false,
+    showInDashboard: data.showInDashboard !== false,
+    launchDate: toStoredDate(data.launchDate),
+    salePrice: data.salePrice === '' || data.salePrice == null ? null : Number(data.salePrice),
+    saleEndsAt: toStoredDate(data.saleEndsAt),
+    externalUrl: toUrlOrNull(data.externalUrl),
+    videoUrl: toUrlOrNull(data.videoUrl),
+    posterUrl: toUrlOrNull(data.posterUrl),
     interestCount: 0,
     preorderCount: 0,
     depositTotal: 0,
@@ -98,14 +141,25 @@ export async function createProduct(data = {}) {
 export async function updateProduct(id, patch = {}) {
   const allowed = ['name', 'slug', 'type', 'status', 'summary', 'description', 'imageUrl',
     'price', 'sellable', 'requiresShipping', 'inventory',
-    'preorderMode', 'depositAmount', 'launchAt', 'sortOrder'];
+    'preorderMode', 'depositAmount', 'sortOrder',
+    'showOnSite', 'showInDashboard', 'launchDate', 'salePrice', 'saleEndsAt',
+    'externalUrl', 'videoUrl', 'posterUrl'];
   const clean = {};
   allowed.forEach((k) => {
     if (patch[k] === undefined) return;
-    if (k === 'price' || k === 'depositAmount' || k === 'inventory') clean[k] = patch[k] === '' || patch[k] == null ? null : Number(patch[k]);
-    else if (k === 'sellable' || k === 'requiresShipping') clean[k] = !!patch[k];
-    else if (k === 'sortOrder') clean[k] = Number(patch[k]) || 0;
-    else clean[k] = patch[k];
+    if (k === 'price' || k === 'depositAmount' || k === 'inventory' || k === 'salePrice') {
+      clean[k] = patch[k] === '' || patch[k] == null ? null : Number(patch[k]);
+    } else if (k === 'sellable' || k === 'requiresShipping' || k === 'showOnSite' || k === 'showInDashboard') {
+      clean[k] = !!patch[k];
+    } else if (k === 'launchDate' || k === 'saleEndsAt') {
+      clean[k] = toStoredDate(patch[k]);
+    } else if (k === 'externalUrl' || k === 'videoUrl' || k === 'posterUrl') {
+      clean[k] = toUrlOrNull(patch[k]);
+    } else if (k === 'sortOrder') {
+      clean[k] = Number(patch[k]) || 0;
+    } else {
+      clean[k] = patch[k];
+    }
   });
   clean.updatedAt = serverTimestamp();
   await updateDoc(productRef(id), clean);

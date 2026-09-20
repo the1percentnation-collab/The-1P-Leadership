@@ -27,13 +27,15 @@
 //      blank. index.html exposes __1pObserveFades / __1pAttachTilt for that.
 
 import { loadCourses, getCourses } from './courses-data.js';
-import { launchDateMs, fmtLaunchDate, launchCountdown, nextLaunch } from './launch-date.js';
+import { launchDateMs, fmtLaunchDate, launchCountdown } from './launch-date.js';
+import { loadCatalog, visibleOn, nextLaunch, hrefFor, isExternal, ctaFor, sortForDisplay } from './catalog.js';
 
 // Firebase is already initialised on this page (chatbot.js imports
 // firebase.js), so pulling in courses-data.js costs no extra connection.
 
 const GRID_ID = 'home-courses-grid';
 const BANNER_ID = 'launch-banner';
+const SHOP_ID = 'home-shop';
 
 // No cap on the number of cards, deliberately: the "On main site" switch is
 // meant to be the single control over what the public sees, and a silent
@@ -188,38 +190,121 @@ function hideCoursesSection(section) {
 
 // ── Launch banner ──────────────────────────────────────────────────────────
 //
-// The strip under the hero announcing the next course to open. It is the one
-// place on the marketing site that answers "when?" above the fold, so it is
-// driven by the same launchDate the owner types on the course card and
-// nothing else: no date, no banner.
+// The strip under the hero announcing the next thing to open — a course or a
+// product, whichever is soonest. It is the one place on the marketing site
+// that answers "when?" above the fold, so it is driven by the launchDate the
+// owner types on the item and nothing else: no date, no banner.
 //
-// Only the soonest future launch is shown. Stacking every upcoming course
-// here would turn the loudest slot on the page into a list, and the visitor
-// only has to care about the next one.
-function renderLaunchBanner(courses) {
+// Only the soonest future launch is shown. Stacking every upcoming item here
+// would turn the loudest slot on the page into a list, and the visitor only
+// has to care about the next one.
+function renderLaunchBanner(items) {
   const banner = document.getElementById(BANNER_ID);
   if (!banner) return;
 
-  const next = nextLaunch(courses);
+  const next = nextLaunch(items, { channel: 'site' });
   if (!next) {
     banner.hidden = true;
     return;
   }
 
-  const { course, ms } = next;
+  const { item, ms } = next;
   const countdown = launchCountdown(ms);
+  const href = item.kind === 'product' ? `/upcoming.html#p-${encodeURIComponent(item.id)}` : hrefFor(item, 'site');
+  const cta = item.kind === 'product' && item.status === 'preorder' ? 'Pre-order now →' : 'Join the waitlist →';
   banner.innerHTML = `
     <div class="container-wide launch-banner-inner">
       <div class="launch-banner-copy">
         <span class="launch-banner-label">Opening ${escapeHtml(countdown)}</span>
-        <span class="launch-banner-title">${escapeHtml(course.title || 'A new course')}</span>
+        <span class="launch-banner-title">${escapeHtml(item.title || 'Something new')}</span>
         <span class="launch-banner-date">${escapeHtml(fmtLaunchDate(ms))}</span>
       </div>
-      <a class="launch-banner-cta" href="/course.html?course=${encodeURIComponent(course.slug)}">
-        Join the waitlist →
-      </a>
+      <a class="launch-banner-cta" href="${escapeHtml(href)}">${escapeHtml(cta)}</a>
     </div>`;
   banner.hidden = false;
+}
+
+// ── Shop ───────────────────────────────────────────────────────────────────
+//
+// The books, from the products catalog. This section used to be two blocks
+// of hand-written HTML with a hardcoded $49 → $14.99 and a "Coming Soon" block
+// whose button linked to itself — while the same coming-soon book already
+// existed as a product in the admin. One record now, and the price, the
+// sale, the launch date and the button all come from it.
+//
+// The existing markup shape and classes are kept so the section looks the
+// same; only the source of truth moved. Buttons that need sign-in or the
+// waitlist modal go to the product's anchor on /upcoming, where both work —
+// this page does not load the app stylesheet the modal is styled by.
+function bookBlockHtml(item, i) {
+  const visual = item.videoUrl
+    ? `<div class="book-visual book-visual--video">
+         <div class="book-video-frame">
+           <video class="book-video"${item.posterUrl ? ` poster="${escapeHtml(item.posterUrl)}"` : ''} preload="metadata" controls playsinline muted loop autoplay
+                  aria-label="${escapeHtml(item.title)}">
+             <source src="${escapeHtml(item.videoUrl)}" type="video/mp4">
+           </video>
+         </div>
+       </div>`
+    : (item.imageUrl
+      ? `<div class="book-visual"><img src="${escapeHtml(item.imageUrl)}" alt="" loading="lazy" style="max-width:100%;border-radius:12px;"></div>`
+      : '');
+
+  const cta = ctaFor(item);
+  const href = item.externalUrl ? item.externalUrl : `/upcoming.html#p-${encodeURIComponent(item.id)}`;
+  const ext = isExternal(href);
+  const label = cta.kind === 'notify' ? 'Notify me →' : (cta.kind === 'soldout' ? 'Sold out' : 'Get Your Copy →');
+
+  const live = item.status === 'live' || item.status === 'preorder';
+  const tag = item.onSale ? 'On Sale' : (item.status === 'live' ? 'Now Available' : (item.status === 'preorder' ? 'Pre-order' : 'Coming Soon'));
+
+  const priceRow = item.label
+    ? `<div class="book-price-row">
+         ${item.onSale ? `<div class="book-price-orig">${escapeHtml(item.originalLabel)}</div>` : ''}
+         <div class="book-price-now">${escapeHtml(item.label)}</div>
+       </div>`
+    : '';
+
+  const when = !live && item.launchDateMs && launchCountdown(item.launchDateMs)
+    ? `Opens ${escapeHtml(fmtLaunchDate(item.launchDateMs))} — ${escapeHtml(launchCountdown(item.launchDateMs))}.`
+    : (!live ? 'A New Book by Anthony Brown — Coming Soon.' : '30-Day Money-Back Guarantee. Zero Risk.');
+
+  // Bebas Neue is caps-only, so the title reads as the old hand-set caps did.
+  return `
+    <div class="book-section fade-up${i ? ` fade-up-delay-${Math.min(i, 5)}` : ''}${live ? '' : ' book-section--soon'}" id="shop-${escapeHtml(item.id)}">
+      <div>
+        <div class="book-eyebrow"><span class="tag">${escapeHtml(tag)}</span></div>
+        <div class="book-title">${escapeHtml(item.title)}</div>
+        ${item.summary ? `<p class="book-desc">${escapeHtml(item.summary)}</p>` : ''}
+        ${priceRow}
+        <a href="${escapeHtml(href)}" class="btn-primary btn-lg"${ext ? ' target="_blank" rel="noopener"' : ''}${cta.kind === 'soldout' ? ' aria-disabled="true" style="opacity:.6;pointer-events:none;"' : ''}>${escapeHtml(label)}</a>
+        <div class="book-guarantee">${when}</div>
+      </div>
+      ${visual}
+    </div>`;
+}
+
+function renderShop(items) {
+  const host = document.getElementById(SHOP_ID);
+  if (!host) return;
+
+  const books = sortForDisplay(items.filter((i) =>
+    i.kind === 'product' && i.productType === 'book' && visibleOn(i, 'site')));
+
+  // No book in the catalog yet: leave the hand-written fallback in place
+  // rather than blank the section. Once the seed script has run this branch
+  // is never taken again.
+  if (!books.length) return;
+
+  host.innerHTML = books.map(bookBlockHtml).join('');
+  host.removeAttribute('data-fallback');
+
+  // .fade-up starts at opacity:0 and is revealed by index.html's
+  // IntersectionObserver. If that hook is ever missing the whole section
+  // would render invisible rather than unanimated, so fall back to showing
+  // the blocks outright — a section nobody can see is the worse failure.
+  if (typeof window.__1pObserveFades === 'function') window.__1pObserveFades(host);
+  else host.querySelectorAll('.fade-up').forEach((el) => el.classList.add('visible'));
 }
 
 export async function init() {
@@ -253,9 +338,17 @@ export async function init() {
     (c) => PUBLIC_STATUSES.includes(c.status) && c.showOnSite !== false && c.sellable !== false
   );
 
-  // Independent of the grid: a launch is worth announcing even in the odd
-  // case where the section below it ends up empty.
-  renderLaunchBanner(getCourses());
+  // The banner and the shop read the whole catalog — courses and products —
+  // so a book launch can lead the page. Independent of the grid: a launch is
+  // worth announcing even in the odd case where the section below ends up
+  // empty. Fail-soft: if products cannot be read the courses still render.
+  try {
+    const items = await loadCatalog();
+    renderLaunchBanner(items);
+    renderShop(items);
+  } catch (e) {
+    console.warn('[home-courses] catalog load failed; banner and shop stay as they are', e);
+  }
 
   if (!courses.length) {
     hideCoursesSection(section);

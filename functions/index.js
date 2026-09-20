@@ -5123,7 +5123,10 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
     const prodSnap = await db.collection('products').doc(productId).get();
     if (!prodSnap.exists) throw new HttpsError('not-found', 'Unknown product.');
     const product = prodSnap.data();
-    if (product.status !== 'live' || product.sellable !== true) {
+    // Pre-order is a status that exists precisely so a product can be bought
+    // before it ships; the gate used to demand 'live', which made every
+    // pre-order unpurchasable.
+    if (!['live', 'preorder'].includes(product.status) || product.sellable !== true) {
       throw new HttpsError('failed-precondition', 'This product isn\'t available to buy yet.');
     }
     const basePrice = typeof product.price === 'number' ? product.price : null;
@@ -8110,12 +8113,13 @@ exports.runAutomationTick = onRequest({ cors: false, invoker: 'public', secrets:
   }
   const db = admin.firestore();
   const startedAt = Date.now();
-  const [sequences, watches, reminders] = await Promise.all([
+  const [sequences, watches, reminders, launches] = await Promise.all([
     processDueEnrollments(db, {}),
     renewAllGoogleWatches(db),
-    sendReminders(db)
+    sendReminders(db),
+    promoteLaunchedItems(db).catch((e) => { console.warn('[tick] promoteLaunchedItems', e && e.message); return { error: true }; })
   ]);
-  const summary = { ok: true, ms: Date.now() - startedAt, sequences, watches, reminders };
+  const summary = { ok: true, ms: Date.now() - startedAt, sequences, watches, reminders, launches };
   console.log('[tick]', JSON.stringify(summary));
   res.status(200).json(summary);
 });
@@ -8327,35 +8331,79 @@ exports.joinEarlyAccess = onCall(async (request) => {
   return { ok: true };
 });
 
-// Email everyone on a product's interest list that it's live.
-async function sendProductLaunchEmails(db, productId, product) {
-  const intsnap = await db.collection('products').doc(productId).collection('interests').get();
-  const recipients = [];
-  intsnap.forEach((d) => { const e = d.data().email; if (e && EMAIL_RE.test(e)) recipients.push(e); });
-  if (!recipients.length) return 0;
+// ────────────────────────────────────────────────────────────────
+// Launch emails — "the thing you asked about is open".
+//
+// Shared by products and courses. The two waitlists live in different places
+// (products/{id}/interests vs users/{uid}/courseInterests/{slug}), so each
+// kind collects its own recipients and hands them here. The button links to
+// the item itself — a product's off-site link or its anchor on /upcoming, a
+// course's sales page — where it used to link to the bare homepage.
+// ────────────────────────────────────────────────────────────────
+
+async function sendLaunchEmails({ name, summary, url, recipients }) {
+  const list = (recipients || []).filter((e) => e && EMAIL_RE.test(e));
+  if (!list.length) return 0;
   sgMail.setApiKey(sendgridKey.value());
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:540px;margin:0 auto;">
-    <h2 style="color:#E60306;margin:0 0 10px;">It's here: ${product.name}</h2>
-    <p style="font-size:15px;color:#222;">You asked to be the first to know — ${product.name} is now available.</p>
-    ${product.summary ? `<p style="font-size:14px;color:#444;">${product.summary}</p>` : ''}
-    <p style="margin:18px 0;"><a href="${APP_BASE_URL}" style="background:#E60306;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Check it out →</a></p>
+    <h2 style="color:#E60306;margin:0 0 10px;">It's here: ${name}</h2>
+    <p style="font-size:15px;color:#222;">You asked to be the first to know — ${name} is now open.</p>
+    ${summary ? `<p style="font-size:14px;color:#444;">${summary}</p>` : ''}
+    <p style="margin:18px 0;"><a href="${url}" style="background:#E60306;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Check it out →</a></p>
     <p style="font-size:12px;color:#888;">— The One Percent Nation</p>
   </div>`;
   let sent = 0;
-  for (let i = 0; i < recipients.length; i += 900) {
-    const chunk = recipients.slice(i, i + 900);
+  for (let i = 0; i < list.length; i += 900) {
+    const chunk = list.slice(i, i + 900);
     try {
       await sgMail.send({
         from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
-        subject: `It's here: ${product.name}`, html,
-        text: `${product.name} is now available. Visit ${APP_BASE_URL}`,
+        subject: `It's here: ${name}`, html,
+        text: `${name} is now open. Visit ${url}`,
         isMultiple: true,
         personalizations: chunk.map((to) => ({ to }))
       });
       sent += chunk.length;
-    } catch (e) { console.warn('[productLaunch] send failed', e && e.message); }
+    } catch (e) { console.warn('[launchEmail] send failed', e && e.message); }
   }
   return sent;
+}
+
+function productLaunchUrl(productId, product) {
+  return product.externalUrl || `${APP_BASE_URL}/upcoming.html#p-${encodeURIComponent(productId)}`;
+}
+
+// Email everyone on a product's interest list that it's live.
+async function sendProductLaunchEmails(db, productId, product) {
+  const intsnap = await db.collection('products').doc(productId).collection('interests').get();
+  const recipients = intsnap.docs.map((d) => d.data().email);
+  return sendLaunchEmails({
+    name: product.name,
+    summary: product.summary,
+    url: productLaunchUrl(productId, product),
+    recipients
+  });
+}
+
+// A course's waitlist is fanned out per member (users/{uid}/courseInterests/
+// {slug}, written by registerCourseInterest), so it is gathered with a
+// collection-group query — hence the `courseInterests.slug` field override
+// in firestore.indexes.json — then joined back to each member's email.
+async function sendCourseLaunchEmails(db, slug, course) {
+  const snap = await db.collectionGroup('courseInterests').where('slug', '==', slug).get();
+  const uids = Array.from(new Set(snap.docs.map((d) => d.ref.parent.parent && d.ref.parent.parent.id).filter(Boolean)));
+  const recipients = [];
+  for (let i = 0; i < uids.length; i += 100) {
+    const refs = uids.slice(i, i + 100).map((uid) => db.collection('users').doc(uid));
+    const users = await db.getAll(...refs);
+    users.forEach((u) => { if (u.exists && u.data().email) recipients.push(u.data().email); });
+  }
+  return sendLaunchEmails({
+    name: course.title || slug,
+    summary: course.short || course.subtitle || null,
+    url: `${APP_BASE_URL}/course.html?course=${encodeURIComponent(slug)}`,
+    recipients
+  });
 }
 
 // When a product flips to "live", auto-email its interest list once.
@@ -8378,16 +8426,88 @@ exports.onProductWritten = onDocumentWritten(
   }
 );
 
-// Manual "Notify list" button (admin) — backup for the auto trigger.
+// The twin for courses. Courses have collected a waitlist for as long as the
+// "Notify me when enrollment opens" button has existed; this is the first
+// thing that has ever contacted it.
+exports.onCourseWritten = onDocumentWritten(
+  { document: 'courses/{slug}', secrets: [sendgridKey] },
+  async (event) => {
+    const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+    const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+    if (!after) return;
+    const becameLive = after.status === 'live' && (!before || before.status !== 'live');
+    if (!becameLive || after.launchNotifiedAt) return;
+    const db = admin.firestore();
+    const slug = event.params.slug;
+    try {
+      const n = await sendCourseLaunchEmails(db, slug, after);
+      await db.collection('courses').doc(slug).set({
+        launchNotifiedAt: admin.firestore.FieldValue.serverTimestamp(), launchNotifiedCount: n
+      }, { merge: true });
+    } catch (e) { console.warn('[onCourseWritten]', e && e.message); }
+  }
+);
+
+// Manual "Notify list" button (admin) — backup for the auto trigger. Returns
+// whether the launch email has already gone out so the console can warn
+// before re-sending; the auto trigger guards itself, this never did.
 exports.notifyProductInterest = onCall({ secrets: [sendgridKey] }, async (request) => {
   const db = admin.firestore();
   if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admin or owner role required.');
   const productId = (request.data && request.data.productId || '').toString();
   const snap = await db.collection('products').doc(productId).get();
   if (!snap.exists) throw new HttpsError('not-found', 'Product not found.');
-  const n = await sendProductLaunchEmails(db, productId, snap.data());
-  return { ok: true, sent: n };
+  const product = snap.data();
+  const previouslyAt = product.launchNotifiedAt && product.launchNotifiedAt.toMillis ? product.launchNotifiedAt.toMillis() : null;
+  const n = await sendProductLaunchEmails(db, productId, product);
+  await snap.ref.set({
+    launchNotifiedAt: admin.firestore.FieldValue.serverTimestamp(), launchNotifiedCount: n
+  }, { merge: true });
+  return { ok: true, sent: n, previouslyNotifiedAt: previouslyAt };
 });
+
+// ────────────────────────────────────────────────────────────────
+// Launch-date promotion — the tick's catalog step.
+//
+// An item marked coming soon (or pre-order) with a launchDate that has
+// arrived flips to live. Nothing else has to happen here: the two
+// onDocumentWritten triggers above see the transition and email the
+// waitlists, and every surface reads status, so the badge, the banner, the
+// store and the sales page all follow from this one write.
+//
+// Both collections are small, so the date compare is done in memory rather
+// than with a range query that would need a composite index per collection.
+// ────────────────────────────────────────────────────────────────
+
+async function promoteLaunchedItems(db) {
+  const now = admin.firestore.Timestamp.now();
+  const due = (snap) => snap.docs.filter((d) => {
+    const ld = d.data().launchDate;
+    return ld && typeof ld.toMillis === 'function' && ld.toMillis() <= now.toMillis();
+  });
+
+  const [courses, products] = await Promise.all([
+    db.collection('courses').where('status', '==', 'coming-soon').get(),
+    db.collection('products').where('status', 'in', ['interest', 'preorder']).get()
+  ]);
+
+  const patch = {
+    status: 'live',
+    launchedAt: admin.firestore.FieldValue.serverTimestamp(),
+    launchedBy: 'auto'
+  };
+  const flipped = { courses: [], products: [] };
+  for (const d of due(courses)) {
+    await d.ref.set({ ...patch, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: 'launch-tick' }, { merge: true });
+    flipped.courses.push(d.id);
+  }
+  for (const d of due(products)) {
+    await d.ref.set({ ...patch, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    flipped.products.push(d.id);
+  }
+  if (flipped.courses.length || flipped.products.length) console.log('[launch-tick] promoted', JSON.stringify(flipped));
+  return { courses: flipped.courses.length, products: flipped.products.length };
+}
 
 // ════════════════════════════════════════════════════════════════
 // Course Advisor Chatbot — powered by Claude (Anthropic).
@@ -11499,3 +11619,10 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
 
   return { ok: true };
 });
+
+// ────────────────────────────────────────────────────────────────
+// Exposed for the emulator test (tests/launch-tick.test.mjs). A plain
+// function is not a trigger: the Functions loader registers only exports
+// that carry an endpoint definition, so this deploys nothing.
+// ────────────────────────────────────────────────────────────────
+exports.promoteLaunchedItems = promoteLaunchedItems;

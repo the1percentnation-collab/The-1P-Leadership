@@ -145,7 +145,12 @@ function courseCardHtml(c) {
         <label class="mc-switch" title="Show this course in the Courses section of the public homepage">
           <input type="checkbox" data-onsite="${slug}"${c.showOnSite !== false ? ' checked' : ''}>
           <span class="mc-switch-track"></span>
-          <span>On main site</span>
+          <span>Main site</span>
+        </label>
+        <label class="mc-switch" title="Show this course in the member Store and on the dashboard">
+          <input type="checkbox" data-ondash="${slug}"${c.showInDashboard !== false ? ' checked' : ''}>
+          <span class="mc-switch-track"></span>
+          <span>Dashboard</span>
         </label>
         <button class="btn btn-primary" data-open="${slug}" style="font-size:12px; padding:7px 14px;">Edit</button>
         <button class="btn btn-ghost" data-preview="${slug}" style="font-size:12px; padding:7px 12px;">Preview</button>
@@ -185,7 +190,9 @@ function renderDashboard() {
   grid.querySelectorAll('[data-launch]').forEach((input) =>
     input.addEventListener('change', () => setCourseLaunchDate(input.dataset.launch, input.value, input)));
   grid.querySelectorAll('[data-onsite]').forEach((cb) =>
-    cb.addEventListener('change', () => setCourseOnSite(cb.dataset.onsite, cb.checked, cb)));
+    cb.addEventListener('change', () => setCourseChannel(cb.dataset.onsite, 'showOnSite', cb.checked, cb)));
+  grid.querySelectorAll('[data-ondash]').forEach((cb) =>
+    cb.addEventListener('change', () => setCourseChannel(cb.dataset.ondash, 'showInDashboard', cb.checked, cb)));
   grid.querySelectorAll('[data-kebab-toggle]').forEach((b) =>
     b.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -274,32 +281,33 @@ async function setCourseLaunchDate(slug, value, input) {
   }
 }
 
-// Quick "show on the public homepage" flip from a dashboard card.
+// Quick channel flip from a dashboard card: `showOnSite` (the public
+// homepage) or `showInDashboard` (the member Store and dashboard).
 //
 // Deliberately separate from `status`: 'inactive' hides a course everywhere
-// (including the member library), whereas this only controls whether the
-// course is advertised on the marketing site. A course can be live for
-// members while staying off the public homepage, and vice versa.
+// (including the member library), whereas these only control where the
+// course is advertised. A course can be live for members while staying off
+// the public homepage, or on the homepage but out of the member Store.
 //
-// The field is a default-true opt-out (`showOnSite !== false`), matching the
+// Both fields are default-true opt-outs (`!== false`), matching the
 // `published` / `certificate` convention used elsewhere, so the courses that
 // already exist stay visible without a backfill.
 //
 // No full re-render here — the switch is its own indicator and rebuilding the
 // grid mid-click makes the toggle feel like it bounced. We still force-reload
 // the merged cache so the builder's Settings tab agrees with the dashboard.
-async function setCourseOnSite(slug, on, cb) {
+async function setCourseChannel(slug, field, on, cb) {
   if (!slug) return;
   try {
     await setDoc(doc(db, 'courses', slug), {
-      showOnSite: on,
+      [field]: on,
       updatedAt: serverTimestamp(),
       updatedBy: _userEmail
     }, { merge: true });
     await loadCourses({ force: true });
   } catch (e) {
     if (cb) cb.checked = !on; // put the switch back where it was
-    alert(`Could not update site visibility: ${e && e.message ? e.message : e}`);
+    alert(`Could not update visibility: ${e && e.message ? e.message : e}`);
   }
 }
 

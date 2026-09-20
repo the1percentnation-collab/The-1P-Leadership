@@ -35,10 +35,10 @@ import {
   fmtRelative,
   initials
 } from './community.js';
-import { loadEnrollments, enrolledCourses, availableCourses, isEnrolled } from './enrollments.js';
-import { priceInfo } from './courses-data.js';
+import { loadEnrollments, enrolledCourses, isEnrolled } from './enrollments.js';
 import { loadCourseCompletion } from './course-progress.js';
-import { listVisibleProducts } from './products.js';
+import { loadCatalog, visibleOn, hrefFor, isExternal, sortForDisplay } from './catalog.js';
+import { fmtLaunchDate, launchCountdown } from './launch-date.js';
 import { listActiveAnnouncements } from './announcements.js';
 import { renderSpotlight } from './hub-spotlight.js';
 import { buildNextSteps } from './hub-nextup.js';
@@ -55,11 +55,24 @@ const DAY = 24 * HOUR;
 let completions = new Map(); // slug -> { modules, completed, done, total, pct, isComplete }
 let eventFeed = [];          // normalized upcoming events, soonest first
 let spotlightHandle = null;
-let productsPromise = null;  // shared by the spotlight and the explore row
+let catalogPromise = null;   // shared by the spotlight and the explore row
 
-function visibleProducts() {
-  if (!productsPromise) productsPromise = listVisibleProducts().catch(() => []);
-  return productsPromise;
+// Everything switched on for the dashboard, courses and products alike, in
+// the shared catalog shape. One read for both sections that need it.
+function dashboardCatalog() {
+  if (!catalogPromise) {
+    catalogPromise = loadCatalog()
+      .then((items) => sortForDisplay(items.filter((i) => visibleOn(i, 'dashboard'))))
+      .catch(() => []);
+  }
+  return catalogPromise;
+}
+
+function whenLabel(item) {
+  if (item.status === 'live') return '';
+  return item.launchDateMs && launchCountdown(item.launchDateMs)
+    ? `Opens ${fmtLaunchDate(item.launchDateMs, { short: true })}`
+    : 'Coming soon';
 }
 
 function firstName(nameOrEmail) {
@@ -365,10 +378,9 @@ async function renderSpotlightRail({ role, companyId }) {
   const section = $('hub-spotlight');
   if (!section) return;
 
-  const enrolledSlugs = new Set(enrolledCourses().map((c) => c.slug));
-  const [announcements, products] = await Promise.all([
-    listActiveAnnouncements({ role, companyId, enrolledSlugs }).catch(() => []),
-    visibleProducts()
+  const [announcements, catalog] = await Promise.all([
+    listActiveAnnouncements({ role, companyId, enrolledSlugs: new Set(enrolledCourses().map((c) => c.slug)) }).catch(() => []),
+    dashboardCatalog()
   ]);
 
   const slides = [];
@@ -407,40 +419,43 @@ async function renderSpotlightRail({ role, companyId }) {
       sortAt: e.startsAtMs
     }));
 
-  products.slice(0, 3).forEach((p) => slides.push({
-    id: `p-${p.id}`,
+  // Catalog items the member does not already hold: up to three products,
+  // then up to two courses. Capped so the rail stays a noticeboard rather
+  // than a storefront — the Store tab is the storefront.
+  const enrolledSlugs = new Set(enrolledCourses().map((c) => c.slug));
+  const forRail = catalog.filter((i) => !(i.kind === 'course' && enrolledSlugs.has(i.slug)));
+
+  forRail.filter((i) => i.kind === 'product').slice(0, 3).forEach((i) => slides.push({
+    id: `p-${i.id}`,
     kind: 'product',
-    eyebrow: p.status === 'live' ? 'Now available' : (p.status === 'preorder' ? 'Pre-order open' : 'Coming soon'),
-    title: p.name || 'New from The One Percent',
-    body: p.summary || '',
-    imageUrl: p.imageUrl,
-    ctaLabel: p.status === 'live' ? 'Get it' : 'Notify me',
-    ctaHref: '/upcoming.html',
+    eyebrow: i.onSale ? 'On sale' : (i.status === 'live' ? 'Now available' : (i.status === 'preorder' ? 'Pre-order open' : whenLabel(i))),
+    title: i.title,
+    body: i.summary,
+    imageUrl: i.imageUrl,
+    meta: i.label ? (i.onSale ? `${i.originalLabel} → ${i.label}` : i.label) : '',
+    ctaLabel: i.status === 'live' || i.status === 'preorder' ? 'Get it' : 'Notify me',
+    ctaHref: hrefFor(i, 'dashboard'),
+    external: isExternal(hrefFor(i, 'dashboard')),
     priority: 40,
-    sortAt: 0
+    sortAt: i.launchDateMs || 0
   }));
 
-  // Courses they could still take. Capped at two so the rail stays a
-  // noticeboard rather than a storefront.
-  availableCourses()
-    .filter((c) => c.status === 'live')
-    .slice(0, 2)
-    .forEach((c) => {
-      const price = priceInfo(c);
-      slides.push({
-        id: `c-${c.slug}`,
-        kind: 'course',
-        eyebrow: 'Open for enrollment',
-        title: c.title,
-        body: c.short || c.subtitle || '',
-        imageUrl: c.imageUrl || null,
-        meta: price.label || '',
-        ctaLabel: 'Learn more',
-        ctaHref: `/courses.html?course=${encodeURIComponent(c.slug)}`,
-        priority: 30,
-        sortAt: 0
-      });
-    });
+  forRail.filter((i) => i.kind === 'course' && i.status === 'live').slice(0, 2).forEach((i) => slides.push({
+    id: `c-${i.slug}`,
+    kind: 'course',
+    eyebrow: i.onSale ? 'On sale' : 'Open for enrollment',
+    title: i.title,
+    body: i.summary,
+    // The catalog reads the cover the builder actually writes (`coverImage`);
+    // this used to read `imageUrl`, which no course has, so course slides
+    // never carried art.
+    imageUrl: i.imageUrl,
+    meta: i.label || '',
+    ctaLabel: 'Learn more',
+    ctaHref: hrefFor(i, 'dashboard'),
+    priority: 30,
+    sortAt: 0
+  }));
 
   slides.sort((a, b) => (b.priority - a.priority) || ((a.sortAt || Infinity) - (b.sortAt || Infinity)));
 
@@ -920,33 +935,29 @@ async function renderExplore() {
   const row = $('hub-explore-list');
   if (!section || !row) return;
 
-  const cards = [];
+  const enrolledSlugs = new Set(enrolledCourses().map((c) => c.slug));
+  const items = (await dashboardCatalog())
+    .filter((i) => !(i.kind === 'course' && enrolledSlugs.has(i.slug)))
+    .slice(0, 6);
 
-  availableCourses().slice(0, 4).forEach((c) => {
-    const price = priceInfo(c);
-    const status = c.status === 'live' ? 'Enroll now' : 'Coming soon';
-    cards.push(`
-      <a class="hub-explore-card" href="/courses.html?course=${encodeURIComponent(c.slug)}">
-        <span class="hub-explore-eyebrow">${escapeHtml(status)}</span>
-        <span class="hub-explore-title">${escapeHtml(c.title)}</span>
-        <span class="hub-explore-sub">${escapeHtml(c.short || c.subtitle || '')}</span>
-        <span class="hub-explore-price">${escapeHtml(price.label || '')}</span>
-      </a>`);
-  });
+  if (!items.length) { section.hidden = true; return; }
 
-  try {
-    const products = await visibleProducts();
-    products.slice(0, 2).forEach((p) => cards.push(`
-      <a class="hub-explore-card" href="/upcoming.html">
-        <span class="hub-explore-eyebrow">${escapeHtml(p.status === 'live' ? 'Available' : 'Pre-order')}</span>
-        <span class="hub-explore-title">${escapeHtml(p.name || 'New release')}</span>
-        <span class="hub-explore-sub">${escapeHtml(p.summary || '')}</span>
-        <span class="hub-explore-price">${escapeHtml(p.price != null ? `$${p.price}` : '')}</span>
-      </a>`));
-  } catch (e) { /* non-fatal */ }
-
-  if (!cards.length) { section.hidden = true; return; }
-  row.innerHTML = cards.join('');
+  row.innerHTML = items.map((i) => {
+    const href = hrefFor(i, 'dashboard');
+    const eyebrow = i.onSale ? 'On sale'
+      : (i.status === 'live' ? (i.kind === 'course' ? 'Enroll now' : 'Available')
+        : (i.status === 'preorder' ? 'Pre-order' : whenLabel(i)));
+    const price = i.label
+      ? `${i.onSale ? `<s style="color:var(--gray-mid);margin-right:6px;">${escapeHtml(i.originalLabel)}</s>` : ''}${escapeHtml(i.label)}`
+      : '';
+    return `
+      <a class="hub-explore-card" href="${escapeHtml(href)}"${isExternal(href) ? ' target="_blank" rel="noopener"' : ''}>
+        <span class="hub-explore-eyebrow">${escapeHtml(eyebrow)}</span>
+        <span class="hub-explore-title">${escapeHtml(i.title)}</span>
+        <span class="hub-explore-sub">${escapeHtml(i.summary)}</span>
+        <span class="hub-explore-price">${price}</span>
+      </a>`;
+  }).join('');
   section.hidden = false;
 }
 

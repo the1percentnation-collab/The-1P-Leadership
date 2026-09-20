@@ -2221,7 +2221,13 @@
      BOOK / SHOP
 ============================================================ -->
 <section id="shop" class="section-pad">
-  <div class="container">
+  <!-- Rendered by /js/home-courses.js from the products catalog (type: book,
+       switched on for the main site) so the books, their prices, their sale
+       and their launch dates come from the same record the admin edits and
+       the member Store shows. The markup below is a FALLBACK: it stays until
+       the catalog has at least one visible book, then is replaced. Delete it
+       once scripts/seed-shop-books.js has run in production. -->
+  <div class="container" id="home-shop" data-fallback="1">
     <div class="book-section fade-up">
       <div>
         <div class="book-eyebrow"><span class="tag">Now Available</span></div>
