@@ -3423,6 +3423,171 @@ exports.getLeaderboard = onCall(async (request) => {
   return { ok: true, scope, rows };
 });
 
+// ────────────────────────────────────────────────────────────────
+// Daily streak
+//
+// The points engine above rewards what you post. A streak rewards that you
+// showed up at all, which is the behaviour the dashboard is trying to build.
+// It rides on the same stats/aggregate doc (server-write-only by rules) and
+// deliberately awards NO points: mixing "showed up" into the leaderboard
+// would make it a measure of attendance rather than contribution.
+// ────────────────────────────────────────────────────────────────
+
+// YYYY-MM-DD in UTC. Same timezone convention as currentWeekStartUTC() above,
+// so a member's streak day and their points week roll on the same clock.
+function utcDayKey(date) {
+  const d = date || new Date();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${m}-${day}`;
+}
+
+function previousUtcDayKey(dayKey) {
+  const [y, m, d] = String(dayKey).split('-').map(Number);
+  return utcDayKey(new Date(Date.UTC(y, m - 1, d - 1)));
+}
+
+/**
+ * touchDailyStreak() — callable. Records that the caller showed up today and
+ * returns their streak. Idempotent within a UTC day, so the dashboard can
+ * call it on every load without inflating anything.
+ *
+ * Returns { currentStreak, longestStreak, lastActiveDay }.
+ */
+exports.touchDailyStreak = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+  const statRef = userRef.collection('stats').doc('aggregate');
+  const today = utcDayKey();
+
+  return await db.runTransaction(async (tx) => {
+    const [statSnap, userSnap] = await Promise.all([tx.get(statRef), tx.get(userRef)]);
+    const stat = statSnap.exists ? statSnap.data() : {};
+    const last = stat.lastActiveDay || null;
+
+    // Already counted today — read-only path, no write at all.
+    if (last === today) {
+      return {
+        ok: true,
+        currentStreak: Number(stat.currentStreak || 1),
+        longestStreak: Number(stat.longestStreak || stat.currentStreak || 1),
+        lastActiveDay: today,
+        incremented: false
+      };
+    }
+
+    // Consecutive if the last visit was literally yesterday; any longer gap
+    // starts over. A brand-new member lands on day one either way.
+    const current = last && last === previousUtcDayKey(today)
+      ? Number(stat.currentStreak || 0) + 1
+      : 1;
+    const longest = Math.max(Number(stat.longestStreak || 0), current);
+
+    tx.set(statRef, {
+      lastActiveDay: today,
+      currentStreak: current,
+      longestStreak: longest,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    // Mirror onto the user doc, same reasoning as applyPointsDelta: callers
+    // that already hold the user doc shouldn't need a second read. Guarded on
+    // existence so we never create a user doc missing its auth-bound fields.
+    if (userSnap.exists) {
+      tx.set(userRef, {
+        currentStreak: current,
+        lastActiveAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+
+    return {
+      ok: true,
+      currentStreak: current,
+      longestStreak: longest,
+      lastActiveDay: today,
+      incremented: true
+    };
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
+// Owner pulse — the admin strip at the top of the dashboard.
+//
+// Every number here is a count the client cannot compute for itself: `users`
+// is owner-list-only, `orders` and event registrations are admin-only, and
+// "posts nobody answered" needs a scan. Aggregate .count() queries keep it to
+// a handful of reads, and a short in-process cache keeps a refresh-happy
+// owner from paying for them twice a minute.
+// ────────────────────────────────────────────────────────────────
+
+const PULSE_TTL_MS = 5 * 60 * 1000;
+let _pulseCache = null; // { at, payload }
+
+exports.getOwnerPulse = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) {
+    throw new HttpsError('permission-denied', 'Admins only.');
+  }
+
+  if (_pulseCache && (Date.now() - _pulseCache.at) < PULSE_TTL_MS) {
+    return { ..._pulseCache.payload, cached: true };
+  }
+
+  const now = new Date();
+  const cutoff = admin.firestore.Timestamp.fromDate(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000));
+  const nowTs = admin.firestore.Timestamp.fromDate(now);
+
+  // Each read is independent and individually non-fatal: a pulse strip with
+  // one dash in it still beats no strip.
+  const safe = (p, fallback) => p.then((v) => v).catch((e) => {
+    console.warn('[getOwnerPulse] partial failure:', e && e.message);
+    return fallback;
+  });
+
+  const [
+    newMembers,
+    recentPosts,
+    nextEvents,
+    recentOrders,
+    openProducts
+  ] = await Promise.all([
+    safe(db.collection('users').where('createdAt', '>=', cutoff).count().get().then((s) => s.data().count), null),
+    safe(db.collection('posts').where('createdAt', '>=', cutoff).limit(200).get().then((s) => s.docs.map((d) => d.data())), []),
+    safe(db.collection('events').where('startsAt', '>=', nowTs).orderBy('startsAt', 'asc').limit(1).get().then((s) => s.docs.map((d) => ({ id: d.id, ...d.data() }))), []),
+    safe(db.collection('orders').where('createdAt', '>=', cutoff).limit(200).get().then((s) => s.docs.map((d) => d.data())), []),
+    safe(db.collection('products').where('status', 'in', ['interest', 'preorder']).limit(50).get().then((s) => s.docs.map((d) => d.data())), [])
+  ]);
+
+  const unanswered = recentPosts.filter((p) => !Number(p.commentCount || 0)).length;
+  const grossCents = recentOrders.reduce((sum, o) => sum + Number(o.amountTotal || 0), 0);
+  const nextEvent = nextEvents[0] || null;
+
+  const payload = {
+    ok: true,
+    windowDays: 7,
+    newMembers,
+    posts: recentPosts.length,
+    unansweredPosts: unanswered,
+    orders: recentOrders.length,
+    // amountTotal is Stripe cents; the client formats it.
+    grossCents,
+    interestSignups: openProducts.reduce((n, p) => n + Number(p.interestCount || 0), 0),
+    preorders: openProducts.reduce((n, p) => n + Number(p.preorderCount || 0), 0),
+    nextEvent: nextEvent ? {
+      id: nextEvent.id,
+      title: nextEvent.title || 'Untitled event',
+      startsAtMs: nextEvent.startsAt && nextEvent.startsAt.toMillis ? nextEvent.startsAt.toMillis() : null,
+      registrationCount: Number(nextEvent.registrationCount || 0)
+    } : null
+  };
+
+  _pulseCache = { at: Date.now(), payload };
+  return payload;
+});
+
 /**
  * recomputeUserStats({ uid }) — owner-only callable. Repair / backfill path.
  *

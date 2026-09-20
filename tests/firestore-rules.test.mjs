@@ -63,6 +63,11 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'companies/co1/integrations/google'), { connected: true, googleEmail: 'a@b.com' });
   await setDoc(doc(db, 'companies/co1/enrollments/e1'), { sequenceId: 's1', contactId: 'c1', status: 'active', currentStep: 0 });
   await setDoc(doc(db, 'oauthStates/st1'), { companyId: 'co1', uid: 'adm' });
+  // Dashboard spotlight announcement.
+  await setDoc(doc(db, 'announcements/a1'), {
+    title: 'Launch week', body: 'The new course opens Monday.', kind: 'course',
+    priority: 10, audience: 'all', active: true, publishAt: new Date()
+  });
 });
 
 const solo = env.authenticatedContext('solo').firestore();
@@ -214,6 +219,30 @@ await t('admin CAN stop an enrollment',
 
 await t('admin CANNOT advance an enrollment step',
   () => assertFails(updateDoc(doc(adm, 'companies/co1/enrollments/e1'), { currentStep: 5 })));
+
+// ── Announcements: members read, only admins write ───────────────────────
+// The dashboard spotlight is a broadcast, so every signed-in member must be
+// able to read it — and no member may put words in the Academy's mouth.
+await t('member CAN read an announcement',
+  () => assertSucceeds(getDoc(doc(solo, 'announcements/a1'))));
+
+await t('member CAN list announcements for the spotlight',
+  () => assertSucceeds(getDocs(query(collection(emp, 'announcements'), where('active', '==', true)))));
+
+await t('signed-out visitor CANNOT read an announcement',
+  () => assertFails(getDoc(doc(anon, 'announcements/a1'))));
+
+await t('member CANNOT create an announcement',
+  () => assertFails(addDoc(collection(solo, 'announcements'), { title: 'Fake', active: true })));
+
+await t('member CANNOT edit an announcement',
+  () => assertFails(updateDoc(doc(emp, 'announcements/a1'), { title: 'Hijacked' })));
+
+await t('admin CAN create an announcement',
+  () => assertSucceeds(addDoc(collection(adm, 'announcements'), { title: 'From admin', active: true })));
+
+await t('owner CAN edit an announcement',
+  () => assertSucceeds(updateDoc(doc(owner, 'announcements/a1'), { title: 'Launch week (updated)' })));
 
 await env.cleanup();
 

@@ -58,6 +58,7 @@ const ADMIN_BUTTONS = [
   { key: 'store-admin', href: '/manage-store.html', label: 'Store', requires: 'admin' },
   { key: 'courses-admin', href: '/manage-courses.html', label: 'Manage Courses', requires: 'admin' },
   { key: 'products-admin', href: '/manage-products.html', label: 'Products', requires: 'admin' },
+  { key: 'announcements-admin', href: '/manage-announcements.html', label: 'Announcements', requires: 'admin' },
   { key: 'affiliates-admin', href: '/manage-affiliates.html', label: 'Affiliates', requires: 'admin' },
   { key: 'certification-admin', href: '/certification-admin.html', label: 'Certification', requires: 'admin' },
   { key: 'admin', href: '/admin.html', label: 'Admin', requires: 'admin' },
