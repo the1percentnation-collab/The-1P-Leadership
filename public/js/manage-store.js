@@ -58,6 +58,8 @@ async function loadCatalog() {
       price: d.data().price ?? null,
       salePrice: d.data().salePrice ?? null,
       status: d.data().status || 'inactive',
+      showOnSite: d.data().showOnSite !== false,
+      showInDashboard: d.data().showInDashboard !== false,
       editor: `/manage-courses.html`
     })),
     ...classes.docs.map((d) => ({
@@ -81,6 +83,8 @@ async function loadCatalog() {
       status: d.data().status || 'planned',
       sellable: d.data().sellable === true,
       inventory: d.data().inventory ?? null,
+      showOnSite: d.data().showOnSite !== false,
+      showInDashboard: d.data().showInDashboard !== false,
       editor: `/manage-products.html`
     }))
   ].sort((a, b) => a.name.localeCompare(b.name));
@@ -111,7 +115,12 @@ function renderCatalog() {
           : '')
         : (item.salePrice != null ? `<div class="store-addr">founding ${money(item.salePrice)}</div>` : '')}
     </td>
-    <td><select class="c-input crm-select" data-status>${statusOptions(item)}</select></td>
+    <td><select class="c-input crm-select" data-status>${statusOptions(item)}</select>
+      ${item.kind !== 'class' ? `
+      <div style="display:flex; gap:10px; margin-top:6px; font-size:11px;">
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;" title="Public homepage"><input type="checkbox" data-site ${item.showOnSite ? 'checked' : ''}> site</label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;" title="Member Store"><input type="checkbox" data-dash ${item.showInDashboard ? 'checked' : ''}> dashboard</label>
+      </div>` : ''}</td>
     <td>${item.kind === 'digital' || item.kind === 'physical'
       ? `<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" data-sellable ${item.sellable ? 'checked' : ''}> buyable</label>`
       : (item.kind === 'course' ? '<span class="store-addr">via course page</span>' : '<span class="store-addr">via class page</span>')}</td>
@@ -136,8 +145,12 @@ function renderCatalog() {
         if (salePrice != null && price != null && salePrice >= price) {
           throw new Error('Sale price must be below the regular price.');
         }
-        await setDoc(doc(db, 'courses', item.id),
-          { price, salePrice, status, updatedAt: serverTimestamp() }, { merge: true });
+        await setDoc(doc(db, 'courses', item.id), {
+          price, salePrice, status,
+          showOnSite: row.querySelector('[data-site]').checked,
+          showInDashboard: row.querySelector('[data-dash]').checked,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
       } else if (item.kind === 'class') {
         // Class docs price in cents; read-modify-write the price map so
         // founding fields survive.
@@ -150,8 +163,12 @@ function renderCatalog() {
         }, { merge: true });
       } else {
         const sellable = row.querySelector('[data-sellable]').checked;
-        await updateDoc(doc(db, 'products', item.id),
-          { price, status, sellable, updatedAt: serverTimestamp() });
+        await updateDoc(doc(db, 'products', item.id), {
+          price, status, sellable,
+          showOnSite: row.querySelector('[data-site]').checked,
+          showInDashboard: row.querySelector('[data-dash]').checked,
+          updatedAt: serverTimestamp()
+        });
       }
       btn.textContent = '✓';
       setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 900);

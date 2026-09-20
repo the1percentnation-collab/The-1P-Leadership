@@ -926,6 +926,7 @@ function fillPricingForm(c) {
   S.suppress = true;
   $('p-price').value = c && typeof c.price === 'number' ? c.price : '';
   $('p-saleprice').value = c && typeof c.salePrice === 'number' ? c.salePrice : '';
+  $('p-saleends').value = tsToLocalInput(c && c.saleEndsAt);
   const mode = c && c.pricing && c.pricing.mode === 'subscription' ? 'subscription' : 'one-time';
   $('p-mode').value = mode;
   $('p-interval').disabled = mode !== 'subscription';
@@ -946,9 +947,13 @@ async function savePricing() {
       throw new Error('Sale price must be lower than the regular price.');
     }
     const mode = $('p-mode').value;
+    // A sale with no end never ends; an end in the past means "not on sale",
+    // and the pricing rule already treats it that way, so store it as given.
+    const saleEndsAt = salePrice == null ? null : localInputToDate($('p-saleends').value);
     await setDoc(doc(db, 'courses', S.slug), {
       price,
       salePrice,
+      saleEndsAt,
       // Clear the seeded display label so it always derives from `price`.
       priceLabel: null,
       priceNote: $('p-pricenote').value.trim() || null,

@@ -1,83 +1,75 @@
-// Public "what's coming" page — browse upcoming products, join a product's
-// interest list, or join the general early-access list. No login required.
+// Public "what's coming" page — browse products, join a product's interest
+// list, or join the general early-access list. No login required.
+//
+// Renders from the catalog contract (catalog-core.js), so what a card says
+// here is what the homepage shop and the member Store say about the same
+// product: the launch date, the sale price, where the button goes.
 
 import { firebaseReady, auth, functions } from './firebase.js';
 import { getRefCode } from './referral.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
-import {
-  listVisibleProducts, registerInterest, joinEarlyAccess, escapeHtml, fmtMoney
-} from './products.js';
+import { listVisibleProducts, joinEarlyAccess, escapeHtml } from './products.js';
+import { normalizeProduct, visibleOn, ctaFor, sortForDisplay } from './catalog-core.js';
+import { fmtLaunchDate, launchCountdown } from './launch-date.js';
+import { openInterestModal } from './product-interest.js';
 
 const $ = (id) => document.getElementById(id);
 
-function cardHtml(p) {
-  const price = fmtMoney(p.price);
-  const badge = p.status === 'live' ? 'Available now' : (p.status === 'preorder' ? 'Pre-order' : 'Coming soon');
+function badgeFor(item) {
+  if (item.status === 'live') return 'Available now';
+  if (item.status === 'preorder') return 'Pre-order';
+  // A dated launch is a reason to come back; the bare word is not.
+  return item.launchDateMs && launchCountdown(item.launchDateMs)
+    ? `Coming ${fmtLaunchDate(item.launchDateMs, { short: true })}`
+    : 'Coming soon';
+}
+
+function priceHtml(item) {
+  if (!item.label) return '<span class="pre-card-price muted">TBA</span>';
+  return item.onSale
+    ? `<span class="pre-card-price"><s style="color:var(--gray-mid);font-weight:400;margin-right:6px;">${escapeHtml(item.originalLabel)}</s>${escapeHtml(item.label)}</span>`
+    : `<span class="pre-card-price">${escapeHtml(item.label)}</span>`;
+}
+
+function ctaHtml(item) {
+  const cta = ctaFor(item);
+  const id = escapeHtml(item.id);
+  switch (cta.kind) {
+    case 'external':
+      return `<a class="btn btn-primary" href="${escapeHtml(item.externalUrl)}" target="_blank" rel="noopener">${escapeHtml(cta.label)} →</a>`;
+    case 'buy':
+      return `<button class="btn btn-primary" data-buy="${id}">${escapeHtml(cta.label)} — ${escapeHtml(item.label)}</button>`;
+    case 'soldout':
+      // Disabled, not decorated: the old card printed "Sold out" beside a
+      // button that still opened checkout (which the server then refused).
+      return `<button class="btn btn-primary" disabled>Sold out</button>`;
+    case 'notify':
+      return `<button class="btn btn-primary" data-interest="${id}">Notify me</button>`;
+    default:
+      return `<a class="btn btn-primary" href="/courses.html">View it →</a>`;
+  }
+}
+
+function cardHtml(item) {
+  const when = item.status !== 'live' && item.launchDateMs && launchCountdown(item.launchDateMs)
+    ? `<div class="pre-card-sum" style="color:var(--red);">Opens ${escapeHtml(fmtLaunchDate(item.launchDateMs))} — ${escapeHtml(launchCountdown(item.launchDateMs))}</div>`
+    : '';
   return `
-    <div class="card pre-card" data-product="${escapeHtml(p.id)}">
-      ${p.imageUrl ? `<img class="pre-card-img" src="${escapeHtml(p.imageUrl)}" alt="">` : ''}
-      <div class="pre-card-badge">${escapeHtml(badge)}</div>
-      <h3 class="pre-card-title">${escapeHtml(p.name)}</h3>
-      ${p.summary ? `<p class="pre-card-sum">${escapeHtml(p.summary)}</p>` : ''}
+    <div class="card pre-card" id="p-${escapeHtml(item.id)}" data-product="${escapeHtml(item.id)}">
+      ${item.imageUrl ? `<img class="pre-card-img" src="${escapeHtml(item.imageUrl)}" alt="">` : ''}
+      <div class="pre-card-badge">${escapeHtml(badgeFor(item))}${item.onSale ? ' · On sale' : ''}</div>
+      <h3 class="pre-card-title">${escapeHtml(item.title)}</h3>
+      ${item.summary ? `<p class="pre-card-sum">${escapeHtml(item.summary)}</p>` : ''}
+      ${when}
       <div class="pre-card-foot">
-        ${price ? `<span class="pre-card-price">${price}</span>` : '<span class="pre-card-price muted">TBA</span>'}
-        ${p.interestCount ? `<span class="pre-card-count">🔥 ${p.interestCount} interested</span>` : ''}
+        ${priceHtml(item)}
+        ${item.interestCount ? `<span class="pre-card-count">🔥 ${item.interestCount} interested</span>` : ''}
       </div>
-      ${p.status === 'live' && p.sellable && p.price > 0
-        ? `<button class="btn btn-primary" data-buy="${escapeHtml(p.id)}">Buy now — ${price}</button>
-           ${typeof p.inventory === 'number' && p.inventory <= 0 ? '<div class="pre-card-sum" style="color:var(--red);">Sold out</div>' : ''}`
-        : p.status === 'live'
-          ? `<a class="btn btn-primary" href="/courses.html">View it →</a>`
-          : `<button class="btn btn-primary" data-interest="${escapeHtml(p.id)}">Notify me</button>`}
+      ${ctaHtml(item)}
     </div>`;
 }
 
-function openInterestModal(product) {
-  const root = $('modal-root');
-  root.innerHTML = `
-    <div class="crm-modal-backdrop" id="modal-bd">
-      <div class="crm-modal auth-card">
-        <h1>Join the <span>list</span></h1>
-        <div class="pre-modal-sub">Be the first to know when <b>${escapeHtml(product.name)}</b> launches.</div>
-        <form id="int-form" class="crm-form">
-          <div class="crm-form-row"><label>Name</label><input class="c-input" id="i-name" placeholder="Your name" /></div>
-          <div class="crm-form-row"><label>Email *</label><input class="c-input" id="i-email" type="email" required placeholder="you@email.com" /></div>
-          <div class="crm-form-row"><label>Phone (optional)</label><input class="c-input" id="i-phone" placeholder="+1 555…" /></div>
-          <label class="pre-consent"><input type="checkbox" id="i-consent" /> Email/SMS me updates about this</label>
-          <div id="i-err" class="auth-error" style="display:none;"></div>
-          <div id="i-ok" class="auth-ok" style="display:none;"></div>
-          <div class="crm-modal-actions">
-            <button type="button" class="btn btn-ghost" id="i-cancel">Cancel</button>
-            <button type="submit" class="btn btn-primary" id="i-submit">Join list</button>
-          </div>
-        </form>
-      </div>
-    </div>`;
-  const close = () => { root.innerHTML = ''; };
-  $('i-cancel').addEventListener('click', close);
-  $('modal-bd').addEventListener('click', (e) => { if (e.target.id === 'modal-bd') close(); });
-  $('int-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = $('i-submit'); btn.disabled = true; btn.textContent = 'Joining…';
-    $('i-err').style.display = 'none';
-    try {
-      const res = await registerInterest(product.id, {
-        name: $('i-name').value.trim(), email: $('i-email').value.trim(),
-        phone: $('i-phone').value.trim(), consent: $('i-consent').checked
-      });
-      $('i-ok').textContent = res.alreadyJoined ? "You're already on the list ✓" : "You're on the list! 🎉";
-      $('i-ok').style.display = 'block';
-      btn.textContent = 'Done';
-      setTimeout(() => { close(); load(); }, 1100);
-    } catch (err) {
-      $('i-err').textContent = err.message || String(err);
-      $('i-err').style.display = 'block';
-      btn.disabled = false; btn.textContent = 'Join list';
-    }
-  });
-}
-
-let PRODUCTS = [];
+let ITEMS = [];
 async function load() {
   // Back from a successful Stripe checkout.
   if (new URLSearchParams(location.search).get('purchase') === 'success') {
@@ -89,18 +81,25 @@ async function load() {
     grid.parentElement.insertBefore(note, grid);
     history.replaceState(null, '', location.pathname);
   }
-  PRODUCTS = await listVisibleProducts();
+  const raw = await listVisibleProducts();
+  ITEMS = sortForDisplay(raw.map((p) => normalizeProduct(p)).filter((i) => i && visibleOn(i, 'site')));
   const grid = $('pre-grid');
-  if (!PRODUCTS.length) {
+  if (!ITEMS.length) {
     grid.innerHTML = `<div class="pre-empty">Nothing announced yet — join the early-access list below and you'll be first to know.</div>`;
     return;
   }
-  grid.innerHTML = PRODUCTS.map(cardHtml).join('');
+  grid.innerHTML = ITEMS.map(cardHtml).join('');
   grid.querySelectorAll('[data-interest]').forEach((b) => b.addEventListener('click', () => {
-    const p = PRODUCTS.find((x) => x.id === b.getAttribute('data-interest'));
-    if (p) openInterestModal(p);
+    const item = ITEMS.find((x) => x.id === b.getAttribute('data-interest'));
+    if (item) openInterestModal(item, { onJoined: load });
   }));
   grid.querySelectorAll('[data-buy]').forEach((b) => b.addEventListener('click', () => buyProduct(b)));
+
+  // A launch email or a store card links straight to one product.
+  if (location.hash && location.hash.startsWith('#p-')) {
+    const el = document.getElementById(location.hash.slice(1));
+    if (el) el.scrollIntoView({ block: 'center' });
+  }
 }
 
 // Checkout for a sellable product. Sign-in is required (same as courses);
@@ -111,7 +110,7 @@ async function buyProduct(btn) {
   const id = btn.getAttribute('data-buy');
   if (!firebaseReady) return;
   if (!auth.currentUser) {
-    location.assign('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
+    location.assign('/login.html?next=' + encodeURIComponent(location.pathname + location.search + location.hash));
     return;
   }
   btn.disabled = true;

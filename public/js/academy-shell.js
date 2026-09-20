@@ -64,6 +64,7 @@ const MAIN_NAV = [
   { key: 'courses',   href: '/courses.html',   label: 'Courses',   icon: 'courses' },
   { key: 'community', href: '/community.html', label: 'Community', icon: 'community' },
   { key: 'resources', href: '/resources.html', label: 'Resources', icon: 'resources' },
+  { key: 'store',     href: '/store.html',     label: 'Store',     icon: 'store' },
   { key: 'events',    href: '/events',         label: 'Events',    icon: 'events' }
 ];
 

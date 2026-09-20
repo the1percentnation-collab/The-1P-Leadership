@@ -68,41 +68,9 @@ export function getActiveCourse() {
 }
 
 // ─── Pricing display ──────────────────────────────────────────────────────
-
-function fmtMoney(n) {
-  if (typeof n !== 'number' || !Number.isFinite(n)) return '';
-  return Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
-}
-
-/**
- * Resolves what to show (and what to charge) for a course:
- *   { label, originalLabel, onSale, amount, isFree, isSubscription, intervalSuffix }
- * `amount` is the effective price in dollars (sale price when on sale).
- */
-export function priceInfo(course) {
-  const base = typeof course.price === 'number' ? course.price : null;
-  const sale = typeof course.salePrice === 'number' && course.salePrice >= 0
-    ? course.salePrice : null;
-  const onSale = sale != null && base != null && sale < base;
-  const amount = onSale ? sale : base;
-
-  const isSubscription = !!(course.pricing && course.pricing.mode === 'subscription');
-  const interval = isSubscription ? (course.pricing.interval || 'month') : null;
-  const intervalSuffix = interval ? (interval === 'year' ? '/yr' : '/mo') : '';
-
-  const baseLabel = course.priceLabel || (base != null ? fmtMoney(base) + intervalSuffix : '');
-  const label = onSale ? fmtMoney(sale) + intervalSuffix : baseLabel;
-
-  return {
-    label,
-    originalLabel: onSale ? baseLabel : null,
-    onSale,
-    amount,
-    isFree: amount === 0,
-    isSubscription,
-    intervalSuffix
-  };
-}
+// Lives in pricing.js now so products share the exact rule; re-exported here
+// because every existing caller imports it from this module.
+export { priceInfo, fmtMoney } from './pricing.js';
 
 // ─── Module metadata (for roadmaps) ───────────────────────────────────────
 
