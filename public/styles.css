@@ -10958,3 +10958,16 @@ a.cp-crumb:hover { color: var(--white); }
   .cp-crumbs .cp-crumb:not(.is-current),
   .cp-crumb-sep { display: none; }
 }
+
+/* The Academy tab strip now also rides the console topbar (Community,
+   Profile), so a member keeps the same five sections everywhere in the
+   Academy. Below 760px that topbar wraps — give the strip its own row
+   rather than letting it squeeze the brand lockup. */
+@media (max-width: 760px) {
+  .console-topbar .academy-tabs {
+    order: 3;
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+  .console-topbar .user-chip { order: 4; }
+}
