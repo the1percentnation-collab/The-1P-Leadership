@@ -10,7 +10,7 @@ module.exports = {
   "subtitle": "Presence, listening, and the structure that makes a session produce movement.",
   "pillar": "Module 3 · Leadership",
   "duration": "Weeks 3 to 4",
-  "published": false,
+  "published": true,
   "html": `
 <p>These two weeks change how you show up and how you run the hour. Most new coaches think the skill is in the questions. The questions matter, and they come in module 5. What decides whether a session produces movement is simpler and harder: whether you are actually present, whether you heard what was underneath the words, and whether the conversation had a spine. Get those three right and an average question will do fine work. Get them wrong and a brilliant question lands on nothing.</p>
 

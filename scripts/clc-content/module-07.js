@@ -10,7 +10,7 @@ module.exports = {
   "subtitle": "Discovery calls, packages, and the six-week client program you will deliver.",
   "pillar": "Module 7 · Your Practice",
   "duration": "Week 11",
-  "published": false,
+  "published": true,
   "html": `
 <p>You can coach. That is not the same as having a practice. A certified coach without clients is a certificate in a drawer, and the gap is almost never skill. It is structure and nerve.</p>
 <p>What changes this week is that coaching becomes an engagement. You will learn a discovery call that serves the person on it whether or not they buy, a way to price that you can say out loud without flinching, an agreement that protects both sides, and the full six-week 1P client program you will be licensed to deliver once you certify.</p>

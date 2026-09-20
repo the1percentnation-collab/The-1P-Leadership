@@ -64,7 +64,9 @@ first; they become portal resources once Anthony signs off.
 
 ## After this round (needs Anthony)
 
-1. Review modules 2 to 8 and flip `published: true` in each file.
+1. ~~Review modules 2 to 8 and flip `published: true`.~~ Done: Anthony reviewed
+   all eight on 2026-09-20 and approved every one with no changes. All eight
+   files now carry `published: true`.
 2. Set cohort dates, call day and time, Zoom link (course builder or seed).
 3. Run `scripts/seed-clc.js` against production to push the content.
 4. Flip `courses/1p-clc` status to live when enrollment opens.

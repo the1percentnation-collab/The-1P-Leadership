@@ -10,7 +10,7 @@ module.exports = {
   "subtitle": "Question craft, and turning insight into a plan the client owns.",
   "pillar": "Module 5 · Growth",
   "duration": "Weeks 7 to 8",
-  "published": false,
+  "published": true,
   "html": `
 <p>You have the stance, the framework, the session spine, and the identity layer. This week you pick up the instrument. The question is the only tool you carry that a client cannot easily use on themselves, and most coaches never learn to build one properly. They ask long questions, leading questions, three questions at once. The client answers the easiest one and the session stays on the surface.</p>
 <p>What changes this week is your default. You will ask fewer questions, shorter ones, and better ones. You will learn to sit in the silence after them instead of filling it. And you will learn what to do with the insight a good question produces, because insight that never becomes a plan is just a nice moment the client forgets by Thursday.</p>

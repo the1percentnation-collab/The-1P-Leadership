@@ -14,7 +14,7 @@ module.exports = {
   "subtitle": "The rubric, the recording, and the hour log: exactly how certification works.",
   "pillar": "Module 8 · Your Practice",
   "duration": "Week 12",
-  "published": false,
+  "published": true,
   "html": `
 <p>This is the last module before the practicum weeks, and the least theoretical thing in the program. No new technique. You learn exactly how you get certified, how your recorded session is scored, and what happens after. Read it before you record. Nothing here is meant to be a surprise.</p>
 

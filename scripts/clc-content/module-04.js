@@ -10,7 +10,7 @@ module.exports = {
   "subtitle": "Beliefs, story rewriting, and coaching values back into alignment.",
   "pillar": "Module 4 · Identity",
   "duration": "Weeks 5 to 6",
-  "published": false,
+  "published": true,
   "html": `
 <p>These two weeks take you to the layer where change either holds or slides off. Up to now you have learned the stance, the map, and the session. All of that gets a client moving. Identity work is what keeps them moving after the motivation of a new plan wears out. It is also the deepest water you will coach in, so this module teaches the tools and the edges at the same time.</p>
 

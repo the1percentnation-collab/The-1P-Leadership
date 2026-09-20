@@ -10,7 +10,7 @@ module.exports = {
   "subtitle": "The full arc your clients will move through, and the map you will coach from.",
   "pillar": "Module 2 · Awareness",
   "duration": "Week 2",
-  "published": false,
+  "published": true,
   "html": `
 <p>Last week you learned the stance. This week you get the map. After this module you will never again sit in a session wondering what to do next, because you will know which stage the client is standing in, what that stage produces, and what has to be true before you move. A coach without a framework runs on instinct and has a good week and a bad week. A coach with a framework runs on a process and gets a repeatable result.</p>
 

@@ -10,7 +10,7 @@ module.exports = {
   "subtitle": "Execution systems, habit design, and progress reviews that keep change alive.",
   "pillar": "Module 6 · Navigation",
   "duration": "Weeks 9 to 10",
-  "published": false,
+  "published": true,
   "html": `
 <p>Last week you learned to build a plan the client owns. This week you learn why that plan dies, and what to put around it so it does not.</p>
 <p>Here is the pattern every coach eventually meets. The session is good. The client leaves clear, motivated, committed. Six days later they arrive at the next session having done almost none of it, and they open with an apology. If you handle that moment badly, the engagement becomes a weekly confession booth. The client starts managing your opinion of them instead of their own life.</p>
