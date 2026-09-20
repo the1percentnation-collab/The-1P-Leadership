@@ -67,6 +67,28 @@ function isCodeContent(c) {
   return !!c && c.contentSource !== 'firestore' && CODE_CONTENT_SLUGS.has(c.slug);
 }
 
+// A bundle is an offer, not content. It has no lessons of its own and never
+// should: BUNDLE_RULES in functions/index.js enrols the buyer in the course it
+// wraps, so any lesson built here would be shown to nobody.
+function isBundle(c) {
+  return !!c && (c.kind === 'bundle' || c.status === 'bundle');
+}
+
+// The course a bundle sells, by the `bundle-<slug>` convention the registry
+// uses. functions/index.js remains authoritative for what buying it grants.
+//
+// Returns null unless the convention actually resolves to a different, non-
+// bundle course: a bundle whose slug has no `bundle-` prefix would otherwise
+// strip nothing, find itself, and claim to wrap itself. The banner then just
+// omits the sentence naming the course rather than stating something false.
+function bundleTarget(slug) {
+  const id = String(slug || '');
+  const targetId = id.replace(/^bundle-/, '');
+  if (!targetId || targetId === id) return null;
+  const target = findCourse(targetId);
+  return target && !isBundle(target) ? target : null;
+}
+
 // ─── Dirty tracking ─────────────────────────────────────────────────────────
 
 function markDirty() {
@@ -1129,6 +1151,23 @@ function renderCodeBanner() {
   const banner = $('mc-code-banner');
   const workspace = $('mc-workspace');
   const migrate = $('btn-banner-migrate');
+
+  // Bundles get the banner instead of the lesson rail. Before this, opening
+  // one showed an empty curriculum and a "Build your first lesson" button —
+  // an invitation to author content that no member would ever be shown.
+  if (isBundle(S.course)) {
+    const target = bundleTarget(S.slug);
+    banner.style.display = '';
+    workspace.style.display = 'none';
+    migrate.style.display = 'none';
+    $('mc-code-banner-text').innerHTML = 'This is a <b>bundle</b>, not a course — it has no lessons of its own. '
+      + (target
+        ? `Buying it enrols the member in <b>${escapeHtml(target.title)}</b>, which is where the lessons live. `
+        : '')
+      + 'Set the offer up on the <b>Sales page</b> and <b>Pricing</b> tabs.';
+    return;
+  }
+
   const isCode = isCodeContent(S.course);
   banner.style.display = isCode ? '' : 'none';
   workspace.style.display = isCode ? 'none' : '';
