@@ -618,6 +618,15 @@
       font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em;
       text-transform: uppercase; padding: 4px 10px; border-radius: 2px;
     }
+    /* A course that isn't open yet is announced, not sold: the badge drops the
+       solid red fill so "Coming Soon" can't be mistaken at a glance for one of
+       the buyable cards beside it. */
+    .course-thumb-badge.is-soon {
+      background: rgba(10,10,10,0.72);
+      border: 1px solid rgba(230,3,6,0.55);
+      color: #fff;
+      padding: 3px 9px;
+    }
     .course-body { padding: 24px; flex: 1; display: flex; flex-direction: column; }
     .course-cat {
       font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.18em;

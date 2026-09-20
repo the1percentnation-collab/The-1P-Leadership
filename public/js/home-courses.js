@@ -1,6 +1,12 @@
 // Renders the "Academy Courses" grid on the public homepage (index.html) from
-// the live course catalog, showing only the courses the owner has switched
+// the live course catalog, showing the courses the owner has switched
 // "On main site" in /manage-courses.html (`showOnSite`).
+//
+// Both live and coming-soon courses are advertised. A coming-soon card is
+// badged "Coming Soon" rather than "Enroll Now" and points at the public
+// course page, which already offers "Notify me when enrollment opens" for a
+// course that isn't live (course-landing.js). Marketing a course before it
+// opens is the point: it builds the waitlist.
 //
 // Why this exists: the section used to be three hand-written <div>s, so
 // changing what the public sees meant editing HTML and redeploying — and the
@@ -100,10 +106,11 @@ function metaLines(course) {
   }).join('');
 }
 
-// Only live courses reach this point, so the badge is about what the card is
-// rather than whether it's available — a bundle gets called out as the value
-// pick, everything else is simply buyable.
+// The badge is the card's one-word status. Availability wins over kind: a
+// bundle that isn't open yet reads "Coming Soon", not "Best Value", because
+// the visitor can't buy it either way.
 function badgeLabel(course) {
+  if (course.status !== 'live') return 'Coming Soon';
   return course.bundleHref ? 'Best Value' : 'Enroll Now';
 }
 
@@ -121,9 +128,12 @@ function cardHtml(course, i) {
             style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover;">`
     : '';
 
-  // Bundles have their own sales page; everything else uses the shared
-  // public course landing page.
-  const href = course.bundleHref || `/course.html?course=${slug}`;
+  // Bundles have their own sales page; everything else uses the shared public
+  // course landing page. A course that isn't live goes to the course page
+  // whatever its kind — a bundle sales page would invite a purchase that
+  // can't happen, where the course page offers the waitlist instead.
+  const isLive = course.status === 'live';
+  const href = (isLive && course.bundleHref) || `/course.html?course=${slug}`;
 
   return `
       <div class="course-card fade-up${delay}">
@@ -131,7 +141,7 @@ function cardHtml(course, i) {
           <div class="course-thumb-bg"${bg ? ` style="background: ${bg};"` : ''}></div>
           <div class="course-thumb-num">${escapeHtml(monogram(course))}</div>
           ${coverImg}
-          <div class="course-thumb-badge">${escapeHtml(badgeLabel(course))}</div>
+          <div class="course-thumb-badge${isLive ? '' : ' is-soon'}">${escapeHtml(badgeLabel(course))}</div>
         </div>
         <div class="course-body">
           <div class="course-cat">${escapeHtml(course.category || '')}</div>
@@ -181,13 +191,18 @@ export async function init() {
     return;
   }
 
-  // Only genuinely published courses are advertised. `status` is the publish
-  // state set from the builder's Publish menu — 'live' means members can
-  // actually enroll and take it; 'coming-soon' and 'inactive' are not public.
+  // `status` is the publish state set from the builder's Publish menu. 'live'
+  // means members can enroll today; 'coming-soon' is announced but not yet
+  // open, and is advertised here so the waitlist can build. 'inactive' is the
+  // one state that stays off the public site.
+  //
   // `showOnSite` is the owner's per-course override on top of that, a
   // default-true opt-out so existing courses needed no backfill.
+  // `sellable: false` marks a course sold only inside a bundle, which has its
+  // own card — it never gets a second one of its own.
+  const PUBLIC_STATUSES = ['live', 'coming-soon'];
   const courses = getCourses().filter(
-    (c) => c.status === 'live' && c.showOnSite !== false && c.sellable !== false
+    (c) => PUBLIC_STATUSES.includes(c.status) && c.showOnSite !== false && c.sellable !== false
   );
 
   if (!courses.length) {
