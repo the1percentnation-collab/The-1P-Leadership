@@ -364,6 +364,12 @@ function roadmapHtml(course, { modules, completedSet, currentId, certHref = null
   return `
     <div class="roadmap-container">
       <header class="roadmap-hero">
+        <div class="academy-badge-row"><span class="academy-badge"><img class="academy-badge-mark" src="/assets/academy-logo.png" alt="">Academy Course</span></div>
+        <nav class="courses-crumbs roadmap-crumbs" aria-label="Breadcrumb">
+          <a href="/dashboard.html">The One Percent Academy</a>
+          <a href="/courses.html">Courses</a>
+          <span class="is-current" aria-current="page">${escapeHtml(course.short || course.title)}</span>
+        </nav>
         <div class="academy-eyebrow">${escapeHtml(course.eyebrow || 'Course Roadmap')}</div>
         <h1>${escapeHtml(course.title)}</h1>
         <p>${escapeHtml(course.subtitle || '')}</p>
@@ -425,6 +431,12 @@ async function renderRoadmap(course, { preview = false } = {}) {
     slot.innerHTML = `
       <div class="roadmap-container">
         <header class="roadmap-hero">
+          <div class="academy-badge-row"><span class="academy-badge"><img class="academy-badge-mark" src="/assets/academy-logo.png" alt="">Academy Course</span></div>
+          <nav class="courses-crumbs roadmap-crumbs" aria-label="Breadcrumb">
+            <a href="/dashboard.html">The One Percent Academy</a>
+            <a href="/courses.html">Courses</a>
+            <span class="is-current" aria-current="page">${escapeHtml(course.short || course.title)}</span>
+          </nav>
           <div class="academy-eyebrow">${escapeHtml(course.eyebrow || 'Course')}</div>
           <h1>${escapeHtml(course.title)}</h1>
           <p>${escapeHtml(course.subtitle || '')}</p>

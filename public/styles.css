@@ -10818,3 +10818,139 @@ body.has-call-dock .crm-content { padding-bottom: 190px; }
 .ct-trunc { min-width: 0; }
 .ct-trunc .crm-mini-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ct-side .crm-mini-val { flex-shrink: 0; margin-left: 8px; }
+
+/* ============================================================
+   ACADEMY CONTEXT IN THE COURSE SECTION
+   A member inside a course should never have to guess which
+   part of the site they are in. Three fixed signals carry it:
+   a red Academy rail on the workspace, the Academy lockup in
+   the player sidebar, and a breadcrumb in the player topbar
+   that survives the sidebar being collapsed on a phone.
+   ============================================================ */
+
+/* Red rail across the top of the course workspace — the Academy's colour,
+   directly under the header, on every course view. */
+body.academy-course #course-workspace {
+  border-top: 3px solid var(--red);
+}
+
+/* ── Academy badge (roadmap hero) ──
+   Sits on its own line above the breadcrumb: the first thing read on a
+   course roadmap says which part of the site this course belongs to. */
+.academy-badge-row { display: block; margin-bottom: 14px; }
+
+.academy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 8px;
+  border: 1px solid rgba(230, 3, 6, 0.45);
+  border-radius: 999px;
+  background: rgba(230, 3, 6, 0.08);
+  font-family: var(--font-mono, var(--font-body));
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--white);
+}
+
+.academy-badge-mark { height: 20px; width: auto; display: block; }
+
+.roadmap-crumbs { margin-top: 0; margin-bottom: 18px; }
+
+/* ── Academy lockup in the player sidebar ── */
+.cp-academy-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #1A1A1A;
+  text-decoration: none;
+}
+
+.cp-academy-mark { height: 30px; width: auto; display: block; flex-shrink: 0; }
+
+.cp-academy-words { display: flex; flex-direction: column; line-height: 1; min-width: 0; }
+
+.cp-academy-line1 {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+}
+
+.cp-academy-line2 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--white);
+  margin-top: 2px;
+}
+
+.cp-academy-lockup:hover .cp-academy-line2 { color: var(--red); }
+
+/* ── Way back out of the course, pinned to the sidebar ── */
+.cp-sidebar-exit {
+  display: block;
+  padding: 12px 20px;
+  border-top: 1px solid #1A1A1A;
+  background: #080808;
+  min-width: 280px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.cp-sidebar-exit:hover { color: var(--white); background: #150000; }
+
+/* ── Breadcrumb in the player topbar ── */
+.cp-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.cp-crumb-mark { height: 20px; width: auto; display: block; flex-shrink: 0; }
+
+.cp-crumb {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+a.cp-crumb:hover { color: var(--white); }
+
+.cp-crumb.is-current {
+  color: var(--white);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cp-crumb-sep { font-size: 11px; color: #444; flex-shrink: 0; }
+
+/* On a phone the sidebar is collapsed by default, so the breadcrumb is the
+   only Academy marker left. Shed it a level at a time: the "Courses" step
+   first, then the wordmark — the logo mark never goes. */
+@media (max-width: 720px) {
+  .cp-crumb-mid,
+  .cp-crumb-sep-mid { display: none; }
+}
+
+@media (max-width: 480px) {
+  .cp-crumbs .cp-crumb:not(.is-current),
+  .cp-crumb-sep { display: none; }
+}

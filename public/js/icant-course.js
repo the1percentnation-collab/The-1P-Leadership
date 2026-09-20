@@ -654,7 +654,7 @@ export async function mount({ startAt, certificateHref = null } = {}) {
   }
 
   mountCoursePlayer({
-    brand: 'THE ONE PERCENT NATION',
+    brand: 'ACADEMY COURSE',
     courseTitle: "I CAN'T: THE COURSE",
     modules: MODULES.map((m) => ({
       id: m.id,
