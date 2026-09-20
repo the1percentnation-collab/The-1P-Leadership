@@ -3293,6 +3293,11 @@ const POINTS = {
   LIKE_RECEIVED: 2
 };
 
+// How much per-day history to keep. The dashboard chart shows seven days;
+// the extra week absorbs timezone skew and gives room to widen the chart
+// later without another migration.
+const DAILY_WINDOW_DAYS = 14;
+
 function currentWeekStartUTC() {
   // Monday 00:00:00.000 UTC of the current week.
   const now = new Date();
@@ -3344,6 +3349,28 @@ async function applyPointsDelta(db, uid, pointsDelta, counters) {
         statPatch[k] = Math.max(0, (stat[k] || 0) + counters[k]);
       });
     }
+
+    // Per-day totals, so the dashboard can draw an actual trend instead of a
+    // single week number. Kept as a map on this same doc rather than a
+    // subcollection: the transaction already holds the doc, so it costs no
+    // extra read and no extra write.
+    //
+    // Pruned to DAILY_WINDOW_DAYS on every write so the map cannot grow
+    // without bound. Keys are YYYY-MM-DD in UTC — the same convention
+    // touchDailyStreak uses — which also means they sort lexicographically,
+    // so the cutoff is a plain string comparison.
+    //
+    // merge: true deep-merges maps, so a pruned key has to be explicitly
+    // deleted; leaving it out would simply preserve the old value.
+    const daily = Object.assign({}, stat.dailyPoints || {});
+    const today = utcDayKey();
+    daily[today] = Math.max(0, Number(daily[today] || 0) + pointsDelta);
+    const cutoff = utcDayKey(new Date(Date.now() - DAILY_WINDOW_DAYS * 24 * 60 * 60 * 1000));
+    Object.keys(daily).forEach((k) => {
+      if (k < cutoff) daily[k] = admin.firestore.FieldValue.delete();
+    });
+    statPatch.dailyPoints = daily;
+
     tx.set(statRef, statPatch, { merge: true });
 
     // Mirror onto user doc so the leaderboard query can orderBy without a

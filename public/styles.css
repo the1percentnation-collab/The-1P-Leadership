@@ -11876,30 +11876,56 @@ a.cp-crumb:hover { color: var(--white); }
 /* ── Weekly bar chart ── */
 .hub-chart {
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
+  justify-content: center;
   gap: 7px;
-  height: 116px;
+  height: 128px;
   padding: 14px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
 }
 
-.hub-bar {
-  flex: 1;
-  height: var(--h, 10%);
+/* A column per day: the bar grows from the bottom, the weekday letter sits
+   under it. max-width is the guard that matters — the first version let a
+   lone bar flex to the full width of the card, which rendered a single
+   100%-tall bar as a solid red rectangle. */
+.hub-bar-col {
+  flex: 1 1 0;
   min-width: 0;
+  max-width: 34px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
+  gap: 7px;
+}
+
+.hub-bar {
+  height: var(--h, 6%);
   border-radius: 4px 4px 2px 2px;
+  /* An empty day is a visible stub, not a gap, so the week still reads as
+     seven days. */
   background: var(--gray-dark);
   transition: background 0.15s;
 }
 
-.hub-bar:hover { background: var(--gray-mid); }
+.hub-bar.has-value { background: var(--gray-mid); }
+.hub-bar-col:hover .hub-bar { background: var(--gray-light); }
 
-/* The member's own bar is the only red one, so the chart answers "where am
-   I?" at a glance rather than needing to be read. */
-.hub-bar.is-me { background: var(--red); }
-.hub-bar.is-me:hover { background: var(--red-dark); }
+/* Today is the only red bar: the eye lands on "where am I right now". */
+.hub-bar.is-today.has-value { background: var(--red); }
+.hub-bar-col:hover .hub-bar.is-today.has-value { background: var(--red-dark); }
+
+.hub-bar-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--gray-mid);
+  text-align: center;
+}
+
+.hub-bar-col:hover .hub-bar-label { color: var(--white-dim); }
 
 .hub-chart-empty {
   align-self: center;
