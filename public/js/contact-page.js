@@ -160,7 +160,7 @@ function renderContactHeader() {
   if (callBtn) { callBtn.disabled = !!callBlock; callBtn.title = callBlock || 'Call this contact'; }
   const smsBlock = !c.phone ? 'No phone number'
     : (c.smsOptedOut === true ? 'Opted out of SMS'
-    : (c.smsConsent === false ? 'Declined SMS consent' : null));
+    : (c.smsConsent !== true ? 'No SMS consent on record' : null));
   const textBtn = $('btn-text-contact');
   if (textBtn) { textBtn.disabled = !!smsBlock; textBtn.title = smsBlock || 'Text this contact'; }
   const emailBlock = !c.email
@@ -644,7 +644,8 @@ function renderComposer() {
   if (state.composeTab === 'sms') {
     const blocked = !c.phone ? 'Add a phone number to text this contact.'
       : (c.smsOptedOut === true ? 'This contact replied STOP. Texting is blocked.'
-      : (c.smsConsent === false ? 'This contact declined SMS consent on the web form. Record consent above if they have since agreed.' : null));
+      : (c.smsConsent === false ? 'This contact declined SMS consent on the web form. Record consent above if they have since agreed.'
+      : (c.smsConsent !== true ? 'No SMS consent on record. Record consent above if they have agreed.' : null)));
     host.innerHTML = blocked
       ? `<div class="crm-subpanel-empty">${escapeHtml(blocked)}</div>`
       : `<div class="tl-compose-row">

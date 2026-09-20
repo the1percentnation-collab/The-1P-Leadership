@@ -216,8 +216,24 @@
     }
     .f textarea { resize: vertical; min-height: 88px; }
     .f input:focus, .f select:focus, .f textarea:focus { outline: 2px solid var(--red); outline-offset: 1px; border-color: transparent; }
-    .consent { display: flex; gap: 11px; align-items: flex-start; margin-top: 18px; font-size: 12px; font-weight: 300; color: var(--gray-400); line-height: 1.5; cursor: pointer; }
-    .consent input { margin-top: 2px; accent-color: var(--red); flex-shrink: 0; }
+    /* CONSENT — mirrors /webinar. A real checkbox, visually hidden rather than
+       display:none so it stays focusable; the styled box beside it mirrors it. */
+    #audit-form .consent-block { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; width: 100%; }
+    #audit-form .consent-item { position: relative; display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+    #audit-form .consent-input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+    #audit-form .consent-box {
+      width: 18px; height: 18px; flex-shrink: 0; border-radius: 3px;
+      border: 1px solid var(--border, rgba(255,255,255,0.15)); background: var(--surface, #1A1A1A);
+      display: flex; align-items: center; justify-content: center;
+      transition: border-color 0.15s, background 0.15s; margin-top: 1px; cursor: pointer;
+    }
+    #audit-form .consent-input:checked + .consent-box { border-color: var(--red, #E60306); background: var(--red, #E60306); }
+    #audit-form .consent-input:checked + .consent-box::after { content: '✓'; color: var(--white, #fff); font-size: 11px; font-weight: 700; }
+    #audit-form .consent-input:focus-visible + .consent-box { outline: 2px solid var(--red, #E60306); outline-offset: 2px; }
+    #audit-form .consent-text { font-size: 11px; font-weight: 300; color: var(--gray-600, #8a8a8a); line-height: 1.5; }
+    #audit-form .consent-text strong { color: var(--white, #fff); font-weight: 500; }
+    #audit-form .form-legal { width: 100%; font-size: 11px; font-weight: 300; color: var(--gray-600, #8a8a8a); line-height: 1.5; margin-top: 8px; }
+    #audit-form .form-legal a { color: inherit; text-decoration: underline; }
     .form-msg { margin-top: 14px; font-size: 13px; line-height: 1.5; min-height: 1px; }
     .form-msg.err { color: #ff6b6d; }
     .form-msg.ok { color: #46c98b; }
@@ -581,6 +597,21 @@
               <label for="a-phone">Phone (optional)</label>
               <input id="a-phone" type="tel" autocomplete="tel" maxlength="40">
             </div>
+            <!-- SMS consent: the same two boxes as /webinar, byte-identical wording
+                 (tests/consent-labels.test.cjs enforces it). Both unchecked, neither
+                 required: consent is not a condition of asking. -->
+            <div class="consent-block">
+              <label class="consent-item" for="a-sms">
+                <input type="checkbox" id="a-sms" name="smsConsent" class="consent-input">
+                <span class="consent-box" aria-hidden="true"></span>
+                <span class="consent-text">By checking this box, you agree to receive text messages from <strong>The One Percent Nation</strong> related to your inquiry, bookings, or program updates. Message frequency may vary. Message and data rates may apply. Reply <strong>HELP</strong> for assistance or <strong>STOP</strong> to opt out. Consent is not a condition of purchase.</span>
+              </label>
+              <label class="consent-item" for="a-mkt">
+                <input type="checkbox" id="a-mkt" name="marketingConsent" class="consent-input">
+                <span class="consent-box" aria-hidden="true"></span>
+                <span class="consent-text">By checking this box, you agree to receive marketing and promotional messages from <strong>The One Percent Nation</strong>, including special offers, discounts, and new program updates. Message frequency may vary. Message and data rates may apply. Reply <strong>HELP</strong> for assistance or <strong>STOP</strong> to opt out at any time.</span>
+              </label>
+            </div>
             <div class="f">
               <label for="a-org">Organization</label>
               <input id="a-org" type="text" autocomplete="organization" maxlength="120">
@@ -614,12 +645,9 @@
               <textarea id="a-problem" maxlength="600" placeholder="The turnover, the ramp time, the team that stopped talking. Be specific, it shapes the session."></textarea>
             </div>
           </div>
-          <label class="consent">
-            <input type="checkbox" id="a-consent">
-            <span>I agree to be contacted about this request by email, phone or text.</span>
-          </label>
           <div class="form-msg" id="audit-msg" role="status" aria-live="polite"></div>
           <button class="btn-primary" type="submit" id="audit-submit">Request my Alignment Audit →</button>
+          <p class="form-legal">By submitting, you agree to our <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms of Service</a>.</p>
         </form>
       </div>
     </div>
@@ -633,8 +661,8 @@
     <a href="/courses.html">Courses</a>
     <a href="/book.html">Book an Experience</a>
     <a href="/coaches.html">Find a Coach</a>
-    <a href="/privacy.html">Privacy</a>
-    <a href="/terms.html">Terms</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/terms">Terms</a>
   </div>
 </footer>
 

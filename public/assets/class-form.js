@@ -214,11 +214,10 @@ export function mountClassForm({ slug, mount, form, formFields = [], onSuccess, 
         hp: form.querySelector('[name="company_website"]')?.value || '',
         renderedAt,
         source: 'website',
-        attribution: captureAttribution(),
-        consent: {
-          sms: form.querySelector('[data-consent="sms"]')?.classList.contains('checked') || false,
-          marketing: form.querySelector('[data-consent="marketing"]')?.classList.contains('checked') || false
-        }
+        attribution: captureAttribution()
+        // No consent is sent: these pages are callback-only and show no
+        // consent box. SMS consent is collected only on the declared opt-in
+        // pages (/webinar, /financial-services, /corporate).
       });
       savedSignup = true;
 
@@ -331,19 +330,6 @@ export function mountEnrollment({ slug, root }) {
 }
 
 /* ── Shared page behaviour ─────────────────────────────────── */
-
-export function initConsentToggles(scope = document) {
-  scope.querySelectorAll('[data-consent]').forEach((box) => {
-    const item = box.closest('.consent-item') || box;
-    const toggle = () => box.classList.toggle('checked');
-    item.addEventListener('click', toggle);
-    box.setAttribute('role', 'checkbox');
-    box.setAttribute('tabindex', '0');
-    box.addEventListener('keydown', (e) => {
-      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); }
-    });
-  });
-}
 
 export function initScrollReveal(scope = document) {
   const targets = scope.querySelectorAll('.fade-up, .stagger-list');

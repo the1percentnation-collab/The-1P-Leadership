@@ -608,17 +608,6 @@
         <!-- Schema-driven fields render here, from the class doc -->
         <div id="dynamic-fields"></div>
 
-        <div class="consent-block">
-          <div class="consent-item">
-            <div class="consent-box" data-consent="sms"></div>
-            <p class="consent-text">By checking this box, you agree to receive text messages from <strong>The One Percent Nation</strong> related to your inquiry, bookings, or program updates. Message frequency may vary. Message and data rates may apply. Reply <strong>HELP</strong> for assistance or <strong>STOP</strong> to opt out. Consent is not a condition of purchase.</p>
-          </div>
-          <div class="consent-item">
-            <div class="consent-box" data-consent="marketing"></div>
-            <p class="consent-text">By checking this box, you agree to receive marketing and promotional messages from <strong>The One Percent Nation</strong>, including special offers, discounts, and new program updates. Message frequency may vary. Message and data rates may apply. Reply <strong>HELP</strong> for assistance or <strong>STOP</strong> to opt out at any time.</p>
-          </div>
-        </div>
-
 
         <!-- Promo code. Hidden until the class is scheduled, since there is
              nothing to discount while we are only gathering interest. -->
@@ -721,11 +710,10 @@
 
 <script type="module">
   import { callFn } from '/assets/firebase-init.js';
-  import { mountClassForm, mountEnrollment, initConsentToggles, initScrollReveal } from '/assets/class-form.js';
+  import { mountClassForm, mountEnrollment, initScrollReveal } from '/assets/class-form.js';
 
   const SLUG = 'social-media-matrix';
 
-  initConsentToggles();
   initScrollReveal();
 
   // FAQ accordion
