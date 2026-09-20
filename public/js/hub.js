@@ -42,6 +42,7 @@ import { listVisibleProducts } from './products.js';
 import { listActiveAnnouncements } from './announcements.js';
 import { renderSpotlight } from './hub-spotlight.js';
 import { buildNextSteps } from './hub-nextup.js';
+import { dailySeries, seriesTotal } from './points-history.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -838,43 +839,38 @@ function renderMe(user, profile, stats, streak) {
     </div>`;
 }
 
-// Weekly points, one bar per member, this member highlighted. The chart
-// answers "where do I sit this week?" — which a bare number cannot — and it
-// is drawn from the leaderboard rows that are already loaded, so it costs
-// nothing extra.
-function renderChart(rows, stats, uid) {
+// Seven days of the member's own points, oldest to newest.
+//
+// This used to plot one bar per member who had scored that week, which on a
+// quiet week meant a single bar at full height and full width — a solid
+// rectangle rather than a chart. A fixed seven-day window is always seven
+// bars, it is about the member rather than the standings (the leaderboard
+// directly below already covers those), and a blank week reads as a blank
+// week instead of as a broken widget.
+function renderChart(stats) {
   const el = $('hub-chart');
   const note = $('hub-chart-note');
   if (!el) return;
 
-  const bars = (rows || [])
-    .map((r) => ({ uid: r.uid, name: r.displayName, value: Number(r.statsWeekPoints || 0) }))
-    .filter((b) => b.value > 0)
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 7);
+  const series = dailySeries(stats && stats.dailyPoints, { days: 7 });
+  const total = seriesTotal(series);
+  const max = Math.max(...series.map((d) => d.value));
 
-  // Make sure the member is in their own chart even when they're off the top
-  // of the board — a chart that never includes you is decoration.
-  const mine = Number((stats && stats.weekPoints) || 0);
-  if (uid && mine > 0 && !bars.some((b) => b.uid === uid)) {
-    bars.pop();
-    bars.push({ uid, name: 'You', value: mine });
-  }
+  el.innerHTML = series.map((d) => {
+    // An empty day still gets a visible stub, so the axis reads as seven days
+    // rather than as a chart with holes in it.
+    const pct = max > 0 ? Math.max(6, Math.round((d.value / max) * 100)) : 6;
+    const when = d.isToday ? 'today' : d.key;
+    return `
+      <div class="hub-bar-col" title="${escapeHtml(`${d.value} ${d.value === 1 ? 'point' : 'points'} ${when}`)}">
+        <div class="hub-bar${d.value > 0 ? ' has-value' : ''}${d.isToday ? ' is-today' : ''}"
+             style="--h:${pct}%"></div>
+        <span class="hub-bar-label">${escapeHtml(d.label)}</span>
+      </div>`;
+  }).join('');
 
-  if (!bars.length) {
-    el.innerHTML = `<div class="hub-chart-empty">No points scored this week yet. First post takes the lead.</div>`;
-    if (note) note.textContent = '';
-    return;
-  }
-
-  const max = Math.max(...bars.map((b) => b.value));
-  el.innerHTML = bars
-    .sort((a, b) => a.value - b.value)
-    .map((b) => `
-      <div class="hub-bar${b.uid === uid ? ' is-me' : ''}"
-           style="--h:${Math.max(8, Math.round((b.value / max) * 100))}%"
-           title="${escapeHtml(b.name)} · ${b.value} points this week"></div>`).join('');
-  if (note) note.textContent = mine > 0 ? `${mine} pts` : '';
+  // The heading's note carries the number, so the bars don't need axis labels.
+  if (note) note.textContent = total > 0 ? `${total} pts` : 'No points yet';
 }
 
 function renderLeaderboard(rows, stats, uid) {
@@ -1094,7 +1090,7 @@ async function main() {
   renderModuleMap();
   renderEventsTable();
   renderMe(currentUser(), profile, stats, streak);
-  renderChart(leaderboard.rows, stats, uid);
+  renderChart(stats);
   renderLeaderboard(leaderboard.rows, stats, uid);
   renderUserChip(currentUser(), role, { profile });
   wireActivityTabs({ role, companyId, notifications });
