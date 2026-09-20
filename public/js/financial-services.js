@@ -11,6 +11,11 @@ import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 
 const $ = (id) => document.getElementById(id);
 
+function consentTextFor(id) {
+  const label = document.querySelector(`label[for="${id}"] .consent-text`);
+  return label ? label.innerText.replace(/\s+/g, ' ').trim() : '';
+}
+
 function bindForm({ formId, msgId, payload }) {
   const form = $(formId);
   const msg = $(msgId);
@@ -50,7 +55,11 @@ async function main() {
       phone: $('bk-phone').value.trim() || undefined,
       businessName: $('bk-business').value.trim() || undefined,
       notes: $('bk-notes').value.trim() || undefined,
-      consent: $('bk-consent').checked
+      // Per-box state plus the exact wording shown, read from the DOM so what
+      // is stored is what the person saw; the legacy boolean rides along.
+      consent: $('bk-sms').checked || $('bk-mkt').checked,
+      consents: { sms: $('bk-sms').checked, marketing: $('bk-mkt').checked },
+      consentText: { sms: consentTextFor('bk-sms'), marketing: consentTextFor('bk-mkt') }
     })
   });
 

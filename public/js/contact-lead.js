@@ -23,8 +23,9 @@ window.__1pContactLead = async ({ name, email, phone, topic, message }) => {
     email,
     phone,
     fields: { topic, message },
-    // Writing in is itself the request for a reply. Recorded so the CRM can
-    // show why this contact is reachable.
-    consent: true
+    // A callback request. The page shows no consent checkbox, so no consent
+    // is asserted: replying by email needs none, and texting needs the kind
+    // only the declared opt-in pages collect.
+    consent: false
   });
 };

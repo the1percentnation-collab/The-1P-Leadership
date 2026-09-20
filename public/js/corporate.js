@@ -23,6 +23,11 @@ function init() {
   const form = $('audit-form');
   if (!form) return;
 
+  const consentTextFor = (id) => {
+    const label = document.querySelector(`label[for="${id}"] .consent-text`);
+    return label ? label.innerText.replace(/\s+/g, ' ').trim() : '';
+  };
+
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
 
@@ -59,7 +64,11 @@ function init() {
         email,
         phone: $('a-phone').value.trim() || undefined,
         fields,
-        consent: $('a-consent').checked
+        // Per-box state plus the exact wording shown, read from the DOM so what
+        // is stored is what the person saw; the legacy boolean rides along.
+        consent: $('a-sms').checked || $('a-mkt').checked,
+        consents: { sms: $('a-sms').checked, marketing: $('a-mkt').checked },
+        consentText: { sms: consentTextFor('a-sms'), marketing: consentTextFor('a-mkt') }
       });
       form.style.display = 'none';
       $('audit-success').classList.add('show');

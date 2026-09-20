@@ -2,8 +2,8 @@
 //
 // Three properties have to hold together or the /webinar opt-in page tells a
 // campaign reviewer something the code does not do:
-//   1. an explicit decline (the box shown and left unticked) blocks sending in
-//      both send paths, while "no decision recorded" does not;
+//   1. sending requires consent affirmatively on record in both send paths —
+//      an explicit decline and "no decision recorded" are both refused;
 //   2. a later submission never downgrades an earlier opt-in — revocation is
 //      STOP, which has its own path;
 //   3. the legacy single boolean is still honoured when the per-channel shape
@@ -21,20 +21,21 @@ let fails = 0;
 const t = (name, cond) => { console.log((cond ? 'OK   ' : 'FAIL ') + name); if (!cond) fails++; };
 const slice = (src, from, to) => src.slice(src.indexOf(from), src.indexOf(to, src.indexOf(from)));
 
-// ── 1. The decline is honoured, and only the decline ──
+// ── 1. Consent must be on record; one gate for both send paths ──
+const gate = slice(fn, 'function smsSendBlockReason(', 'exports.sendSms = onCall(');
+t('the gate refuses unless smsConsent === true', /smsConsent !== true/.test(gate));
+t('the gate distinguishes a decline from no record', /smsConsent === false/.test(gate) && /No SMS consent is on record/.test(gate));
+t('the gate refuses smsOptedOut first', gate.indexOf('smsOptedOut === true') < gate.indexOf('smsConsent !== true'));
 const sendSms = slice(fn, 'exports.sendSms = onCall(', 'exports.telnyxInboundWebhook');
-t('sendSms refuses smsConsent === false', /smsConsent === false/.test(sendSms));
-t('sendSms still refuses smsOptedOut', /smsOptedOut === true/.test(sendSms));
-t('sendSms does not require consent to be true (undefined stays sendable)',
-  !/smsConsent !== true/.test(sendSms) && !/!contact\.smsConsent|!cSnap\.data\(\)\.smsConsent\b/.test(sendSms));
-
+t('sendSms uses the gate', /smsSendBlockReason\(cSnap\.data\(\)\)/.test(sendSms));
 const seq = slice(fn, "if (step.channel === 'sms')", "if (step.channel === 'email')");
-t('sequence sender refuses smsConsent === false', /smsConsent === false/.test(seq));
-t('sequence sender does not require consent to be true', !/smsConsent !== true/.test(seq));
+t('sequence sender uses the gate', /smsSendBlockReason\(contact\)/.test(seq));
 
 // ── 2. Opt-in is additive ──
-const lead = slice(fn, 'exports.submitLeadForm = onCall(', "type: 'lead_form'");
-t('submitLeadForm reads prior smsConsent before deciding', /priorSms/.test(lead));
+const lead = slice(fn, 'function parseFormConsent(', 'exports.submitLeadForm = onCall(');
+t('the shared helper reads prior smsConsent before deciding', /priorSms/.test(lead));
+t('submitLeadForm and registerServiceInterest both use the shared helper',
+  (fn.match(/await recordFormConsent\(db, ref/g) || []).length === 2);
 t('a decline is written only when there is no prior true', /else if \(priorSms !== true\)/.test(lead));
 t('a decline is never written when the SMS box was ticked',
   /if \(smsConsent\) \{[^}]*smsConsent = true/.test(lead));
