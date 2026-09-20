@@ -26,6 +26,8 @@
       --font-display:'Bebas Neue',Impact,sans-serif;
       --font-body:'Outfit',system-ui,sans-serif;
       --font-mono:'Space Mono',monospace;
+      /* Nav bar height. Bar, page clearance and anchor offset all derive from this. */
+      --nav-h:68px;
       --ease-out:cubic-bezier(0.16,1,0.3,1);
     }
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -41,7 +43,7 @@
       background-size:256px;}
 
     /* NAV */
-    nav{position:fixed;top:0;left:0;right:0;z-index:100;height:68px;
+    nav{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--nav-h);
       background:rgba(8,8,8,0.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);}
     .nav-inner{max-width:1200px;margin:0 auto;padding:0 32px;height:100%;
       display:flex;align-items:center;justify-content:space-between;}
@@ -57,7 +59,7 @@
     /* HERO */
     .hero{
       min-height:100vh;display:flex;align-items:center;
-      padding:120px 32px 80px;position:relative;z-index:1;
+      padding:calc(var(--nav-h) + 52px) 32px 80px;position:relative;z-index:1;
       max-width:1200px;margin:0 auto;
     }
     .hero-grid{
@@ -323,7 +325,7 @@
       .habits-grid{grid-template-columns:1fr;}
     }
     @media(max-width:600px){
-      .hero{padding:110px 24px 60px;}
+      .hero{padding:calc(var(--nav-h) + 42px) 24px 60px;}
       .problem-section,.problem-inner{padding-left:24px;padding-right:24px;}
       #workbook{padding:60px 24px 80px;}
       .income-display{font-size:56px;}
