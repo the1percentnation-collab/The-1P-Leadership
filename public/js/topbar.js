@@ -389,6 +389,10 @@ function relativeTimeShort(ms) {
   return `${d}d`;
 }
 
+// Exported so the Academy shell's own search field can open the same overlay
+// rather than reimplementing member/post search beside it.
+export function openSearch() { openSearchOverlay(); }
+
 function openSearchOverlay() {
   if (searchState.open) return;
   if (!firebaseReady || !functions) return;

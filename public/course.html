@@ -19,32 +19,29 @@
 </head>
 <body style="display:block; height:auto; overflow:auto; background:var(--black);">
 
-<header class="academy-header">
-  <div class="academy-header-inner">
-    <a class="academy-brand" href="/dashboard.html" aria-label="The One Percent Academy">
-      <img src="/assets/academy-logo.png" alt="" class="academy-brand-mark">
-      <span class="academy-brand-text">
-        <span class="academy-brand-line1">The One Percent</span>
-        <span class="academy-brand-line2">Academy</span>
-      </span>
-    </a>
-    <a class="back-to-main" href="https://the1pnation.com">← Main Site</a>
-    <nav class="academy-tabs">
-      <a class="academy-tab" href="/dashboard.html">Dashboard</a>
-      <a class="academy-tab active" href="/courses.html">Courses</a>
-      <a class="academy-tab" href="/community.html">Community</a>
-      <a class="academy-tab" href="/resources.html">Resources</a>
-      <a class="academy-tab" href="/profile.html">Profile</a>
-    </nav>
-    <div class="academy-header-right">
-      <div class="user-chip" id="user-chip"></div>
-    </div>
-  </div>
-</header>
+
+
+<div class="ak-shell">
+  <aside class="ak-sidebar" id="ak-sidebar"></aside>
+  <div class="ak-main">
+      <header class="ak-topbar">
+        <div class="ak-search" id="ak-search" role="button" tabindex="0"
+             aria-label="Search courses, posts and members">
+          <svg class="ak-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="6.2"/><path d="m15.6 15.6 4 4"/>
+          </svg>
+          <span>Search courses, posts and members…</span>
+        </div>
+        <div class="user-chip" id="user-chip"></div>
+      </header>
 
 <main id="cl-root">
   <div class="cl-loading">Loading course…</div>
 </main>
+  </div>
+</div>
+
 
 <script type="module" src="js/course-landing.js"></script>
 </body>

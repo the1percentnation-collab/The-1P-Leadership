@@ -13,6 +13,7 @@ import { firebaseReady, functions } from './firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { escapeHtml, getUserProfile } from './community.js';
 import { renderTopbar } from './topbar.js';
+import { renderShell } from './academy-shell.js';
 import { loadEnrollments, isEnrolled, enrollInCourse } from './enrollments.js';
 import { getRefCode } from './referral.js';
 
@@ -592,11 +593,13 @@ async function main() {
   bindPromo(course);
   bindNotify(course);
 
-  // Header user chip (no duplicate nav links — the tabs handle navigation).
+  // Shell + chip. Navigation and sign-out live in the sidebar, so the chip
+  // keeps only search, the bell and the avatar.
   try {
     let profile = null;
     if (user) { try { profile = await getUserProfile(user.uid); } catch (e) {} }
-    renderTopbar({ user, profile, role: null, currentPage: null, links: [] });
+    renderShell({ current: 'courses' });
+    renderTopbar({ user, profile, role: null, currentPage: null, links: [], withSignOut: false });
   } catch (e) {}
 }
 

@@ -21,6 +21,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
+import { renderShell } from './academy-shell.js';
 import { ensureOnboarded } from './onboarding-guard.js';
 import {
   getUserProfile,
@@ -90,12 +91,15 @@ function fmtMoneyCents(cents) {
     : `$${dollars.toFixed(dollars % 1 ? 2 : 0)}`;
 }
 
-function renderUserChip(user, role, { profile = null, hasNewCommunity = false } = {}) {
-  // dashboard.html has its own primary nav (academy-tabs); the chip should
-  // only carry the bell + avatar + sign-out so the two don't duplicate.
-  renderTopbar({ user, profile, role, currentPage: 'dashboard', links: [] });
-  const badge = $('hub-community-badge');
-  if (badge) badge.style.display = hasNewCommunity ? '' : 'none';
+function renderUserChip(user, role, { profile = null } = {}) {
+  // Nav and sign-out live in the sidebar now, so the chip is reduced to the
+  // three things that belong beside a search field: search, bell, avatar.
+  renderTopbar({
+    user, profile, role,
+    currentPage: 'dashboard',
+    links: [],
+    withSignOut: false
+  });
 }
 
 function renderGreeting(user, profile) {
@@ -712,90 +716,205 @@ function wireActivityTabs({ role, companyId, notifications }) {
   show('community');
 }
 
-// ─── Events rail ──────────────────────────────────────────────────────────
+// ─── Coming up (table) ────────────────────────────────────────────────────
 
-function renderEventsRail() {
-  const list = $('hub-events-list');
-  if (!list) return;
+function renderEventsTable() {
+  const section = $('hub-events');
+  const rows = $('hub-events-rows');
+  if (!section || !rows) return;
 
-  if (!eventFeed.length) {
-    list.innerHTML = `
-      <a class="academy-list-item" href="/book-a-call.html">
-        <div class="academy-list-avatar">1:1</div>
-        <div class="academy-list-main">
-          <div class="academy-list-title">Book time with Anthony</div>
-          <div class="academy-list-sub">Nothing on the calendar yet. Bring the real question.</div>
-        </div>
-        <div class="academy-list-meta">Book</div>
+  if (!eventFeed.length) { section.hidden = true; return; }
+
+  rows.innerHTML = eventFeed.slice(0, 6).map((e) => {
+    const when = e.recurringLabel || fmtDateTime(e.startsAtMs);
+    const href = e.registered && e.joinUrl ? e.joinUrl : (e.href || '/events');
+    const external = !!(e.registered && e.joinUrl);
+    const status = e.registered
+      ? `<span class="hub-pill is-going">Going</span>`
+      : `<span class="hub-pill">Open</span>`;
+    const action = e.registered && e.joinUrl ? 'Join' : (e.registered ? 'Details' : 'Register');
+    const countdown = e.startsAtMs ? fmtCountdown(e.startsAtMs) : '';
+    return `
+      <tr>
+        <td>
+          <div class="hub-td-strong">${escapeHtml(when)}</div>
+          ${countdown ? `<div class="hub-td-sub">${escapeHtml(countdown)} away</div>` : ''}
+        </td>
+        <td>${escapeHtml(e.title)}</td>
+        <td>${status}</td>
+        <td class="hub-td-action">
+          <a class="hub-rowbtn" href="${escapeHtml(href)}"${external ? ' target="_blank" rel="noopener"' : ''}>${escapeHtml(action)}</a>
+        </td>
+      </tr>`;
+  }).join('');
+  section.hidden = false;
+}
+
+// ─── Continue watching ────────────────────────────────────────────────────
+//
+// One card per enrolled course, ordered by momentum: the course furthest
+// along and still open comes first, finished courses last. Same ranking the
+// continue card uses, so the two never disagree about what you are working on.
+
+function renderWatching() {
+  const section = $('hub-watching');
+  const row = $('hub-watch-list');
+  if (!section || !row) return;
+
+  const cards = enrolledCourses()
+    .map((c) => ({ course: c, completion: completions.get(c.slug) }))
+    .filter((r) => r.completion)
+    .sort((a, b) => {
+      const aOpen = a.completion.total > 0 && !a.completion.isComplete;
+      const bOpen = b.completion.total > 0 && !b.completion.isComplete;
+      if (aOpen !== bOpen) return aOpen ? -1 : 1;
+      return b.completion.done - a.completion.done;
+    });
+
+  if (!cards.length) { section.hidden = true; return; }
+
+  row.innerHTML = cards.map(({ course, completion }) => {
+    const next = completion.modules.find((m) => !completion.completed.has(m.id));
+    const href = `/courses.html?course=${encodeURIComponent(course.slug)}${next ? `&module=${next.id}` : ''}`;
+    const cover = course.coverImage || course.image;
+    const art = cover
+      ? `<img src="${escapeHtml(cover)}" alt="" loading="lazy" onerror="this.remove()">`
+      : '';
+    const mark = escapeHtml((course.short || course.title || '1P').slice(0, 18));
+    const sub = completion.total
+      ? `${completion.done} of ${completion.total} modules`
+      : 'Not started';
+    return `
+      <a class="hub-watch-card" href="${href}">
+        <span class="hub-watch-art">${art}<span class="hub-watch-mark">${mark}</span></span>
+        <span class="hub-watch-body">
+          <span class="hub-pill">${escapeHtml(course.category || course.kind || 'Course')}</span>
+          <span class="hub-watch-title">${escapeHtml(course.title)}</span>
+          <span class="progress-bar"><span class="progress-fill" style="width:${completion.pct}%"></span></span>
+          <span class="hub-watch-meta">${escapeHtml(sub)} · ${completion.pct}%</span>
+        </span>
       </a>`;
+  }).join('');
+  section.hidden = false;
+}
+
+// ─── Right rail: who you are, how you're tracking, who's ahead ────────────
+
+// The profile block. The ring around the avatar is level progress, not
+// decoration: it fills toward the next level using the same thresholds the
+// community page uses, so the two agree.
+function renderMe(user, profile, stats, streak) {
+  const el = $('hub-me');
+  if (!el) return;
+
+  const name = (profile && profile.displayName) || (user && user.displayName) || (user && user.email) || 'Member';
+  const prog = levelProgress((stats && stats.points) || 0);
+  const avatar = profile && profile.avatarUrl
+    ? `<img src="${escapeHtml(profile.avatarUrl)}" alt="">`
+    : `<span>${escapeHtml(initials(name))}</span>`;
+
+  const facts = [];
+  if (streak && streak.currentStreak > 0) {
+    facts.push([streak.currentStreak, streak.currentStreak === 1 ? 'day streak' : 'day streak']);
+  }
+  facts.push([prog.level, 'level']);
+  facts.push([(stats && stats.points) || 0, 'points']);
+
+  el.innerHTML = `
+    <div class="hub-me-avatar" style="--ring:${prog.pct}%">
+      <span class="hub-me-ring"></span>
+      <span class="hub-me-face">${avatar}</span>
+    </div>
+    <div class="hub-me-name">${escapeHtml(name)}</div>
+    <div class="hub-me-sub">${escapeHtml(prog.ceiling
+      ? `${prog.toNext} points to level ${prog.level + 1}`
+      : 'Top level reached')}</div>
+    <div class="hub-me-facts">
+      ${facts.map(([v, l]) => `
+        <div class="hub-me-fact">
+          <span class="hub-me-fact-value">${escapeHtml(String(v))}</span>
+          <span class="hub-me-fact-label">${escapeHtml(l)}</span>
+        </div>`).join('')}
+    </div>`;
+}
+
+// Weekly points, one bar per member, this member highlighted. The chart
+// answers "where do I sit this week?" — which a bare number cannot — and it
+// is drawn from the leaderboard rows that are already loaded, so it costs
+// nothing extra.
+function renderChart(rows, stats, uid) {
+  const el = $('hub-chart');
+  const note = $('hub-chart-note');
+  if (!el) return;
+
+  const bars = (rows || [])
+    .map((r) => ({ uid: r.uid, name: r.displayName, value: Number(r.statsWeekPoints || 0) }))
+    .filter((b) => b.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 7);
+
+  // Make sure the member is in their own chart even when they're off the top
+  // of the board — a chart that never includes you is decoration.
+  const mine = Number((stats && stats.weekPoints) || 0);
+  if (uid && mine > 0 && !bars.some((b) => b.uid === uid)) {
+    bars.pop();
+    bars.push({ uid, name: 'You', value: mine });
+  }
+
+  if (!bars.length) {
+    el.innerHTML = `<div class="hub-chart-empty">No points scored this week yet. First post takes the lead.</div>`;
+    if (note) note.textContent = '';
     return;
   }
 
-  list.innerHTML = eventFeed.slice(0, 5).map((e) => {
-    const when = e.recurringLabel || fmtDateTime(e.startsAtMs);
-    const badge = e.startsAtMs
-      ? new Date(e.startsAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase()
-      : '↻';
-    const href = e.registered && e.joinUrl ? e.joinUrl : (e.href || '/events');
-    const external = !!(e.registered && e.joinUrl);
-    return `
-      <a class="academy-list-item" href="${escapeHtml(href)}"${external ? ' target="_blank" rel="noopener"' : ''}>
-        <div class="academy-list-avatar">${escapeHtml(badge)}</div>
-        <div class="academy-list-main">
-          <div class="academy-list-title">${escapeHtml(e.title)}</div>
-          <div class="academy-list-sub">${escapeHtml(when)}</div>
-        </div>
-        <div class="academy-list-meta">${escapeHtml(e.registered ? (e.joinUrl ? 'Join' : 'Going') : 'Register')}</div>
-      </a>`;
-  }).join('');
+  const max = Math.max(...bars.map((b) => b.value));
+  el.innerHTML = bars
+    .sort((a, b) => a.value - b.value)
+    .map((b) => `
+      <div class="hub-bar${b.uid === uid ? ' is-me' : ''}"
+           style="--h:${Math.max(8, Math.round((b.value / max) * 100))}%"
+           title="${escapeHtml(b.name)} · ${b.value} points this week"></div>`).join('');
+  if (note) note.textContent = mine > 0 ? `${mine} pts` : '';
 }
-
-// ─── Leaderboard ──────────────────────────────────────────────────────────
 
 function renderLeaderboard(rows, stats, uid) {
   const list = $('hub-leaderboard');
   if (!list) return;
 
   const ranked = (rows || []).slice().sort((a, b) => b.statsWeekPoints - a.statsWeekPoints);
-  const top = ranked.filter((r) => r.statsWeekPoints > 0).slice(0, 3);
+  const top = ranked.filter((r) => r.statsWeekPoints > 0).slice(0, 5);
 
   if (!top.length) {
     list.innerHTML = `
-      <a class="academy-list-item" href="/community.html">
-        <div class="academy-list-avatar">1</div>
-        <div class="academy-list-main">
-          <div class="academy-list-title">The board is open</div>
-          <div class="academy-list-sub">Nobody has scored this week. First post takes the lead.</div>
-        </div>
-        <div class="academy-list-meta">Post</div>
+      <a class="hub-person" href="/community.html">
+        <span class="hub-person-face">1</span>
+        <span class="hub-person-main">
+          <span class="hub-person-name">The board is open</span>
+          <span class="hub-person-sub">Nobody has scored this week.</span>
+        </span>
+        <span class="hub-rowbtn">Post</span>
       </a>`;
     return;
   }
 
   const myRank = ranked.findIndex((r) => r.uid === uid);
-  const rowsHtml = top.map((r, i) => activityRow({
-    href: '/community.html',
-    avatar: r.avatarUrl
-      ? `<img src="${escapeHtml(r.avatarUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
-      : escapeHtml(initials(r.displayName)),
-    title: `${i + 1}. ${r.displayName}`,
-    sub: `Level ${r.level} · ${r.statsPoints} points all time`,
-    meta: `${r.statsWeekPoints} pts`
-  })).join('');
+  const row = (r, i, isMe) => `
+    <a class="hub-person${isMe ? ' is-me' : ''}" href="/community.html">
+      <span class="hub-person-rank">${i + 1}</span>
+      <span class="hub-person-face">${r.avatarUrl
+        ? `<img src="${escapeHtml(r.avatarUrl)}" alt="">`
+        : escapeHtml(initials(r.displayName))}</span>
+      <span class="hub-person-main">
+        <span class="hub-person-name">${escapeHtml(isMe ? 'You' : r.displayName)}</span>
+        <span class="hub-person-sub">Level ${r.level} · ${r.statsPoints} pts</span>
+      </span>
+      <span class="hub-person-week">${r.statsWeekPoints}</span>
+    </a>`;
 
   // Where the member actually stands, but only once they are on the board —
   // telling somebody they are unranked is not motivation.
-  const mine = myRank >= 0 && myRank > 2
-    ? activityRow({
-      href: '/community.html',
-      avatar: 'You',
-      title: `${myRank + 1}. You`,
-      sub: `Level ${levelProgress((stats && stats.points) || 0).level} · ${(stats && stats.points) || 0} points all time`,
-      meta: `${ranked[myRank].statsWeekPoints} pts`
-    })
-    : '';
-
-  list.innerHTML = rowsHtml + mine;
+  const mine = myRank > 4 ? row(ranked[myRank], myRank, true) : '';
+  list.innerHTML = top.map((r, i) => row(r, i, r.uid === uid)).join('') + mine;
 }
 
 // ─── Explore next ─────────────────────────────────────────────────────────
@@ -917,8 +1036,10 @@ async function main() {
     if (!(await ensureOnboarded(user))) return;
   }
 
-  // Paint the header before anything that touches the network. Everything below
-  // can be slow or fail; the Admin/Owner menu lives up here and must not go with it.
+  // Paint the shell before anything that touches the network. Everything below
+  // can be slow or fail; navigation must not go with it. Both of these read the
+  // role cached in localStorage so an admin's tools don't pop in late.
+  renderShell({ current: 'dashboard' });
   renderTopbarEarly({ user: currentUser(), currentPage: 'dashboard', links: [] });
 
   // Wave one: the identity and enrollment facts every later section depends on.
@@ -935,6 +1056,7 @@ async function main() {
   const profile = profileRes.status === 'fulfilled' ? profileRes.value : null;
   const uid = currentUser() ? currentUser().uid : null;
 
+  renderShell({ current: 'dashboard', role });
   renderGreeting(currentUser(), profile);
 
   // Wave two: everything else, in parallel. Each entry is independently
@@ -968,10 +1090,13 @@ async function main() {
 
   renderStatbar({ streak, stats, hasNewCommunity });
   renderContinueCard();
+  renderWatching();
   renderModuleMap();
-  renderEventsRail();
+  renderEventsTable();
+  renderMe(currentUser(), profile, stats, streak);
+  renderChart(leaderboard.rows, stats, uid);
   renderLeaderboard(leaderboard.rows, stats, uid);
-  renderUserChip(currentUser(), role, { profile, hasNewCommunity });
+  renderUserChip(currentUser(), role, { profile });
   wireActivityTabs({ role, companyId, notifications });
 
   renderNextSteps(buildNextSteps({

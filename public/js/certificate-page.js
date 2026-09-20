@@ -12,6 +12,7 @@ import { loadCourses, getCourseBySlug } from './courses-data.js';
 import { onAuthReady, currentUser } from './auth.js';
 import { ensureOnboarded } from './onboarding-guard.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
+import { renderShell } from './academy-shell.js';
 import { getRoleInfo } from './roles.js';
 import { db, firebaseReady } from './firebase.js';
 import { doc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -121,6 +122,7 @@ async function main() {
     if (!(await ensureOnboarded(user))) return;
   }
 
+  renderShell({ current: 'courses' });
   renderTopbarEarly({ user: currentUser(), currentPage: null, links: [] });
 
   try { await loadCourses(); } catch (e) {}
@@ -249,12 +251,14 @@ async function main() {
   try {
     if (firebaseReady && currentUser()) profile = await getUserProfile(currentUser().uid);
   } catch (e) {}
+  renderShell({ current: 'courses', role: roleInfo ? roleInfo.role : null });
   renderTopbar({
     user: currentUser(),
     profile,
     role: roleInfo ? roleInfo.role : null,
     currentPage: null,
-    links: []
+    links: [],
+    withSignOut: false
   });
 }
 
