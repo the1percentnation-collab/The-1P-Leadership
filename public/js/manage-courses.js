@@ -86,10 +86,36 @@ function launchNote(ms) {
   return `Opens ${fmtLaunchDate(ms)} · ${launchCountdown(ms)}`;
 }
 
+// Why a course is invisible, in the admin's own words.
+//
+// `sellable: false` means "sold only inside a bundle": availableCourses(),
+// home-courses.js and catalog-core's visibleOn() all drop the course, so the
+// channel switches beside it have no effect at all. That is deliberate — but
+// if the bundle that sells it is not itself live, the course is reachable from
+// nowhere, and until now the card still read Live with both channels green.
+//
+// The bundle is found by the `bundle-<slug>` convention the registry uses;
+// the authoritative map is BUNDLE_RULES in functions/index.js.
+function reachabilityNote(c) {
+  if (c.status === 'inactive') {
+    return 'Inactive — hidden everywhere, including the member library. The switches below do nothing until this is Live or Coming soon.';
+  }
+  if (c.sellable === false) {
+    const bundle = getCourses({ includeInactive: true })
+      .find((b) => b.slug === `bundle-${c.slug}` && b.kind === 'bundle');
+    if (!bundle || bundle.status === 'inactive') {
+      return `Not buyable, and ${bundle ? `its bundle (${bundle.title}) is inactive` : 'no bundle sells it'} — this course appears nowhere. Turn on Buyable, or set the bundle live.`;
+    }
+    return `Sold only inside ${bundle.title} — it is never listed on its own.`;
+  }
+  return '';
+}
+
 function courseCardHtml(c) {
   const slug = escapeHtml(c.slug);
   const cur = c.status || 'coming-soon';
   const p = priceInfo(c);
+  const note = reachabilityNote(c);
 
   // The text mark is always rendered and the image sits on top of it, so a
   // cover URL that 404s degrades to the mark rather than a broken-image icon.
@@ -152,6 +178,12 @@ function courseCardHtml(c) {
           <span class="mc-switch-track"></span>
           <span>Dashboard</span>
         </label>
+        <label class="mc-switch" title="Off = this course is sold only inside a bundle and is never listed on its own">
+          <input type="checkbox" data-sellable="${slug}"${c.sellable !== false ? ' checked' : ''}>
+          <span class="mc-switch-track"></span>
+          <span>Buyable</span>
+        </label>
+        ${note ? `<div class="mc-reach-note">${escapeHtml(note)}</div>` : ''}
         <button class="btn btn-primary" data-open="${slug}" style="font-size:12px; padding:7px 14px;">Edit</button>
         <button class="btn btn-ghost" data-preview="${slug}" style="font-size:12px; padding:7px 12px;">Preview</button>
         <span style="flex:1;"></span>
@@ -193,6 +225,13 @@ function renderDashboard() {
     cb.addEventListener('change', () => setCourseChannel(cb.dataset.onsite, 'showOnSite', cb.checked, cb)));
   grid.querySelectorAll('[data-ondash]').forEach((cb) =>
     cb.addEventListener('change', () => setCourseChannel(cb.dataset.ondash, 'showInDashboard', cb.checked, cb)));
+  // Re-render after this one: it is the field the reachability note is about,
+  // so the warning has to appear and clear with the switch.
+  grid.querySelectorAll('[data-sellable]').forEach((cb) =>
+    cb.addEventListener('change', async () => {
+      await setCourseChannel(cb.dataset.sellable, 'sellable', cb.checked, cb);
+      renderDashboard();
+    }));
   grid.querySelectorAll('[data-kebab-toggle]').forEach((b) =>
     b.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -281,8 +320,9 @@ async function setCourseLaunchDate(slug, value, input) {
   }
 }
 
-// Quick channel flip from a dashboard card: `showOnSite` (the public
-// homepage) or `showInDashboard` (the member Store and dashboard).
+// Quick boolean flip from a dashboard card: `showOnSite` (the public
+// homepage), `showInDashboard` (the member Store and dashboard), or
+// `sellable` (off = sold only inside a bundle, so never listed on its own).
 //
 // Deliberately separate from `status`: 'inactive' hides a course everywhere
 // (including the member library), whereas these only control where the

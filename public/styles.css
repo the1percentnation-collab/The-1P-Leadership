@@ -1924,6 +1924,21 @@ gmp-place-autocomplete,
   color: var(--gray-mid);
 }
 
+/* Says why a course is invisible when the switches above it suggest it is
+   not. Amber rather than red: this is usually a deliberate setting, not an
+   error — it just has to be visible. */
+.mc-reach-note {
+  flex-basis: 100%;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #E9B949;
+  background: rgba(233, 185, 73, 0.08);
+  border: 1px solid rgba(233, 185, 73, 0.28);
+  border-radius: 8px;
+  padding: 7px 10px;
+  margin-top: 2px;
+}
+
 /* ── Builder header ── */
 .mc-bhead {
   display: flex;
