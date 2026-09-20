@@ -5385,13 +5385,18 @@ body.academy-course .ak-topbar { position: static; }
 }
 
 /* Coming-soon inside the main column */
+/* Centred with auto margins rather than align-items/justify-content: a flex
+   item centred on the cross axis overflows equally in both directions, and
+   scrollTop cannot go negative, so a card taller than the pane had its top
+   permanently out of reach. Auto margins centre it when there is room and
+   collapse to zero when there is not. */
 .workspace-coming-soon-main {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
   padding: 64px 32px;
 }
+
+.workspace-coming-soon-main > * { margin: auto; flex-shrink: 0; }
 
 .course-soon-card {
   max-width: 640px;
@@ -5905,6 +5910,15 @@ body.academy-course .ak-topbar { position: static; }
   justify-content: flex-start;
   padding: 64px 48px 0;
 }
+
+/* This column is a scroll container AND a flex column, so its children shrink
+   by default. Both .courses-cta and .courses-watermark set overflow:hidden,
+   which resolves their automatic minimum size to 0 — so once the library was
+   taller than the viewport the browser squeezed the CTA band to a third of its
+   height (clipping the heading inside it) and the watermark to nothing, and no
+   amount of scrolling could reveal them, because scrollHeight counted the
+   squeezed boxes. Nothing here wants to flex: it is a stack of blocks. */
+.workspace-welcome > * { flex-shrink: 0; }
 
 .workspace-welcome .welcome-available {
   width: 100%;
