@@ -23,7 +23,7 @@
       mask-image: radial-gradient(ellipse 60% 60% at 20% 30%, black 10%, transparent 70%);
       opacity: 0.5;
     }
-    .hero-strip { padding: 140px 32px 56px; max-width: 1200px; margin: 0 auto; position: relative; z-index: 1; }
+    .hero-strip { padding: calc(var(--nav-h) + 72px) 32px 56px; max-width: 1200px; margin: 0 auto; position: relative; z-index: 1; }
     .hero-title {
       font-family: var(--font-display); font-size: clamp(48px, 7vw, 104px);
       letter-spacing: 0.02em; line-height: 0.92; margin: 20px 0;
@@ -64,10 +64,10 @@
     .enroll-divider { display: flex; align-items: center; gap: 12px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gray-600); }
     .enroll-divider::before, .enroll-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
     .code-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
-    .loading { max-width: 1200px; margin: 0 auto; padding: 180px 32px; text-align: center; color: var(--gray-600); font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; }
+    .loading { max-width: 1200px; margin: 0 auto; padding: calc(var(--nav-h) + 112px) 32px; text-align: center; color: var(--gray-600); font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; }
     @media (max-width: 1024px) { .main-wrap { grid-template-columns: 1fr; gap: 48px; } .panel-col { position: static; } }
     @media (max-width: 700px) {
-      .hero-strip { padding: 120px 20px 40px; } .painpoint-inner { padding: 48px 20px; }
+      .hero-strip { padding: calc(var(--nav-h) + 52px) 20px 40px; } .painpoint-inner { padding: 48px 20px; }
       .main-wrap { padding: 48px 20px; } .session { grid-template-columns: 44px 1fr; } .session-num { font-size: 34px; }
     }
   </style>
