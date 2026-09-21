@@ -597,11 +597,21 @@
       display: flex; flex-direction: column;
     }
     .course-card:hover { border-color: var(--border-red); transform: translateY(-4px); }
+    /* The thumb is a fixed 16:9 frame so every card in the row lines up, and
+       the cover art is fitted inside it rather than cropped to fill it. Covers
+       are designed pieces with the course name set into them — `cover` was
+       slicing the title off the top and bottom. `contain` letterboxes an
+       off-ratio image against the gradient behind it instead. */
     .course-thumb {
-      height: 180px; position: relative;
+      aspect-ratio: 16 / 9; position: relative;
       background: var(--surface);
       overflow: hidden;
       display: flex; align-items: center; justify-content: center;
+    }
+    .course-thumb-img {
+      position: absolute; inset: 0; z-index: 1;
+      width: 100%; height: 100%;
+      object-fit: contain; object-position: center;
     }
     .course-thumb-bg {
       position: absolute; inset: 0;
@@ -613,7 +623,7 @@
       color: rgba(255,255,255,0.05); user-select: none;
     }
     .course-thumb-badge {
-      position: absolute; top: 14px; right: 14px;
+      position: absolute; top: 14px; right: 14px; z-index: 2;
       background: var(--red); color: var(--white);
       font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em;
       text-transform: uppercase; padding: 4px 10px; border-radius: 2px;

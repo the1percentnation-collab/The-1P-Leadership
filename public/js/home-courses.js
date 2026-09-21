@@ -2,6 +2,10 @@
 // the live course catalog, showing the courses the owner has switched
 // "On main site" in /manage-courses.html (`showOnSite`).
 //
+// Visibility comes from the shared catalog contract (catalog-core.js), not
+// from a status list kept here: whatever /store and /upcoming consider
+// publicly visible on the "site" channel is what the homepage shows.
+//
 // Both live and coming-soon courses are advertised. A coming-soon card is
 // badged "Coming Soon" rather than "Enroll Now" and points at the public
 // course page, which already offers "Notify me when enrollment opens" for a
@@ -26,7 +30,6 @@
 //      starts at opacity:0 — so without re-hooking them the section renders
 //      blank. index.html exposes __1pObserveFades / __1pAttachTilt for that.
 
-import { loadCourses, getCourses } from './courses-data.js';
 import { launchDateMs, fmtLaunchDate, launchCountdown } from './launch-date.js';
 import { loadCatalog, visibleOn, nextLaunch, hrefFor, isExternal, ctaFor, sortForDisplay } from './catalog.js';
 
@@ -118,34 +121,38 @@ function metaLines(course) {
 // is a promise nobody can plan around; "Coming Mar 3" is a reason to come back.
 // A date that has already passed falls back to the word rather than
 // advertising a launch that visibly did not happen.
-function badgeLabel(course) {
-  if (course.status !== 'live') {
-    const ms = launchDateMs(course);
+function badgeLabel(item) {
+  if (item.status === 'preorder') return 'Pre-order';
+  if (item.status !== 'live') {
+    const ms = item.launchDateMs != null ? item.launchDateMs : launchDateMs(item.raw || item);
     return (ms != null && launchCountdown(ms)) ? `Coming ${fmtLaunchDate(ms, { short: true })}` : 'Coming Soon';
   }
-  return course.bundleHref ? 'Best Value' : 'Enroll Now';
+  return item.isBundle ? 'Best Value' : 'Enroll Now';
 }
 
-function cardHtml(course, i) {
-  const slug = encodeURIComponent(course.slug);
+function cardHtml(item, i) {
+  const course = item.raw || item;
+  const slug = encodeURIComponent(item.slug);
   const delay = i > 0 ? ` fade-up-delay-${Math.min(i, 5)}` : '';
   const bg = THUMB_BGS[i % THUMB_BGS.length];
 
   // The monogram is always rendered and the cover image sits on top, so a
   // cover URL that 404s degrades to the mark rather than a broken image.
   // Same trick as the admin dashboard cards (manage-courses.js).
-  const cover = course.coverImage || course.image;
-  const coverImg = cover
-    ? `<img src="${escapeHtml(cover)}" alt="" loading="lazy" onerror="this.remove()"
-            style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover;">`
+  //
+  // .course-thumb-img fits the art inside the 16:9 frame instead of cropping
+  // it: these covers carry the course title in the art, and filling the frame
+  // was cutting it off.
+  const coverImg = item.imageUrl
+    ? `<img class="course-thumb-img" src="${escapeHtml(item.imageUrl)}" alt="" loading="lazy" onerror="this.remove()">`
     : '';
 
   // Bundles have their own sales page; everything else uses the shared public
   // course landing page. A course that isn't live goes to the course page
   // whatever its kind — a bundle sales page would invite a purchase that
   // can't happen, where the course page offers the waitlist instead.
-  const isLive = course.status === 'live';
-  const href = (isLive && course.bundleHref) || `/course.html?course=${slug}`;
+  const isLive = item.status === 'live' || item.status === 'preorder';
+  const href = (isLive && item.bundleHref) || `/course.html?course=${slug}`;
 
   return `
       <div class="course-card fade-up${delay}">
@@ -153,15 +160,15 @@ function cardHtml(course, i) {
           <div class="course-thumb-bg"${bg ? ` style="background: ${bg};"` : ''}></div>
           <div class="course-thumb-num">${escapeHtml(monogram(course))}</div>
           ${coverImg}
-          <div class="course-thumb-badge${isLive ? '' : ' is-soon'}">${escapeHtml(badgeLabel(course))}</div>
+          <div class="course-thumb-badge${isLive ? '' : ' is-soon'}">${escapeHtml(badgeLabel(item))}</div>
         </div>
         <div class="course-body">
-          <div class="course-cat">${escapeHtml(course.category || '')}</div>
-          <div class="course-title">${escapeHtml(course.title || '')}</div>
-          <p class="course-desc">${escapeHtml(course.subtitle || '')}</p>
+          <div class="course-cat">${escapeHtml(item.category || '')}</div>
+          <div class="course-title">${escapeHtml(item.title || '')}</div>
+          <p class="course-desc">${escapeHtml(course.subtitle || item.summary || '')}</p>
           <div class="course-meta">
             <div>${metaLines(course)}</div>
-            <a href="${escapeHtml(href)}" class="course-arrow" aria-label="View ${escapeHtml(course.title || 'course')}">→</a>
+            <a href="${escapeHtml(href)}" class="course-arrow" aria-label="View ${escapeHtml(item.title || 'course')}">→</a>
           </div>
         </div>
       </div>`;
@@ -312,8 +319,12 @@ export async function init() {
   const section = document.getElementById('courses');
   if (!grid || !section) return;
 
+  // One load for the whole page: the grid, the launch banner and the shop all
+  // read the same normalised catalog, so what the homepage shows can't drift
+  // from what /store and /upcoming show.
+  let items;
   try {
-    await loadCourses();
+    items = await loadCatalog();
   } catch (e) {
     // Fail closed: we can't tell which courses are published, and showing an
     // unpublished one on the marketing site is worse than showing none.
@@ -324,31 +335,28 @@ export async function init() {
     return;
   }
 
-  // `status` is the publish state set from the builder's Publish menu. 'live'
-  // means members can enroll today; 'coming-soon' is announced but not yet
-  // open, and is advertised here so the waitlist can build. 'inactive' is the
-  // one state that stays off the public site.
+  // Visibility is decided by visibleOn(), the same rule the store and the
+  // member dashboard use, rather than a status allow-list of this file's own.
+  // The allow-list was the bug: it listed only 'live' and 'coming-soon', so a
+  // course the owner set to "Bundle" in /manage-courses — a perfectly
+  // sellable, publicly listed state — silently never reached the homepage.
+  // normalizeCourse() folds 'bundle' into live, maps 'inactive' to hidden,
+  // and treats any unrecognised status as coming-soon, so a course can no
+  // longer vanish from the marketing site because of a status this file
+  // hadn't heard of.
   //
-  // `showOnSite` is the owner's per-course override on top of that, a
-  // default-true opt-out so existing courses needed no backfill.
-  // `sellable: false` marks a course sold only inside a bundle, which has its
-  // own card — it never gets a second one of its own.
-  const PUBLIC_STATUSES = ['live', 'coming-soon'];
-  const courses = getCourses().filter(
-    (c) => PUBLIC_STATUSES.includes(c.status) && c.showOnSite !== false && c.sellable !== false
+  // `showOnSite` (default-true opt-out) stays the owner's per-course switch,
+  // and `sellable: false` still hides a course sold only inside a bundle —
+  // the bundle carries its own card.
+  const courses = sortForDisplay(
+    items.filter((i) => i.kind === 'course' && visibleOn(i, 'site'))
   );
 
-  // The banner and the shop read the whole catalog — courses and products —
-  // so a book launch can lead the page. Independent of the grid: a launch is
-  // worth announcing even in the odd case where the section below ends up
-  // empty. Fail-soft: if products cannot be read the courses still render.
-  try {
-    const items = await loadCatalog();
-    renderLaunchBanner(items);
-    renderShop(items);
-  } catch (e) {
-    console.warn('[home-courses] catalog load failed; banner and shop stay as they are', e);
-  }
+  // The banner and the shop read products too, so a book launch can lead the
+  // page. Independent of the grid: a launch is worth announcing even in the
+  // odd case where the section below ends up empty.
+  renderLaunchBanner(items);
+  renderShop(items);
 
   if (!courses.length) {
     hideCoursesSection(section);
