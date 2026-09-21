@@ -6,7 +6,6 @@
 
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
-const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
@@ -8164,25 +8163,22 @@ async function runTick(db, { dryRun = false } = {}) {
   return summary;
 }
 
-/**
- * automationTick — the real clock.
- *
- * This project spent its life driving the tick from a GitHub Actions workflow
- * because the deploy service account was believed to be locked out of Cloud
- * Scheduler. The evidence only ever showed one missing permission —
- * `cloudscheduler.jobs.delete`, which blocks *removing* the two stranded jobs
- * (see scripts/deploy-functions.sh). Creating one was never actually tried.
- *
- * If this function deploys, it is strictly better than the workflow: an exact
- * fifteen-minute cadence instead of GitHub's real-world one-to-two hours, no
- * shared secret to configure, and no dependency on Actions running at all.
- * If the deploy 403s on `cloudscheduler.jobs.create`, the HTTP endpoint below
- * is untouched and the workflow remains the fallback.
- */
-exports.automationTick = onSchedule(
-  { schedule: 'every 15 minutes', timeoutSeconds: 300, secrets: [sendgridKey] },
-  async () => { await runTick(admin.firestore()); }
-);
+// Why there is no scheduled function here.
+//
+// A tick on a real 15-minute clock was attempted: `exports.automationTick`,
+// an onSchedule function. The deploy failed with "Failed to upsert schedule
+// function automationTick in region us-central1" (backend run #90), while
+// every other function in the same deploy updated successfully.
+//
+// The belief that this project cannot use Cloud Scheduler was therefore
+// right, even though the only error it had ever actually shown was
+// `cloudscheduler.jobs.delete`. Whether the block is jobs.create, a disabled
+// Cloud Scheduler API, or a missing App Engine app is still unknown —
+// firebase-tools does not print the underlying HTTP error without --debug.
+//
+// Until that is resolved, .github/workflows/crm-tick.yml is the clock and
+// runAutomationTick below is what it calls. See scripts/deploy-functions.sh
+// for the IAM grant that is the real fix.
 
 /**
  * runAutomationTick — POST with header `X-Tick-Secret: $CRM_TICK_SECRET`.

@@ -179,10 +179,10 @@ has passed (`promoteLaunchedItems` in `functions/index.js`). That flip is what
 the `onCourseWritten` / `onProductWritten` triggers see, and what sends the
 waitlist their launch email.
 
-So a launch is not instant. The tick runs every 15 minutes from the
-`automationTick` scheduled function; if that ever falls back to the GitHub
-Actions workflow, expect one to two hours instead. To launch something *now*,
-set its status to Live by hand in the admin — that fires the same triggers.
+So a launch is not instant, and it is slower than it looks. The tick runs from
+a GitHub Actions workflow whose cron asks for every 15 minutes, but GitHub
+delivers closer to every one to two hours. To launch something *now*, set its
+status to Live by hand in the admin — that fires the same triggers.
 
 Worth knowing before you set a date in the past: the next tick will promote the
 item and email its waitlist immediately. To see what a tick would do without
