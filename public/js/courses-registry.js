@@ -160,7 +160,7 @@ export const COURSES = [
   },
   {
     slug: '1p-clc-leader',
-    title: '1P Certified Executive Leader',
+    title: 'The Executive Leader',
     short: 'Executive Leader',
     showOnSite: false,
     subtitle: 'Mindset, structure, and disciplined progress — one percent at a time.',

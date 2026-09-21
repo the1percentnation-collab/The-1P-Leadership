@@ -7,7 +7,7 @@ The order matters. Each step assumes the ones above it are done.
 | Product | Content | Sellable today | Blocker |
 |---|---|---|---|
 | The Complete I Can't Experience ($197) | ✅ 11 modules | ❌ | Stripe + flip live |
-| 1P Certified Executive Leader ($497) | ✅ 7 modules | ❌ | slug fix + Stripe + flip live |
+| The Executive Leader ($497) | ✅ 7 modules | ❌ | slug fix + Stripe + flip live |
 | I Can't: The Course | ✅ 11 modules | n/a | sold only inside the bundle |
 | 1P Certified Life Coach ($3,497) | ✅ 8 modules seeded + exam bank | ❌ | status is `coming-soon`; cohort dates + Stripe |
 | Mindset Foundations, Business Alignment, Faith & Leadership, Performance & Discipline | ❌ none | ❌ | copy only, no lessons |

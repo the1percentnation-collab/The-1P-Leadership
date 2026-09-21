@@ -5,7 +5,7 @@
 // THE PROBLEM
 // `courses/1p-clc` in production holds the **Executive Leader**: its live title
 // is still the legacy "1P Certified Leader Coach" (renamed in the registry to
-// "1P Certified Executive Leader"), price 497, contentSource firestore, and seven
+// "The Executive Leader"), price 497, contentSource firestore, and seven
 // migrated lesson docs. But the code registry (public/js/courses-registry.js)
 // says `1p-clc` is the **1P Certified Life Coach** at $3,497, and Firestore
 // fields override the registry — so that one record is currently two different
@@ -272,7 +272,7 @@ async function main() {
   if (!APPLY) {
     log('\n  Nothing was written. Re-run with --apply.');
   } else {
-    log('\n  Next: open /manage-courses.html and set 1P Certified Executive Leader');
+    log('\n  Next: open /manage-courses.html and set The Executive Leader');
     log('  to live once Stripe is connected.');
   }
 }

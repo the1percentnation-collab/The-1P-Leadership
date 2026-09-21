@@ -60,7 +60,7 @@ function escapeHtml(s) {
 
 // Two-letter mark for the card thumbnail, standing in for the cover art the
 // catalog doesn't have yet. Picks the most recognisable pair available:
-//   "1P Certified Executive Leader" -> 1P   (a leading branded token wins)
+//   "1P Certified Life Coach"     -> 1P   (a leading branded token wins)
 //   "Bundle Deal"               -> BD   (multi-word `short`)
 //   "Mindset Foundations"       -> MF   (falls through to the title, since
 //                                        `short` is the single word "Mindset")
