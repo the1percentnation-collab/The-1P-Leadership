@@ -13,7 +13,12 @@
 # once-only `remindedAt` stamp means the stranded deployed copies and the tick
 # cannot double-send even while both exist.
 #
-# That leaves one problem. Firebase sees two functions that exist in the
+# automationTick makes three. It is the same trap sprung freshly: exported as a
+# real scheduled function in September 2026 on the theory that only DELETE had
+# ever been blocked, it was created before its schedule failed to attach, so
+# un-exporting it turned it into another orphan (backend runs #90 and #91).
+#
+# That leaves one problem. Firebase sees three functions that exist in the
 # project but not in source, tries to delete them, and the very same missing
 # permission rejects the delete. So every deploy since 2026-06-14 has exited
 # non-zero AFTER successfully deploying every real function. A pipeline that is
@@ -23,34 +28,54 @@
 # WHAT THIS DOES
 # --------------
 # Runs the same deploy, then reads the CLI's own end-of-run summary. If the
-# only functions that errored are the two known stranded ones, it says so and
-# exits clean. Anything else — including a third function getting stranded the
-# same way — still fails the build.
+# only functions that errored are the known stranded ones, it says so and
+# exits clean. Anything else — including a further function getting stranded
+# the same way — still fails the build.
 #
 # THE REAL FIX
 # ------------
-# Grant the deploy service account roles/cloudscheduler.admin in GCP IAM, then
-# redeploy: Firebase will finally be able to delete the two stranded functions,
-# after which this script's tolerance can go too. Until then those two keep
-# running the code they were last deployed with, which is not the code in this
-# repo — harmless today only because `remindedAt` dedupes them against the tick.
+# The orphans have to go. Two routes get there, and this script used to name
+# only the second, which made it look like the sole option.
+#
+# 1. DELETE THEM DIRECTLY. Runnable by anyone with Cloud Scheduler rights on
+#    the project — the human owner has them even though the CI service account
+#    does not. One command per function, and it removes the Cloud Function, its
+#    Cloud Scheduler job and its Pub/Sub topic together:
+#
+#      npx firebase-tools functions:delete <name> \
+#        --region us-central1 --project the-1p-leadership --force
+#
+#    Nothing about CI's permissions changes. Prefer this when the orphans are
+#    all you want gone.
+#
+# 2. GRANT CI THE PERMISSION, and let the next deploy clean up by itself:
+#
+#      gcloud projects add-iam-policy-binding the-1p-leadership \
+#        --member="serviceAccount:<the CI deploy service account>" \
+#        --role="roles/cloudscheduler.admin"
+#
+#    Costs the deploy service account a permanent role it otherwise never
+#    needs. Worth it only if a real scheduled function is wanted later — that
+#    same grant is what has been blocking one, and .github/workflows/
+#    crm-tick.yml exists because it is missing.
+#
+# Either way: confirm in the next deploy log that all three were deleted, and
+# only THEN empty KNOWN_STRANDED below and drop the ::warning:: at the end of
+# this script. In that order — emptying the list first just turns every deploy
+# red again, because the delete still fails.
+#
+# Until then the two reminder functions keep running the code they were last
+# deployed with, which is not the code in this repo. Harmless today only
+# because `remindedAt` dedupes them against the tick. (automationTick is inert:
+# its schedule was never created, so nothing triggers it.)
 #
 # (The unexported onSchedule twins that used to sit in functions/index.js as
 # the "real" version were deleted in September 2026. They were dead code whose
 # comment claimed reminders were switched off, so every reader concluded the
 # feature was broken when it was running fine from the tick. Re-enabling means
-# exporting a scheduled function afresh, not restoring them.)
-#
-# The grant itself:
-#
-#   gcloud projects add-iam-policy-binding the-1p-leadership \
-#     --member="serviceAccount:<the CI deploy service account>" \
-#     --role="roles/cloudscheduler.admin"
-#
-# Then confirm in the next deploy log that both functions were deleted, and
-# only then empty KNOWN_STRANDED below and drop the ::warning:: at the end of
-# this script. Do it in that order: emptying the list before the grant lands
-# just turns every deploy red again, because the delete still fails.
+# exporting a scheduled function afresh, not restoring them — and
+# tests/no-scheduled-functions.test.cjs now fails the build if anyone tries
+# before the permission above is in place.)
 
 set -uo pipefail
 
@@ -136,5 +161,5 @@ for name in $failed; do
   esac
 done
 
-echo "::warning::Every function deployed. Firebase could not clean up ${failed} — deployed-but-unexported scheduled functions the CI service account lacks cloudscheduler.jobs.delete permission to remove. Grant roles/cloudscheduler.admin to the deploy service account to resolve this permanently; see scripts/deploy-functions.sh."
+echo "::warning::Every function deployed. Firebase could not clean up ${failed} — deployed-but-unexported scheduled functions the CI service account lacks cloudscheduler.jobs.delete permission to remove. To clear this for good, either delete them (npx firebase-tools functions:delete <name> --region us-central1 --project the-1p-leadership --force) or grant roles/cloudscheduler.admin to the deploy service account and let the next deploy do it. See scripts/deploy-functions.sh."
 exit 0
