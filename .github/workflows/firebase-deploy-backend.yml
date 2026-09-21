@@ -10,6 +10,11 @@ on:
       - 'firebase.json'
       - 'functions/**'
       - '.github/workflows/firebase-deploy-backend.yml'
+      # The wrapper below decides whether this job passes or fails, and the
+      # guard test gates it. A change to either has to re-run the deploy —
+      # without these, commit 5451bdc fixed a red deploy and no run tried it.
+      - 'scripts/deploy-functions.sh'
+      - 'tests/no-scheduled-functions.test.cjs'
   workflow_dispatch:
 
 jobs:
@@ -120,7 +125,15 @@ jobs:
         working-directory: functions
         run: npm install --no-audit --no-fund
 
-      # Wrapped so a real failure is distinguishable from the two stranded
+      # Deploying an onSchedule function here is a one-way door: this project's
+      # service account can create the function but not its Cloud Scheduler job,
+      # and from then on cannot delete either. Three functions are stuck that
+      # way already. This runs before the deploy so the door stays shut — and
+      # needs no npm install, being plain node.
+      - name: Guard against scheduled functions
+        run: node tests/no-scheduled-functions.test.cjs
+
+      # Wrapped so a real failure is distinguishable from the stranded
       # scheduled functions this project cannot delete. See the script.
       - name: Deploy Cloud Functions
         env:
