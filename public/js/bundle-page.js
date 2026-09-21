@@ -52,7 +52,7 @@ function renderCta({ live, enrolled, label }) {
   if (!live) return; // keep the "coming soon" block from the markup
 
   const promoNote = PROMO
-    ? `<div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--gold);text-align:center;margin-bottom:10px;">Promo ${PROMO} will be applied at checkout</div>`
+    ? `<div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--red);text-align:center;margin-bottom:10px;">Promo ${PROMO} will be applied at checkout</div>`
     : '';
   top.innerHTML = `${promoNote}<button class="btn-enroll" id="bundle-enroll" type="button">Enroll now — ${label}</button>`;
   if (bottom) bottom.outerHTML = `<button class="btn-primary-lg" id="bundle-cta-bottom" type="button">Enroll now — ${label}</button>`;
