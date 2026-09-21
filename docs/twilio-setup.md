@@ -181,14 +181,19 @@ Calendar watch renewal. Generate a secret:
 openssl rand -hex 32
 ```
 
-Add it **twice**, under the same name `CRM_TICK_SECRET`: once as a repository
-secret (so the `crm-tick` workflow can authenticate) and that same value is
-what the deploy writes into the functions env. One secret, one name, used by
-both sides.
+Add it **once**, as a repository secret named `CRM_TICK_SECRET`.
+`firebase-deploy-backend.yml` writes that same value into `functions/.env`, so
+one secret covers both sides — but that file is rebuilt from scratch on every
+deploy, so **re-run the backend deploy after setting it**. Until you do, the
+endpoint returns 503 because its runtime has no secret to compare against.
 
-The `CRM automation tick` workflow runs every 15 minutes and currently exits
-cleanly with a warning because the secret is unset. Once it is set the tick
-starts doing real work.
+Note this is only needed for the HTTP endpoint (`runAutomationTick`), which is
+the manual and fallback path. The real clock is the `automationTick` scheduled
+function, which needs no secret at all.
+
+If the tick is misconfigured the `CRM automation tick` workflow now **fails
+red** and says which of the two states it is in. It used to exit cleanly, and
+that is how it stayed dead for 41 consecutive green runs.
 
 ---
 

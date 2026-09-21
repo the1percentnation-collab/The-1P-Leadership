@@ -72,9 +72,41 @@ ok('a draft is never promoted, whatever its date', (await status('products/lt-dr
 const again = await promoteLaunchedItems(db);
 ok('a second tick promotes nothing', again.courses === 0 && again.products === 0, JSON.stringify(again));
 
+// ── dryRun — the safety valve ────────────────────────────────────────────
+// A status flip is what fires the launch emails, and those cannot be unsent,
+// so the preview has to be provably write-free rather than merely intended to
+// be. Seed two fresh due items and assert nothing about them moves.
+const dry = {
+  'courses/lt-dry':   { title: 'Dry course',  status: 'coming-soon', launchDate: yesterday },
+  'products/lt-dry':  { name: 'Dry product',  status: 'preorder',    launchDate: yesterday }
+};
+const dryBatch = db.batch();
+for (const [path, data] of Object.entries(dry)) dryBatch.set(db.doc(path), data);
+await dryBatch.commit();
+
+const preview = await promoteLaunchedItems(db, { dryRun: true });
+ok('a dry run reports what would flip', preview.courses === 1 && preview.products === 1, JSON.stringify(preview));
+ok('...and says it was a dry run', preview.dryRun === true);
+ok('...and names the items', !!preview.wouldPromote
+  && preview.wouldPromote.courses.includes('lt-dry')
+  && preview.wouldPromote.products.includes('lt-dry'), JSON.stringify(preview.wouldPromote));
+
+const dryCourse = await status('courses/lt-dry');
+const dryProduct = await status('products/lt-dry');
+ok('a dry run writes nothing to the course', dryCourse.status === 'coming-soon' && !dryCourse.launchedAt,
+  JSON.stringify(dryCourse));
+ok('a dry run writes nothing to the product', dryProduct.status === 'preorder' && !dryProduct.launchedAt,
+  JSON.stringify(dryProduct));
+
+// And the real run still flips them, so the dry run left nothing in a state
+// that would stop the launch happening for real.
+const real = await promoteLaunchedItems(db);
+ok('a real run after a dry run still flips both', real.courses === 1 && real.products === 1, JSON.stringify(real));
+ok('...and the real run is not marked dry', real.dryRun === undefined);
+
 // Clean up so a re-run of the suite starts from the same place.
 const del = db.batch();
-for (const path of Object.keys(seed)) del.delete(db.doc(path));
+for (const path of Object.keys({ ...seed, ...dry })) del.delete(db.doc(path));
 await del.commit();
 
 console.log(`\n${passed} checks passed.`);

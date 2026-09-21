@@ -171,6 +171,25 @@ the codebase: a module stays invisible until that toggle is flipped by hand. If
 you would rather ship all eight at once, publish them all in the builder after
 seeding, and drop the weekly gating from how you sell it.
 
+## How a launch date actually fires
+
+Setting a launch date on a course or product does not, by itself, do anything.
+The item flips to live when the **automation tick** next runs and sees the date
+has passed (`promoteLaunchedItems` in `functions/index.js`). That flip is what
+the `onCourseWritten` / `onProductWritten` triggers see, and what sends the
+waitlist their launch email.
+
+So a launch is not instant. The tick runs every 15 minutes from the
+`automationTick` scheduled function; if that ever falls back to the GitHub
+Actions workflow, expect one to two hours instead. To launch something *now*,
+set its status to Live by hand in the admin — that fires the same triggers.
+
+Worth knowing before you set a date in the past: the next tick will promote the
+item and email its waitlist immediately. To see what a tick would do without
+doing it, run Actions → *CRM automation tick* → Run workflow with the **dry
+run** box ticked; it reports what it would promote and send, and writes
+nothing.
+
 ## Known open items
 
 - The A.L.I.G.N. letters in `public/js/align.js` were written into code, not
