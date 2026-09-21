@@ -7,8 +7,10 @@
 // already exposes with `allow read: if true` — so the printed URL works for
 // anyone, signed in or not (sales pages, email, ads).
 //
-// Credentials come from GOOGLE_APPLICATION_CREDENTIALS or
-// `gcloud auth application-default login`, same as every other script here.
+// Credentials come from FIREBASE_SERVICE_ACCOUNT_B64 (base64-encoded service
+// account JSON, the one that works in a cloud session), or from
+// GOOGLE_APPLICATION_CREDENTIALS / `gcloud auth application-default login`
+// when running locally.
 
 const fs = require('fs');
 const path = require('path');
@@ -33,6 +35,31 @@ function projectIdFromFirebaserc() {
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * Resolve credentials without needing a key file on disk.
+ *
+ * FIREBASE_SERVICE_ACCOUNT_B64 (a base64-encoded service account JSON) is the
+ * one that works in a cloud session, where there is no gcloud login and no
+ * file to point GOOGLE_APPLICATION_CREDENTIALS at. It is decoded in memory and
+ * never written to the repo. Falls back to the standard ADC lookup, so a local
+ * run with GOOGLE_APPLICATION_CREDENTIALS or `gcloud auth application-default
+ * login` keeps behaving exactly as before.
+ */
+function resolveCredential() {
+  const b64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
+  if (b64) {
+    let parsed;
+    try {
+      parsed = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+    } catch (e) {
+      console.error('FIREBASE_SERVICE_ACCOUNT_B64 is set but is not valid base64-encoded JSON.');
+      process.exit(1);
+    }
+    return { credential: admin.credential.cert(parsed), projectId: parsed.project_id };
+  }
+  return { credential: admin.credential.applicationDefault(), projectId: null };
 }
 
 async function main() {
@@ -64,7 +91,12 @@ async function main() {
   const bucketName = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
   const dest = destArg || `product-images/admin/${path.basename(localFile)}`;
 
-  admin.initializeApp({ projectId, storageBucket: bucketName });
+  const cred = resolveCredential();
+  admin.initializeApp({
+    credential: cred.credential,
+    projectId: cred.projectId || projectId,
+    storageBucket: bucketName,
+  });
   const bucket = admin.storage().bucket();
 
   const token = crypto.randomUUID();
@@ -81,6 +113,7 @@ async function main() {
     console.error(
       `\nUpload to gs://${bucketName} failed.\n  ${e.message}\n\n` +
       'Authenticate with ONE of:\n' +
+      '  export FIREBASE_SERVICE_ACCOUNT_B64="$(base64 -w0 /path/to/key.json)"   # works in a cloud session\n' +
       '  export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/key.json\n' +
       '  gcloud auth application-default login\n'
     );
