@@ -56,8 +56,30 @@ set -uo pipefail
 
 # Deployed-but-unexported functions we knowingly cannot clean up yet. Keep this
 # list minimal: every name here is a function whose failure we stop reporting.
-# Empty it once the IAM grant above has let a deploy delete these two.
-KNOWN_STRANDED="appointmentReminders taskReminders"
+# Empty it once the IAM grant above has let a deploy delete them.
+#
+# This list is for artifacts CI cannot DELETE. It is not, and must not become,
+# a way to make a function that is supposed to work stop reporting that it
+# does not. The two original entries are scheduled functions that were removed
+# from source while their Cloud Scheduler jobs stayed behind.
+#
+# automationTick is the same thing, and is here because of a failed
+# experiment rather than an old one. In September 2026 a real scheduled tick
+# was attempted on the theory that this project was only ever blocked on
+# cloudscheduler.jobs.DELETE and had never tried CREATE. Backend run #90
+# disproved it: "Failed to upsert schedule function automationTick". The
+# function itself had already been created by then, so removing the export in
+# run #91 turned it into a third undeletable job and kept main red.
+#
+# It can be cleared by hand by anyone with Cloud Scheduler rights on the
+# project — the human owner has them even though the CI service account does
+# not:
+#
+#   npx firebase-tools functions:delete automationTick \
+#     --region us-central1 --project the-1p-leadership --force
+#
+# Do that and drop it from this list. The same command clears the other two.
+KNOWN_STRANDED="appointmentReminders taskReminders automationTick"
 
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
