@@ -1,28 +1,44 @@
-# The CRM's clock.
+# The CRM's clock — the manual and fallback one.
 #
-# This project cannot deploy Cloud Scheduler jobs: the deploy service account
-# lacks roles/cloudscheduler.admin, which is why taskReminders and
-# appointmentReminders were un-exported (see scripts/deploy-functions.sh).
-# Until that IAM grant lands, anything time-based — sequence steps, Google
-# Calendar watch renewal, task/appointment reminders — runs from the
-# runAutomationTick function, and this workflow is what calls it.
+# The primary clock is now the `automationTick` scheduled function in
+# functions/index.js. This project long assumed Cloud Scheduler was closed to
+# it, but the only permission ever shown to be missing is
+# `cloudscheduler.jobs.delete` (it blocks *removing* the two stranded jobs; see
+# scripts/deploy-functions.sh). Creating a job was never actually attempted.
 #
-# Setup (once):
-#   1. Pick a long random string and set it as CRM_TICK_SECRET on the
-#      functions runtime (functions/.env or the Cloud Run env), then redeploy.
-#   2. Add the same value as a GitHub Actions secret named CRM_TICK_SECRET.
+# This workflow stays for two things the scheduled function cannot do:
+#   - running a tick on demand, right now, from the Actions tab;
+#   - running one as a DRY RUN first, to see what it would send before it
+#     sends anything.
 #
-# The real fix is still the IAM grant. Once cloudscheduler.admin is in place,
-# export a scheduled function that calls the same tick logic and delete this
-# workflow.
+# It also remains the fallback if the scheduled function turns out to be
+# blocked. Its `schedule:` trigger is kept for that reason; once automationTick
+# is confirmed running, the schedule can be dropped and this becomes a purely
+# manual tool. Both clocks running at once is safe — processDueEnrollments
+# claims each enrollment in a transaction so two overlapping ticks cannot send
+# the same step twice.
+#
+# Fallback setup (only needed if automationTick did not deploy):
+#   1. `openssl rand -hex 32`
+#   2. Add it as the repository secret CRM_TICK_SECRET.
+#   3. Re-run the backend deploy — firebase-deploy-backend.yml writes this same
+#      secret into functions/.env, and that file is rebuilt from scratch on
+#      every deploy, so the runtime only learns the value on the next one.
+#
+# On cadence: the cron below asks for every 15 minutes. GitHub does not deliver
+# that. Observed gaps on this repo were closer to two hours (18:13, 20:47,
+# 22:45, 00:35). The scheduled function is what gives a real cadence.
 name: CRM automation tick
 
 on:
   schedule:
-    # Every 15 minutes. GitHub delays scheduled runs under load; sequence
-    # steps tolerate that, so nothing here depends on the minute.
     - cron: '*/15 * * * *'
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Report what the tick would do, without sending or writing anything'
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -39,22 +55,54 @@ jobs:
         env:
           TICK_URL: https://us-central1-the-1p-leadership.cloudfunctions.net/runAutomationTick
           CRM_TICK_SECRET: ${{ secrets.CRM_TICK_SECRET }}
+          # Only ever true from a manual dispatch; scheduled runs are never dry.
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
+          # This used to `exit 0`, and that is how the tick stayed dead for 41
+          # consecutive green runs. A clock that is not configured is broken,
+          # not idle, and it has to say so.
           if [ -z "$CRM_TICK_SECRET" ]; then
-            echo "CRM_TICK_SECRET is not set as a repository secret; nothing to do." >&2
-            exit 0
+            echo "::error::CRM_TICK_SECRET is not set as a repository secret, so the tick cannot run." >&2
+            echo "Set it (openssl rand -hex 32), then re-run the backend deploy so functions/.env picks it up." >&2
+            exit 1
           fi
+
+          url="$TICK_URL"
+          if [ "$DRY_RUN" = "true" ]; then
+            url="$TICK_URL?dryRun=1"
+            echo "Dry run: reporting only, nothing will be sent or written."
+          fi
+
           code=$(curl -sS -o /tmp/tick.json -w '%{http_code}' \
-            -X POST "$TICK_URL" \
+            -X POST "$url" \
             -H "X-Tick-Secret: $CRM_TICK_SECRET" \
             -H 'Content-Length: 0' \
             --max-time 300 || true)
+
+          # Print the body before deciding, so a failure carries its reason.
           echo "HTTP $code"
           cat /tmp/tick.json 2>/dev/null || true
           echo
-          # 503 = the function exists but has no secret configured yet; that
-          # is a setup gap, not an outage, so it does not fail the run.
+
           case "$code" in
-            200|503) exit 0 ;;
-            *) exit 1 ;;
+            200)
+              exit 0 ;;
+            503)
+              # The function is deployed but its runtime has no CRM_TICK_SECRET.
+              # This previously passed as "a setup gap, not an outage", which
+              # made the half-configured state permanently invisible.
+              echo "::error::The function has no CRM_TICK_SECRET. The GitHub secret is set but has not reached functions/.env — re-run the backend deploy." >&2
+              exit 1 ;;
+            403)
+              echo "::error::The function rejected the secret. The repository secret and functions/.env disagree; reset it and redeploy." >&2
+              exit 1 ;;
+            500)
+              echo "::error::A tick step failed — see failedSteps in the body above." >&2
+              exit 1 ;;
+            000)
+              echo "::error::Could not reach the tick endpoint (network or curl failure)." >&2
+              exit 1 ;;
+            *)
+              echo "::error::Unexpected HTTP $code from the tick endpoint." >&2
+              exit 1 ;;
           esac

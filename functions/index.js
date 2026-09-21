@@ -6,6 +6,7 @@
 
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
@@ -7932,7 +7933,7 @@ async function executeSequenceStep(db, companyId, enrollment, step, seq) {
   return 'skipped: unknown channel';
 }
 
-async function processDueEnrollments(db, { companyId = null, limitN = 200 } = {}) {
+async function processDueEnrollments(db, { companyId = null, limitN = 200, dryRun = false } = {}) {
   const FV = admin.firestore.FieldValue;
   const now = admin.firestore.Timestamp.now();
   let docs = [];
@@ -7945,6 +7946,19 @@ async function processDueEnrollments(db, { companyId = null, limitN = 200 } = {}
   } catch (e) {
     console.warn('[tick] enrollments query failed (index?):', e && e.message);
     return { processed: 0, error: e && e.message };
+  }
+
+  // dryRun stops here: it reports how many enrollments are due without
+  // claiming, sending or advancing any of them. executeSequenceStep sends
+  // real SMS and real email, so this is the difference between measuring the
+  // backlog and firing it at people.
+  if (dryRun) {
+    return {
+      dryRun: true,
+      wouldProcess: docs.length,
+      considered: docs.length,
+      sample: docs.slice(0, 10).map((d) => `${d.ref.parent.parent.id}/${d.id} step ${Number(d.data().currentStep) || 0}`)
+    };
   }
 
   let processed = 0;
@@ -8099,29 +8113,97 @@ async function sendReminders(db) {
   return { tasks, appointments: appts };
 }
 
+// Constant-time string compare that tolerates unequal lengths.
+//
+// crypto.timingSafeEqual throws a RangeError when the two buffers differ in
+// size, so every caller has to length-check first — and that bare length check
+// leaks how long the expected value is. Hashing both sides to a fixed width
+// removes both problems at once: the comparison is always over 32 bytes, and
+// the length of the secret is no longer observable from the outside.
+function timingSafeEqualStr(a, b) {
+  const ha = crypto.createHash('sha256').update(String(a), 'utf8').digest();
+  const hb = crypto.createHash('sha256').update(String(b), 'utf8').digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+/**
+ * One tick: the four time-based jobs this project has, run together.
+ *
+ * Shared by the scheduled function and the HTTP endpoint so there is exactly
+ * one definition of what a tick does, rather than two that can drift.
+ *
+ * Every step gets its own catch. Previously only promoteLaunchedItems had one,
+ * so a throw from any of the other three rejected the whole Promise.all,
+ * aborted the siblings and reported nothing about which had failed — the tick
+ * returned a 500 that named no cause.
+ *
+ * `ok` is false when any step recorded an error, so a partial failure is
+ * visible to the caller instead of hiding inside a 200.
+ */
+async function runTick(db, { dryRun = false } = {}) {
+  const startedAt = Date.now();
+  const step = (name, p) => Promise.resolve(p).catch((e) => {
+    console.warn(`[tick] ${name} failed:`, e && e.message);
+    return { error: (e && e.message) || String(e) };
+  });
+
+  const [sequences, watches, reminders, launches] = await Promise.all([
+    step('sequences', processDueEnrollments(db, { dryRun })),
+    // These two only ever renew or send; there is nothing to preview, so a dry
+    // run skips them rather than pretending to measure something.
+    step('watches', dryRun ? { skipped: 'dryRun' } : renewAllGoogleWatches(db)),
+    step('reminders', dryRun ? { skipped: 'dryRun' } : sendReminders(db)),
+    step('launches', promoteLaunchedItems(db, { dryRun }))
+  ]);
+
+  const steps = { sequences, watches, reminders, launches };
+  const failedSteps = Object.keys(steps).filter((k) => steps[k] && steps[k].error);
+  const summary = { ok: failedSteps.length === 0, dryRun, ms: Date.now() - startedAt, ...steps };
+  if (failedSteps.length) summary.failedSteps = failedSteps;
+  console.log('[tick]', JSON.stringify(summary));
+  return summary;
+}
+
+/**
+ * automationTick — the real clock.
+ *
+ * This project spent its life driving the tick from a GitHub Actions workflow
+ * because the deploy service account was believed to be locked out of Cloud
+ * Scheduler. The evidence only ever showed one missing permission —
+ * `cloudscheduler.jobs.delete`, which blocks *removing* the two stranded jobs
+ * (see scripts/deploy-functions.sh). Creating one was never actually tried.
+ *
+ * If this function deploys, it is strictly better than the workflow: an exact
+ * fifteen-minute cadence instead of GitHub's real-world one-to-two hours, no
+ * shared secret to configure, and no dependency on Actions running at all.
+ * If the deploy 403s on `cloudscheduler.jobs.create`, the HTTP endpoint below
+ * is untouched and the workflow remains the fallback.
+ */
+exports.automationTick = onSchedule(
+  { schedule: 'every 15 minutes', timeoutSeconds: 300, secrets: [sendgridKey] },
+  async () => { await runTick(admin.firestore()); }
+);
+
 /**
  * runAutomationTick — POST with header `X-Tick-Secret: $CRM_TICK_SECRET`.
- * Driven by .github/workflows/crm-tick.yml. Returns a summary for the log.
+ *
+ * The manual and fallback path, driven by .github/workflows/crm-tick.yml.
+ * Kept alongside the scheduled function above because it is the only way to
+ * run a tick on demand, and the only way to run one as a dry run.
+ *
+ * `?dryRun=1` reports what a tick would do and writes nothing.
  */
 exports.runAutomationTick = onRequest({ cors: false, invoker: 'public', secrets: [sendgridKey], timeoutSeconds: 300 }, async (req, res) => {
   const expected = (process.env.CRM_TICK_SECRET || '').trim();
   const given = (req.get('X-Tick-Secret') || '').trim();
   if (!expected) { res.status(503).json({ ok: false, error: 'CRM_TICK_SECRET is not set' }); return; }
-  if (req.method !== 'POST' || !given || given.length !== expected.length || given !== expected) {
+  if (req.method !== 'POST' || !given || !timingSafeEqualStr(given, expected)) {
     res.status(403).json({ ok: false, error: 'forbidden' });
     return;
   }
-  const db = admin.firestore();
-  const startedAt = Date.now();
-  const [sequences, watches, reminders, launches] = await Promise.all([
-    processDueEnrollments(db, {}),
-    renewAllGoogleWatches(db),
-    sendReminders(db),
-    promoteLaunchedItems(db).catch((e) => { console.warn('[tick] promoteLaunchedItems', e && e.message); return { error: true }; })
-  ]);
-  const summary = { ok: true, ms: Date.now() - startedAt, sequences, watches, reminders, launches };
-  console.log('[tick]', JSON.stringify(summary));
-  res.status(200).json(summary);
+  const dryRun = req.query.dryRun === '1' || req.query.dryRun === 'true';
+  const summary = await runTick(admin.firestore(), { dryRun });
+  res.status(summary.ok ? 200 : 500).json(summary);
 });
 
 /** The same sequence work for one company, from the CRM UI. */
@@ -8479,7 +8561,7 @@ exports.notifyProductInterest = onCall({ secrets: [sendgridKey] }, async (reques
 // than with a range query that would need a composite index per collection.
 // ────────────────────────────────────────────────────────────────
 
-async function promoteLaunchedItems(db) {
+async function promoteLaunchedItems(db, { dryRun = false } = {}) {
   const now = admin.firestore.Timestamp.now();
   const due = (snap) => snap.docs.filter((d) => {
     const ld = d.data().launchDate;
@@ -8497,16 +8579,24 @@ async function promoteLaunchedItems(db) {
     launchedBy: 'auto'
   };
   const flipped = { courses: [], products: [] };
+
+  // dryRun reports what would flip and writes nothing. A status flip here is
+  // what fires the launch emails, and those cannot be unsent, so there has to
+  // be a way to see the blast radius before causing it.
   for (const d of due(courses)) {
-    await d.ref.set({ ...patch, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: 'launch-tick' }, { merge: true });
+    if (!dryRun) await d.ref.set({ ...patch, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: 'launch-tick' }, { merge: true });
     flipped.courses.push(d.id);
   }
   for (const d of due(products)) {
-    await d.ref.set({ ...patch, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    if (!dryRun) await d.ref.set({ ...patch, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     flipped.products.push(d.id);
   }
-  if (flipped.courses.length || flipped.products.length) console.log('[launch-tick] promoted', JSON.stringify(flipped));
-  return { courses: flipped.courses.length, products: flipped.products.length };
+  if (flipped.courses.length || flipped.products.length) {
+    console.log(dryRun ? '[launch-tick] would promote' : '[launch-tick] promoted', JSON.stringify(flipped));
+  }
+  const out = { courses: flipped.courses.length, products: flipped.products.length };
+  if (dryRun) { out.dryRun = true; out.wouldPromote = flipped; }
+  return out;
 }
 
 // ════════════════════════════════════════════════════════════════

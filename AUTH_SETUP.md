@@ -267,25 +267,37 @@ every client including the owner.
 Push channels expire after 7 days. They are renewed from the calendar and
 settings pages, from every push, and from the automation tick below.
 
-### The automation tick (sequences, reminders, watch renewal)
+### The automation tick (sequences, reminders, watch renewal, launches)
 
-This project cannot deploy Cloud Scheduler jobs (the deploy service account
-lacks `roles/cloudscheduler.admin`; see `scripts/deploy-functions.sh`).
-Time-based work therefore runs from the `runAutomationTick` HTTP function,
-which `.github/workflows/crm-tick.yml` calls every 15 minutes.
+The tick sends due sequence steps (SMS, email, or a task), renews Google watch
+channels, sends the task/appointment reminder emails, and promotes any course
+or product whose launch date has arrived. "Run due steps now" on the Sequences
+page runs the sequence part for one company on demand.
+
+**The clock is `automationTick`**, an `onSchedule` function in
+`functions/index.js` running every 15 minutes. It needs no configuration.
+
+This was long believed impossible here, because the deploy service account was
+said to lack Cloud Scheduler access. The only permission ever actually shown
+missing is `cloudscheduler.jobs.delete`, which blocks *removing* the two
+stranded jobs (see `scripts/deploy-functions.sh`); creating one had never been
+tried. If a deploy ever fails with `cloudscheduler.jobs.create`, that
+assumption was right after all and the fallback below applies.
+
+**Fallback: `runAutomationTick`**, the HTTP endpoint that
+`.github/workflows/crm-tick.yml` calls. It is also how you run a tick on
+demand, and the only way to run one as a dry run.
 
 | Variable | Where it goes |
 |---|---|
-| `CRM_TICK_SECRET` | Any long random string. Set it on the functions runtime **and** as a GitHub Actions repository secret with the same name. The tick refuses requests without it. |
+| `CRM_TICK_SECRET` | Only needed for the HTTP endpoint. Set it **once**, as a GitHub Actions repository secret; `firebase-deploy-backend.yml` writes that same value into `functions/.env`. Because that file is rebuilt on every deploy, the runtime only picks it up on the **next backend deploy** — setting the secret without redeploying leaves the endpoint returning 503. Never set it by hand in the console; the next deploy overwrites it. |
 
-The tick sends due sequence steps (SMS, email, or a task), renews Google
-watch channels, and sends the task/appointment reminder emails that the two
-stranded `onSchedule` functions were written for. "Run due steps now" on the
-Sequences page runs the same work for one company on demand.
+Run a tick from the Actions tab → *CRM automation tick* → Run workflow. Tick
+the **dry run** box to see what it would send without sending anything.
 
-The proper fix remains the IAM grant: once `cloudscheduler.admin` is in
-place, export a scheduled function calling the same logic and delete the
-workflow.
+A note on cadence: the workflow's cron asks for every 15 minutes, but GitHub
+does not deliver that — observed gaps on this repo were closer to two hours.
+The scheduled function is what provides a real cadence.
 
 ### Voicemail drop
 
