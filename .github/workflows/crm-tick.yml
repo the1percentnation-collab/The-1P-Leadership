@@ -1,33 +1,27 @@
-# The CRM's clock — the manual and fallback one.
+# The CRM's clock.
 #
-# The primary clock is now the `automationTick` scheduled function in
-# functions/index.js. This project long assumed Cloud Scheduler was closed to
-# it, but the only permission ever shown to be missing is
-# `cloudscheduler.jobs.delete` (it blocks *removing* the two stranded jobs; see
-# scripts/deploy-functions.sh). Creating a job was never actually attempted.
+# Everything time-based in this project — sequence steps, Google Calendar watch
+# renewal, task and appointment reminders, launch-date promotion — runs from
+# the runAutomationTick function, and this workflow is what calls it.
 #
-# This workflow stays for two things the scheduled function cannot do:
-#   - running a tick on demand, right now, from the Actions tab;
-#   - running one as a DRY RUN first, to see what it would send before it
-#     sends anything.
+# A real scheduled function was tried and does not deploy here: backend run #90
+# failed with "Failed to upsert schedule function automationTick" while every
+# other function in the same deploy succeeded. The precise block is still
+# unknown (jobs.create, a disabled Cloud Scheduler API, or a missing App Engine
+# app); firebase-tools does not print the underlying HTTP error without
+# --debug. scripts/deploy-functions.sh has the IAM grant that is the real fix.
 #
-# It also remains the fallback if the scheduled function turns out to be
-# blocked. Its `schedule:` trigger is kept for that reason; once automationTick
-# is confirmed running, the schedule can be dropped and this becomes a purely
-# manual tool. Both clocks running at once is safe — processDueEnrollments
-# claims each enrollment in a transaction so two overlapping ticks cannot send
-# the same step twice.
-#
-# Fallback setup (only needed if automationTick did not deploy):
+# SETUP — this workflow does nothing until it is done:
 #   1. `openssl rand -hex 32`
 #   2. Add it as the repository secret CRM_TICK_SECRET.
-#   3. Re-run the backend deploy — firebase-deploy-backend.yml writes this same
+#   3. Re-run the backend deploy. firebase-deploy-backend.yml writes this same
 #      secret into functions/.env, and that file is rebuilt from scratch on
 #      every deploy, so the runtime only learns the value on the next one.
+#      Skipping this step leaves the endpoint returning 503.
 #
 # On cadence: the cron below asks for every 15 minutes. GitHub does not deliver
 # that. Observed gaps on this repo were closer to two hours (18:13, 20:47,
-# 22:45, 00:35). The scheduled function is what gives a real cadence.
+# 22:45, 00:35), so treat the tick as roughly hourly and never as punctual.
 name: CRM automation tick
 
 on:

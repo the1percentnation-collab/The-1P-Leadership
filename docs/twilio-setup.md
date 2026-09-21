@@ -187,10 +187,6 @@ one secret covers both sides — but that file is rebuilt from scratch on every
 deploy, so **re-run the backend deploy after setting it**. Until you do, the
 endpoint returns 503 because its runtime has no secret to compare against.
 
-Note this is only needed for the HTTP endpoint (`runAutomationTick`), which is
-the manual and fallback path. The real clock is the `automationTick` scheduled
-function, which needs no secret at all.
-
 If the tick is misconfigured the `CRM automation tick` workflow now **fails
 red** and says which of the two states it is in. It used to exit cleanly, and
 that is how it stayed dead for 41 consecutive green runs.

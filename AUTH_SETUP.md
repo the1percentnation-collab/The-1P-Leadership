@@ -274,19 +274,17 @@ channels, sends the task/appointment reminder emails, and promotes any course
 or product whose launch date has arrived. "Run due steps now" on the Sequences
 page runs the sequence part for one company on demand.
 
-**The clock is `automationTick`**, an `onSchedule` function in
-`functions/index.js` running every 15 minutes. It needs no configuration.
-
-This was long believed impossible here, because the deploy service account was
-said to lack Cloud Scheduler access. The only permission ever actually shown
-missing is `cloudscheduler.jobs.delete`, which blocks *removing* the two
-stranded jobs (see `scripts/deploy-functions.sh`); creating one had never been
-tried. If a deploy ever fails with `cloudscheduler.jobs.create`, that
-assumption was right after all and the fallback below applies.
-
-**Fallback: `runAutomationTick`**, the HTTP endpoint that
-`.github/workflows/crm-tick.yml` calls. It is also how you run a tick on
+**The clock is `.github/workflows/crm-tick.yml`**, which calls the
+`runAutomationTick` HTTP endpoint. That workflow is also how you run a tick on
 demand, and the only way to run one as a dry run.
+
+A scheduled `onSchedule` function was tried and does not work here: backend run
+#90 failed with "Failed to upsert schedule function automationTick in region
+us-central1" while every other function in the same deploy succeeded. So this
+project really is shut out of Cloud Scheduler, though the precise reason
+(`jobs.create`, a disabled API, or a missing App Engine app) is still unknown —
+firebase-tools does not surface the underlying HTTP error without `--debug`.
+`scripts/deploy-functions.sh` has the IAM grant that is the real fix.
 
 | Variable | Where it goes |
 |---|---|
