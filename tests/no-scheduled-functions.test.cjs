@@ -1,4 +1,4 @@
-// Keep Cloud Scheduler out of functions/index.js, and keep KNOWN_STRANDED honest.
+// Keep Cloud Scheduler out of functions/index.js, and keep the deploy strict.
 //
 // This exists because of a real failure that cost two red deploys and a third
 // permanently undeletable function.
@@ -16,9 +16,11 @@
 // work belongs in runAutomationTick, the HTTP function .github/workflows/
 // crm-tick.yml calls — see the banner in functions/index.js.
 //
-// The KNOWN_STRANDED check is the other half. That list makes the deploy
-// tolerate a named function's failure, so a name that is actually live would
-// silently mask a real outage. Nothing audited it before; now the build does.
+// The third check is the other half. Until September 2026 the deploy script
+// carried a list of function names whose failures it swallowed, added to
+// three times as orphans accumulated. The orphans are gone and the list with
+// them; this keeps it that way, so a future red deploy is fixed rather than
+// muted.
 //
 // Run: node tests/no-scheduled-functions.test.cjs
 const fs = require('fs');
@@ -62,33 +64,21 @@ ok('no onSchedule() call survives outside a comment', () => {
   }
 });
 
-// Both this and the deploy script read the same line, so the two cannot drift.
-const stranded = (() => {
-  const m = /^KNOWN_STRANDED="([^"]*)"/m.exec(deploySh);
-  assert.ok(m, 'KNOWN_STRANDED not found in scripts/deploy-functions.sh');
-  return m[1].split(/\s+/).filter(Boolean);
-})();
-
-ok('KNOWN_STRANDED names only functions absent from source', () => {
-  // A name here stops the deploy reporting that function's failure. That is
-  // only ever correct for something CI cannot delete — never for a function
-  // that is supposed to be running.
-  const live = stranded.filter((name) =>
-    new RegExp(`^exports\\.${name}\\s*=`, 'm').test(code));
-  assert.deepStrictEqual(live, [],
-    `KNOWN_STRANDED lists ${live.join(', ')}, which functions/index.js still exports. `
-    + 'The deploy would stop reporting a live function\'s failures. Remove the name from the list.');
-});
-
-ok('KNOWN_STRANDED stays small and deliberate', () => {
-  // Not style. Every entry is a function whose deploy failure goes unreported,
-  // and each one also costs a pointless delete attempt on every single run.
-  // Growth means the orphans are being tolerated instead of cleared; the
-  // script's own comment carries the functions:delete command that clears them.
-  assert.ok(stranded.length <= 3,
-    `KNOWN_STRANDED has grown to ${stranded.length} entries (${stranded.join(', ')}). `
-    + 'Clear the orphans with the functions:delete command in scripts/deploy-functions.sh '
-    + 'rather than adding another name.');
+ok('the deploy script tolerates no function failure', () => {
+  // scripts/deploy-functions.sh used to carry KNOWN_STRANDED: a list of
+  // function names whose deploy failures it exited 0 on. It existed for real
+  // reasons — three orphaned scheduled functions CI could not delete, and a
+  // permanently red pipeline reports nothing — but it grew from two names to
+  // three, and a list nobody audits is a list that eventually hides a genuine
+  // outage. The orphans were deleted in September 2026 and the list removed.
+  //
+  // Reintroducing one is a deliberate decision, not a quick fix for a red
+  // build, so it should require deleting this check first.
+  const hit = /^\s*KNOWN_STRANDED\s*=/m.exec(deploySh);
+  assert.ok(!hit, 'scripts/deploy-functions.sh has a KNOWN_STRANDED list again. '
+    + 'That makes the named functions\' deploy failures exit 0. If a function is '
+    + 'genuinely undeletable, delete it in GCP instead — see the history note in '
+    + 'that script.');
 });
 
 console.log(`\n${passed} checks passed.`);

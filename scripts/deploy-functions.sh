@@ -1,110 +1,48 @@
 #!/usr/bin/env bash
 #
-# Deploys the "default" Cloud Functions codebase, and distinguishes a real
-# deploy failure from the one stale condition this project is stuck in.
+# Deploys the "default" Cloud Functions codebase, and says which kind of
+# failure happened when one does.
 #
-# THE SITUATION
-# -------------
-# taskReminders and appointmentReminders are deployed in the project but are
-# no longer exported from functions/index.js — they were un-exported because
-# the CI service account lacks the Cloud Scheduler Admin role. The reminder
-# work itself is alive and well: sendReminders() runs it from the automation
-# tick (see functions/index.js and .github/workflows/crm-tick.yml), and the
-# once-only `remindedAt` stamp means the stranded deployed copies and the tick
-# cannot double-send even while both exist.
+# WHY A WRAPPER AT ALL
+# --------------------
+# `firebase deploy` exits 1 for two very different situations, and the fix for
+# each is nothing like the fix for the other:
 #
-# automationTick makes three. It is the same trap sprung freshly: exported as a
-# real scheduled function in September 2026 on the theory that only DELETE had
-# ever been blocked, it was created before its schedule failed to attach, so
-# un-exporting it turned it into another orphan (backend runs #90 and #91).
+#   - It died before deploying anything — bad credentials, billing off, a
+#     syntax error in functions/. Nothing shipped.
+#   - It deployed, and specific named functions failed. Everything else DID
+#     ship, so the blast radius is those names and no more.
 #
-# That leaves one problem. Firebase sees three functions that exist in the
-# project but not in source, tries to delete them, and the very same missing
-# permission rejects the delete. So every deploy since 2026-06-14 has exited
-# non-zero AFTER successfully deploying every real function. A pipeline that is
-# always red reports nothing: a genuine failure looks exactly like the last
-# three months of noise.
+# This reads the CLI's own end-of-run summary to tell them apart and prints the
+# matching ::error::, because a deploy log is read by someone who needs to know
+# whether production is half-updated.
 #
-# WHAT THIS DOES
-# --------------
-# Runs the same deploy, then reads the CLI's own end-of-run summary. If the
-# only functions that errored are the known stranded ones, it says so and
-# exits clean. Anything else — including a further function getting stranded
-# the same way — still fails the build.
+# HISTORY (do not re-learn this the hard way)
+# -------------------------------------------
+# Between June and September 2026 this script also carried a tolerance list.
+# Three scheduled functions — appointmentReminders, taskReminders and
+# automationTick — had been removed from source while their Cloud Scheduler
+# jobs stayed behind in the project. Firebase saw functions that existed in
+# GCP but not in the code, tried to delete them on every run, and this
+# project's deploy service account lacks cloudscheduler.jobs.delete, so the
+# delete was refused and the deploy exited non-zero after successfully
+# shipping every real function. Every backend deploy from 2026-06-14 onward
+# was red for that reason alone, which is its own kind of outage: a pipeline
+# that is always red reports nothing.
 #
-# THE REAL FIX
-# ------------
-# The orphans have to go. Two routes get there, and this script used to name
-# only the second, which made it look like the sole option.
+# The list made those three names non-fatal. All three were deleted from GCP
+# in September 2026 and the list went with them, so this script is strict
+# again — any function the CLI names now fails the build.
 #
-# 1. DELETE THEM DIRECTLY. Runnable by anyone with Cloud Scheduler rights on
-#    the project — the human owner has them even though the CI service account
-#    does not. One command per function, and it removes the Cloud Function, its
-#    Cloud Scheduler job and its Pub/Sub topic together:
-#
-#      npx firebase-tools functions:delete <name> \
-#        --region us-central1 --project the-1p-leadership --force
-#
-#    Nothing about CI's permissions changes. Prefer this when the orphans are
-#    all you want gone.
-#
-# 2. GRANT CI THE PERMISSION, and let the next deploy clean up by itself:
-#
-#      gcloud projects add-iam-policy-binding the-1p-leadership \
-#        --member="serviceAccount:<the CI deploy service account>" \
-#        --role="roles/cloudscheduler.admin"
-#
-#    Costs the deploy service account a permanent role it otherwise never
-#    needs. Worth it only if a real scheduled function is wanted later — that
-#    same grant is what has been blocking one, and .github/workflows/
-#    crm-tick.yml exists because it is missing.
-#
-# Either way: confirm in the next deploy log that all three were deleted, and
-# only THEN empty KNOWN_STRANDED below and drop the ::warning:: at the end of
-# this script. In that order — emptying the list first just turns every deploy
-# red again, because the delete still fails.
-#
-# Until then the two reminder functions keep running the code they were last
-# deployed with, which is not the code in this repo. Harmless today only
-# because `remindedAt` dedupes them against the tick. (automationTick is inert:
-# its schedule was never created, so nothing triggers it.)
-#
-# (The unexported onSchedule twins that used to sit in functions/index.js as
-# the "real" version were deleted in September 2026. They were dead code whose
-# comment claimed reminders were switched off, so every reader concluded the
-# feature was broken when it was running fine from the tick. Re-enabling means
-# exporting a scheduled function afresh, not restoring them — and
-# tests/no-scheduled-functions.test.cjs now fails the build if anyone tries
-# before the permission above is in place.)
+# The trap that created them is still open: this project can create a
+# scheduled function but not its Cloud Scheduler job, and then cannot delete
+# either, so exporting one is a one-way door and un-exporting it does not
+# undo it. tests/no-scheduled-functions.test.cjs fails the build if anyone
+# adds one, and .github/workflows/firebase-deploy-backend.yml runs that test
+# before this script. Leave both in place. Time-based work belongs in
+# runAutomationTick, the HTTP function .github/workflows/crm-tick.yml calls.
 
 set -uo pipefail
-
-# Deployed-but-unexported functions we knowingly cannot clean up yet. Keep this
-# list minimal: every name here is a function whose failure we stop reporting.
-# Empty it once the IAM grant above has let a deploy delete them.
-#
-# This list is for artifacts CI cannot DELETE. It is not, and must not become,
-# a way to make a function that is supposed to work stop reporting that it
-# does not. The two original entries are scheduled functions that were removed
-# from source while their Cloud Scheduler jobs stayed behind.
-#
-# automationTick is the same thing, and is here because of a failed
-# experiment rather than an old one. In September 2026 a real scheduled tick
-# was attempted on the theory that this project was only ever blocked on
-# cloudscheduler.jobs.DELETE and had never tried CREATE. Backend run #90
-# disproved it: "Failed to upsert schedule function automationTick". The
-# function itself had already been created by then, so removing the export in
-# run #91 turned it into a third undeletable job and kept main red.
-#
-# It can be cleared by hand by anyone with Cloud Scheduler rights on the
-# project — the human owner has them even though the CI service account does
-# not:
-#
-#   npx firebase-tools functions:delete automationTick \
-#     --region us-central1 --project the-1p-leadership --force
-#
-# Do that and drop it from this list. The same command clears the other two.
-KNOWN_STRANDED="appointmentReminders taskReminders automationTick"
 
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
@@ -123,8 +61,8 @@ fi
 # The CLI ends a partially-failed run with:
 #
 #   Functions deploy had errors with the following functions:
-#   <tab>appointmentReminders(us-central1)
-#   <tab>taskReminders(us-central1)
+#   <tab>someFunction(us-central1)
+#   <tab>anotherFunction(us-central1)
 #
 # Collect those names, stopping at the first line that isn't one (the block is
 # followed directly by "Function URL (...)" lines, with no blank line between).
@@ -151,15 +89,5 @@ if [ -z "$failed" ]; then
   exit 1
 fi
 
-for name in $failed; do
-  case " $KNOWN_STRANDED " in
-    *" $name "*) ;;
-    *)
-      echo "::error::Cloud Functions deploy failed on ${failed}. Rules and indexes in the previous step DID deploy. If this mentions 'requires billing to be enabled' on secretmanager.googleapis.com, billing is off for the-1p-leadership — see AUTH_SETUP.md step 1."
-      exit 1
-      ;;
-  esac
-done
-
-echo "::warning::Every function deployed. Firebase could not clean up ${failed} — deployed-but-unexported scheduled functions the CI service account lacks cloudscheduler.jobs.delete permission to remove. To clear this for good, either delete them (npx firebase-tools functions:delete <name> --region us-central1 --project the-1p-leadership --force) or grant roles/cloudscheduler.admin to the deploy service account and let the next deploy do it. See scripts/deploy-functions.sh."
-exit 0
+echo "::error::Cloud Functions deploy failed on ${failed}. Rules and indexes in the previous step DID deploy, as did every function not named here. If this mentions 'requires billing to be enabled' on secretmanager.googleapis.com, billing is off for the-1p-leadership — see AUTH_SETUP.md step 1."
+exit 1
