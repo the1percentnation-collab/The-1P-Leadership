@@ -39,10 +39,11 @@ const EXAM_QUESTIONS = require('./clc-content/exam.js');
 // Preflight: `courses/1p-clc` must already BE the Life Coach before we seed.
 //
 // ORDER MATTERS, and getting it wrong is unrecoverable. Until
-// scripts/fix-clc-slugs.js has run, `courses/1p-clc` still holds the *Leader
-// Coach* (title "1P Certified Leader Coach", $497) together with its seven
-// lessons. Seeding here first would merge Life Coach modules 1-8 straight on
-// top of Leader Coach lessons 1-7 in the same subcollection, and the slug fix
+// scripts/fix-clc-slugs.js has run, `courses/1p-clc` still holds the *Executive
+// Leader* (live title still the legacy "1P Certified Leader Coach", $497)
+// together with its seven lessons. Seeding here first would merge Life Coach
+// modules 1-8 straight on top of Executive Leader lessons 1-7 in the same
+// subcollection, and the slug fix
 // would then copy that corrupted mix over to `1p-clc-leader`. Both programs
 // would be destroyed at once, silently, with no undo.
 //
@@ -56,13 +57,13 @@ async function assertSlugFixHasRun() {
   const d = snap.data() || {};
   if (/leader/i.test(String(d.title || '')) || d.price === 497) {
     throw new Error(
-      `Refusing to seed: courses/${SLUG} still holds the Leader Coach ` +
+      `Refusing to seed: courses/${SLUG} still holds the Executive Leader ` +
       `(title="${d.title}", price=${d.price}).\n\n` +
       `Run the slug fix FIRST, then re-run this script:\n` +
       `    node fix-clc-slugs.js            # dry run, writes nothing\n` +
       `    node fix-clc-slugs.js --apply    # commits it\n\n` +
       `See docs/launch-runbook.md step 1. Seeding before that fix would merge ` +
-      `Life Coach modules into the Leader Coach lessons and lose both programs.`
+      `Life Coach modules into the Executive Leader lessons and lose both programs.`
     );
   }
 

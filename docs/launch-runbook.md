@@ -7,7 +7,7 @@ The order matters. Each step assumes the ones above it are done.
 | Product | Content | Sellable today | Blocker |
 |---|---|---|---|
 | The Complete I Can't Experience ($197) | ✅ 11 modules | ❌ | Stripe + flip live |
-| 1P Certified Leader Coach ($497) | ✅ 7 modules | ❌ | slug fix + Stripe + flip live |
+| 1P Certified Executive Leader ($497) | ✅ 7 modules | ❌ | slug fix + Stripe + flip live |
 | I Can't: The Course | ✅ 11 modules | n/a | sold only inside the bundle |
 | 1P Certified Life Coach ($3,497) | ✅ 8 modules seeded + exam bank | ❌ | status is `coming-soon`; cohort dates + Stripe |
 | Mindset Foundations, Business Alignment, Faith & Leadership, Performance & Discipline | ❌ none | ❌ | copy only, no lessons |
@@ -16,9 +16,9 @@ The order matters. Each step assumes the ones above it are done.
 ## 1. Fix the CLC slug collision — ALREADY DONE
 
 **Verified against production on 2026-09-12. Nothing to do here.** Re-running
-the fix now aborts by design, with "does not look like the Leader Coach".
+the fix now aborts by design, with "does not look like the Executive Leader".
 
-`courses/1p-clc` is the Life Coach at $3,497. The Leader Coach lives at
+`courses/1p-clc` is the Life Coach at $3,497. The Executive Leader lives at
 `courses/1p-clc-leader` at $497, status live, with all seven lessons published.
 `silence-the-voice` is archived as inactive. That is the finished end state.
 
@@ -30,7 +30,7 @@ cd scripts && node inspect-clc.js
 
 The original problem this step solved is kept below for context only.
 
-`courses/1p-clc` used to hold the **Leader Coach** (7 lessons, $497) while the
+`courses/1p-clc` used to hold the **Executive Leader** (7 lessons, $497) while the
 code registry said that slug was the **$3,497 Life Coach**. Firestore overrides
 the registry, so the record was two programs at once.
 
@@ -146,7 +146,7 @@ Re-running the seed is safe and idempotent, but there is no reason to.
 The ordering rule below still applies to any fresh environment.
 
 Run it AFTER step 1, never before. Until the slug fix has run, `courses/1p-clc`
-still holds the Leader Coach and its seven lessons; seeding first would merge
+still holds the Executive Leader and its seven lessons; seeding first would merge
 Life Coach modules on top of them and the slug fix would then copy the
 corrupted mix to `1p-clc-leader`, destroying both programs with no undo. The
 script now refuses to run in that state and tells you to do step 1 first, so

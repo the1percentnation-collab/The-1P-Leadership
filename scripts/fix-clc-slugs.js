@@ -3,8 +3,9 @@
 // Untangle the CLC slug collision, and archive the superseded I Can't draft.
 //
 // THE PROBLEM
-// `courses/1p-clc` in production holds the **Leader Coach**: title "1P
-// Certified Leader Coach", price 497, contentSource firestore, and seven
+// `courses/1p-clc` in production holds the **Executive Leader**: its live title
+// is still the legacy "1P Certified Leader Coach" (renamed in the registry to
+// "1P Certified Executive Leader"), price 497, contentSource firestore, and seven
 // migrated lesson docs. But the code registry (public/js/courses-registry.js)
 // says `1p-clc` is the **1P Certified Life Coach** at $3,497, and Firestore
 // fields override the registry — so that one record is currently two different
@@ -13,19 +14,19 @@
 // Coach, does not exist at all.
 //
 // WHAT THIS DOES
-//   1. Copies the Leader Coach course doc and its lessons from `1p-clc` to
+//   1. Copies the Executive Leader course doc and its lessons from `1p-clc` to
 //      `1p-clc-leader` (plus the `private` subcollection if one exists).
 //   2. Verifies the copy landed before touching anything else.
 //   3. Repoints enrolled members, their lesson progress, and their purchase
 //      records at the new slug. (Supersedes migrate-clc-leader-slug.js, which
 //      only did the enrolledCourseSlugs half.)
 //   4. Resets `courses/1p-clc` to the Life Coach identity at $3,497 with no
-//      lessons, and deletes the Leader Coach lessons left behind on it.
+//      lessons, and deletes the Executive Leader lessons left behind on it.
 //   5. Archives `courses/silence-the-voice` (status → inactive): it is an
 //      earlier draft of the I Can't course, superseded by the rebuilt `icant`.
 //
 // PROGRESS NOTE
-// The Leader Coach used to render from code, so progress was stored as bare
+// The Executive Leader used to render from code, so progress was stored as bare
 // numeric ids (`users/{uid}/progress/3`) by store.js. Now that it renders from
 // Firestore, course-renderer.js reads `users/{uid}/progress/{slug}__m{id}`.
 // Step 3 rewrites those docs so nobody loses their place.
@@ -41,8 +42,8 @@
 const { initAdmin, assertCredentials } = require('./lib/init');
 const { admin, db, projectId } = initAdmin();
 
-const OLD = '1p-clc';           // currently holds the Leader Coach
-const NEW = '1p-clc-leader';    // where the Leader Coach belongs
+const OLD = '1p-clc';           // currently holds the Executive Leader
+const NEW = '1p-clc-leader';    // where the Executive Leader belongs
 const DRAFT = 'silence-the-voice';
 
 const APPLY = process.argv.includes('--apply');
@@ -106,20 +107,20 @@ async function deleteDocs(path, label) {
   return docs.length;
 }
 
-// ── Step 1 + 2: move the Leader Coach onto its own slug ──────────────────
+// ── Step 1 + 2: move the Executive Leader onto its own slug ──────────────────
 async function moveLeaderCoach() {
-  log('\n① Move the Leader Coach to its own slug');
+  log('\n① Move the Executive Leader to its own slug');
 
   const oldSnap = await db.collection('courses').doc(OLD).get();
   if (!oldSnap.exists) throw new Error(`courses/${OLD} does not exist. Nothing to move.`);
   const oldData = oldSnap.data();
 
-  // Guard: only proceed if that record really is the Leader Coach today.
+  // Guard: only proceed if that record really is the Executive Leader today.
   const looksLikeLeader = /leader/i.test(String(oldData.title || ''))
     || oldData.price === 497;
   if (!looksLikeLeader) {
     throw new Error(
-      `courses/${OLD} does not look like the Leader Coach (title="${oldData.title}", ` +
+      `courses/${OLD} does not look like the Executive Leader (title="${oldData.title}", ` +
       `price=${oldData.price}). It may already have been fixed. Aborting.`
     );
   }
@@ -139,7 +140,7 @@ async function moveLeaderCoach() {
     migratedFrom: OLD,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   };
-  delete leaderDoc.cohort; // Life Coach concept; the Leader Coach has no cohort.
+  delete leaderDoc.cohort; // Life Coach concept; the Executive Leader has no cohort.
 
   plan(`write courses/${NEW} ("${oldData.title}", $${oldData.price})`);
   if (APPLY) await db.collection('courses').doc(NEW).set(leaderDoc, { merge: true });
@@ -220,7 +221,7 @@ async function moveMembers() {
 // ── Step 4: reset 1p-clc to the Life Coach ───────────────────────────────
 async function resetLifeCoach() {
   log('\n③ Reset 1p-clc to the Life Coach');
-  await deleteDocs(`courses/${OLD}/modules`, 'Leader Coach lessons');
+  await deleteDocs(`courses/${OLD}/modules`, 'Executive Leader lessons');
   await deleteDocs(`courses/${OLD}/private`, 'private docs');
   plan(`overwrite courses/${OLD} → "${LIFE_COACH.title}" ($${LIFE_COACH.price}), status ${LIFE_COACH.status}, 0 lessons`);
   if (APPLY) {
@@ -264,14 +265,14 @@ async function main() {
   await archiveDraft();
 
   log('\n── Summary ───────────────────────────────────────────────');
-  log(`  Leader Coach lessons moved to ${NEW}: ${lessons}`);
+  log(`  Executive Leader lessons moved to ${NEW}: ${lessons}`);
   log(`  Members repointed: ${members}`);
   log(`  ${OLD} reset to the Life Coach at $${LIFE_COACH.price} (no lessons yet)`);
   log(`  ${DRAFT} archived`);
   if (!APPLY) {
     log('\n  Nothing was written. Re-run with --apply.');
   } else {
-    log('\n  Next: open /manage-courses.html and set 1P Certified Leader Coach');
+    log('\n  Next: open /manage-courses.html and set 1P Certified Executive Leader');
     log('  to live once Stripe is connected.');
   }
 }

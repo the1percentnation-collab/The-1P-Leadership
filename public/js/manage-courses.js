@@ -556,7 +556,7 @@ async function migrateIcantCore() {
   return wrote;
 }
 
-// Migrate the 1P Certified Leader Coach lessons (modules.js) into editable
+// Migrate the 1P Certified Executive Leader lessons (modules.js) into editable
 // module docs. Each lesson's rendered HTML becomes the lesson body — minus the
 // duplicated header, completion banners, and notes fields; the notes fields'
 // prompts become real Workbook prompts (members answer them in the Workbook
@@ -606,7 +606,7 @@ async function migrateClcCore() {
 
 const MIGRATABLE = {
   icant: { label: '"I Can’t: The Course"', run: migrateIcantCore },
-  '1p-clc-leader': { label: '"1P Certified Leader Coach"', run: migrateClcCore }
+  '1p-clc-leader': { label: '"1P Certified Executive Leader"', run: migrateClcCore }
 };
 
 // Banner-triggered migration from inside the builder: migrate, then reopen the

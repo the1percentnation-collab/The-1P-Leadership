@@ -1,4 +1,4 @@
-// 1P Certified Leader Coach — course adapter.
+// 1P Certified Executive Leader — course adapter.
 // Lesson content lives in modules.js; the workspace shell is the shared
 // Coursera-style player (course-player.js) so every course looks identical.
 // Exposed as `mount()` so courses-page.js can initialise it when active.

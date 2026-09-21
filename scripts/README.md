@@ -43,7 +43,7 @@ account key. Move them onto `lib/init.js` before running any of them.
 
 | Script | What it does | Run it? |
 |---|---|---|
-| `fix-clc-slugs.js` | Moves the Leader Coach off the `1p-clc` slug onto `1p-clc-leader` with its lessons, members and purchases; resets `1p-clc` to the Life Coach identity; archives the superseded `silence-the-voice` draft. | **Yes, once.** See below. |
+| `fix-clc-slugs.js` | Moves the Executive Leader off the `1p-clc` slug onto `1p-clc-leader` with its lessons, members and purchases; resets `1p-clc` to the Life Coach identity; archives the superseded `silence-the-voice` draft. | **Yes, once.** See below. |
 | `seed-clc.js` | Writes the 8 written modules, the 48-question exam bank, the FOUNDING coupon and certification config for the $3,497 Life Coach program. | **Yes, once — but only AFTER `fix-clc-slugs.js`.** It refuses to run before that and tells you so. |
 | `seed-booking.js` | Writes `config/booking` with the Zoom scheduler URL. | Optional. `/book-a-call.html` already works from a hardcoded fallback. |
 | `seed-resale-products.js` | Creates the A.L.I.G.N. client workbook, assessment and six-week program as draft products. | Not yet. They have no content or final pricing. |
@@ -60,7 +60,7 @@ node fix-clc-slugs.js --apply    # commits it
 ```
 
 Read the dry-run output first and confirm the project name at the top is
-`the-1p-leadership`. The apply pass copies the Leader Coach lessons and
+`the-1p-leadership`. The apply pass copies the Executive Leader lessons and
 verifies they landed before deleting the originals, so a failure partway
 through leaves the old data intact. Running it a second time aborts on an
 identity check rather than doing anything twice.
@@ -73,7 +73,7 @@ gcloud firestore export gs://the-1p-leadership.appspot.com/backups/$(date +%F)
 
 ## After it runs
 
-`courses/1p-clc-leader` holds the finished 7-module Leader Coach at $497, and
+`courses/1p-clc-leader` holds the finished 7-module Executive Leader at $497, and
 `courses/1p-clc` becomes the Life Coach at $3,497 with no lessons yet. Neither
 can be bought until Stripe is connected. See `docs/launch-runbook.md` for the
 rest of the sequence.

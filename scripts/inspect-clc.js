@@ -5,7 +5,7 @@
 //
 // Why this exists: fix-clc-slugs.js decides what to do from the `1p-clc`
 // record's title and price alone. That is the right test for "has the identity
-// been swapped", but it says nothing about whether the Leader Coach's lessons
+// been swapped", but it says nothing about whether the Executive Leader's lessons
 // were moved out first. Those are separate steps, and a record can be renamed
 // by hand without them. This prints both halves so the question is settled by
 // looking rather than assuming.
@@ -129,18 +129,18 @@ async function main() {
     console.log('courses/1p-clc does not exist. Nothing has been migrated.');
     console.log('NEXT: node seed-clc.js');
   } else if (!isLifeCoach) {
-    console.log('courses/1p-clc still holds the Leader Coach.');
+    console.log('courses/1p-clc still holds the Executive Leader.');
     console.log('NEXT: node fix-clc-slugs.js, then --apply, then seed-clc.js');
   } else if (main.lessons === 0) {
     console.log('courses/1p-clc is the Life Coach with no lessons. This is the');
     console.log('clean state the seed expects.');
     if (!leader.exists || leader.lessons === 0) {
       console.log('');
-      console.log('WARNING: 1p-clc-leader has no lessons. If the Leader Coach was');
+      console.log('WARNING: 1p-clc-leader has no lessons. If the Executive Leader was');
       console.log('ever live with seven lessons, they are not here and not under');
       console.log('1p-clc either. Check a Firestore backup before selling it.');
     } else {
-      console.log(`The Leader Coach is safe at 1p-clc-leader with ${leader.lessons} lesson(s).`);
+      console.log(`The Executive Leader is safe at 1p-clc-leader with ${leader.lessons} lesson(s).`);
     }
     console.log('NEXT: node seed-clc.js');
   } else {

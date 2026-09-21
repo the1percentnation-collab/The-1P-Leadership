@@ -160,8 +160,8 @@ export const COURSES = [
   },
   {
     slug: '1p-clc-leader',
-    title: '1P Certified Leader Coach',
-    short: 'Leader Coach',
+    title: '1P Certified Executive Leader',
+    short: 'Executive Leader',
     showOnSite: false,
     subtitle: 'Mindset, structure, and disciplined progress — one percent at a time.',
     status: 'coming-soon',
@@ -176,7 +176,7 @@ export const COURSES = [
       'Apply the I Can\'t framework to break the limiting beliefs that cap your leadership.',
       'Run coaching conversations with a repeatable session structure that creates real movement.',
       'Build accountability systems that produce follow-through instead of guilt.',
-      'Complete a live coaching practicum and earn your 1P Certified Leader Coach credential.'
+      'Complete a live coaching practicum and earn your 1P Certified Executive Leader credential.'
     ],
     requirements: METHOD_REQUIREMENTS,
     includes: [
@@ -185,7 +185,7 @@ export const COURSES = [
       'A rewirement practice after every module',
       'Live coaching practicum (capstone)',
       '21-day leadership challenge with tracking',
-      'Certificate: 1P Certified Leader Coach',
+      'Certificate: 1P Certified Executive Leader',
       'Lifetime access on desktop and mobile'
     ],
     description: [
