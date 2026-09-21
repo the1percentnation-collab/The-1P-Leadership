@@ -10,9 +10,10 @@
    block cannot invent a token.
 
    Page-specific values belong in a scoped override next to the
-   page's own styles, never as a second copy of this block. An
-   art-directed component (see .book-poster on index.html) may
-   declare its own scoped tokens, which is not the same thing.
+   page's own styles, never as a second copy of this block. A
+   component may declare its own scoped tokens when it genuinely
+   needs them, but it stays on this palette: there is no second
+   brand accent.
    ============================================================ */
 
 :root {
