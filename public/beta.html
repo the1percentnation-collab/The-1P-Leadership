@@ -29,9 +29,8 @@
       --red: #E60306; --red-dark: #B30205; --red-glow: rgba(230,3,6,0.12);
       --black: #080808; --black-2: #0F0F0F; --charcoal: #151515;
       --surface: #1A1A1A; --surface-2: #222222;
-      --border: rgba(255,255,255,0.08);
+      --border: rgba(255,255,255,0.08); --border-red: rgba(230,3,6,0.3);
       --white: #FFFFFF; --gray-400: #A0A0A0; --gray-600: #606060;
-      --gold: #C9A84C; --border-gold: rgba(201,168,76,0.35);
       --font-display: 'Bebas Neue', Impact, sans-serif;
       --font-body: 'Outfit', system-ui, sans-serif;
       --font-mono: 'Space Mono', monospace;
@@ -84,10 +83,10 @@
       display: inline-flex; align-items: center; gap: 6px;
       font-family: var(--font-mono); font-size: 10px; font-weight: 700;
       letter-spacing: 0.2em; text-transform: uppercase;
-      color: var(--gold); border: 1px solid var(--border-gold);
+      color: var(--red); border: 1px solid var(--border-red);
       padding: 5px 12px; border-radius: 2px;
     }
-    .tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--gold); }
+    .tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--red); }
 
     /* PAGE */
     main { position: relative; z-index: 1; flex: 1; padding: calc(var(--nav-h) + 60px) 32px 80px; }
