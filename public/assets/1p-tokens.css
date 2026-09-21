@@ -1,0 +1,34 @@
+/* ============================================================
+   THE ONE PERCENT NATION — DESIGN TOKENS
+   The single source of truth for brand color, type and metrics.
+
+   Every marketing page links this file instead of declaring its
+   own :root block. That is deliberate: when each page owned a
+   copy of the palette, one of them quietly introduced a --gold
+   that existed nowhere in the brand, and it spread to five more
+   pages before anyone noticed. A page that does not own a token
+   block cannot invent a token.
+
+   Page-specific values belong in a scoped override next to the
+   page's own styles, never as a second copy of this block. An
+   art-directed component (see .book-poster on index.html) may
+   declare its own scoped tokens, which is not the same thing.
+   ============================================================ */
+
+:root {
+  --red: #E60306; --red-dark: #B30205; --red-glow: rgba(230,3,6,0.12);
+  --black: #080808; --black-2: #0F0F0F; --charcoal: #151515;
+  --surface: #1A1A1A; --surface-2: #222222;
+  --border: rgba(255,255,255,0.08); --border-red: rgba(230,3,6,0.3);
+  --white: #FFFFFF; --gray-400: #A0A0A0; --gray-600: #606060;
+  --green: #1DB954; --amber: #E6A503;
+  --font-display: 'Bebas Neue', Impact, sans-serif;
+  --font-body: 'Outfit', system-ui, sans-serif;
+  --font-mono: 'Space Mono', monospace;
+
+  /* Nav bar height. The bar, the clearance every consuming page puts
+     above its first block, and the anchor scroll offset all derive
+     from this one value. */
+  --nav-h: 68px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}

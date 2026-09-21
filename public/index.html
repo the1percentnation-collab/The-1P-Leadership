@@ -25,32 +25,18 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 
+  <link rel="stylesheet" href="assets/1p-tokens.css">
   <style>
     /* ============================================================
        DESIGN TOKENS
     ============================================================ */
+    /* Page-scoped overrides of the shared tokens. The homepage runs a
+       taller nav and a slightly hotter red glow than the rest of the
+       marketing pages, and owns two easing/paper tokens nothing else uses. */
     :root {
-      --red: #E60306;
-      --red-dark: #B30205;
-      --red-glow: rgba(230, 3, 6, 0.15);
-      --black: #080808;
-      --black-2: #0F0F0F;
-      --charcoal: #151515;
-      --surface: #1A1A1A;
-      --surface-2: #222222;
-      --border: rgba(255,255,255,0.08);
-      --border-red: rgba(230,3,6,0.3);
-      --white: #FFFFFF;
-      --off-white: #F0EEE8;
-      --gray-400: #A0A0A0;
-      --gray-600: #606060;
-
-      --font-display: 'Bebas Neue', Impact, sans-serif;
-      --font-body: 'Outfit', system-ui, sans-serif;
-      --font-mono: 'Space Mono', monospace;
-
       --nav-h: 76px;
-      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --red-glow: rgba(230, 3, 6, 0.15);
+      --off-white: #F0EEE8;
       --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
     }
 

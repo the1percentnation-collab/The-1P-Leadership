@@ -1,3 +1,5 @@
+@import url('1p-tokens.css');
+
 /* ============================================================
    THE ONE PERCENT NATION — SHARED DESIGN SYSTEM
    Extracted from webinar.html so class pages, the generic
@@ -5,23 +7,6 @@
    to the rest of the site without duplicating 400 lines of CSS.
    ============================================================ */
 
-:root {
-  --red: #E60306; --red-dark: #B30205; --red-glow: rgba(230,3,6,0.12);
-  --black: #080808; --black-2: #0F0F0F; --charcoal: #151515;
-  --surface: #1A1A1A; --surface-2: #222222;
-  --border: rgba(255,255,255,0.08); --border-red: rgba(230,3,6,0.3);
-  --white: #FFFFFF; --gray-400: #A0A0A0; --gray-600: #606060;
-  --green: #1DB954; --amber: #E6A503;
-  --font-display: 'Bebas Neue', Impact, sans-serif;
-  --font-body: 'Outfit', system-ui, sans-serif;
-  --font-mono: 'Space Mono', monospace;
-
-  /* Nav bar height. The bar, the clearance every consuming page puts
-     above its first block, and the anchor scroll offset all derive
-     from this one value. */
-  --nav-h: 68px;
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
