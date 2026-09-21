@@ -23,7 +23,6 @@
       --surface: #1A1A1A; --surface-2: #222222;
       --border: rgba(255,255,255,0.08); --border-red: rgba(230,3,6,0.3);
       --white: #FFFFFF; --gray-400: #A0A0A0; --gray-600: #606060;
-      --gold: #C9A84C; --gold-glow: rgba(201,168,76,0.12); --border-gold: rgba(201,168,76,0.35);
       --font-display: 'Bebas Neue', Impact, sans-serif;
       --font-body: 'Outfit', system-ui, sans-serif;
       --font-mono: 'Space Mono', monospace;
@@ -69,10 +68,10 @@
       display: inline-flex; align-items: center; gap: 6px;
       font-family: var(--font-mono); font-size: 10px; font-weight: 700;
       letter-spacing: 0.2em; text-transform: uppercase;
-      color: var(--gold); border: 1px solid var(--border-gold);
+      color: var(--red); border: 1px solid var(--border-red);
       padding: 5px 12px; border-radius: 2px;
     }
-    .tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--gold); }
+    .tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--red); }
 
     /* HERO */
     .hero-grid {
@@ -93,25 +92,25 @@
       letter-spacing: 0.02em; line-height: 0.92; color: var(--white); margin-bottom: 24px;
     }
     .hero-title .red { color: var(--red); }
-    .hero-title .gold { color: var(--gold); }
+    .hero-title .accent { color: var(--red); }
     .hero-title .outline { -webkit-text-stroke: 1px rgba(255,255,255,0.22); color: transparent; }
     .hero-sub { font-size: 18px; font-weight: 300; color: var(--gray-400); line-height: 1.7; max-width: 580px; margin-bottom: 32px; }
     .hero-hook {
       display: inline-flex; align-items: center; gap: 24px;
       padding: 16px 24px; border-radius: 8px;
-      background: var(--gold-glow); border: 1px solid var(--border-gold);
+      background: var(--red-glow); border: 1px solid var(--border-red);
     }
-    .hero-hook-text { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); }
+    .hero-hook-text { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--red); }
     .hero-hook-price { font-family: var(--font-display); font-size: 32px; letter-spacing: 0.04em; color: var(--white); }
     .hero-hook-orig { font-size: 12px; color: var(--gray-600); text-decoration: line-through; }
 
     /* URGENCY BAR */
     .urgency-bar {
-      background: linear-gradient(90deg, #1a0e00, #0f0800, #1a0e00);
-      border-top: 1px solid var(--border-gold); border-bottom: 1px solid var(--border-gold);
+      background: linear-gradient(90deg, #1a0000, #0f0000, #1a0000);
+      border-top: 1px solid var(--border-red); border-bottom: 1px solid var(--border-red);
       padding: 14px 32px; text-align: center;
       font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.16em;
-      text-transform: uppercase; color: var(--gold);
+      text-transform: uppercase; color: var(--red);
       position: relative; z-index: 1;
     }
     .urgency-bar strong { color: var(--white); }
@@ -143,18 +142,18 @@
     }
     .value-row:last-child { border-bottom: none; }
     .value-row.total {
-      background: var(--gold-glow); border-top: 1px solid var(--border-gold);
+      background: var(--red-glow); border-top: 1px solid var(--border-red);
     }
     .value-label { font-size: 14px; font-weight: 500; color: var(--white); }
     .value-sub { font-size: 11px; color: var(--gray-600); margin-top: 2px; }
     .value-price { font-family: var(--font-display); font-size: 22px; letter-spacing: 0.04em; }
     .value-price.strike { text-decoration: line-through; color: var(--gray-600); font-size: 18px; }
-    .value-row.total .value-label { font-family: var(--font-display); font-size: 18px; letter-spacing: 0.06em; color: var(--gold); }
-    .value-row.total .value-price { color: var(--gold); font-size: 28px; }
+    .value-row.total .value-label { font-family: var(--font-display); font-size: 18px; letter-spacing: 0.06em; color: var(--red); }
+    .value-row.total .value-price { color: var(--red); font-size: 28px; }
     .value-savings {
       margin-top: 12px; display: flex; align-items: center; gap: 8px;
       font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em;
-      text-transform: uppercase; color: var(--gold);
+      text-transform: uppercase; color: var(--red);
     }
     .value-savings::before { content: '✓'; font-family: var(--font-body); font-weight: 700; }
 
@@ -235,25 +234,25 @@
 
     /* OFFER PANEL (RIGHT COLUMN) */
     .offer-panel {
-      background: var(--charcoal); border: 1px solid var(--border-gold);
+      background: var(--charcoal); border: 1px solid var(--border-red);
       border-radius: 16px; overflow: hidden; position: sticky; top: 88px;
     }
     .offer-panel-header {
       padding: 28px 28px 24px;
       border-bottom: 1px solid var(--border);
-      background: linear-gradient(135deg, #120c00, #1a0e00);
+      background: linear-gradient(135deg, #120000, #1a0000);
       position: relative;
     }
     .offer-panel-header::before {
       content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      background: linear-gradient(90deg, transparent, var(--red), transparent);
     }
     .offer-badge {
       display: inline-flex; align-items: center; gap: 6px;
-      background: var(--gold-glow); border: 1px solid var(--border-gold);
+      background: var(--red-glow); border: 1px solid var(--border-red);
       border-radius: 3px; padding: 4px 10px; margin-bottom: 14px;
       font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase;
-      color: var(--gold);
+      color: var(--red);
     }
     .offer-badge::before { content: '★'; font-style: normal; }
     .offer-title {
@@ -270,20 +269,20 @@
     .offer-line-label { font-size: 13px; color: var(--gray-400); }
     .offer-line-label strong { color: var(--white); font-weight: 500; }
     .offer-line-price { font-family: var(--font-mono); font-size: 13px; color: var(--gray-600); }
-    .offer-line.savings .offer-line-label { color: var(--gold); font-weight: 500; }
-    .offer-line.savings .offer-line-price { color: var(--gold); }
+    .offer-line.savings .offer-line-label { color: var(--red); font-weight: 500; }
+    .offer-line.savings .offer-line-price { color: var(--red); }
 
-    .offer-total { padding: 20px 28px; background: linear-gradient(135deg, #120c00, #0f0800); border-bottom: 1px solid var(--border-gold); }
+    .offer-total { padding: 20px 28px; background: linear-gradient(135deg, #120000, #0f0000); border-bottom: 1px solid var(--border-red); }
     .offer-total-row { display: flex; align-items: flex-end; justify-content: space-between; }
     .offer-total-label {
       font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
-      color: var(--gold); margin-bottom: 4px;
+      color: var(--red); margin-bottom: 4px;
     }
     .offer-total-note { font-size: 11px; color: var(--gray-600); }
     .offer-price {
       font-family: var(--font-display); font-size: 54px; letter-spacing: 0.02em; color: var(--white); line-height: 1;
     }
-    .offer-price-note { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); margin-top: 4px; text-align: right; }
+    .offer-price-note { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--red); margin-top: 4px; text-align: right; }
 
     .offer-cta { padding: 24px 28px; display: flex; flex-direction: column; gap: 14px; }
     .btn-enroll {
@@ -318,15 +317,15 @@
     /* BOTTOM CTA STRIP */
     .bottom-cta {
       margin-top: 80px; padding: 80px 32px;
-      background: linear-gradient(135deg, #0f0800, #080808, #0f0800);
-      border-top: 1px solid var(--border-gold); border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, #0f0000, #080808, #0f0000);
+      border-top: 1px solid var(--border-red); border-bottom: 1px solid var(--border);
       text-align: center; position: relative; z-index: 1;
     }
     .bottom-cta h2 {
       font-family: var(--font-display); font-size: clamp(40px, 5vw, 72px);
       letter-spacing: 0.02em; line-height: 0.95; margin-bottom: 20px;
     }
-    .bottom-cta h2 .gold { color: var(--gold); }
+    .bottom-cta h2 .accent { color: var(--red); }
     .bottom-cta p { font-size: 16px; font-weight: 300; color: var(--gray-400); max-width: 520px; margin: 0 auto 32px; line-height: 1.7; }
     .bottom-cta-btns { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
     .btn-primary-lg {
@@ -401,15 +400,15 @@
       <div class="hero-hook-text">Bundle Value</div>
       <div class="hero-hook-orig">$211.99</div>
     </div>
-    <div style="width:1px;height:40px;background:var(--border-gold);"></div>
+    <div style="width:1px;height:40px;background:var(--border-red);"></div>
     <div>
       <div class="hero-hook-text">You Pay</div>
       <div class="hero-hook-price">$197</div>
     </div>
-    <div style="width:1px;height:40px;background:var(--border-gold);"></div>
+    <div style="width:1px;height:40px;background:var(--border-red);"></div>
     <div>
       <div class="hero-hook-text">You Save</div>
-      <div class="hero-hook-price" style="color:var(--gold);">$14.99</div>
+      <div class="hero-hook-price" style="color:var(--red);">$14.99</div>
     </div>
   </div>
 </div>
@@ -451,7 +450,7 @@
         </div>
         <div>
           <div class="value-price strike">$211.99</div>
-          <div class="value-price" style="color:var(--gold);">$197</div>
+          <div class="value-price" style="color:var(--red);">$197</div>
         </div>
       </div>
     </div>
@@ -649,7 +648,7 @@
         </div>
         <div class="offer-line savings">
           <div class="offer-line-label">✓ &nbsp;Book included FREE</div>
-          <div class="offer-line-price" style="color:var(--gold);">−$14.99</div>
+          <div class="offer-line-price" style="color:var(--red);">−$14.99</div>
         </div>
       </div>
 
@@ -670,8 +669,8 @@
       <div class="offer-cta">
         <!-- Swapped for a live Enroll button by js/bundle-page.js once the bundle is live. -->
         <div id="bundle-cta">
-          <div style="background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.3);border-radius:8px;padding:16px 20px;text-align:center;">
-            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:var(--gold);margin-bottom:6px;">Coming Soon</div>
+          <div style="background:var(--red-glow);border:1px solid var(--border-red);border-radius:8px;padding:16px 20px;text-align:center;">
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:var(--red);margin-bottom:6px;">Coming Soon</div>
             <div style="font-size:13px;color:var(--gray-400);line-height:1.5;">Secure checkout is being set up. Enrollment opens shortly — check back soon.</div>
           </div>
         </div>
@@ -701,7 +700,7 @@
 
 <!-- BOTTOM CTA -->
 <div class="bottom-cta">
-  <h2>Ready to Break <span class="gold">Every Belief</span><br>That's Held You Back?</h2>
+  <h2>Ready to Break <span class="accent">Every Belief</span><br>That's Held You Back?</h2>
   <p>Stop reading about change. Start building it. The complete I Can't experience — one price, lifetime access, zero excuses.</p>
   <div class="bottom-cta-btns">
     <span class="btn-primary-lg" id="bundle-cta-bottom" style="opacity:0.5;cursor:not-allowed;">Enrollment Coming Soon</span>
