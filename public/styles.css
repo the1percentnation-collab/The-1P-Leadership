@@ -11690,17 +11690,124 @@ a.cp-crumb:hover { color: var(--white); }
 .ak-collapse:hover { color: var(--white); border-color: var(--border-red); }
 
 /* ── Compact rail ──
-   Icons only. The labels stay in the DOM for screen readers and become the
-   hover title; the rail keeps its hit targets rather than shrinking them. */
-.ak-shell.is-compact .ak-nav-text,
-.ak-shell.is-compact .ak-brand-text,
+   Icons only at rest; hovering the rail slides it open and names every icon.
+   The labels were always in the DOM (academy-shell.js renders .ak-nav-text on
+   every item) — they were simply display:none here, leaving the native `title`
+   attribute as the only affordance. A title tooltip takes a second to appear,
+   arrives in the OS typeface and cannot be styled, so an icon nobody
+   recognises stayed unrecognised.
+
+   The rail expands by overflowing its own grid track, NOT by widening it.
+   --ak-side is a fixed 74px track, so a wider grid item simply spills over the
+   next column and (being position:sticky, with a z-index) paints on top of it.
+   Nothing in the page reflows when the pointer crosses the rail, which on a
+   dashboard full of cards is the whole point. Widening the track instead —
+   animating grid-template-columns — would re-lay-out and re-wrap every card on
+   the page on every hover.
+
+   position:fixed would also float it, and is wrong: out of flow, the sidebar
+   stops being auto-placed and .ak-main slides into column 1. */
+.ak-shell.is-compact { --ak-side-open: 248px; }
+
+.ak-shell.is-compact .ak-sidebar {
+  width: var(--ak-side, 74px);
+  padding-left: 10px;
+  padding-right: 10px;
+  /* stretch, not center: .ak-brand-text is laid out now (just transparent), so
+     its width would drag a centred logo off to the left. */
+  align-items: stretch;
+  /* The sidebar precedes .ak-main in the DOM, so without this the main column
+     paints over the expanded rail. Clears .ak-topbar (20); stays under the
+     search overlay and the chatbot. */
+  z-index: 30;
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s ease;
+}
+
+/* Every offset below is the exact position `justify-content: center` produced,
+   re-expressed as a left-aligned padding that does not change on hover. That is
+   what keeps the icons from twitching: the rail widens to the right of them and
+   nothing else moves.
+
+   The content box is 53px, not 54: box-sizing is border-box, so the rail's own
+   1px border-right comes out of the 74px before the 10px side paddings do.
+     .ak-nav-item  (53 - 19) / 2 = 17    → icon at x 27
+     .ak-brand     (53 - 34) / 2 = 9.5   → mark at x 19.5
+     .ak-collapse  (53 - 30) / 2 = 11.5  → button at x 21.5 */
+.ak-shell.is-compact .ak-brand { padding: 0 0 18px 9.5px; justify-content: flex-start; }
+.ak-shell.is-compact .ak-nav { width: 100%; }
+.ak-shell.is-compact .ak-nav-item { justify-content: flex-start; padding: 11px 17px; gap: 12px; }
+.ak-shell.is-compact .ak-collapse { align-self: flex-start; margin: 6px 0 0 11.5px; transform: rotate(180deg); }
+
+/* The group headings stay collapsed in both states. Each is ~20px tall, so
+   revealing all three would shove every icon down ~60px as the rail opens —
+   a vertical lurch on every hover. The 18px gap between groups already reads
+   as a division. */
 .ak-shell.is-compact .ak-nav-label { display: none; }
 
-.ak-shell.is-compact .ak-sidebar { padding-left: 10px; padding-right: 10px; align-items: center; }
-.ak-shell.is-compact .ak-brand { padding: 0 0 18px; justify-content: center; }
-.ak-shell.is-compact .ak-nav { width: 100%; }
-.ak-shell.is-compact .ak-nav-item { justify-content: center; padding: 11px 0; gap: 0; }
-.ak-shell.is-compact .ak-collapse { align-self: center; margin-left: 0; transform: rotate(180deg); }
+/* display cannot transition, so the labels are laid out and merely transparent,
+   clipped by the sidebar's own overflow-x. `visibility` earns its place beside
+   opacity twice over: it keeps the clipped label out of the accessibility tree
+   at rest, so `title` stays the accessible name exactly as before, and it stops
+   the browser scrolling the clipped x-axis sideways to reach a focused item's
+   off-screen label.
+
+   These are the EXIT transitions — fast and undelayed, so the text is gone
+   before the rail narrows past it. The hover rule supplies the delayed enter. */
+.ak-shell.is-compact .ak-nav-text,
+.ak-shell.is-compact .ak-brand-text {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-6px);
+  transition: opacity 0.10s ease, transform 0.10s ease, visibility 0s linear 0.10s;
+}
+
+/* Pin the label's line box to the icon height, and cap the brand's two stacked
+   lines under its 34px mark, so revealing text cannot change a row's height. */
+.ak-shell.is-compact .ak-nav-text { line-height: 19px; }
+.ak-shell.is-compact .ak-brand-text { max-height: 34px; overflow: hidden; }
+
+/* ── Hover-expand ──
+   :focus-within is outside the media guard so the rail opens for keyboard users
+   on every device; :hover is inside it, because on a touchscreen a tap latches
+   :hover until you tap elsewhere, which would leave the rail parked open over
+   the content. Both target .ak-sidebar itself, so the pointer is still inside
+   the element once it has grown — no open/close flicker loop. */
+.ak-shell.is-compact .ak-sidebar:focus-within {
+  width: var(--ak-side-open, 248px);
+  box-shadow: 18px 0 40px rgba(0, 0, 0, 0.55);
+}
+
+.ak-shell.is-compact .ak-sidebar:focus-within .ak-nav-text,
+.ak-shell.is-compact .ak-sidebar:focus-within .ak-brand-text {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  /* Delayed, so a label never appears before there is room for it. */
+  transition: opacity 0.16s ease 0.09s, transform 0.16s ease 0.09s, visibility 0s linear 0s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ak-shell.is-compact .ak-sidebar:hover {
+    width: var(--ak-side-open, 248px);
+    box-shadow: 18px 0 40px rgba(0, 0, 0, 0.55);
+  }
+
+  .ak-shell.is-compact .ak-sidebar:hover .ak-nav-text,
+  .ak-shell.is-compact .ak-sidebar:hover .ak-brand-text {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition: opacity 0.16s ease 0.09s, transform 0.16s ease 0.09s, visibility 0s linear 0s;
+  }
+}
+
+/* The rail still opens; it just stops sliding. */
+@media (prefers-reduced-motion: reduce) {
+  .ak-shell.is-compact .ak-sidebar,
+  .ak-shell.is-compact .ak-nav-text,
+  .ak-shell.is-compact .ak-brand-text { transition: none; }
+}
 
 /* ── Main column ── */
 .ak-main { display: flex; flex-direction: column; min-width: 0; }
@@ -11807,6 +11914,29 @@ a.cp-crumb:hover { color: var(--white); }
   .ak-nav-item.is-active { box-shadow: inset 0 -2px 0 var(--red); }
   /* Labels would make the strip scroll for a page or two; icons do not. */
   .ak-nav-text { display: none; }
+
+  /* A hover-expanding vertical rail has no meaning in a horizontal strip, and
+     there is no hover on a phone to trigger it. These have to be spelled out:
+     the compact selectors above are (0,2,1) and out-specify this block's bare
+     .ak-sidebar rules, so they would otherwise survive into the strip and drag
+     the fixed 74px width and the left-aligned paddings with them.
+     .ak-nav-text is the exception — its display:none above wins on its own,
+     since the compact rule no longer sets display. */
+  .ak-shell.is-compact .ak-sidebar,
+  .ak-shell.is-compact .ak-sidebar:hover,
+  .ak-shell.is-compact .ak-sidebar:focus-within {
+    width: auto;
+    align-items: center;
+    padding: 12px 16px;
+    z-index: auto;
+    box-shadow: none;
+    transition: none;
+  }
+
+  .ak-shell.is-compact .ak-brand { padding: 0 10px 0 0; justify-content: flex-start; }
+  .ak-shell.is-compact .ak-nav { width: auto; }
+  .ak-shell.is-compact .ak-nav-item { padding: 9px 12px; gap: 12px; }
+  .ak-shell.is-compact .ak-collapse { display: none; }
 
   .ak-topbar { padding: 12px 16px; }
   .ak-content { padding: 20px 16px 64px; }
