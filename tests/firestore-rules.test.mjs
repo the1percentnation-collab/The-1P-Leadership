@@ -63,6 +63,10 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'companies/co1/integrations/google'), { connected: true, googleEmail: 'a@b.com' });
   await setDoc(doc(db, 'companies/co1/enrollments/e1'), { sequenceId: 's1', contactId: 'c1', status: 'active', currentStep: 0 });
   await setDoc(doc(db, 'oauthStates/st1'), { companyId: 'co1', uid: 'adm' });
+  // A beta cohort record, written server-side only.
+  await setDoc(doc(db, 'betaTesters/tester@x.com'), {
+    email: 'tester@x.com', name: 'Tester', status: 'granted', feedbackCount: 0
+  });
   // Dashboard spotlight announcement.
   await setDoc(doc(db, 'announcements/a1'), {
     title: 'Launch week', body: 'The new course opens Monday.', kind: 'course',
@@ -243,6 +247,34 @@ await t('admin CAN create an announcement',
 
 await t('owner CAN edit an announcement',
   () => assertSucceeds(updateDoc(doc(owner, 'announcements/a1'), { title: 'Launch week (updated)' })));
+
+// ── Beta cohort: owner-read, server-write only ────────────────────────────
+// The record joins an applicant's identity, their note about themselves and
+// their course progress. It is read through the listBetaTesters callable, so
+// nothing below owner needs direct access, and no client writes it at all.
+await t('owner CAN read a beta tester record',
+  () => assertSucceeds(getDoc(doc(owner, 'betaTesters/tester@x.com'))));
+
+await t('owner CAN list the beta cohort',
+  () => assertSucceeds(getDocs(collection(owner, 'betaTesters'))));
+
+await t('member CANNOT read a beta tester record',
+  () => assertFails(getDoc(doc(solo, 'betaTesters/tester@x.com'))));
+
+await t('company admin CANNOT read the beta cohort directly',
+  () => assertFails(getDocs(collection(adm, 'betaTesters'))));
+
+await t('signed-out visitor CANNOT read a beta tester record',
+  () => assertFails(getDoc(doc(anon, 'betaTesters/tester@x.com'))));
+
+await t('member CANNOT create a beta tester record',
+  () => assertFails(setDoc(doc(solo, 'betaTesters/solo@x.com'), { email: 'solo@x.com', status: 'granted' })));
+
+await t('member CANNOT promote themselves in the cohort',
+  () => assertFails(updateDoc(doc(emp, 'betaTesters/tester@x.com'), { status: 'completed' })));
+
+await t('even the owner CANNOT write a beta tester record from the client',
+  () => assertFails(updateDoc(doc(owner, 'betaTesters/tester@x.com'), { status: 'completed' })));
 
 await env.cleanup();
 

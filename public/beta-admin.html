@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beta Console | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .beta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+    @media (max-width: 860px) { .beta-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .bstatus {
+      display: inline-block;
+      font-size: 10px;
+      font-family: 'Space Mono', monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .bstatus-applied   { background: rgba(160,160,160,.15); color: #c9c9c9; }
+    .bstatus-declined  { background: rgba(120,120,120,.12); color: #8a8a8a; }
+    .bstatus-granted   { background: rgba(230,3,6,.15);  color: #FF7070; }
+    .bstatus-active    { background: rgba(74,222,128,.1); color: #4ade80; }
+    .bstatus-completed { background: rgba(212,175,55,.14); color: #E4C65B; }
+
+    .tester-row {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      background: var(--surface);
+    }
+    .tester-top { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+    .tester-id { flex: 1; min-width: 200px; }
+    .tester-name { font-size: 14.5px; font-weight: 600; }
+    .tester-email { font-size: 12px; color: var(--gray-light); font-family: 'Space Mono', monospace; word-break: break-all; }
+    .tester-why {
+      font-size: 13px; line-height: 1.6; color: var(--gray-light);
+      margin-top: 10px; padding-left: 12px; border-left: 2px solid var(--border);
+    }
+    .tester-meta { font-size: 11px; color: var(--gray-mid); margin-top: 8px; display: flex; gap: 14px; flex-wrap: wrap; }
+    .tester-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    .tester-actions .btn { padding: 5px 12px; font-size: 12px; }
+
+    .fb-row { border-bottom: 1px solid var(--border); padding: 12px 0; }
+    .fb-row:last-child { border-bottom: 0; }
+    .fb-top { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+    .fb-who { font-size: 12px; font-family: 'Space Mono', monospace; color: var(--gray-light); }
+    .fb-body { font-size: 13px; line-height: 1.6; margin-top: 5px; word-break: break-word; }
+
+    .ready-line { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .ready-line:last-child { border-bottom: 0; }
+    .ready-mark { font-size: 15px; width: 18px; text-align: center; }
+    .ready-text { flex: 1; font-size: 13.5px; }
+    .ready-num { font-family: 'Space Mono', monospace; font-size: 13px; color: var(--gray-light); }
+
+    .empty-note { padding: 28px 0; text-align: center; color: var(--gray-light); font-size: 13px; }
+  </style>
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+  <div class="console-shell">
+    <div class="console-topbar">
+      <div class="console-topbar-left">
+        <a class="console-brand" href="/dashboard.html" aria-label="The One Percent Academy">
+          <img src="/assets/academy-logo.png" alt="" class="console-brand-mark">
+        </a>
+        <a class="back-to-main" href="/owner.html">&larr; Owner Console</a>
+      </div>
+      <div class="user-chip" id="user-chip"></div>
+    </div>
+
+    <div class="console-body">
+      <div id="gate-msg"></div>
+      <div id="panel" style="display:none;">
+
+        <nav class="console-tabs" aria-label="Beta sections">
+          <button class="console-tab is-active" type="button" data-view="applicants">Applicants</button>
+          <button class="console-tab" type="button" data-view="cohort">Cohort</button>
+          <button class="console-tab" type="button" data-view="feedback">Feedback</button>
+          <button class="console-tab" type="button" data-view="readiness">Readiness</button>
+        </nav>
+
+        <div id="loading" class="empty-note">Loading beta program…</div>
+        <div id="load-error" style="display:none;"></div>
+
+        <!-- Applicants -->
+        <div id="view-applicants" style="display:none;">
+          <div class="card">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
+              <h2 style="margin:0;">Applicants</h2>
+              <button class="btn btn-ghost" type="button" id="btn-refresh" style="padding:5px 12px; font-size:12px;">Refresh</button>
+            </div>
+            <p style="font-size:13px; color:var(--gray-light); margin-bottom:16px;">
+              People who applied through the beta form and have not been decided on yet.
+              Approving issues the course grant immediately. If they have no account, the
+              grant is parked and applies the moment they sign up.
+            </p>
+            <div id="applicants-list"></div>
+          </div>
+
+          <div class="card">
+            <h2>Declined</h2>
+            <p style="font-size:13px; color:var(--gray-light); margin-bottom:14px;">
+              Kept on record so nobody is re-invited by accident. Approving one still works.
+            </p>
+            <div id="declined-list"></div>
+          </div>
+        </div>
+
+        <!-- Cohort -->
+        <div id="view-cohort" style="display:none;">
+          <div class="card">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
+              <h2 style="margin:0;">Cohort</h2>
+              <label style="font-size:12px; color:var(--gray-light);">
+                Status:
+                <select id="filter-cohort" style="margin-left:6px; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 8px; font-size:12px;">
+                  <option value="all" selected>All</option>
+                  <option value="granted">Granted</option>
+                  <option value="active">Active</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </label>
+            </div>
+            <p style="font-size:13px; color:var(--gray-light); margin-bottom:16px;">
+              Everyone approved, and what they have actually done since.
+            </p>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Tester</th>
+                  <th>Status</th>
+                  <th>Account</th>
+                  <th>Lessons</th>
+                  <th>Feedback</th>
+                  <th>Last active</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="cohort-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Feedback -->
+        <div id="view-feedback" style="display:none;">
+          <div class="card">
+            <h2>Beta feedback</h2>
+            <p style="font-size:13px; color:var(--gray-light); margin-bottom:16px;">
+              Reports submitted by beta testers, separated from general site bugs.
+              Open the <a href="/bug-reports.html" style="color:var(--red);">bug report console</a>
+              to read the AI analysis or mark one resolved.
+            </p>
+            <div id="feedback-list"></div>
+          </div>
+        </div>
+
+        <!-- Readiness -->
+        <div id="view-readiness" style="display:none;">
+          <div class="card">
+            <h2>Launch readiness</h2>
+            <p style="font-size:13px; color:var(--gray-light); margin-bottom:16px;">
+              The beta funnel end to end. The gates below are guidance, not a lock.
+            </p>
+            <div class="beta-grid" id="readiness-stats"></div>
+            <div id="readiness-gates"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/beta-admin.js"></script>
+</body>
+</html>
