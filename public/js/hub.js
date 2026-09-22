@@ -23,6 +23,7 @@ import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import { renderShell } from './academy-shell.js';
 import { ensureOnboarded } from './onboarding-guard.js';
+import { isFirstVisit, renderWelcome } from './hub-welcome.js';
 import {
   getUserProfile,
   hasNewPostsSinceVisit,
@@ -116,9 +117,17 @@ function renderUserChip(user, role, { profile = null } = {}) {
   });
 }
 
-function renderGreeting(user, profile) {
-  const name = firstName((profile && profile.displayName) || (user && user.displayName) || (user && user.email));
-  $('hub-greeting').innerHTML = `Welcome back, <span>${escapeHtml(name)}</span>.`;
+function greetingName(user, profile) {
+  return firstName((profile && profile.displayName) || (user && user.displayName) || (user && user.email));
+}
+
+// "Welcome back" to someone who has never been here reads like the portal
+// wasn't paying attention. First visit gets "Welcome"; every one after it
+// gets the returning greeting.
+function renderGreeting(user, profile, { firstVisit = false } = {}) {
+  const name = greetingName(user, profile);
+  const lead = firstVisit ? 'Welcome' : 'Welcome back';
+  $('hub-greeting').innerHTML = `${lead}, <span>${escapeHtml(name)}</span>.`;
   renderDailyQuote();
 }
 
@@ -1064,7 +1073,24 @@ async function main() {
   const uid = currentUser() ? currentUser().uid : null;
 
   renderShell({ current: 'dashboard', role });
-  renderGreeting(currentUser(), profile);
+
+  // First visit drives both the greeting and the tour, and must be read from
+  // the profile as it was BEFORE renderWelcome stamps `welcomeTourAt`.
+  const firstVisit = isFirstVisit(profile, uid);
+  renderGreeting(currentUser(), profile, { firstVisit });
+
+  // Setup checklist + first-login tour. Staff manage the system rather than
+  // enroll in it, so they never see either.
+  let setupCardShown = false;
+  if (role !== 'owner' && role !== 'admin') {
+    setupCardShown = renderWelcome({
+      profile,
+      uid,
+      name: greetingName(currentUser(), profile),
+      firstVisit,
+      enrolled: enrolledCourses().length > 0
+    });
+  }
 
   // Wave two: everything else, in parallel. Each entry is independently
   // fail-soft so one slow or blocked read cannot hold up the rest of the page.
@@ -1115,7 +1141,8 @@ async function main() {
     profile,
     certification,
     // A member with zero posts has never spoken here; that is worth a nudge.
-    hasPosted: !stats || Number(stats.postCount || 0) > 0
+    hasPosted: !stats || Number(stats.postCount || 0) > 0,
+    profileNudgeShown: setupCardShown
   }));
 
   // Below the fold and never awaited — the page is already usable without them.

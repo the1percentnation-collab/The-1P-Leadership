@@ -152,6 +152,15 @@ ok('a complete profile produces no profile card', () => {
   assert.ok(!keys(steps).includes('profile'));
 });
 
+ok('the setup card suppresses the duplicate profile card', () => {
+  const ctx = {
+    enrolled: [{ course: course('a', 'A'), completion: completion(1, 3) }],
+    profile: { displayName: 'A' }
+  };
+  assert.ok(keys(buildNextSteps(ctx)).includes('profile'));
+  assert.ok(!keys(buildNextSteps({ ...ctx, profileNudgeShown: true })).includes('profile'));
+});
+
 ok('an empty profile scores zero and names what is missing', () => {
   assert.strictEqual(profileCompleteness(null).pct, 0);
   const partial = profileCompleteness({ displayName: 'A', avatarUrl: 'u' });

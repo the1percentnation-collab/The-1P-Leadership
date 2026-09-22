@@ -1215,29 +1215,71 @@ body {
 .auth-form input:focus,
 .auth-form textarea:focus { border-color: rgba(204,27,27,0.5); }
 
-/* Opt-in consent row — checkbox + fine print, left-aligned. */
-.auth-consent {
+/* Opt-in consent row — checkbox + fine print, left-aligned.
+   Written as `.auth-form label.auth-consent` because `.auth-form label` above
+   is more specific than a bare `.auth-consent` and was overriding it: the
+   consent paragraph rendered as a block of bold, letter-spaced uppercase,
+   which is the least readable way to show the one thing a member is actually
+   agreeing to. Kept as a plain `.auth-consent` copy too, for any page that
+   uses the row outside `.auth-form`. */
+.auth-consent,
+.auth-form label.auth-consent {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 18px;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.02);
   text-transform: none;
   letter-spacing: normal;
-  font-size: 11px;
+  font-family: var(--font-body);
+  font-size: 13px;
   font-weight: 400;
-  line-height: 1.5;
+  line-height: 1.6;
   color: var(--gray-light);
   cursor: pointer;
 }
+.auth-consent:hover,
+.auth-form label.auth-consent:hover { border-color: rgba(255,255,255,0.16); }
+.auth-consent:focus-within,
+.auth-form label.auth-consent:focus-within { border-color: var(--border-red); }
+
 .auth-consent input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  margin: 1px 0 0;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
   flex-shrink: 0;
   accent-color: var(--red);
   cursor: pointer;
 }
 .auth-consent a { color: var(--red); }
+
+/* Two-tier consent copy: the agreement in readable body text, the required
+   fine print smaller and dimmer underneath. Same wording, legible hierarchy. */
+.consent-body { display: block; min-width: 0; }
+
+.consent-main {
+  display: block;
+  color: var(--white-dim);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.consent-fine {
+  display: block;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+  color: var(--gray-mid);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+@media (min-width: 760px) {
+  .onboarding-card .auth-consent { padding: 16px 18px; }
+}
 
 /* Google Places autocomplete dropdown — match the dark auth theme. */
 .pac-container {
@@ -12438,4 +12480,364 @@ a.cp-crumb:hover { color: var(--white); }
 
 @media (max-width: 480px) {
   .store-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   First login — setup card + navigation tour (js/hub-welcome.js).
+   The dashboard's front door for a member who has never been here:
+   a checklist with a real count, and a tour of the rail where every
+   tab is a link, not a slide.
+   ════════════════════════════════════════════════════════════════ */
+
+.hub-welcome[hidden] { display: none; }
+
+.hub-setup {
+  background: linear-gradient(180deg, rgba(230,3,6,0.07), rgba(255,255,255,0) 60%), var(--surface);
+  border: 1px solid var(--border-red);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 34px;
+}
+
+.hub-setup-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.hub-setup-intro { flex: 1 1 320px; min-width: 0; }
+
+.hub-setup-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--red);
+  margin-bottom: 8px;
+}
+
+.hub-setup h2 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 28px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--white);
+  margin-bottom: 8px;
+}
+
+.hub-setup-lede {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--gray-light);
+  max-width: 62ch;
+}
+
+.hub-setup-tour { flex: 0 0 auto; white-space: nowrap; }
+
+.hub-setup-meter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 16px;
+}
+
+.hub-setup-bar {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+
+.hub-setup-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--red);
+  transition: width 0.4s ease;
+}
+
+.hub-setup-count {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+}
+
+.hub-setup-list {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.hub-setup-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: rgba(255,255,255,0.02);
+  text-decoration: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.hub-setup-link:hover { border-color: var(--border-red); background: rgba(255,255,255,0.045); }
+
+.hub-setup-check {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--black);
+}
+
+.hub-setup-item.is-done .hub-setup-check {
+  background: var(--red);
+  border-color: var(--red);
+  color: var(--white);
+}
+
+.hub-setup-copy { display: block; min-width: 0; }
+
+.hub-setup-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.hub-setup-item.is-done .hub-setup-label { color: var(--gray-light); }
+
+.hub-setup-hint {
+  display: block;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--gray-mid);
+  margin-top: 2px;
+}
+
+.hub-setup-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.hub-setup-actions .btn { flex: 0 0 auto; }
+
+@media (max-width: 560px) {
+  .hub-setup { padding: 20px 16px; }
+  .hub-setup h2 { font-size: 24px; }
+  .hub-setup-tour { width: 100%; justify-content: center; text-align: center; }
+  .hub-setup-actions .btn { flex: 1 1 100%; text-align: center; justify-content: center; }
+}
+
+/* ── The tour modal ───────────────────────────────────────────── */
+
+body.tour-open { overflow: hidden; }
+
+.tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0,0,0,0.78);
+  backdrop-filter: blur(4px);
+  overflow-y: auto;
+}
+
+.tour-card {
+  position: relative;
+  width: 100%;
+  max-width: 680px;
+  margin: auto;
+  background: var(--black-2);
+  border: 1px solid var(--border-red);
+  border-radius: 18px;
+  padding: 28px 26px 22px;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.65);
+}
+
+.tour-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gray-light);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tour-close:hover { color: var(--white); background: rgba(255,255,255,0.06); }
+
+.tour-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--red);
+  margin-bottom: 10px;
+}
+
+.tour-head h2 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 34px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--white);
+  margin-bottom: 8px;
+}
+
+.tour-head h2 span { color: var(--red); }
+
+.tour-lede {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--gray-light);
+}
+
+/* The tabs: the same icons and labels as the rail, so the tour teaches the
+   real nav rather than a diagram of it. */
+.tour-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 20px 0 18px;
+  padding-bottom: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tour-tabs::-webkit-scrollbar { display: none; }
+
+/* With room, show every tab at once — a member should be able to see the
+   whole map of the portal without scrolling a strip sideways. */
+@media (min-width: 700px) {
+  .tour-tabs { flex-wrap: wrap; overflow: visible; }
+}
+
+.tour-tab {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.02);
+  color: var(--gray-light);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.tour-tab .ak-ico { width: 17px; height: 17px; }
+.tour-tab:hover { color: var(--white); border-color: var(--border-red); }
+
+.tour-tab.is-active {
+  color: var(--white);
+  border-color: var(--red);
+  background: var(--red-glow);
+}
+
+.tour-stop {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.tour-stop-icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--red-glow);
+  border: 1px solid var(--border-red);
+  color: var(--red);
+}
+
+.tour-stop-icon .ak-ico { width: 22px; height: 22px; }
+
+.tour-stop-copy { min-width: 0; }
+
+.tour-stop-copy h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--white);
+  margin-bottom: 6px;
+}
+
+.tour-stop-copy p {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--gray-light);
+  margin-bottom: 14px;
+}
+
+.tour-go { display: inline-flex; }
+
+.tour-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.tour-skip {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--gray-mid);
+  font-family: var(--font-body);
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tour-skip:hover { color: var(--gray-light); }
+
+.tour-foot-actions { display: flex; gap: 8px; margin-left: auto; }
+.tour-foot-actions .btn[disabled] { opacity: 0.4; pointer-events: none; }
+
+@media (max-width: 560px) {
+  .tour-overlay { padding: 12px; align-items: flex-start; }
+  .tour-card { padding: 24px 18px 18px; border-radius: 16px; }
+  .tour-head h2 { font-size: 28px; }
+  .tour-stop { flex-direction: column; gap: 12px; }
+  .tour-go { width: 100%; justify-content: center; text-align: center; }
+  .tour-foot { flex-direction: column-reverse; align-items: stretch; }
+  .tour-foot-actions { margin-left: 0; }
+  .tour-foot-actions .btn { flex: 1 1 0; justify-content: center; text-align: center; }
+  .tour-skip { text-align: center; padding-top: 4px; }
 }

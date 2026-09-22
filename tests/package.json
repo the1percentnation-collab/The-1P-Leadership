@@ -11,7 +11,7 @@
     "test:deploy": "node no-scheduled-functions.test.cjs",
     "test:crm": "node crm-freshness.test.cjs && node crm-assistant.test.cjs && node crm-ai-log.test.cjs",
     "test": "npm run test:deploy && npm run test:indexes && npm run test:hub && npm run test:launch && npm run test:points && npm run test:catalog && npm run test:telnyx && npm run test:email && npm run test:crm && npm run emulator",
-    "test:hub": "node hub-nextup.test.mjs",
+    "test:hub": "node hub-nextup.test.mjs && node hub-welcome.test.mjs",
     "test:launch": "node launch-date.test.mjs",
     "test:points": "node points-history.test.mjs",
     "test:catalog": "node catalog.test.mjs"
