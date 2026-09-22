@@ -383,6 +383,18 @@
 @media (max-width: 760px) {
   input, select, textarea { font-size: 16px !important; }
 }
+
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 600px) {
+  .nav-inner { padding: 0 20px; }
+  .nav-links .tag { display: none; }
+  .hero-hook { gap: 14px; padding: 14px 16px; }
+  .hero-hook-price { font-size: 26px; }
+  .hero-hook-text { font-size: 10px; letter-spacing: .08em; }
+  .bottom-cta { padding: 56px 20px; }
+  .urgency-bar { padding-left: 16px; padding-right: 16px; }
+  footer { padding-left: 20px; padding-right: 20px; }
+}
 </style>
 </head>
 <body>

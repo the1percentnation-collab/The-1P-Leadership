@@ -87,7 +87,12 @@
       nav, footer { padding-inline: 20px; }
       .routes { grid-template-columns: 1fr; }
     }
-  </style>
+  
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 600px) {
+  .routes a { display: inline-block; padding: 10px 0; }
+}
+</style>
 </head>
 <body>
 <nav>

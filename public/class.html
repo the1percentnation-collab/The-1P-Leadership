@@ -70,7 +70,15 @@
       .hero-strip { padding: calc(var(--nav-h) + 52px) 20px 40px; } .painpoint-inner { padding: 48px 20px; }
       .main-wrap { padding: 48px 20px; } .session { grid-template-columns: 44px 1fr; } .session-num { font-size: 34px; }
     }
-  </style>
+  
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 700px) {
+  .faq-item.open .faq-a { max-height: none; }
+  .hero-title { overflow-wrap: anywhere; }
+  .enroll-box { padding: 24px; }
+  .loading { padding: 24px; }
+}
+</style>
 </head>
 <body class="noise">
 

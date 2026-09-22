@@ -36,7 +36,13 @@
     #bk-form .consent-text strong { color: var(--white, #fff); font-weight: 500; }
     #bk-form .form-legal { width: 100%; font-size: 11px; font-weight: 300; color: var(--gray-600, #8a8a8a); line-height: 1.5; margin-top: 8px; }
     #bk-form .form-legal a { color: inherit; text-decoration: underline; }
-  </style>
+  
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 720px) {
+  #wl-service { width: 100%; background: var(--charcoal); color: var(--white); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-height: 44px; }
+  #wl-consent { width: 20px; height: 20px; }
+}
+</style>
 </head>
 <body style="display:block; height:auto; overflow:auto;">
   <div class="console-shell">

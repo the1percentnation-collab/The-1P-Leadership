@@ -39,7 +39,15 @@
     .store-input-sm { width: 90px; }
     .store-addr { font-size: 12px; color: var(--gray-light, #a0a0a0); line-height: 1.5; }
     .data-table td { vertical-align: top; }
-  </style>
+  
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 720px) {
+  .store-tabs { overflow-x: auto; scrollbar-width: none; }
+  .store-tabs::-webkit-scrollbar { display: none; }
+  .store-tab { flex-shrink: 0; padding: 12px 14px; }
+  .store-input-sm { width: 96px; }
+}
+</style>
 </head>
 <body style="display:block; height:auto; overflow:auto;">
   <div class="console-shell">

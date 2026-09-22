@@ -123,7 +123,20 @@
     #status-bar.show { transform: translateY(0); opacity: 1; }
     #status-bar.ok  { border-color: rgba(0,200,80,.4); color: #00c850; }
     #status-bar.err { border-color: rgba(230,3,6,.4);  color: #f66; }
-  </style>
+  
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 720px) {
+  .kb-entry { grid-template-columns: 1fr; padding: 14px; }
+  .kb-entry > div:first-child > div:first-child { flex-wrap: wrap; }
+  .kb-entry-actions { justify-content: flex-end; }
+  .btn-icon { width: 44px; height: 44px; }
+  .kb-modal-backdrop { padding: 12px; align-items: flex-start; }
+  .kb-modal { padding: 20px 16px; max-height: calc(100dvh - 24px); overflow-y: auto; }
+  .kb-field-row { flex-direction: column; gap: 0; }
+  .kb-modal-actions .btn { flex: 1; justify-content: center; }
+  #status-bar { left: 12px; right: 12px; bottom: 12px; }
+}
+</style>
 </head>
 <body style="display:block; height:auto; overflow:auto;">
   <div class="console-shell">

@@ -12852,3 +12852,184 @@ body.tour-open { overflow: hidden; }
 @media (max-width: 760px) {
   input, select, textarea { font-size: 16px !important; }
 }
+
+/* ============================================================
+   Portal on phones. Every rule below is scoped to a max-width
+   media query (or restores a rule the cascade already intended),
+   so desktop rendering is unchanged.
+   ============================================================ */
+
+/* Rows in the AI activity log carry both .rep-row and .ai-plan-row;
+   the later .rep-row rule was winning the cascade at equal specificity,
+   so the plan rows rendered on the 5-column report template and the
+   status badge overflowed into the timestamp. The doubled selector
+   restores the intended template at every width. */
+.rep-row.ai-plan-row { grid-template-columns: minmax(0, 1fr) auto auto 62px; }
+@media (max-width: 720px) {
+  .rep-row.ai-plan-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .rep-row.ai-plan-row .ai-plan-meta { display: none; }
+  .rep-row.ai-plan-row .rep-row-pct { grid-column: 1 / -1; text-align: left; }
+}
+
+@media (max-width: 760px) {
+  /* Wide data tables (contacts list, admin lists) scroll sideways inside
+     their card instead of widening the whole page. */
+  .data-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .data-table th, .data-table td { white-space: nowrap; }
+
+  /* The notification popover is clipped by the user chip's overflow strip
+     on phones. All three top bars have a backdrop-filter, which makes the
+     bar the containing block for fixed descendants, so this positions the
+     popover just below the bar, full width, un-clipped. */
+  .c-notif-popover {
+    position: fixed;
+    top: calc(100% + 4px);
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: 70vh;
+  }
+  .c-notif-popover[hidden] { display: none; }
+}
+
+@media (max-width: 720px) {
+  /* CRM dashboard report tables: let the card scroll instead of clipping
+     the right-hand columns. */
+  .rep-card:has(.rep-table) { overflow-x: auto; }
+  .rep-table th, .rep-table td { padding: 8px 10px; }
+
+  /* Floating call bar: cap its height so short phones can still reach the
+     top of it, keep it clear of the home indicator, and give the page
+     room underneath. The chat button sits right on top of the dock's
+     corner, so hide it during a call. */
+  .call-dock { max-height: 75vh; max-height: 75dvh; overflow-y: auto; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+  .call-dock-controls { width: 100%; }
+  .call-dock-controls .call-dock-btn { flex: 1 1 auto; }
+  body.has-call-dock .crm-content { padding-bottom: 60vh; }
+  body.has-call-dock .opn-fab { display: none; }
+}
+
+@media (max-width: 600px) {
+  /* Console pages (contact record, campaigns, members, admin) breathe
+     at phone width instead of losing 64px to padding. */
+  .console-body { padding: 16px 14px 56px; }
+  .card { padding: 16px; }
+  .console-body:has(.profile-shell) { padding: 12px 10px 64px; }
+  .profile-card { padding: 18px 16px; }
+  .profile-view-link { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+
+  /* CRM modals: the auth-card's 48px/52px desktop padding left ~250px of
+     form width on a phone. */
+  .crm-modal-backdrop { padding: 12px; align-items: flex-start; }
+  .crm-modal.auth-card { padding: 24px 18px; border-radius: 12px; }
+  .crm-modal.auth-card h1 { font-size: 30px; margin-top: 4px; }
+  .crm-modal-actions { flex-wrap: wrap; }
+
+  /* Conversations: the side-by-side list + thread left ~230px for the
+     thread and clipped the Send button. Stack them. */
+  .sms-wrap { flex-direction: column; height: auto; min-height: 0; }
+  .sms-list { width: 100%; max-height: 38vh; border-right: 0; border-bottom: 1px solid var(--border); }
+  .sms-thread { min-height: 60vh; }
+  .sms-composer .c-input { min-width: 0; }
+  .sms-bubble { max-width: 88%; }
+  .tl-compose-row .c-textarea { min-width: 0; }
+
+  /* Filter dropdowns open from the filter strip's left edge instead of
+     running off the right side of the screen. */
+  .crm-filter { position: static; }
+  .crm-filters { position: relative; }
+  .crm-filter-pop { left: 0; right: 0; min-width: 0; }
+
+  /* CRM app bar: tighter padding, ellipsized title, sign-out reachable. */
+  .crm-appbar { padding: 8px 12px; gap: 8px; }
+  .crm-appbar-title { font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+  .crm-appbar .user-chip { flex: 1 1 0; justify-content: flex-end; }
+}
+
+@media (max-width: 480px) {
+  /* Two stat tiles per row instead of a long single-file column. */
+  .crm-widgets { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .crm-widget { padding: 14px; }
+  .crm-widget-value { font-size: 26px; }
+
+  /* Calendar month grid: reclaim the gap pixels for the day cells. */
+  .cal-grid, .cal-grid-head { gap: 3px; }
+  .cal-cell { padding: 3px; min-height: 52px; }
+  .cal-appt { padding: 2px 3px; }
+
+  /* Campaign event rows: let the email drop to its own line instead of
+     truncating to a few characters. */
+  .camp-event-row { flex-wrap: wrap; }
+  .camp-event-email { flex-basis: 100%; order: 3; }
+}
+
+@media (max-width: 420px) {
+  /* Contact record: one field per row on the narrowest phones. */
+  .ct-fields { grid-template-columns: minmax(0, 1fr); }
+  .ct-fields .crm-field { min-width: 0; }
+}
+
+@media (max-width: 900px) {
+  /* iOS Safari's toolbar eats the bottom of 100vh; dvh tracks the real
+     visible height so the drawer's footer stays reachable. */
+  .crm-sidebar { height: 100dvh; }
+}
+
+/* ============================================================
+   Shared console / auth / academy components on phones.
+   All scoped to max-width queries; desktop unchanged.
+   ============================================================ */
+@media (max-width: 760px) {
+  /* Console tab strips (beta admin, etc.): scroll instead of overflowing. */
+  .console-tabs { overflow-x: auto; scrollbar-width: none; }
+  .console-tabs::-webkit-scrollbar { display: none; }
+  .console-tab { flex-shrink: 0; padding: 10px 12px; }
+}
+
+@media (max-width: 720px) {
+  .console-body { padding: 16px 12px 48px; }
+
+  /* Inline admin forms (owner, manage-store, financial services):
+     stack the fields full-width instead of squeezing 180px columns,
+     and give selects the same dark styling as inputs instead of the
+     white native control. */
+  .inline-form .field { min-width: 0; flex: 1 1 100%; max-width: none !important; }
+  .inline-form select {
+    width: 100%; background: var(--charcoal); color: var(--white);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  }
+  .inline-form .btn { width: 100%; justify-content: center; }
+
+  /* Auth pages (login, signup, onboarding): the 48px/52px card padding
+     left ~250px of form width on a phone. */
+  .auth-shell { padding: 24px 12px; }
+  .auth-card { padding: 32px 20px; }
+  .auth-card h1 { font-size: 40px; }
+  .auth-footer { flex-wrap: wrap; gap: 8px 16px; }
+  .auth-footer a { display: inline-block; padding: 8px 0; }
+  .onboarding-card .auth-brand-mark { height: 110px; }
+
+  /* Modal action rows (campaigns, CRM): wrap instead of spilling off
+     the left edge of the modal. */
+  .crm-modal-actions { flex-wrap: wrap; }
+  .crm-modal-actions .btn { flex: 1 1 auto; justify-content: center; }
+
+  /* Long URLs in campaign bodies and detail rows wrap instead of
+     widening the card. */
+  #camp-d-body, .camp-error-sample, .camp-detail-sub { overflow-wrap: anywhere; }
+
+  /* Course player: 100vh hides the bottom behind iOS Safari's toolbar. */
+  body.academy-course, body.academy-course .ak-shell { height: 100dvh; }
+
+  /* Touch targets that sat well under 44px. */
+  .crm-chip { padding: 10px 12px; }
+  .tl-tab { padding: 10px 14px; }
+  .hub-activity-tab { padding: 12px 16px; }
+  .hub-rowbtn { padding: 10px 14px; }
+  .data-table td .btn { padding: 8px 12px; }
+}
+
+@media (max-width: 480px) {
+  .stat-card { padding: 14px; }
+  .stat-value { font-size: 28px; }
+}

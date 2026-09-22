@@ -17,6 +17,18 @@
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <style>
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 720px) {
+  #courses-view .builder-head { flex-wrap: wrap; }
+  #courses-view .builder-head > div:last-child { width: 100%; flex-wrap: wrap; justify-content: flex-end; }
+  .mc-grid { grid-template-columns: minmax(0, 1fr); }
+  .mc-rail-arrows { display: inline-flex; }
+  .mc-rail-arrow { padding: 8px; }
+  #s-cover { min-width: 0; }
+  .mc-cover-preview { max-width: 100%; }
+}
+  </style>
 </head>
 <body style="display:block; height:auto; overflow:auto;">
   <div class="console-shell">

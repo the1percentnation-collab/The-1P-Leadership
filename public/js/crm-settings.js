@@ -113,7 +113,7 @@ function voicemailCardHtml() {
           <label>Name</label>
           <input class="c-input" id="vm-name" placeholder="Default greeting" value="Default greeting" />
         </div>
-        <div class="crm-field" style="display:flex;gap:8px;">
+        <div class="crm-field" style="display:flex;gap:8px;flex-wrap:wrap;">
           ${canRecord ? `
             <button class="btn btn-primary" id="vm-record" type="button">&#9679; Record</button>
             <button class="btn btn-ghost" id="vm-stop" type="button" disabled>Stop</button>

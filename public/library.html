@@ -50,7 +50,12 @@
       .lib-continue { grid-template-columns: 88px 1fr; gap: 18px; padding: 18px; }
       .lib-grid { grid-template-columns: repeat(2, 1fr); gap: 24px 16px; }
     }
-  </style>
+  
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 600px) {
+  .lib-empty { padding: 24px; }
+}
+</style>
 </head>
 <body class="academy-hub">
 

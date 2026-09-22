@@ -225,6 +225,14 @@
 @media (max-width: 760px) {
   input, select, textarea { font-size: 16px !important; }
 }
+
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 720px) {
+  .tab { padding: 11px 14px; }
+  .seg button, .sz button { height: 44px; }
+  .swatch { width: 44px; height: 44px; }
+  input[type=range] { height: 44px; }
+}
 </style>
 </head>
 <body>

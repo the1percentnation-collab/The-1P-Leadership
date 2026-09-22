@@ -296,3 +296,11 @@ footer {
 @media (max-width: 760px) {
   input, select, textarea { font-size: 16px !important; }
 }
+
+/* Phone-width refinements shared by the class, matrix and enrolled pages.
+   Scoped to phones; desktop rendering is unchanged. */
+@media (max-width: 700px) {
+  .radio-chip label, .btn-ghost { min-height: 44px; }
+  .nav-back, .footer-links a { display: inline-flex; align-items: center; padding: 10px 0; }
+  footer { padding: 28px 20px; }
+}

@@ -120,7 +120,12 @@
 
     @media (max-width: 1000px) { .builder-grid { grid-template-columns: 1fr; } }
     @media (max-width: 700px) { .row-2, .row-3 { grid-template-columns: 1fr; } .wrap { padding: 24px 16px 60px; } }
-  </style>
+  
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 600px) {
+  #who { display: none; }
+}
+</style>
 </head>
 <body class="noise">
 

@@ -25,6 +25,15 @@ table.legal-table th, table.legal-table td { border: 1px solid rgba(0,0,0,.15); 
 .legal-wrap h2 { border-color: rgba(255,255,255,.12); }
 table.legal-table th, table.legal-table td { border-color: rgba(255,255,255,.2); }
 }
+
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 720px) {
+  .legal-wrap { padding: 28px 16px 64px; }
+  .legal-wrap h1 { font-size: 1.9rem; }
+  table.legal-table { font-size: .85rem; }
+  table.legal-table th, table.legal-table td { padding: 6px 7px; overflow-wrap: anywhere; }
+  .legal-top a { display: inline-block; padding: 12px 0; }
+}
 </style>
 </head>
 <body>

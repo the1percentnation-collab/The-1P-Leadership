@@ -120,7 +120,22 @@
       .signup-tip { transition: opacity .35s ease; transform: translateY(-50%); }
       .signup-tip.show { animation: none; transform: translateY(-50%); }
     }
-  </style>
+  
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 720px) {
+  .signup-anchor { position: static; }
+  .signup-tip {
+    position: fixed;
+    left: 16px; right: 16px; top: auto; bottom: 16px;
+    width: auto; max-width: none;
+    transform: translateY(8px) scale(0.97);
+    transform-origin: bottom center;
+  }
+  .signup-tip.show { transform: none; }
+  .signup-tip-arrow { display: none; }
+  .signup-tip-close { width: 38px; height: 38px; top: 4px; right: 4px; }
+}
+</style>
 </head>
 <body style="display:block; height:auto; overflow:auto;">
   <div class="auth-shell">

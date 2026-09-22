@@ -28,7 +28,15 @@
     .step-text { font-size: 14px; font-weight: 300; line-height: 1.65; color: var(--gray-400); }
     .cta { display: inline-block; padding: 15px 32px; background: var(--red); border-radius: 6px; font-weight: 700; font-size: 15px; }
     .cta:hover { background: var(--red-dark); }
-  </style>
+  
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 720px) {
+  .wrap { padding: calc(var(--nav-h) + 44px) 20px 64px; }
+  .mark { width: 72px; height: 72px; font-size: 30px; margin-bottom: 20px; }
+  .step { padding: 16px 18px; gap: 12px; }
+  .cta { display: block; text-align: center; padding: 16px 20px; }
+}
+</style>
 </head>
 <body class="noise">
 

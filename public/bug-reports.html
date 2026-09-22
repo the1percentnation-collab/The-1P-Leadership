@@ -97,7 +97,18 @@
       max-height: 340px;
       overflow-y: auto;
     }
-  </style>
+  
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 720px) {
+  #filter-status { padding: 8px 10px; }
+  .report-meta span, #modal-content span, #modal-content a { overflow-wrap: anywhere; min-width: 0; }
+  .modal-overlay { padding: 12px 8px; }
+  .modal-box { padding: 48px 16px 20px; }
+  .modal-close { top: 6px; right: 6px; width: 44px; height: 44px; padding: 0; }
+  #resolution-note { min-width: 0 !important; flex: 1 1 100%; }
+  #resolve-btn { width: 100%; justify-content: center; }
+}
+</style>
 </head>
 <body style="display:block; height:auto; overflow:auto;">
   <div class="console-shell">

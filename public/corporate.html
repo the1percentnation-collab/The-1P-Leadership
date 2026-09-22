@@ -278,6 +278,12 @@
 @media (max-width: 760px) {
   input, select, textarea { font-size: 16px !important; }
 }
+
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 480px) {
+  .nav-logo .l1, .nav-logo .l2 { display: none; }
+  .nav-cta { white-space: nowrap; padding: 9px 12px; letter-spacing: .08em; }
+}
 </style>
 </head>
 <body>

@@ -21,6 +21,12 @@
 @media (prefers-color-scheme: dark) {
 .legal-wrap h2 { border-color: rgba(255,255,255,.12); }
 }
+
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 720px) {
+  .legal-wrap { padding: 28px 16px 64px; }
+  .legal-top a { display: inline-block; padding: 12px 0; }
+}
 </style>
 </head>
 <body>
