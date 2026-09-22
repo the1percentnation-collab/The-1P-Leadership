@@ -16,6 +16,27 @@ const DAY = 24 * HOUR;
 // just a permanent red mark.
 const PROFILE_FIELDS = ['displayName', 'avatarUrl', 'bio', 'profession', 'location'];
 
+// The field names are storage keys, not English. Copy that reads "add your
+// avatarUrl" tells a member they are looking at a database, so every surface
+// that names a missing field goes through this map.
+const FIELD_LABELS = {
+  displayName: 'name',
+  avatarUrl: 'photo',
+  bio: 'bio',
+  profession: 'what you do',
+  location: 'location'
+};
+
+export function fieldLabels(fields = []) {
+  return fields.map((f) => FIELD_LABELS[f] || f);
+}
+
+function joinLabels(fields) {
+  const labels = fieldLabels(fields.slice(0, 2));
+  if (!labels.length) return '';
+  return labels.join(' and ');
+}
+
 export function profileCompleteness(profile) {
   if (!profile) return { pct: 0, missing: PROFILE_FIELDS.slice() };
   const missing = PROFILE_FIELDS.filter((f) => !String(profile[f] || '').trim());
@@ -35,6 +56,68 @@ function fmtWhen(ms) {
   return days === 1 ? 'Tomorrow' : `In ${days} days`;
 }
 
+// ─── Getting started ──────────────────────────────────────────────────────
+//
+// The first session decides whether somebody comes back. Three things predict
+// it: a profile that makes them real to the room, a first post, and a course
+// they have chosen. Everything else on the dashboard can wait.
+//
+// This returns all three steps with their done state — not just the pending
+// ones — so the member sees the whole arc and where they are in it instead of
+// a card that appears and vanishes with no sense of progress.
+export function buildOnboardingFlow(context = {}) {
+  const { profile = null, hasPosted = true, enrolled = [] } = context;
+  const prof = profileCompleteness(profile);
+  const missing = joinLabels(prof.missing);
+
+  const steps = [
+    {
+      key: 'profile',
+      label: 'Become a face',
+      title: 'Finish your profile',
+      sub: missing
+        ? `Add your ${missing} so members know who they're talking to.`
+        : 'A photo and a line about your work is all it takes.',
+      meta: `${prof.pct}% complete`,
+      ctaLabel: 'Edit profile',
+      href: '/profile.html',
+      done: prof.pct >= 100
+    },
+    {
+      key: 'introduce',
+      label: 'Meet the room',
+      title: 'Introduce yourself',
+      sub: 'Post in #general. Members who say hello in week one are the ones who stay.',
+      meta: hasPosted ? 'Posted' : 'Two minutes',
+      ctaLabel: 'Say hello',
+      href: '/community.html?channel=general',
+      done: !!hasPosted
+    },
+    {
+      key: 'browse',
+      label: 'Start the work',
+      title: 'Choose your first course',
+      sub: 'Pick the track that matches where you are right now. The library is open.',
+      meta: enrolled.length ? `${enrolled.length} enrolled` : 'Pick one',
+      ctaLabel: 'Browse courses',
+      href: '/courses.html',
+      done: enrolled.length > 0
+    }
+  ].map((s, i, all) => ({ ...s, step: i + 1, total: all.length }));
+
+  const done = steps.filter((s) => s.done).length;
+  const current = steps.find((s) => !s.done) || null;
+
+  return {
+    active: done < steps.length,
+    done,
+    total: steps.length,
+    pct: Math.round((done / steps.length) * 100),
+    currentKey: current ? current.key : null,
+    steps
+  };
+}
+
 /**
  * Build the ranked action list.
  *
@@ -46,8 +129,13 @@ function fmtWhen(ms) {
  * }
  *
  * Returns [{ key, eyebrow, title, sub, ctaLabel, href, external, urgent }].
+ *
+ * skipOnboarding drops the three getting-started cards (profile, first post,
+ * first course). The dashboard passes it while buildOnboardingFlow() is still
+ * rendering that flow above this list, so a new member is never asked to
+ * finish their profile twice on one screen.
  */
-export function buildNextSteps(context = {}, { max = 4 } = {}) {
+export function buildNextSteps(context = {}, { max = 4, skipOnboarding = false } = {}) {
   const {
     enrolled = [],
     events = [],
@@ -160,19 +248,19 @@ export function buildNextSteps(context = {}, { max = 4 } = {}) {
 
   // 6. An incomplete profile makes a member invisible to everyone else here.
   const prof = profileCompleteness(profile);
-  if (prof.pct < 100) {
+  if (prof.pct < 100 && !skipOnboarding) {
     out.push({
       key: 'profile',
       eyebrow: `Profile ${prof.pct}% complete`,
       title: 'Finish your profile',
-      sub: `Add your ${prof.missing.slice(0, 2).join(' and ')} so other members know who they're talking to.`,
+      sub: `Add your ${joinLabels(prof.missing)} so other members know who they're talking to.`,
       ctaLabel: 'Edit profile',
       href: '/profile.html'
     });
   }
 
   // 7. No courses at all — the only sensible next step is the catalog.
-  if (!enrolled.length) {
+  if (!enrolled.length && !skipOnboarding) {
     out.push({
       key: 'browse',
       eyebrow: 'Start your work',
@@ -184,7 +272,7 @@ export function buildNextSteps(context = {}, { max = 4 } = {}) {
   }
 
   // 8. Lurkers. A first post is the strongest predictor that somebody stays.
-  if (!hasPosted) {
+  if (!hasPosted && !skipOnboarding) {
     out.push({
       key: 'introduce',
       eyebrow: 'Community',

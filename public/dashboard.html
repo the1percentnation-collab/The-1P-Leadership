@@ -62,15 +62,21 @@
         <div class="hub-pulse-grid" id="hub-pulse-grid"></div>
       </section>
 
-      <section class="hub-spotlight" id="hub-spotlight" hidden></section>
-
-      <section id="hub-nextup" hidden>
+      <!-- The first thing under the hero, on purpose. A member who lands here
+           should not have to scan the page to work out what to do next: the
+           getting-started flow (profile → first post → first course) and the
+           ranked action cards both live in this one block, above everything
+           that merely reports state. -->
+      <section id="hub-nextup" class="hub-nextup" hidden>
         <div class="academy-section-head">
-          <h2>Your next step</h2>
-          <span class="academy-section-meta">Picked for you</span>
+          <h2 id="hub-nextup-heading">Your next step</h2>
+          <span class="academy-section-meta" id="hub-nextup-meta">Picked for you</span>
         </div>
+        <div class="hub-onboard" id="hub-onboard" hidden></div>
         <div class="hub-nextup-grid" id="hub-nextup-list"></div>
       </section>
+
+      <section class="hub-spotlight" id="hub-spotlight" hidden></section>
 
       <section id="hub-continue-slot"></section>
 

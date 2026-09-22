@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import assert from 'node:assert';
 
 const src = fs.readFileSync(new URL('../public/js/hub-nextup.js', import.meta.url), 'utf8');
-const { buildNextSteps, profileCompleteness } =
+const { buildNextSteps, buildOnboardingFlow, profileCompleteness } =
   await import('data:text/javascript,' + encodeURIComponent(src));
 
 let passed = 0;
@@ -152,6 +152,24 @@ ok('a complete profile produces no profile card', () => {
   assert.ok(!keys(steps).includes('profile'));
 });
 
+ok('the profile card names fields in English, not storage keys', () => {
+  const [step] = buildNextSteps({
+    enrolled: [{ course: course('a', 'A'), completion: completion(3, 3) }],
+    profile: { displayName: 'A', bio: 'b', profession: 'p', location: 'l' }
+  });
+  assert.strictEqual(step.key, 'profile');
+  assert.match(step.sub, /your photo so/);
+  assert.ok(!/avatarUrl/.test(step.sub));
+});
+
+ok('skipOnboarding leaves the getting-started cards to the flow', () => {
+  const steps = buildNextSteps(
+    { enrolled: [], profile: null, hasPosted: false },
+    { skipOnboarding: true }
+  );
+  assert.deepStrictEqual(keys(steps), []);
+});
+
 ok('an empty profile scores zero and names what is missing', () => {
   assert.strictEqual(profileCompleteness(null).pct, 0);
   const partial = profileCompleteness({ displayName: 'A', avatarUrl: 'u' });
@@ -192,6 +210,48 @@ ok('a brand-new member still gets something to do', () => {
   const steps = buildNextSteps({ enrolled: [], profile: null, hasPosted: false });
   assert.ok(steps.length > 0);
   assert.deepStrictEqual(keys(steps), ['profile', 'browse', 'introduce']);
+});
+
+// ── Getting-started flow ──────────────────────────────────────────────────
+
+ok('a brand-new member gets all three steps, profile first, none done', () => {
+  const flow = buildOnboardingFlow({ enrolled: [], profile: null, hasPosted: false });
+  assert.strictEqual(flow.active, true);
+  assert.strictEqual(flow.done, 0);
+  assert.strictEqual(flow.pct, 0);
+  assert.strictEqual(flow.currentKey, 'profile');
+  assert.deepStrictEqual(flow.steps.map((s) => s.key), ['profile', 'introduce', 'browse']);
+  assert.deepStrictEqual(flow.steps.map((s) => s.step), [1, 2, 3]);
+});
+
+ok('finished steps stay in the flow, marked done, and progress advances', () => {
+  const flow = buildOnboardingFlow({
+    enrolled: [],
+    profile: { displayName: 'A', avatarUrl: 'u', bio: 'b', profession: 'p', location: 'l' },
+    hasPosted: true
+  });
+  assert.strictEqual(flow.steps.length, 3);
+  assert.strictEqual(flow.done, 2);
+  assert.strictEqual(flow.pct, 67);
+  assert.strictEqual(flow.currentKey, 'browse');
+  assert.deepStrictEqual(flow.steps.map((s) => s.done), [true, true, false]);
+});
+
+ok('a settled member has no flow at all', () => {
+  const flow = buildOnboardingFlow({
+    enrolled: [{ course: course('a', 'A'), completion: completion(1, 3) }],
+    profile: { displayName: 'A', avatarUrl: 'u', bio: 'b', profession: 'p', location: 'l' },
+    hasPosted: true
+  });
+  assert.strictEqual(flow.active, false);
+  assert.strictEqual(flow.done, 3);
+  assert.strictEqual(flow.currentKey, null);
+});
+
+ok('the profile step names the missing fields in English', () => {
+  const [profileStep] = buildOnboardingFlow({ profile: { displayName: 'A' }, hasPosted: false }).steps;
+  assert.match(profileStep.sub, /Add your photo and bio/);
+  assert.strictEqual(profileStep.meta, '20% complete');
 });
 
 console.log(`\n${passed} checks passed.`);

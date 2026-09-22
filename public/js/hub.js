@@ -41,7 +41,7 @@ import { loadCatalog, visibleOn, hrefFor, isExternal, sortForDisplay } from './c
 import { fmtLaunchDate, launchCountdown } from './launch-date.js';
 import { listActiveAnnouncements } from './announcements.js';
 import { renderSpotlight } from './hub-spotlight.js';
-import { buildNextSteps } from './hub-nextup.js';
+import { buildNextSteps, buildOnboardingFlow } from './hub-nextup.js';
 import { dailySeries, seriesTotal } from './points-history.js';
 
 const $ = (id) => document.getElementById(id);
@@ -465,20 +465,82 @@ async function renderSpotlightRail({ role, companyId }) {
 
 // ─── Next step ────────────────────────────────────────────────────────────
 
-function renderNextSteps(steps) {
+// The getting-started flow. Rendered as three numbered steps with their real
+// done state — completed ones stay on screen, greyed and ticked — so a new
+// member reads the whole arc of the dashboard rather than one orphan card.
+function renderOnboarding(flow) {
+  const box = $('hub-onboard');
+  if (!box) return false;
+  if (!flow || !flow.active) { box.hidden = true; box.innerHTML = ''; return false; }
+
+  const steps = flow.steps.map((s) => {
+    const state = s.done ? 'is-done' : (s.key === flow.currentKey ? 'is-current' : 'is-waiting');
+    const badge = s.done
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4.5 4.5L19 7"/></svg>'
+      : String(s.step);
+    const inner = `
+      <span class="hub-onboard-num" aria-hidden="true">${badge}</span>
+      <span class="hub-onboard-label">Step ${s.step} · ${escapeHtml(s.label)}</span>
+      <span class="hub-onboard-name">${escapeHtml(s.title)}</span>
+      <span class="hub-onboard-sub">${escapeHtml(s.sub)}</span>
+      <span class="hub-onboard-cta">${s.done ? 'Done' : `${escapeHtml(s.ctaLabel)} →`}</span>
+    `;
+    // A finished step is history, not a link — nothing there to go and do,
+    // so it renders the same shape with a div instead of an anchor.
+    const body = s.done
+      ? `<div class="hub-onboard-hit">${inner}</div>`
+      : `<a class="hub-onboard-hit" href="${escapeHtml(s.href)}">${inner}</a>`;
+    return `<li class="hub-onboard-step ${state}">${body}</li>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="hub-onboard-head">
+      <div>
+        <span class="hub-onboard-eyebrow">Getting started</span>
+        <h3 class="hub-onboard-title">${flow.done === 0 ? "Three steps and you're in" : 'Finish setting up'}</h3>
+        <p class="hub-onboard-intro">Do these first. Your courses, live calls and the community feed are all waiting further down this page.</p>
+      </div>
+      <div class="hub-onboard-count"><strong>${flow.done}</strong><span>/${flow.total} done</span></div>
+    </div>
+    <div class="hub-onboard-track"><span style="width:${flow.pct}%"></span></div>
+    <ol class="hub-onboard-steps">${steps}</ol>
+  `;
+  box.hidden = false;
+  return true;
+}
+
+function renderNextSteps(steps, flow) {
   const section = $('hub-nextup');
   const list = $('hub-nextup-list');
   if (!section || !list) return;
-  if (!steps.length) { section.hidden = true; return; }
 
-  list.innerHTML = steps.map((s) => `
-    <a class="hub-next-card${s.urgent ? ' is-urgent' : ''}" href="${escapeHtml(s.href)}"${s.external ? ' target="_blank" rel="noopener"' : ''}>
+  const onboarding = renderOnboarding(flow);
+  if (!steps.length && !onboarding) { section.hidden = true; return; }
+
+  // Onboarding owns the headline while it is live; once it is done the ranked
+  // cards speak for themselves again.
+  const heading = $('hub-nextup-heading');
+  const meta = $('hub-nextup-meta');
+  if (heading) heading.textContent = onboarding ? 'Start here' : 'Your next step';
+  if (meta) {
+    // The flow already prints its own count next to the progress bar, so the
+    // section meta stands down rather than saying it twice.
+    meta.textContent = onboarding ? '' : 'Picked for you';
+    meta.hidden = onboarding;
+  }
+
+  // The top-ranked action gets the full width and a real button. One obvious
+  // move beats four cards of equal weight, which is what the member was being
+  // asked to choose between before.
+  list.innerHTML = steps.map((s, i) => `
+    <a class="hub-next-card${s.urgent ? ' is-urgent' : ''}${i === 0 && !onboarding ? ' is-lead' : ''}" href="${escapeHtml(s.href)}"${s.external ? ' target="_blank" rel="noopener"' : ''}>
       <span class="hub-next-eyebrow">${escapeHtml(s.eyebrow || '')}</span>
       <span class="hub-next-title">${escapeHtml(s.title || '')}</span>
       <span class="hub-next-sub">${escapeHtml(s.sub || '')}</span>
       <span class="hub-next-cta">${escapeHtml(s.ctaLabel || 'Open')} →</span>
     </a>
   `).join('');
+  list.hidden = !steps.length;
   section.hidden = false;
 }
 
@@ -1106,7 +1168,7 @@ async function main() {
   renderUserChip(currentUser(), role, { profile });
   wireActivityTabs({ role, companyId, notifications });
 
-  renderNextSteps(buildNextSteps({
+  const nextContext = {
     enrolled: enrolledCourses()
       .map((c) => ({ course: c, completion: completions.get(c.slug) }))
       .filter((r) => r.completion),
@@ -1116,7 +1178,14 @@ async function main() {
     certification,
     // A member with zero posts has never spoken here; that is worth a nudge.
     hasPosted: !stats || Number(stats.postCount || 0) > 0
-  }));
+  };
+  const onboardingFlow = buildOnboardingFlow(nextContext);
+  renderNextSteps(
+    // While the flow is live it carries profile, first post and first course,
+    // so the ranked list stays on the work only an existing member has.
+    buildNextSteps(nextContext, { max: onboardingFlow.active ? 2 : 4, skipOnboarding: onboardingFlow.active }),
+    onboardingFlow
+  );
 
   // Below the fold and never awaited — the page is already usable without them.
   renderSpotlightRail({ role, companyId });
