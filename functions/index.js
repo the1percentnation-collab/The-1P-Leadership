@@ -4957,7 +4957,120 @@ async function applyGrant(db, uid, slug, course, { note, grantedBy }) {
   });
 }
 
-exports.grantCourseAccess = onCall(async (request) => {
+// ── The invite email that makes a grant real ─────────────────────────────
+//
+// A grant used to be silent: the enrollment landed and the member was never
+// told. Every beta round then ran on a hand-written email per tester, which
+// is the step that does not scale. This is that email, sent by the grant.
+//
+// Two versions, one template. A member who already has an account gets the
+// direct link to the course. Someone who does not gets the signup link and
+// the one instruction that matters: use this exact address, or the access
+// waiting for it will not find them.
+function grantEmailContent({ firstName, courseTitle, slug, note, hasAccount }) {
+  const name = firstName || 'there';
+  const nameHtml = textToHtml(name);
+  const titleHtml = textToHtml(courseTitle);
+  const noteHtml = textToHtml(note);
+  const courseUrl = `${APP_BASE_URL}/courses.html?course=${encodeURIComponent(slug)}`;
+  const signupUrl = `${APP_BASE_URL}/signup.html`;
+
+  const subject = `Your access to ${courseTitle} is open`;
+
+  const askText = note
+    ? `Where to start: ${note}\n\n`
+    : '';
+  const askHtml = note
+    ? `<p style="margin:0 0 14px;"><strong>Where to start:</strong> ${noteHtml}</p>`
+    : '';
+
+  const stepText = hasAccount
+    ? `Sign in and open it here:\n${courseUrl}\n\n`
+    : `Two steps. Create your account using this email address, then open the course.\n`
+      + `1. Create your account: ${signupUrl}\n`
+      + `2. Open the course: ${courseUrl}\n\n`
+      + `Use this exact email address when you sign up. Your access is attached to it and applies the moment the account exists.\n\n`;
+
+  const stepHtml = hasAccount
+    ? `<p style="margin:0 0 22px;"><a href="${courseUrl}" style="display:inline-block;background:#e60306;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">Open the course</a></p>`
+    : `<p style="margin:0 0 10px;">Two steps. Create your account using this email address, then open the course.</p>`
+      + `<p style="margin:0 0 14px;"><a href="${signupUrl}" style="display:inline-block;background:#e60306;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">Create your account</a></p>`
+      + `<p style="margin:0 0 22px;font-size:13px;color:#555;">Use this exact email address when you sign up. Your access is attached to it and applies the moment the account exists. Then open the course here: <a href="${courseUrl}" style="color:#155eef;">${courseUrl}</a></p>`;
+
+  const text =
+    `Hi ${name},\n\n` +
+    `You have access to ${courseTitle}. No payment, nothing to redeem.\n\n` +
+    askText +
+    stepText +
+    `Tell us what lands and what does not. Honest notes are worth more to us than polite ones.\n\n` +
+    `Anthony Brown Sr.\n` +
+    `Founder, The One Percent Nation\n` +
+    `Redefining Success. Realigning Purpose. Releasing Potential.`;
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:560px;margin:0 auto;line-height:1.55;">
+      <h2 style="color:#000;margin:0 0 12px;font-size:22px;">You're in, ${nameHtml}.</h2>
+      <p style="margin:0 0 14px;">You have access to <strong>${titleHtml}</strong>. No payment, nothing to redeem.</p>
+      ${askHtml}
+      ${stepHtml}
+      <p style="margin:0 0 20px;">Tell us what lands and what does not. Honest notes are worth more to us than polite ones.</p>
+      <p style="margin:0;">Anthony Brown Sr.<br/>Founder, The One Percent Nation</p>
+      <hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0;"/>
+      <p style="color:#888;font-size:11px;margin:0;">Redefining Success. Realigning Purpose. Releasing Potential.</p>
+    </div>`;
+
+  return { subject, text, html };
+}
+
+// Sends the invite for one grant. Never throws: a grant that landed must not
+// be reported as failed because SendGrid was unhappy, so the caller gets a
+// boolean and the admin is told to send the link by hand.
+// The calling function must declare `secrets: [sendgridKey]`.
+async function sendGrantEmail(db, { email, uid, slug, course, note, hasAccount }) {
+  const to = normalizeEmail(email);
+  if (!EMAIL_RE.test(to)) return false;
+  const courseTitle = (course && (course.title || course.short)) || slug;
+
+  let firstName = '';
+  let crmArgs = {};
+  if (uid) {
+    try {
+      const uSnap = await db.collection('users').doc(uid).get();
+      const u = uSnap.exists ? (uSnap.data() || {}) : {};
+      firstName = String(u.displayName || '').trim().split(/\s+/)[0] || '';
+      // Routes delivery, open and click events onto the CRM timeline, the
+      // same way the welcome email does.
+      if (u.crmCompanyId && u.crmContactId) {
+        crmArgs = { companyId: u.crmCompanyId, contactId: u.crmContactId };
+      }
+    } catch (e) { /* name is a nicety, not a blocker */ }
+  }
+
+  const { subject, text, html } = grantEmailContent({
+    firstName, courseTitle, slug, note, hasAccount
+  });
+
+  try {
+    sgMail.setApiKey(sendgridKey.value());
+    await sgMail.send({
+      to,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      subject,
+      text,
+      html,
+      customArgs: Object.assign({ type: 'course_grant', slug }, crmArgs)
+    });
+    return true;
+  } catch (err) {
+    console.error('[sendGrantEmail] send failed:', String((err && err.message) || err).slice(0, 300));
+    return false;
+  }
+}
+
+// `secrets` is required, not optional: this sends the invite email through
+// sendGrantEmail, which reads sendgridKey.value().
+exports.grantCourseAccess = onCall({ secrets: [sendgridKey] }, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
   const db = admin.firestore();
@@ -4966,6 +5079,8 @@ exports.grantCourseAccess = onCall(async (request) => {
   const email = normalizeEmail(request.data && request.data.email);
   const slug = String((request.data && request.data.slug) || '').trim();
   const note = String((request.data && request.data.note) || '').trim().slice(0, 200) || null;
+  // Default on: a grant nobody is told about is the problem this replaces.
+  const notify = !(request.data && request.data.notify === false);
   if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
   if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
 
@@ -4977,7 +5092,13 @@ exports.grantCourseAccess = onCall(async (request) => {
   const userDoc = await findUserByEmail(db, email);
   if (userDoc) {
     await applyGrant(db, userDoc.id, slug, course, { note, grantedBy });
-    return { ok: true, applied: true, email };
+    // The grant is the deliverable; the email is best-effort on top of it.
+    const emailed = notify
+      ? await sendGrantEmail(db, {
+          email, uid: userDoc.id, slug, course, note, hasAccount: true
+        })
+      : null;
+    return { ok: true, applied: true, email, emailed };
   }
 
   await db.collection('pendingGrants').doc(email).set({
@@ -4987,10 +5108,22 @@ exports.grantCourseAccess = onCall(async (request) => {
     grantedBy,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
-  return { ok: true, applied: false, pending: true, email };
+
+  // Nobody to sign in yet, so the invite carries the signup link instead.
+  const emailed = notify
+    ? await sendGrantEmail(db, { email, uid: null, slug, course, note, hasAccount: false })
+    : null;
+  return { ok: true, applied: false, pending: true, email, emailed };
 });
 
 // Called from onUserCreated: apply anything parked for this email.
+//
+// No email is sent from here on purpose. The invite already went out when the
+// grant was parked, carrying both steps (create the account, then open the
+// course) and the direct course link, and onUserCreated sends the welcome
+// email a moment later. A third message would say nothing the tester does not
+// already have. It also means a grant made silently stays silent all the way
+// through signup, which is what the admin asked for when they chose that.
 async function applyPendingGrants(db, uid, email) {
   const lower = normalizeEmail(email);
   if (!lower) return 0;

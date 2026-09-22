@@ -108,7 +108,10 @@ function confirmDiscard() {
 
 // ─── Builder header ─────────────────────────────────────────────────────────
 
-const STATUS_LABELS = { live: 'Live', 'coming-soon': 'Coming soon', inactive: 'Inactive', bundle: 'Bundle' };
+const STATUS_LABELS = {
+  live: 'Live', beta: 'Beta', 'coming-soon': 'Coming soon',
+  inactive: 'Inactive', bundle: 'Bundle'
+};
 
 function renderStatusPill(status) {
   const pill = $('builder-status-pill');

@@ -190,6 +190,38 @@ doing it, run Actions → *CRM automation tick* → Run workflow with the **dry
 run** box ticked; it reports what it would promote and send, and writes
 nothing.
 
+## Running a beta
+
+A beta is a course that is finished enough to be taken and not ready to be
+announced. It has its own status, so it needs neither the store switches nor a
+hidden price.
+
+1. In `/manage-courses.html`, set the course status to **Beta**. It disappears
+   from the homepage, the member store, the dashboard rails and the available
+   list. Members who do not hold it cannot reach it, even with the link.
+2. On the same card, open the kebab menu and choose **Grant access…**. Enter
+   the tester's email, say in one line what you want them to look at first, and
+   confirm the invite email.
+3. The tester gets an email with a direct link. If they have no account yet,
+   the grant is parked under their email address and the invite tells them to
+   sign up with that exact address; access applies the moment the account
+   exists. Nothing to redeem either way.
+4. Testers see the course under **Your courses** with a blue *Beta* badge, and
+   open it exactly as a member will. Their notes come back through the bug
+   report form in the chatbot widget, which lands in `/bug-reports.html`.
+5. When the beta is done, set the status to **Live**. Nothing else changes:
+   the testers keep their access, and their progress carries over.
+
+Applicants from the `/beta` page land in the CRM tagged **Beta Tester** with
+the course and their note, so that tag is the list to grant from. To email the
+group at once (a reminder, a deadline, a thank you), use Campaigns with
+recipients **By tag → Beta Tester**.
+
+Two things worth knowing. A grant is one email at a time; for a large round,
+grant first and send one Campaign afterwards. And cancelling at the email
+prompt still grants access silently, which is what you want for a comp you
+plan to mention in person.
+
 ## Known open items
 
 - The A.L.I.G.N. letters in `public/js/align.js` were written into code, not

@@ -109,6 +109,28 @@ ok('course status aliases: inactive hides, bundle reads as live with the flag', 
   assert.strictEqual(b.isBundle, true);
 });
 
+ok('a beta course is hidden on every catalog surface', () => {
+  const i = normalizeCourse(course({ status: 'beta' }));
+  assert.strictEqual(i.status, 'hidden', 'beta never normalizes to something visible');
+  assert.strictEqual(visibleOn(i, 'site'), false, 'not on the marketing site');
+  assert.strictEqual(visibleOn(i, 'dashboard'), false, 'not in the member store or rails');
+});
+
+ok('a beta course stays hidden even with both channel switches on', () => {
+  // The switches are the admin's usual lever, so the one state that must not
+  // be overridable by them is worth pinning: an unreleased course cannot be
+  // published by a stray toggle.
+  const i = normalizeCourse(course({ status: 'beta', showOnSite: true, showInDashboard: true }));
+  assert.strictEqual(visibleOn(i, 'site'), false);
+  assert.strictEqual(visibleOn(i, 'dashboard'), false);
+});
+
+ok('a beta course a member holds opens in the library, not the sales page', () => {
+  const i = normalizeCourse(course({ status: 'beta' }));
+  assert.strictEqual(hrefFor(i, 'dashboard', { enrolled: true }), '/courses.html?course=c1');
+  assert.strictEqual(ctaFor(i, { enrolled: true }).kind, 'open');
+});
+
 ok('sold out is derived from a tracked inventory of zero, and only then', () => {
   assert.strictEqual(normalizeProduct(product({ inventory: 0 })).soldOut, true);
   assert.strictEqual(normalizeProduct(product({ inventory: 3 })).soldOut, false);

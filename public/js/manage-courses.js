@@ -70,12 +70,16 @@ function showView(name) {
 
 const STATUS_OPTS = [
   ['live', 'Live'],
+  ['beta', 'Beta'],
   ['coming-soon', 'Coming soon'],
   ['inactive', 'Inactive'],
   ['bundle', 'Bundle']
 ];
 
-const STATUS_LABELS = { live: 'Live', 'coming-soon': 'Coming soon', inactive: 'Inactive', bundle: 'Bundle' };
+const STATUS_LABELS = {
+  live: 'Live', beta: 'Beta', 'coming-soon': 'Coming soon',
+  inactive: 'Inactive', bundle: 'Bundle'
+};
 
 // The one-line hint beside the date input. It says what the public will
 // actually see, including the two states that are easy to create by accident:
@@ -99,6 +103,12 @@ function launchNote(ms) {
 function reachabilityNote(c) {
   if (c.status === 'inactive') {
     return 'Inactive — hidden everywhere, including the member library. The switches below do nothing until this is Live or Coming soon.';
+  }
+  // Beta hides the course on purpose, so the usual "nobody can see this"
+  // warning would be noise. Say what beta actually does instead, and name
+  // the one action that fills it: Grant access.
+  if (c.status === 'beta') {
+    return 'Beta — invisible on the site, the store and the member library. Only the people you grant access to can open it, and they see it under Your courses. Use Grant access below to add a tester. The switches here do nothing until this is Live.';
   }
   if (c.sellable === false) {
     const bundle = getCourses({ includeInactive: true })
@@ -729,14 +739,26 @@ document.addEventListener('click', async (ev) => {
   const slug = btn.dataset.grant;
   const email = window.prompt(`Grant free access to "${slug}".\n\nMember's email:`);
   if (email == null) return;
-  const note = window.prompt('Reason (shows in their purchase history):', 'beta tester') || '';
+  // One line, two jobs: it becomes "Where to start" in their invite email and
+  // the reason on the $0 purchase record. Left blank, the email simply omits
+  // it rather than telling a tester to start with the words "beta tester".
+  const note = window.prompt(
+    `What should ${email.trim()} look at first? (optional)\n\nThis goes in their invite email and on their access record.`,
+    '') || '';
+  // The invite email is the point of granting access, so it is the default.
+  // Cancel still grants, silently, for a comp you plan to mention yourself.
+  const notify = window.confirm(
+    `Email ${email.trim()} their access link now?\n\nOK sends the invite. Cancel grants access without an email.`);
   btn.disabled = true;
   try {
-    const res = await httpsCallable(functions, 'grantCourseAccess')({ email: email.trim(), slug, note });
+    const res = await httpsCallable(functions, 'grantCourseAccess')({ email: email.trim(), slug, note, notify });
     const d = (res && res.data) || {};
-    alert(d.applied
+    const mail = d.emailed === true ? ' Invite email sent.'
+      : d.emailed === false && notify ? ' The invite email could not be sent, so send them the link yourself.'
+      : '';
+    alert((d.applied
       ? `Done. ${d.email} now has access to ${slug}.`
-      : `${d.email} doesn't have an account yet. Access is parked and will apply automatically the moment they sign up at /signup.html.`);
+      : `${d.email} doesn't have an account yet. Access is parked and will apply automatically the moment they sign up at /signup.html.`) + mail);
   } catch (e) {
     alert(`Could not grant access: ${e && e.message ? e.message : e}`);
   } finally {

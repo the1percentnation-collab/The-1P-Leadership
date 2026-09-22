@@ -1726,6 +1726,7 @@ gmp-place-autocomplete,
 }
 .row-status:focus { border-color: rgba(204,27,27,0.5); }
 .row-status.status-live { color: #8AD08A; }
+.row-status.status-beta { color: #8ab4f8; }
 .row-status.status-inactive { color: #FF7070; }
 .row-status.status-coming-soon,
 .row-status.status-bundle { color: var(--gray-light); }
@@ -1875,6 +1876,7 @@ gmp-place-autocomplete,
 }
 
 .mc-pill.is-live { background: rgba(46,204,113,0.12); color: #2ecc71; border-color: rgba(46,204,113,0.4); }
+.mc-pill.is-beta { background: rgba(21,94,239,0.12); color: #8ab4f8; border-color: rgba(21,94,239,0.4); }
 .mc-pill.is-coming-soon { background: rgba(255,190,60,0.10); color: #f1b23c; border-color: rgba(255,190,60,0.35); }
 .mc-pill.is-inactive { background: rgba(255,255,255,0.05); color: var(--gray-mid); }
 .mc-pill.is-bundle { background: rgba(240,200,80,0.10); color: #e8c56a; border-color: rgba(240,200,80,0.35); }
@@ -6175,6 +6177,9 @@ body.academy-course .ak-topbar { position: static; }
 }
 
 .course-badge.is-live { background: var(--red); border-color: var(--red); color: #fff; }
+/* Beta reads as information, not as a sale badge: blue, never the red an
+   offer owns. It marks unreleased content a tester holds. */
+.course-badge.is-beta { background: rgba(21, 94, 239, 0.9); border-color: #155eef; color: #fff; }
 .course-badge.is-sale { background: #fff; border-color: #fff; color: var(--red); font-weight: 700; }
 .course-badge.is-bundle { background: #fff; border-color: #fff; color: var(--black); font-weight: 700; }
 

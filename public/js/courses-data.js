@@ -1,7 +1,7 @@
 // Course data layer — merges the hardcoded seed registry (courses-registry.js)
 // with Firestore `courses/{slug}` docs so the owner/admins can edit course
-// details, add new courses, and flip status (live / coming-soon / inactive)
-// from /manage-courses.html without a deploy.
+// details, add new courses, and flip status (live / coming-soon / beta /
+// inactive) from /manage-courses.html without a deploy.
 //
 // Merge rules:
 //   - Every registry entry is a seed default; Firestore fields override it.
@@ -9,6 +9,10 @@
 //   - Firestore-only docs (courses created in the admin UI) are appended and
 //     render through the generic course-renderer when set live.
 //   - `status: 'inactive'` courses are hidden unless { includeInactive: true }.
+//   - `status: 'beta'` courses stay in the list: they are real, openable
+//     content for the members granted access, and are kept off every public
+//     surface by the catalog (catalog-core.js) and availableCourses()
+//     (enrollments.js) rather than by being dropped here.
 
 import { db, firebaseReady } from './firebase.js';
 import {
