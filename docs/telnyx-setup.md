@@ -9,6 +9,13 @@ Nothing here has to be done all at once. Every feature checks its own
 environment variables and reports "not set up yet" until they exist, so a
 deploy with none of this configured still succeeds.
 
+Two Claude for Chrome prompts drive this from the browser:
+[`telnyx-chrome-prompt.md`](telnyx-chrome-prompt.md) sets up an account from
+nothing, and [`telnyx-chrome-activate-prompt.md`](telnyx-chrome-activate-prompt.md)
+is the finishing pass when the account exists but the CRM still says "SMS is
+not configured yet" — it collects the IDs, adds the repository secrets,
+re-runs the deploy, and reads the log back to prove the values landed.
+
 ## 1. Register the brand and campaign
 
 Mission Control → **Messaging → 10DLC**.

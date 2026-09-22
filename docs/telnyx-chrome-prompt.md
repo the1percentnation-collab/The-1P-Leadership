@@ -21,6 +21,12 @@ across registrations — so a careless resubmit is not free.
 Run it in one sitting up to the campaign submission. Phase 6 happens days
 later, when the approval email arrives.
 
+**If the account already exists** and the CRM is reporting "SMS is not
+configured yet", this is the wrong prompt. That failure is missing repository
+secrets rather than missing setup, and
+[`telnyx-chrome-activate-prompt.md`](telnyx-chrome-activate-prompt.md) is the
+prompt for it.
+
 ---
 
 ## The prompt
