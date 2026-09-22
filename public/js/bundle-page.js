@@ -2,9 +2,11 @@
 // Enroll button once the bundle is live, and routes the click through the
 // same createCheckoutSession the course landing page uses.
 //
-// The bundle (bundle-icant) is the only way to buy I Can't: The Course. Buying
-// it enrolls the member in icant and ships the paperback (the address is
-// collected in Stripe Checkout). Someone already enrolled sees "Go to course".
+// Buying the bundle enrolls the member in icant and includes the digital
+// edition of the book. The paperback is an optional add-on for the cost of
+// shipping — ticking it collects a US address in Stripe Checkout and puts the
+// book order in the store console. Someone already enrolled sees
+// "Go to course".
 
 import { loadCourses, getCourseBySlug, priceInfo } from './courses-data.js';
 import { onAuthReady, currentUser } from './auth.js';
@@ -15,6 +17,23 @@ import { getRefCode } from './referral.js';
 
 const BUNDLE_SLUG = 'bundle-icant';
 const COURSE_SLUG = 'icant';
+// Display only. createCheckoutSession prices the add-on from
+// courses/{slug}.paperbackShipping and re-validates the whole request.
+const PAPERBACK_SHIPPING_FALLBACK = 9.95;
+
+function fmtMoney(n) {
+  return '$' + (Number.isInteger(n) ? n : Number(n).toFixed(2));
+}
+
+function paperbackOffer(bundle) {
+  return !!bundle && bundle.paperbackUpgrade === true && bundle.shipsBook !== true;
+}
+
+function paperbackShipping(bundle) {
+  return (bundle && typeof bundle.paperbackShipping === 'number' && bundle.paperbackShipping > 0)
+    ? bundle.paperbackShipping
+    : PAPERBACK_SHIPPING_FALLBACK;
+}
 
 // Promo links: /bundle.html?promo=CODE pre-applies the code, so Anthony can
 // hand out one URL instead of a code to type. Validated and priced in by
@@ -39,7 +58,23 @@ function requireLogin() {
   location.assign('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
 }
 
-function renderCta({ live, enrolled, label }) {
+// The paperback tick box, above the top Enroll button. Rendered only when the
+// bundle actually offers the add-on, so the copy on the page and what checkout
+// does can never disagree.
+function addonHtml(bundle) {
+  if (!paperbackOffer(bundle)) return '';
+  return `
+    <label class="bundle-addon" for="bundle-paperback">
+      <input type="checkbox" id="bundle-paperback">
+      <span>
+        <b>Add the paperback — ${fmtMoney(paperbackShipping(bundle))} shipping only.</b>
+        The printed copy mailed to you. The book is free; you cover shipping.
+        US addresses, collected at checkout.
+      </span>
+    </label>`;
+}
+
+function renderCta({ live, enrolled, label, bundle }) {
   const top = $('bundle-cta');
   const bottom = $('bundle-cta-bottom');
   if (!top) return;
@@ -54,7 +89,7 @@ function renderCta({ live, enrolled, label }) {
   const promoNote = PROMO
     ? `<div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--gold);text-align:center;margin-bottom:10px;">Promo ${PROMO} will be applied at checkout</div>`
     : '';
-  top.innerHTML = `${promoNote}<button class="btn-enroll" id="bundle-enroll" type="button">Enroll now — ${label}</button>`;
+  top.innerHTML = `${promoNote}${addonHtml(bundle)}<button class="btn-enroll" id="bundle-enroll" type="button">Enroll now — ${label}</button>`;
   if (bottom) bottom.outerHTML = `<button class="btn-primary-lg" id="bundle-cta-bottom" type="button">Enroll now — ${label}</button>`;
 
   const buttons = [$('bundle-enroll'), $('bundle-cta-bottom')].filter(Boolean);
@@ -66,8 +101,10 @@ async function startCheckout(buttons, label) {
   msg('');
   buttons.forEach((b) => { b.disabled = true; b.textContent = 'Opening secure checkout…'; });
   try {
+    const box = $('bundle-paperback');
     const res = await httpsCallable(functions, 'createCheckoutSession')({
       slug: BUNDLE_SLUG,
+      addPaperback: (box && box.checked) || undefined,
       refCode: getRefCode() || undefined,
       couponCode: PROMO || undefined
     });
@@ -94,7 +131,7 @@ async function init() {
   const live = !!bundle && bundle.status === 'live';
   const enrolled = !!user && (isEnrolled(COURSE_SLUG) || isEnrolled(BUNDLE_SLUG));
   const p = bundle ? priceInfo(bundle) : null;
-  renderCta({ live, enrolled, label: (p && p.label) || '$197' });
+  renderCta({ live, enrolled, label: (p && p.label) || '$197', bundle });
 }
 
 init();

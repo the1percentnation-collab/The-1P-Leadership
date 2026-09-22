@@ -294,6 +294,18 @@
       transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
     }
     .btn-enroll:hover { background: var(--red-dark); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(230,3,6,0.3); }
+    /* Paperback add-on tick box, above the Enroll button. */
+    .bundle-addon {
+      display: flex; gap: 10px; align-items: flex-start; padding: 14px 16px; margin-bottom: 14px;
+      border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; cursor: pointer;
+      background: rgba(255,255,255,0.03); font-size: 12.5px; line-height: 1.5;
+      color: var(--gray-400); text-align: left;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .bundle-addon:hover { border-color: var(--red); background: rgba(230,3,6,0.07); }
+    .bundle-addon:focus-within { border-color: var(--red); }
+    .bundle-addon input { margin-top: 2px; width: 16px; height: 16px; flex: 0 0 auto; accent-color: var(--red); }
+    .bundle-addon b { color: var(--white); display: block; margin-bottom: 2px; }
     .btn-book {
       width: 100%; padding: 14px;
       background: transparent; color: var(--white);
@@ -433,7 +445,7 @@
       <div class="value-row">
         <div>
           <div class="value-label">📖 &nbsp;I Can't: Is Not A Strategy</div>
-          <div class="value-sub">Paperback · shipped to your door</div>
+          <div class="value-sub">Digital edition · yours the moment you enroll</div>
         </div>
         <div class="value-price">$14.99</div>
       </div>
@@ -466,7 +478,7 @@
         <div class="inc-icon">📖</div>
         <div>
           <div class="inc-title">The Book — I Can't: Is Not A Strategy</div>
-          <div class="inc-desc">The book the course is built on. A paperback copy ships to you when you enroll. We ask for your US shipping address at checkout, so the book and your course access arrive together.</div>
+          <div class="inc-desc">The book the course is built on. The digital edition is included, so you can start reading the minute you enroll. Want the printed copy? Tick the paperback at checkout and cover shipping only — the book itself is still free.</div>
         </div>
       </div>
       <div class="inc-item">
@@ -595,7 +607,7 @@
             How do I get the book?
             <span class="faq-icon">+</span>
           </button>
-          <div class="faq-answer">It ships to you. When you enroll, Stripe Checkout asks for your shipping address and we mail a paperback copy. US addresses only for now. If you already own the book, you can still enroll, and the extra copy is yours to give to someone who needs it.</div>
+          <div class="faq-answer">The digital edition comes with your enrollment — no extra charge, nothing to wait for. If you would rather hold the real thing, tick the paperback at checkout: the book is free and you cover shipping. Stripe asks for your address there, US only for now. Already own a copy? Skip the add-on and just enroll.</div>
         </div>
         <div class="faq-item">
           <button class="faq-question">
@@ -679,7 +691,7 @@
         <a class="btn-book" href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">Just want the book? Get it on Amazon →</a>
         <div class="offer-guarantee">
           <span class="offer-guarantee-icon">📦</span>
-          <span>Paperback ships to your door. We ask for your US address at checkout.</span>
+          <span>Digital book included. Add the paperback at checkout for shipping only.</span>
         </div>
         <div class="offer-guarantee">
           <span class="offer-guarantee-icon">🛡</span>
@@ -688,7 +700,8 @@
       </div>
 
       <div class="offer-checklist">
-        <div class="offer-check">Paperback of <em>I Can't: Is Not A Strategy</em>, shipped free</div>
+        <div class="offer-check">Digital edition of <em>I Can't: Is Not A Strategy</em>, included free</div>
+        <div class="offer-check">Paperback available at checkout for shipping only</div>
         <div class="offer-check">10 chapter modules, one per chapter of the book</div>
         <div class="offer-check">The book's 10 exercises as a saved workbook</div>
         <div class="offer-check">Lifetime access + all future updates</div>

@@ -5061,25 +5061,27 @@ exports.validateCoupon = onCall(async (request) => {
 // What a course owes the buyer beyond the lessons: a physical item, the
 // digital book, other courses it unlocks.
 //
-// `shipsBook` — the paperback is in the price. Checkout collects a US
-//   shipping address and the webhook writes the order to `orders` for Anthony
-//   to work from the store console. The bundle does this, and also enrolls
-//   the buyer in the course itself (bundle-icant has no lessons of its own).
 // `includesEbook` — the digital edition rides along at no charge. It shows on
 //   the Stripe page as a $0 line item so the buyer can see what they are
-//   getting, and the webhook records the entitlement on the user.
+//   getting, and the webhook records the entitlement on the user. Both the
+//   course and the bundle include the book this way at $197.
 // `paperbackUpgrade` — the printed copy is an optional add-on at the cost of
 //   shipping. The buyer ticks it on the sales page; that adds one shipping
-//   line item, turns on US address collection, and writes the same book order
-//   `shipsBook` would have. This is how I Can't: The Course sells on its own.
+//   line item, turns on US address collection, and writes the book order to
+//   `orders` for Anthony to work from the store console.
+// `shipsBook` — the paperback is in the price, with no add-on to tick. No
+//   course is sold this way today; the flag stays for an offer that wants it,
+//   and it suppresses the upgrade (there is nothing to upsell).
+// `enrollsAlso` — other courses this purchase unlocks. The bundle uses it to
+//   enroll the buyer in the course itself (bundle-icant has no lessons).
 // `sellable: false` — the course can only be reached through a bundle, and
 //   checkout refuses the slug directly.
 //
 // Firestore `courses/{slug}` overrides every one of these fields, so the offer
 // can change from /manage-courses.html without a deploy.
 const COURSE_FULFILLMENT = {
-  'bundle-icant': { shipsBook: true,  enrollsAlso: ['icant'], sellable: true,
-                    includesEbook: true, paperbackUpgrade: false },
+  'bundle-icant': { shipsBook: false, enrollsAlso: ['icant'], sellable: true,
+                    includesEbook: true, paperbackUpgrade: true },
   'icant':        { shipsBook: false, enrollsAlso: [],        sellable: true,
                     includesEbook: true, paperbackUpgrade: true }
 };

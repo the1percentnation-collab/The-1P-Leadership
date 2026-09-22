@@ -259,17 +259,19 @@ export const COURSES = [
     category: 'Mindset & Personal Growth',
     price: 197,
     priceLabel: '$197',
-    priceNote: 'Paperback shipped to you · US addresses',
-    shipsBook: true,
+    priceNote: 'Digital book included · paperback for shipping only',
+    // The $197 includes the digital edition of the book. The paperback is the
+    // same shipping-only add-on the course offers, so neither offer
+    // undercuts the other.
     includesEbook: true,
-    // The printed copy and its shipping are already in the price here, so
-    // there is nothing to upsell at checkout.
-    paperbackUpgrade: false,
+    paperbackUpgrade: true,
+    paperbackShipping: 9.95,
     bundleHref: '/bundle.html',
     whatYoullLearn: ICANT_OUTCOMES,
     requirements: ICANT_REQUIREMENTS,
     includes: [
-      'The I Can\'t: Is Not A Strategy book — included free',
+      'The digital edition of I Can\'t: Is Not A Strategy — included free',
+      'Paperback available at checkout for shipping only',
       'All 10 chapter modules plus a Start Here module',
       'The book\'s 10 exercises as a guided, saved Workbook',
       'A three-point summary and the chapter\'s hand-off after every module',
@@ -288,7 +290,7 @@ export const COURSES = [
       {
         title: 'The Book: I Can\'t: Is Not A Strategy',
         lessons: [
-          { t: 'Your copy of the book — paperback or digital, yours for life', d: 'included' }
+          { t: 'Your digital copy of the book — yours for life', d: 'included' }
         ]
       },
       {

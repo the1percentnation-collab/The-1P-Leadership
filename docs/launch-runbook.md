@@ -115,17 +115,37 @@ program with no start date.
 `node inspect-clc.js` prints the status of every course if you want to confirm
 before or after.
 
-Then place a real test order against Stripe test keys and confirm: the
-enrollment lands, the paperback order appears under Orders in
-`/manage-store.html` with the shipping address, and the course opens.
+Then place a real test order against Stripe test keys and confirm, twice —
+once without the paperback add-on and once with it: the enrollment lands, the
+Stripe page shows the digital book as a $0 line, the paperback order appears
+under Orders in `/manage-store.html` with the shipping address (add-on run
+only), and the course opens.
+
+## 3b. Run the I Can't offer migration — DO THIS FIRST
+
+`node scripts/enable-icant-standalone.js` (see `scripts/README.md`). Both
+`icant` and `bundle-icant` sell at $197 with the **digital** edition of the
+book included, and both offer the paperback at checkout for the cost of
+shipping ($9.95). The stored Firestore docs still describe the old
+bundle-only arrangement, and Firestore overrides the code registry, so
+without this the course stays unsellable on its own and the bundle keeps
+promising a free shipped paperback. Safe to re-run.
+
+Then paste the digital book's download link under Settings in the course
+builder for both records. It is stored at `courses/{slug}/private/ebook`,
+readable only by enrolled members and admins — never put it on the course
+document, which is world-readable.
 
 ## 4. Stock the book
 
-The bundle ships a paperback. Order author copies from KDP (roughly $2.50–$3.50
-print cost on a 132-page book) and keep a small shelf stock. Orders are worked
-from `/manage-store.html` → Orders: `new` → `shipped` → `done`. A comped
-enrollment lands as `needs-address` because there was no Stripe checkout to
-collect one.
+The paperback is an opt-in add-on at checkout, so expect to ship a fraction
+of enrollments rather than all of them. Order author copies from KDP (roughly
+$2.50–$3.50 print cost on a 132-page book) and keep a small shelf stock: the
+$9.95 the buyer pays covers postage and leaves a little margin on the print
+cost. Orders are worked from `/manage-store.html` → Orders: `new` →
+`shipped` → `done`, and the row says whether shipping was paid. A comped
+enrollment lands as `needs-address` with shipping unpaid, because there was
+no Stripe checkout to collect either one.
 
 ## 5. Seed the Life Coach program
 
