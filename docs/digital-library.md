@@ -75,3 +75,15 @@ differently, set `chapterHrefs` on `books/i-cant`, e.g.
 
 Re-run `upload-book.js` with the new file. `version` changes, so every
 device's offline copy refreshes on next open, and positions carry over.
+
+## Tests
+
+- `tests/books-fulfillment.test.cjs`: which purchases grant which books (unit).
+- `tests/firestore-rules.test.mjs`, `tests/storage-rules.test.mjs`: ownership can't be self-granted, the EPUB is served to owners only (emulators).
+- `tests/reader-e2e.test.mjs`: the shipped reader and `books.js` against the Auth, Firestore and Storage emulators in Chromium: real download through the rule, position and bookmark sync across two devices, IndexedDB cache and version bump, non-owner denied, library shelf. Needs Playwright and a sample EPUB:
+
+  ```bash
+  cd tests && READER_E2E_EPUB=/path/to/sample.epub npm run e2e:reader
+  ```
+
+The emulator ports live in the root `firebase.json` (`emulators` block); run emulator commands from the repo root.

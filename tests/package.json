@@ -16,6 +16,7 @@
     "test:points": "node points-history.test.mjs",
     "test:catalog": "node catalog.test.mjs",
     "test:books": "node books-fulfillment.test.cjs",
+    "e2e:reader": "cd .. && tests/node_modules/.bin/firebase emulators:exec --only auth,firestore,storage --project demo-1p \"node tests/reader-e2e.test.mjs\"",
     "test:beta": "node beta-cohort.test.cjs"
   },
   "devDependencies": {
