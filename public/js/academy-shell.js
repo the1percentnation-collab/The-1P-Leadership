@@ -52,7 +52,9 @@ const ICONS = {
   search: '<circle cx="11" cy="11" r="6.2"/><path d="m15.6 15.6 4 4"/>'
 };
 
-function icon(name) {
+// Exported so the first-login tour can label each tab with the exact icon the
+// member will be looking for in the rail, rather than a second set that drifts.
+export function navIcon(name) {
   return `<svg class="ak-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
     aria-hidden="true">${ICONS[name] || ICONS.dashboard}</svg>`;
@@ -103,7 +105,7 @@ function navItem(item, current) {
        ${item.external ? 'target="_blank" rel="noopener"' : ''}
        ${active ? 'aria-current="page"' : ''}
        title="${escapeHtml(item.label)}">
-      ${icon(item.icon)}<span class="ak-nav-text">${escapeHtml(item.label)}</span>
+      ${navIcon(item.icon)}<span class="ak-nav-text">${escapeHtml(item.label)}</span>
     </a>`;
 }
 
@@ -133,14 +135,14 @@ function sidebarHtml({ current, role }) {
       ${group('Account', ACCOUNT_NAV, current)}
       <div class="ak-nav-group ak-nav-foot">
         <button class="ak-nav-item ak-signout" type="button" id="ak-signout" title="Sign out">
-          ${icon('logout')}<span class="ak-nav-text">Sign out</span>
+          ${navIcon('logout')}<span class="ak-nav-text">Sign out</span>
         </button>
       </div>
     </nav>
 
     <button class="ak-collapse" type="button" id="ak-collapse"
             aria-label="Collapse the sidebar" title="Collapse the sidebar">
-      ${icon('collapse')}
+      ${navIcon('collapse')}
     </button>`;
 }
 

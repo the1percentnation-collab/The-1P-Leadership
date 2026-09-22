@@ -73,9 +73,16 @@
           <textarea id="goals" rows="3" placeholder="Your goals for joining the Academy"></textarea>
         </div>
 
+        <!-- Consent: the wording is unchanged from what members have always
+             agreed to (and is what gets stored as proof of opt-in); only the
+             typography is split, so the agreement reads as one sentence with
+             fine print under it rather than a wall of uppercase. -->
         <label class="auth-consent ob-field-full" for="consent">
           <input id="consent" type="checkbox" />
-          <span id="consent-text">I agree to receive calls, text messages (SMS), and emails from The One Percent Nation at the phone number and email address I provided — including account updates, course information, and marketing. Message &amp; data rates may apply and message frequency varies. Consent is not a condition of any purchase. I can opt out at any time by replying STOP to texts or using the unsubscribe link in emails.</span>
+          <span id="consent-text" class="consent-body">
+            <span class="consent-main">I agree to receive calls, text messages (SMS), and emails from The One Percent Nation at the phone number and email address I provided — including account updates, course information, and marketing.</span>
+            <span class="consent-fine">Message &amp; data rates may apply and message frequency varies. Consent is not a condition of any purchase. I can opt out at any time by replying STOP to texts or using the unsubscribe link in emails.</span>
+          </span>
         </label>
 
         <button class="btn btn-primary ob-field-full" type="submit" id="btn-submit">Enter the Academy →</button>

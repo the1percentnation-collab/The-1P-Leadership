@@ -43,6 +43,8 @@ function fmtWhen(ms) {
  *   events:        [{ id, title, startsAtMs, registered, joinUrl }]
  *   notifications: [{ type, read, fromName, postId }]
  *   profile, certification, hasPosted
+ *   profileNudgeShown: true when the first-login setup card is already on the
+ *                      page, so this list does not repeat its ask
  * }
  *
  * Returns [{ key, eyebrow, title, sub, ctaLabel, href, external, urgent }].
@@ -54,7 +56,8 @@ export function buildNextSteps(context = {}, { max = 4 } = {}) {
     notifications = [],
     profile = null,
     certification = null,
-    hasPosted = true
+    hasPosted = true,
+    profileNudgeShown = false
   } = context;
 
   const out = [];
@@ -159,8 +162,10 @@ export function buildNextSteps(context = {}, { max = 4 } = {}) {
   }
 
   // 6. An incomplete profile makes a member invisible to everyone else here.
+  //    Skipped when the setup card above is already making the same ask with a
+  //    full checklist — two nudges for one job is noise.
   const prof = profileCompleteness(profile);
-  if (prof.pct < 100) {
+  if (prof.pct < 100 && !profileNudgeShown) {
     out.push({
       key: 'profile',
       eyebrow: `Profile ${prof.pct}% complete`,
