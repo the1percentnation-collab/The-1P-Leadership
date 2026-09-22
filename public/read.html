@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="paper">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <!-- The reader owns the whole screen: no pinch zoom (font size is the zoom),
+       and content runs under the notch with safe-area padding on the bars. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#F7F4EE">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Reader | The One Percent Library</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Space+Mono:wght@400&display=swap" rel="stylesheet">
+  <script>
+    // Paint the saved theme before first frame so Night readers never get a
+    // white flash on open.
+    try {
+      var s = JSON.parse(localStorage.getItem('1p_reader_settings') || '{}');
+      if (s.theme) document.documentElement.setAttribute('data-theme', s.theme);
+    } catch (e) {}
+  </script>
+  <style>
+    :root {
+      --bg: #F7F4EE; --fg: #1B1B1B; --muted: #6E6A63; --line: rgba(0,0,0,0.09);
+      --bar: rgba(247,244,238,0.94); --accent: #E60306; --sheet: #FFFFFF;
+      --font-ui: 'Outfit', system-ui, -apple-system, sans-serif;
+      --font-mono: 'Space Mono', ui-monospace, monospace;
+      --ease: cubic-bezier(.2,.7,.2,1);
+      --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px);
+    }
+    :root[data-theme="sepia"] {
+      --bg: #F1E7D0; --fg: #3B2F20; --muted: #7C6A52; --line: rgba(59,47,32,0.12);
+      --bar: rgba(241,231,208,0.94); --sheet: #F8F0DD;
+    }
+    :root[data-theme="night"] {
+      --bg: #0B0B0B; --fg: #E6E2DA; --muted: #8C877F; --line: rgba(255,255,255,0.09);
+      --bar: rgba(16,16,16,0.94); --sheet: #161616; --accent: #FF3B3E;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+      font-family: var(--font-ui); overflow: hidden; overscroll-behavior: none;
+      -webkit-text-size-adjust: 100%;
+      transition: background-color .25s var(--ease), color .25s var(--ease);
+    }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+    .ico { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* ── Stage ───────────────────────────────────────────── */
+    #stage {
+      position: fixed; inset: 0;
+      padding: calc(var(--safe-t) + 44px) 0 calc(var(--safe-b) + 40px);
+    }
+    foliate-view { display: block; width: 100%; height: 100%; }
+    /* Running header and page footer, always visible and quiet, like Kindle */
+    #run-head, #run-foot {
+      position: fixed; left: 0; right: 0; text-align: center; pointer-events: none;
+      font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em;
+      color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      padding: 0 64px; transition: opacity .2s var(--ease);
+    }
+    #run-head { top: calc(var(--safe-t) + 16px); text-transform: uppercase; }
+    #run-foot { bottom: calc(var(--safe-b) + 14px); }
+    body.chrome #run-head, body.chrome #run-foot { opacity: 0; }
+
+    /* ── Chrome (tap the middle to show) ─────────────────── */
+    .bar {
+      position: fixed; left: 0; right: 0; z-index: 20; background: var(--bar);
+      backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px);
+      transition: transform .28s var(--ease), opacity .28s var(--ease);
+    }
+    #top-bar {
+      top: 0; padding: calc(var(--safe-t) + 6px) 8px 6px; display: flex; align-items: center; gap: 4px;
+      border-bottom: 1px solid var(--line); transform: translateY(-100%); opacity: 0;
+    }
+    #bottom-bar {
+      bottom: 0; padding: 12px 20px calc(var(--safe-b) + 14px); border-top: 1px solid var(--line);
+      transform: translateY(100%); opacity: 0;
+    }
+    body.chrome #top-bar, body.chrome #bottom-bar { transform: none; opacity: 1; }
+    .icon-btn {
+      color: inherit; text-decoration: none;
+      width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px;
+      transition: background .15s;
+    }
+    .icon-btn:active { background: var(--line); }
+    #book-title {
+      flex: 1; min-width: 0; text-align: center; font-size: 14px; font-weight: 500;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #bookmark-btn.on .ico { fill: var(--accent); stroke: var(--accent); }
+
+    #scrub { display: flex; flex-direction: column; gap: 8px; }
+    #scrub-meta {
+      display: flex; justify-content: space-between; gap: 12px;
+      font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em; color: var(--muted);
+    }
+    #scrub-chapter { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    input[type=range] {
+      -webkit-appearance: none; appearance: none; width: 100%; height: 28px; background: transparent; margin: 0;
+    }
+    input[type=range]::-webkit-slider-runnable-track {
+      height: 3px; border-radius: 3px;
+      background: linear-gradient(to right, var(--fg) var(--p, 0%), var(--line) var(--p, 0%));
+    }
+    input[type=range]::-moz-range-track { height: 3px; border-radius: 3px; background: var(--line); }
+    input[type=range]::-moz-range-progress { height: 3px; border-radius: 3px; background: var(--fg); }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; margin-top: -7.5px;
+      background: var(--fg); border: 3px solid var(--bg); box-shadow: 0 1px 4px rgba(0,0,0,.25);
+    }
+    input[type=range]::-moz-range-thumb {
+      width: 14px; height: 14px; border-radius: 50%; background: var(--fg); border: 3px solid var(--bg);
+    }
+
+    /* ── Sheets: contents drawer + Aa settings ───────────── */
+    #scrim {
+      position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.32);
+      opacity: 0; pointer-events: none; transition: opacity .25s var(--ease);
+    }
+    body.sheet-open #scrim { opacity: 1; pointer-events: auto; }
+    .sheet {
+      position: fixed; z-index: 40; background: var(--sheet); color: var(--fg);
+      transition: transform .32s var(--ease), box-shadow .32s var(--ease);
+    }
+    /* Shadow only while open, so a parked drawer can't shade the page edge */
+    .sheet.open { box-shadow: 0 10px 40px rgba(0,0,0,.18); }
+    #toc {
+      top: 0; bottom: 0; left: 0; width: min(360px, 88vw); transform: translateX(-102%);
+      display: flex; flex-direction: column; padding-top: var(--safe-t);
+    }
+    #toc.open { transform: none; }
+    .sheet-head {
+      display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 10px 20px;
+      font-weight: 600; font-size: 15px;
+    }
+    .tabs { display: flex; gap: 6px; padding: 0 20px 10px; }
+    .tab {
+      font-size: 12.5px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+    }
+    .tab.on { color: var(--fg); border-color: var(--fg); }
+    .toc-list { overflow-y: auto; flex: 1; padding: 0 8px calc(var(--safe-b) + 20px); -webkit-overflow-scrolling: touch; }
+    .toc-item {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%;
+      text-align: left; padding: 13px 12px; border-radius: 10px; font-size: 15px; line-height: 1.35;
+    }
+    .toc-item.sub { padding-left: 28px; font-size: 14px; color: var(--muted); }
+    .toc-item:active { background: var(--line); }
+    .toc-item.current { font-weight: 600; color: var(--accent); }
+    .toc-item small { font-family: var(--font-mono); font-size: 10px; color: var(--muted); flex: none; }
+    .empty { padding: 24px 12px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+    #settings {
+      left: 50%; bottom: 0; width: min(520px, 100vw); transform: translate(-50%, 104%);
+      border-radius: 20px 20px 0 0; padding: 8px 20px calc(var(--safe-b) + 22px);
+    }
+    #settings.open { transform: translate(-50%, 0); }
+    .grab { width: 38px; height: 4px; border-radius: 4px; background: var(--line); margin: 4px auto 14px; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; }
+    .row + .row { border-top: 1px solid var(--line); }
+    .row-label { font-size: 13px; color: var(--muted); }
+    .seg { display: flex; gap: 6px; }
+    .seg button {
+      min-width: 52px; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line);
+      font-size: 14px;
+    }
+    .seg button.on { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
+    .swatch { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); }
+    .swatch.on { box-shadow: 0 0 0 2px var(--sheet), 0 0 0 4px var(--fg); }
+    .sz { display: flex; align-items: center; gap: 10px; }
+    .sz button { width: 48px; height: 40px; border-radius: 10px; border: 1px solid var(--line); }
+    .sz-dots { display: flex; gap: 5px; }
+    .sz-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+    .sz-dots i.on { background: var(--fg); }
+
+    /* ── Loading / errors ────────────────────────────────── */
+    #splash {
+      position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--bg);
+      transition: opacity .35s var(--ease);
+    }
+    #splash.gone { opacity: 0; pointer-events: none; }
+    .splash-inner { text-align: center; padding: 24px; max-width: 360px; }
+    #splash-cover {
+      width: 132px; aspect-ratio: 2/3; object-fit: cover; border-radius: 4px; display: block; margin: 0 auto 22px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.22);
+    }
+    #splash-cover[src=""] { display: none; }
+    .splash-msg { font-size: 14px; color: var(--muted); line-height: 1.55; }
+    .splash-msg strong { color: var(--fg); display: block; font-size: 17px; margin-bottom: 6px; }
+    .pulse { width: 120px; height: 2px; margin: 18px auto 0; background: var(--line); overflow: hidden; border-radius: 2px; }
+    .pulse::after {
+      content: ''; display: block; width: 40%; height: 100%; background: var(--fg);
+      animation: slide 1.1s var(--ease) infinite;
+    }
+    @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+    .splash-actions { margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-block; padding: 12px 18px; border-radius: 12px; font-size: 14px; font-weight: 500;
+      text-decoration: none; border: 1px solid var(--line); color: var(--fg);
+    }
+    .btn.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+    #toast {
+      position: fixed; left: 50%; bottom: calc(var(--safe-b) + 70px); transform: translate(-50%, 20px);
+      z-index: 60; background: var(--fg); color: var(--bg); font-size: 13px; padding: 10px 16px;
+      border-radius: 999px; opacity: 0; pointer-events: none; transition: all .25s var(--ease);
+    }
+    #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0s !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="stage"></div>
+<div id="run-head"></div>
+<div id="run-foot"></div>
+
+<header class="bar" id="top-bar">
+  <a class="icon-btn" id="back-btn" href="/library" aria-label="Back to library">
+    <svg class="ico" viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg>
+  </a>
+  <button class="icon-btn" id="toc-btn" type="button" aria-label="Contents">
+    <svg class="ico" viewBox="0 0 24 24"><path d="M4 6.5h16M4 12h16M4 17.5h10"/></svg>
+  </button>
+  <div id="book-title"></div>
+  <button class="icon-btn" id="aa-btn" type="button" aria-label="Text and theme">
+    <svg class="ico" viewBox="0 0 24 24"><path d="M3 19 8 6l5 13M4.8 14.5h6.4"/><path d="M14.5 19l3.3-8.5L21 19M15.6 16.2h4.4"/></svg>
+  </button>
+  <button class="icon-btn" id="bookmark-btn" type="button" aria-label="Bookmark this page" aria-pressed="false">
+    <svg class="ico" viewBox="0 0 24 24"><path d="M6.5 3.5h11v17L12 16.5l-5.5 4Z"/></svg>
+  </button>
+</header>
+
+<footer class="bar" id="bottom-bar">
+  <div id="scrub">
+    <input id="slider" type="range" min="0" max="1" step="0.0005" value="0" aria-label="Reading position">
+    <div id="scrub-meta"><span id="scrub-chapter"></span><span id="scrub-pct"></span></div>
+  </div>
+</footer>
+
+<div id="scrim"></div>
+
+<aside class="sheet" id="toc" aria-label="Contents" aria-hidden="true">
+  <div class="sheet-head">
+    <span>Contents</span>
+    <button class="icon-btn" data-close type="button" aria-label="Close">
+      <svg class="ico" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+  </div>
+  <div class="tabs">
+    <button class="tab on" data-tab="chapters" type="button">Chapters</button>
+    <button class="tab" data-tab="bookmarks" type="button">Bookmarks</button>
+  </div>
+  <div class="toc-list" id="toc-list"></div>
+  <div class="toc-list" id="marks-list" hidden></div>
+</aside>
+
+<section class="sheet" id="settings" aria-label="Text and theme" aria-hidden="true">
+  <div class="grab"></div>
+  <div class="row">
+    <span class="row-label">Text size</span>
+    <div class="sz">
+      <button type="button" id="sz-down" aria-label="Smaller text" style="font-size:13px">A</button>
+      <div class="sz-dots" id="sz-dots"></div>
+      <button type="button" id="sz-up" aria-label="Larger text" style="font-size:19px">A</button>
+    </div>
+  </div>
+  <div class="row">
+    <span class="row-label">Font</span>
+    <div class="seg" data-setting="font">
+      <button type="button" data-value="serif" style="font-family:Georgia,serif">Serif</button>
+      <button type="button" data-value="sans" style="font-family:var(--font-ui)">Sans</button>
+      <button type="button" data-value="book">Original</button>
+    </div>
+  </div>
+  <div class="row">
+    <span class="row-label">Spacing</span>
+    <div class="seg" data-setting="spacing">
+      <button type="button" data-value="1.45" aria-label="Compact line spacing">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M5 8h14M5 11h14M5 14h14M5 17h14"/></svg></button>
+      <button type="button" data-value="1.65" aria-label="Normal line spacing">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M5 7h14M5 11h14M5 15h14"/></svg></button>
+      <button type="button" data-value="1.9" aria-label="Relaxed line spacing">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h14"/></svg></button>
+    </div>
+  </div>
+  <div class="row">
+    <span class="row-label">Margins</span>
+    <div class="seg" data-setting="margin">
+      <button type="button" data-value="narrow">Narrow</button>
+      <button type="button" data-value="normal">Normal</button>
+      <button type="button" data-value="wide">Wide</button>
+    </div>
+  </div>
+  <div class="row">
+    <span class="row-label">Theme</span>
+    <div class="seg" data-setting="theme">
+      <button type="button" class="swatch" data-value="paper" aria-label="Paper" style="background:#F7F4EE"></button>
+      <button type="button" class="swatch" data-value="sepia" aria-label="Sepia" style="background:#F1E7D0"></button>
+      <button type="button" class="swatch" data-value="night" aria-label="Night" style="background:#0B0B0B"></button>
+    </div>
+  </div>
+</section>
+
+<div id="splash" role="status" aria-live="polite">
+  <div class="splash-inner">
+    <img id="splash-cover" src="" alt="">
+    <div class="splash-msg" id="splash-msg">Opening your book…</div>
+    <div class="pulse" id="splash-pulse"></div>
+    <div class="splash-actions" id="splash-actions"></div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="js/reader.js"></script>
+</body>
+</html>

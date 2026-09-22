@@ -5277,7 +5277,7 @@ exports.enrollFree = onCall(async (request) => {
   }
 
   await db.collection('users').doc(uid).set({
-    enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(slug),
+    ...enrollmentFields(slug, course),
     lastActiveAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
 
@@ -5308,9 +5308,8 @@ async function findUserByEmail(db, email) {
 
 // Enrolls uid in slug (plus whatever the slug unlocks) and records why.
 async function applyGrant(db, uid, slug, course, { note, grantedBy }) {
-  const also = courseFulfillment(slug, course || {}).enrollsAlso;
   await db.collection('users').doc(uid).set({
-    enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(slug, ...also),
+    ...enrollmentFields(slug, course),
     lastActiveAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
   await db.collection('users').doc(uid).collection('purchases').doc(`grant-${slug}-${Date.now()}`).set({
@@ -6295,20 +6294,48 @@ exports.validateCoupon = onCall(async (request) => {
 // `sellable: false` means the course can only be reached through a bundle:
 // checkout refuses it directly. The I Can't course is sold only as
 // The Complete I Can't Experience (bundle-icant), which ships the paperback.
+//
+// `grantsBooks` attaches digital books from the library (books/{bookId}) to a
+// course. Every path that grants the course also adds these ids to
+// users/{uid}.ownedBookIds, the field the reader and storage.rules gate on.
+// The buyer picks the format: bundle-icant is digital only (nothing ships),
+// bundle-icant-print adds the shipped paperback.
 const COURSE_FULFILLMENT = {
-  'bundle-icant': { shipsBook: true,  enrollsAlso: ['icant'], sellable: true },
-  'icant':        { shipsBook: false, enrollsAlso: [],        sellable: false }
+  'bundle-icant':       { shipsBook: false, enrollsAlso: ['icant'], grantsBooks: ['i-cant'], sellable: true },
+  'bundle-icant-print': { shipsBook: true,  enrollsAlso: ['icant'], grantsBooks: ['i-cant'], sellable: true },
+  'icant':              { shipsBook: false, enrollsAlso: [],        grantsBooks: ['i-cant'], sellable: false }
 };
 const SHIPPED_BOOK_NAME = 'I Can\'t: Is Not A Strategy (paperback)';
 
 function courseFulfillment(slug, course) {
-  const d = COURSE_FULFILLMENT[slug] || { shipsBook: false, enrollsAlso: [], sellable: true };
-  const shipsBook = typeof course.shipsBook === 'boolean' ? course.shipsBook : d.shipsBook;
-  const sellable = typeof course.sellable === 'boolean' ? course.sellable : d.sellable;
-  const enrollsAlso = Array.isArray(course.enrollsAlso)
-    ? course.enrollsAlso.map(String).filter(Boolean)
-    : d.enrollsAlso;
-  return { shipsBook, enrollsAlso, sellable };
+  const d = COURSE_FULFILLMENT[slug] || { shipsBook: false, enrollsAlso: [], grantsBooks: [], sellable: true };
+  const c = course || {};
+  const shipsBook = typeof c.shipsBook === 'boolean' ? c.shipsBook : d.shipsBook;
+  const sellable = typeof c.sellable === 'boolean' ? c.sellable : d.sellable;
+  const list = (v, fallback) => (Array.isArray(v) ? v.map(String).filter(Boolean) : fallback);
+  const enrollsAlso = list(c.enrollsAlso, d.enrollsAlso);
+  const grantsBooks = list(c.grantsBooks, d.grantsBooks || []);
+  return { shipsBook, enrollsAlso, grantsBooks, sellable };
+}
+
+// The users/{uid} fields that grant `slug`: the course, whatever it unlocks,
+// and the books attached to either. Books attached to an unlocked course
+// (icant's own grantsBooks) come from COURSE_FULFILLMENT defaults, so a
+// bundle still grants them without an extra read.
+function booksForCourse(slug, course) {
+  const f = courseFulfillment(slug, course);
+  const books = new Set(f.grantsBooks);
+  f.enrollsAlso.forEach((s) => courseFulfillment(s, {}).grantsBooks.forEach((b) => books.add(b)));
+  return [...books];
+}
+
+function enrollmentFields(slug, course) {
+  const FV = admin.firestore.FieldValue;
+  const f = courseFulfillment(slug, course);
+  const books = booksForCourse(slug, course);
+  const out = { enrolledCourseSlugs: FV.arrayUnion(slug, ...f.enrollsAlso) };
+  if (books.length) out.ownedBookIds = FV.arrayUnion(...books);
+  return out;
 }
 
 // Stripe moved the collected address from `session.shipping_details` to
@@ -6444,6 +6471,11 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   if (enrolled.includes(slug)) {
     throw new HttpsError('already-exists', 'You\'re already enrolled in this course.');
   }
+  // The two I Can't bundles unlock the same course. Owning it through one
+  // means the other would charge again for access already held.
+  if (fulfil.enrollsAlso.length && fulfil.enrollsAlso.every((s) => enrolled.includes(s))) {
+    throw new HttpsError('already-exists', 'You already have this course and its book in your library.');
+  }
 
   const dollars = effectivePriceDollars(course);
   if (dollars == null || dollars <= 0) {
@@ -6493,7 +6525,7 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
       { kind: 'course', id: slug, priceDollars: dollars });
     if (resolved.isFree) {
       await db.collection('users').doc(uid).set({
-        enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(slug, ...fulfil.enrollsAlso),
+        ...enrollmentFields(slug, course),
         lastActiveAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
       if (fulfil.shipsBook) {
@@ -6556,6 +6588,8 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   if (appliedCoupon) metadata.couponCode = appliedCoupon;
   if (fulfil.shipsBook) metadata.shipsBook = '1';
   if (fulfil.enrollsAlso.length) metadata.enrollsAlso = fulfil.enrollsAlso.join(',');
+  const grantsBooks = booksForCourse(slug, course);
+  if (grantsBooks.length) metadata.grantsBooks = grantsBooks.join(',');
 
   if (plan) {
     metadata.installments = String(plan.installments);
@@ -6743,8 +6777,17 @@ exports.stripeWebhook = onRequest(
           // A bundle unlocks the course it wraps (see COURSE_FULFILLMENT).
           const enrollsAlso = String((session.metadata && session.metadata.enrollsAlso) || '')
             .split(',').map((x) => x.trim()).filter(Boolean);
+          // Books were locked into metadata at checkout; sessions opened
+          // before that existed fall back to the code defaults.
+          const metaBooks = session.metadata && session.metadata.grantsBooks;
+          const grantsBooks = metaBooks != null
+            ? String(metaBooks).split(',').map((x) => x.trim()).filter(Boolean)
+            : booksForCourse(courseSlug, {});
           await db.collection('users').doc(uid).set({
-            enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(courseSlug, ...enrollsAlso)
+            enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(courseSlug, ...enrollsAlso),
+            ...(grantsBooks.length
+              ? { ownedBookIds: admin.firestore.FieldValue.arrayUnion(...grantsBooks) }
+              : {})
           }, { merge: true });
 
           // The book ships with this course: record the order with the address

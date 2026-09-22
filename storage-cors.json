@@ -1,0 +1,13 @@
+[
+  {
+    "origin": [
+      "https://the-1p-leadership.web.app",
+      "https://the-1p-leadership.firebaseapp.com",
+      "https://the1pnation.com",
+      "https://www.the1pnation.com"
+    ],
+    "method": ["GET"],
+    "maxAgeSeconds": 3600,
+    "responseHeader": ["Content-Type", "Authorization", "x-goog-meta-*"]
+  }
+]

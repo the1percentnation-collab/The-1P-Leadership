@@ -116,8 +116,10 @@ export function enrolledCourses() {
 // reachable through a bundle, so it never appears here (its bundle does),
 // and a course in `beta` has no public face at all: it is listed to nobody
 // but the testers who already hold it, who see it under "Your courses".
+// A checkout option of another offer (`optionOf`, e.g. the paperback
+// variant of the I Can't bundle) is chosen on that offer's page, never listed.
 export function availableCourses() {
   const set = _cache || new Set();
   return getCourses().filter((c) =>
-    !set.has(c.slug) && c.sellable !== false && c.status !== 'beta');
+    !set.has(c.slug) && c.sellable !== false && c.status !== 'beta' && !c.optionOf);
 }

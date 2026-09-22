@@ -237,7 +237,7 @@ function instructorHtml() {
 }
 
 function moreCoursesHtml(course) {
-  const others = getCourses().filter((c) => c.slug !== course.slug).slice(0, 5);
+  const others = getCourses().filter((c) => c.slug !== course.slug && !c.optionOf).slice(0, 5);
   if (!others.length) return '';
   const rows = others.map((c) => {
     const p = priceInfo(c);

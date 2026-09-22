@@ -39,6 +39,23 @@ service firebase.storage {
                    && request.resource.contentType.matches('video/(mp4|webm)');
     }
 
+    // books/{bookId}/{fileName} — the digital library. The cover is public
+    // (library shelf, sales pages). Everything else, the EPUB above all, is
+    // readable only by someone whose users/{uid}.ownedBookIds lists the book.
+    // That field is Admin-SDK-only (firestore.rules), set by checkout and
+    // grants through a course's grantsBooks. The reader fetches with
+    // getBlob(), never a download URL, so there is no token link to share.
+    match /books/{bookId}/{fileName} {
+      allow read: if fileName.matches('cover\\.(jpg|jpeg|png|webp)')
+                  || isCourseAdmin()
+                  || (request.auth != null
+                      && bookId in firestore.get(/databases/(default)/documents/users/$(request.auth.uid))
+                           .data.get('ownedBookIds', []));
+      allow write: if isCourseAdmin()
+                   && request.resource.size < 50 * 1024 * 1024
+                   && request.resource.contentType.matches('application/epub\\+zip|image/(jpeg|png|webp)');
+    }
+
     // companies/{cid}/voicemails/{fileName} — prerecorded voicemail greetings
     // for the dialer's one-click drop. Never read by the browser: Twilio
     // fetches the audio through the voicemailAudio function, which checks a

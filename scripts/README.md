@@ -45,6 +45,8 @@ account key. Move them onto `lib/init.js` before running any of them.
 |---|---|---|
 | `fix-clc-slugs.js` | Moves the Leader Coach off the `1p-clc` slug onto `1p-clc-leader` with its lessons, members and purchases; resets `1p-clc` to the Life Coach identity; archives the superseded `silence-the-voice` draft. | **Yes, once.** See below. |
 | `seed-clc.js` | Writes the 8 written modules, the 48-question exam bank, the FOUNDING coupon and certification config for the $3,497 Life Coach program. | **Yes, once — but only AFTER `fix-clc-slugs.js`.** It refuses to run before that and tells you so. |
+| `upload-book.js` | Uploads an EPUB (and cover) to the digital library and writes `books/{id}`. See `docs/digital-library.md`. | **Yes**, once the final EPUB is ready, and again for each new edition. |
+| `setup-digital-library.js` | Makes the I Can't bundle digital, creates the paperback option, and adds the book to everyone already enrolled. | **Yes, once** after the first upload. Dry run by default; `--apply` writes. |
 | `seed-booking.js` | Writes `config/booking` with the Zoom scheduler URL. | Optional. `/book-a-call.html` already works from a hardcoded fallback. |
 | `seed-resale-products.js` | Creates the A.L.I.G.N. client workbook, assessment and six-week program as draft products. | Not yet. They have no content or final pricing. |
 | `seed-financial-partner.js` | Creates the financial services partner company and its waitlist products. | Not yet. The partner name is still a placeholder. |

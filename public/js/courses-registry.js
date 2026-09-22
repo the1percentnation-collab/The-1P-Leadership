@@ -259,13 +259,17 @@ export const COURSES = [
     category: 'Mindset & Personal Growth',
     price: 197,
     priceLabel: '$197',
-    priceNote: 'Paperback shipped to you · US addresses',
-    shipsBook: true,
+    priceNote: 'Digital book in your library · instant access',
+    // Digital by default: the book lands in the member's library (/library)
+    // the moment checkout completes, nothing ships. The paperback is the
+    // bundle-icant-print option below, chosen on /bundle.html.
+    shipsBook: false,
+    grantsBooks: ['i-cant'],
     bundleHref: '/bundle.html',
     whatYoullLearn: ICANT_OUTCOMES,
     requirements: ICANT_REQUIREMENTS,
     includes: [
-      'The I Can\'t: Is Not A Strategy book — included free',
+      'The I Can\'t: Is Not A Strategy book, digital edition, in your library',
       'All 10 chapter modules plus a Start Here module',
       'The book\'s 10 exercises as a guided, saved Workbook',
       'A three-point summary and the chapter\'s hand-off after every module',
@@ -284,7 +288,49 @@ export const COURSES = [
       {
         title: 'The Book: I Can\'t: Is Not A Strategy',
         lessons: [
-          { t: 'Your copy of the book — paperback or digital, yours for life', d: 'included' }
+          { t: 'Your copy of the book: read it on any device, yours for life', d: 'included' }
+        ]
+      },
+      {
+        title: 'The Course: everything in I Can\'t: The Course',
+        lessons: ICANT_CURRICULUM_SUMMARY
+      }
+    ]
+  },
+  {
+    // The same bundle with the paperback shipped as well. It is an option
+    // on /bundle.html, not a product of its own: `optionOf` keeps it off the
+    // homepage, the store and the course library, which list bundle-icant.
+    slug: 'bundle-icant-print',
+    kind: 'bundle',
+    optionOf: 'bundle-icant',
+    title: 'The Complete I Can\'t Experience + Paperback',
+    short: 'Bundle + Paperback',
+    subtitle: 'Book + Course together, plus a paperback shipped to your door.',
+    status: 'coming-soon',
+    category: 'Mindset & Personal Growth',
+    price: 227,
+    priceLabel: '$227',
+    priceNote: 'Digital book now · paperback shipped · US addresses',
+    shipsBook: true,
+    grantsBooks: ['i-cant'],
+    sellable: true,
+    showOnSite: false,
+    showInDashboard: false,
+    bundleHref: '/bundle.html',
+    whatYoullLearn: ICANT_OUTCOMES,
+    requirements: ICANT_REQUIREMENTS,
+    includes: [
+      'Everything in The Complete I Can\'t Experience',
+      'A paperback of I Can\'t: Is Not A Strategy, shipped to you',
+      'The digital edition in your library the moment you enroll'
+    ],
+    description: [ICANT_PARAGRAPH],
+    curriculum: [
+      {
+        title: 'The Book: I Can\'t: Is Not A Strategy',
+        lessons: [
+          { t: 'Digital edition in your library, plus a shipped paperback', d: 'included' }
         ]
       },
       {
@@ -309,6 +355,7 @@ export const COURSES = [
     // Members enrolled through the bundle open it here as normal.
     sellable: false,
     showOnSite: false,
+    grantsBooks: ['i-cant'],
     bundleHref: '/bundle.html',
     whatYoullLearn: ICANT_OUTCOMES,
     requirements: ICANT_REQUIREMENTS,

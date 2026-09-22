@@ -19,6 +19,15 @@ import { mountCoursePlayer } from './course-player.js';
 export const BOOK_URL = 'https://a.co/d/0fSUaomu';
 export const BOOK_TITLE = 'I Can\'t: Is Not A Strategy';
 
+// The digital book lives in the library (read.html), not in this course.
+// Every way into this course also puts the book in the member's library
+// (grantsBooks in functions/index.js), so a module can link straight to its
+// chapter. The Amazon link stays for reviews.
+export const BOOK_ID = 'i-cant';
+export function readerHref(moduleId) {
+  return `/read?book=${BOOK_ID}&chapter=${encodeURIComponent(moduleId)}`;
+}
+
 export const MODULES = [
   {
     id: 0,
@@ -521,8 +530,8 @@ function sidebarFooterHtml() {
     <div style="font-size:9px;letter-spacing:2px;color:#444;font-weight:600;margin-bottom:8px;">THE COMPANION BOOK</div>
     <div style="font-size:12px;color:#CCCCCC;font-style:italic;line-height:1.4;">${esc(BOOK_TITLE)}</div>
     <div style="font-size:11px;color:#666;margin-top:4px;line-height:1.5;">One module per chapter. Every Workbook is the book's own exercise.</div>
-    <a href="${BOOK_URL}" target="_blank" rel="noopener"
-      style="display:inline-block;margin-top:8px;font-size:11px;color:#E60306;text-decoration:none;font-weight:600;">Get the book →</a>`;
+    <a href="/library"
+      style="display:inline-block;margin-top:8px;font-size:11px;color:#E60306;text-decoration:none;font-weight:600;">Open the book in your library →</a>`;
 }
 
 function lessonTabHtml(mod) {
@@ -547,22 +556,23 @@ function lessonTabHtml(mod) {
         <div style="font-size:10px;letter-spacing:2px;color:#AAAAAA;font-weight:600;margin-bottom:10px;">FROM THE BOOK</div>
         <p style="color:#fff;line-height:1.6;font-size:16px;margin:0;font-style:italic;">&ldquo;${esc(mod.fromTheBook)}&rdquo;</p>
       </div>
-      ${mod.id === 0 ? `
       <div style="background:#0A0000;border:1px solid #330000;border-radius:12px;padding:20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
         <div style="flex:1;min-width:200px;">
-          <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:6px;">THE COMPANION BOOK</div>
+          <div style="font-size:10px;letter-spacing:2px;color:#E60306;font-weight:600;margin-bottom:6px;">${mod.id === 0 ? 'THE COMPANION BOOK' : `READ ${esc(mod.chapterRef.toUpperCase())}`}</div>
           <div style="font-size:15px;font-weight:600;color:#fff;margin-bottom:4px;font-style:italic;">${esc(BOOK_TITLE)}</div>
-          <div style="font-size:12px;color:#AAAAAA;line-height:1.5;">This course follows the book chapter for chapter. Read each chapter first, then do its module. If you do not have the book yet, get it before Chapter 1.</div>
+          <div style="font-size:12px;color:#AAAAAA;line-height:1.5;">${mod.id === 0
+            ? 'This course follows the book chapter for chapter. Read each chapter first, then do its module. Your digital copy is in your library and opens on any device.'
+            : 'Read the chapter first, then come back and do its exercise. The book opens right at this chapter.'}</div>
         </div>
-        <a href="${BOOK_URL}" target="_blank" rel="noopener"
+        <a href="${readerHref(mod.id)}"
           style="display:inline-flex;align-items:center;gap:8px;padding:12px 20px;
             background:#E60306;color:#fff;border-radius:8px;font-size:13px;font-weight:600;
             letter-spacing:0.5px;white-space:nowrap;text-decoration:none;flex-shrink:0;
             transition:opacity 0.2s;"
           onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
-          Get the Book →
+          ${mod.id === 0 ? 'Open the Book →' : `Read ${esc(mod.chapterRef)} →`}
         </a>
-      </div>` : ''}
+      </div>
     </div>`;
 }
 

@@ -276,6 +276,55 @@ await t('member CANNOT promote themselves in the cohort',
 await t('even the owner CANNOT write a beta tester record from the client',
   () => assertFails(updateDoc(doc(owner, 'betaTesters/tester@x.com'), { status: 'completed' })));
 
+// ── Digital library ──────────────────────────────────────────────────────
+// storage.rules hands out a book's EPUB on users/{uid}.ownedBookIds alone, so
+// that field must be as frozen against self-writes as enrolledCourseSlugs.
+
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'books/i-cant'), { title: 'I Can\'t', status: 'live', version: '1' });
+  await setDoc(doc(db, 'users/reader'), { email: 'reader@x.com', role: 'user', ownedBookIds: ['i-cant'] });
+});
+const reader = env.authenticatedContext('reader').firestore();
+
+await t('anyone CAN read book metadata (the library shelf and sales pages)',
+  () => assertSucceeds(getDoc(doc(anon, 'books/i-cant'))));
+
+await t('member CANNOT write book metadata',
+  () => assertFails(setDoc(doc(solo, 'books/i-cant'), { title: 'x' }, { merge: true })));
+
+await t('member CANNOT give themselves a book on update',
+  () => assertFails(updateDoc(doc(solo, 'users/solo'), { ownedBookIds: ['i-cant'] })));
+
+await t('member CANNOT create their user doc already owning a book',
+  () => assertFails(setDoc(doc(env.authenticatedContext('fresh').firestore(), 'users/fresh'), {
+    email: 'fresh@x.com', role: 'user', ownedBookIds: ['i-cant']
+  })));
+
+await t('member CAN create their user doc with an empty library',
+  () => assertSucceeds(setDoc(doc(env.authenticatedContext('fresh2').firestore(), 'users/fresh2'), {
+    email: 'fresh2@x.com', role: 'user', ownedBookIds: []
+  })));
+
+await t('member CAN still edit their profile while owning a book',
+  () => assertSucceeds(updateDoc(doc(reader, 'users/reader'), { displayName: 'Reader' })));
+
+await t('member CANNOT remove a book to swap in another',
+  () => assertFails(updateDoc(doc(reader, 'users/reader'), { ownedBookIds: ['other-book'] })));
+
+await t('member CAN save their reading position',
+  () => assertSucceeds(setDoc(doc(reader, 'users/reader/bookProgress/i-cant'), {
+    cfi: 'epubcfi(/6/4!/4/2/1:0)', fraction: 0.12, chapter: 'Chapter 1', bookmarks: [], updatedAt: serverTimestamp()
+  })));
+
+await t('member CANNOT stash arbitrary fields in a reading position',
+  () => assertFails(setDoc(doc(reader, 'users/reader/bookProgress/i-cant'), {
+    cfi: 'x', fraction: 0.1, ownedBookIds: ['other']
+  })));
+
+await t('member CANNOT read someone else\'s reading position',
+  () => assertFails(getDoc(doc(solo, 'users/reader/bookProgress/i-cant'))));
+
 await env.cleanup();
 
 let failed = 0;

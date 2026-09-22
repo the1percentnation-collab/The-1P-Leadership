@@ -125,6 +125,10 @@ export const TOUR_STOPS = [
     blurb: 'Every track you own, plus everything you can add. Progress saves automatically, so you can stop mid-module and pick it up anywhere.'
   },
   {
+    key: 'library', icon: 'library', label: 'Library', href: '/library',
+    blurb: 'The books that come with your courses. Read on any device, and it opens to the exact page you left off on.'
+  },
+  {
     key: 'community', icon: 'community', label: 'Community', href: '/community.html',
     blurb: 'Where the work gets discussed. Post a win, ask a question, answer one. Posting is also how you earn points and climb the leaderboard.'
   },

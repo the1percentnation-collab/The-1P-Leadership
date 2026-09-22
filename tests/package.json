@@ -4,17 +4,18 @@
   "type": "module",
   "description": "Firestore security-rules and launch-tick regression tests (emulator), plus the deploy guard and dashboard, catalog, Telnyx and inbound-email unit tests.",
   "scripts": {
-    "emulator": "firebase emulators:exec --only firestore --project demo-1p \"node firestore-rules.test.mjs && node launch-tick.test.mjs\"",
+    "emulator": "firebase emulators:exec --only firestore,storage --project demo-1p \"node firestore-rules.test.mjs && node storage-rules.test.mjs && node launch-tick.test.mjs\"",
     "test:telnyx": "node telnyx-signature.test.cjs && node telnyx-send.test.cjs && node telnyx-texml.test.cjs && node call-gate.test.cjs && node sms-consent.test.cjs && node sms-gate.test.cjs && node consent-labels.test.cjs",
     "test:email": "node inbound-email.test.cjs && node email-provider.test.cjs && node email-events.test.cjs",
     "test:indexes": "node firestore-indexes.test.cjs",
     "test:deploy": "node no-scheduled-functions.test.cjs",
     "test:crm": "node crm-freshness.test.cjs && node crm-assistant.test.cjs && node crm-ai-log.test.cjs",
-    "test": "npm run test:deploy && npm run test:indexes && npm run test:hub && npm run test:launch && npm run test:points && npm run test:catalog && npm run test:beta && npm run test:telnyx && npm run test:email && npm run test:crm && npm run emulator",
+    "test": "npm run test:deploy && npm run test:indexes && npm run test:hub && npm run test:launch && npm run test:points && npm run test:catalog && npm run test:books && npm run test:beta && npm run test:telnyx && npm run test:email && npm run test:crm && npm run emulator",
     "test:hub": "node hub-nextup.test.mjs && node hub-welcome.test.mjs",
     "test:launch": "node launch-date.test.mjs",
     "test:points": "node points-history.test.mjs",
     "test:catalog": "node catalog.test.mjs",
+    "test:books": "node books-fulfillment.test.cjs",
     "test:beta": "node beta-cohort.test.cjs"
   },
   "devDependencies": {

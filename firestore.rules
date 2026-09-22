@@ -119,6 +119,8 @@ service cloud.firestore {
                          || request.resource.data.unreadNotifCount == 0)
                      && (!('enrolledCourseSlugs' in request.resource.data)
                          || request.resource.data.enrolledCourseSlugs == [])
+                     && (!('ownedBookIds' in request.resource.data)
+                         || request.resource.data.ownedBookIds == [])
                      // Referral bookkeeping is server-only (getMyReferralCode /
                      // acceptCommunityInvite / submitOnboarding). A user who could
                      // set these could point referralToken at someone else's code
@@ -149,6 +151,9 @@ service cloud.firestore {
                      // Enrollment writes are server-only (enrollFree callable +
                      // Stripe webhook) so users can't grant themselves paid courses.
                      && request.resource.data.get('enrolledCourseSlugs', []) == resource.data.get('enrolledCourseSlugs', [])
+                     // Digital book ownership — same reasoning: storage.rules
+                     // hands out the book file on this field alone.
+                     && request.resource.data.get('ownedBookIds', []) == resource.data.get('ownedBookIds', [])
                      // Referral bookkeeping — server-only, same reasoning as create.
                      && request.resource.data.get('referralToken', '') == resource.data.get('referralToken', '')
                      && request.resource.data.get('referralCredited', false) == resource.data.get('referralCredited', false)
@@ -165,6 +170,21 @@ service cloud.firestore {
       // users/{uid}/progress/{moduleId} — STRICTLY private to the user (and owner).
       match /progress/{moduleId} {
         allow read, write: if isOwner() || isSelf(uid);
+      }
+
+      // users/{uid}/bookProgress/{bookId} — where the reader left off, so a
+      // book opened on the phone resumes where the laptop stopped. Private to
+      // the reader. Shape-checked so the doc stays a small position record.
+      match /bookProgress/{bookId} {
+        allow read, delete: if isOwner() || isSelf(uid);
+        allow create, update: if (isOwner() || isSelf(uid))
+          && request.resource.data.keys().hasOnly(
+               ['cfi', 'fraction', 'chapter', 'bookmarks', 'updatedAt', 'finishedAt'])
+          && request.resource.data.get('cfi', '') is string
+          && request.resource.data.get('cfi', '').size() < 2000
+          && request.resource.data.get('fraction', 0) is number
+          && request.resource.data.get('bookmarks', []) is list
+          && request.resource.data.get('bookmarks', []).size() <= 200;
       }
 
       // users/{uid}/capstone — the recorded-session submission for
@@ -936,6 +956,18 @@ service cloud.firestore {
     // user; owner / company-admin can create / update / delete.
     // No field-level validation in v1; the events-page UI gates input.
     // ────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
+    // Books — the digital library. Metadata only (title, author, cover,
+    // chapter list), so it is public like the course catalog. The book file
+    // itself lives in Storage at books/{bookId}/ and storage.rules gates it
+    // on users/{uid}.ownedBookIds, which only the Admin SDK can write.
+    // ────────────────────────────────────────────────────────────────
+    match /books/{bookId} {
+      allow read: if true;
+      allow create, update: if isAnyAdmin();
+      allow delete: if isOwner();
+    }
+
     // ────────────────────────────────────────────────────────────────
     // Courses — Firestore-backed course catalog managed from
     // /manage-courses.html. Public read (marketing surface, like /events);

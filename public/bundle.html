@@ -365,6 +365,18 @@
       .main-wrap { padding: 48px 20px; }
       .chapter-list { grid-template-columns: 1fr; }
     }
+    /* Format picker: digital (default) or digital + shipped paperback */
+    .format-pick { display: grid; gap: 10px; }
+    .format-opt {
+      display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 10px; cursor: pointer;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.02); transition: border-color .15s, background .15s;
+    }
+    .format-opt:has(input:checked) { border-color: var(--gold); background: var(--gold-glow); }
+    .format-opt input { accent-color: var(--gold); width: 18px; height: 18px; margin: 0; flex: none; }
+    .format-opt-body { flex: 1; min-width: 0; }
+    .format-opt-title { font-size: 14px; font-weight: 600; color: var(--white); }
+    .format-opt-sub { font-size: 12px; color: var(--gray-400); margin-top: 2px; line-height: 1.4; }
+    .format-opt-price { font-family: var(--font-display); font-size: 22px; letter-spacing: .04em; color: var(--white); }
   </style>
 </head>
 <body>
@@ -433,7 +445,7 @@
       <div class="value-row">
         <div>
           <div class="value-label">📖 &nbsp;I Can't: Is Not A Strategy</div>
-          <div class="value-sub">Paperback · shipped to your door</div>
+          <div class="value-sub">Digital edition · read it in your library on any device</div>
         </div>
         <div class="value-price">$14.99</div>
       </div>
@@ -466,7 +478,7 @@
         <div class="inc-icon">📖</div>
         <div>
           <div class="inc-title">The Book — I Can't: Is Not A Strategy</div>
-          <div class="inc-desc">The book the course is built on. A paperback copy ships to you when you enroll. We ask for your US shipping address at checkout, so the book and your course access arrive together.</div>
+          <div class="inc-desc">The book the course is built on, in your library the moment you enroll. It reads like a Kindle on your phone, tablet or laptop, remembers your page on every device, and every course module opens it right at its chapter. Want a paperback too? Pick "Digital + Paperback" and we ship one to your US address.</div>
         </div>
       </div>
       <div class="inc-item">
@@ -595,7 +607,7 @@
             How do I get the book?
             <span class="faq-icon">+</span>
           </button>
-          <div class="faq-answer">It ships to you. When you enroll, Stripe Checkout asks for your shipping address and we mail a paperback copy. US addresses only for now. If you already own the book, you can still enroll, and the extra copy is yours to give to someone who needs it.</div>
+          <div class="faq-answer">Instantly. The digital edition is in your library (Library in the menu) as soon as checkout completes, and it opens on any device right where you left off. If you also want a paperback, choose "Digital + Paperback": Stripe Checkout asks for your shipping address and we mail a copy. US addresses only for now.</div>
         </div>
         <div class="faq-item">
           <button class="faq-question">
@@ -668,6 +680,26 @@
       </div>
 
       <div class="offer-cta">
+        <!-- Which bundle to buy. bundle-page.js reads the choice and sends the
+             matching slug to checkout; prices come from the course records. -->
+        <div class="format-pick" id="format-pick" role="radiogroup" aria-label="Book format">
+          <label class="format-opt">
+            <input type="radio" name="format" value="bundle-icant" checked>
+            <div class="format-opt-body">
+              <div class="format-opt-title">Digital</div>
+              <div class="format-opt-sub">Instant access. Read on any device.</div>
+            </div>
+            <div class="format-opt-price" data-price-for="bundle-icant">$197</div>
+          </label>
+          <label class="format-opt">
+            <input type="radio" name="format" value="bundle-icant-print">
+            <div class="format-opt-body">
+              <div class="format-opt-title">Digital + Paperback</div>
+              <div class="format-opt-sub">Read now, paperback ships to you. US only.</div>
+            </div>
+            <div class="format-opt-price" data-price-for="bundle-icant-print">$227</div>
+          </label>
+        </div>
         <!-- Swapped for a live Enroll button by js/bundle-page.js once the bundle is live. -->
         <div id="bundle-cta">
           <div style="background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.3);border-radius:8px;padding:16px 20px;text-align:center;">
@@ -678,8 +710,8 @@
         <div id="bundle-cta-msg" style="font-size:12px;color:var(--red);line-height:1.5;" hidden></div>
         <a class="btn-book" href="https://a.co/d/0fSUaomu" target="_blank" rel="noopener">Just want the book? Get it on Amazon →</a>
         <div class="offer-guarantee">
-          <span class="offer-guarantee-icon">📦</span>
-          <span>Paperback ships to your door. We ask for your US address at checkout.</span>
+          <span class="offer-guarantee-icon">📱</span>
+          <span>Digital book in your library instantly. Paperback option ships to US addresses.</span>
         </div>
         <div class="offer-guarantee">
           <span class="offer-guarantee-icon">🛡</span>
@@ -688,7 +720,7 @@
       </div>
 
       <div class="offer-checklist">
-        <div class="offer-check">Paperback of <em>I Can't: Is Not A Strategy</em>, shipped free</div>
+        <div class="offer-check"><em>I Can't: Is Not A Strategy</em>, digital edition, yours for life</div>
         <div class="offer-check">10 chapter modules, one per chapter of the book</div>
         <div class="offer-check">The book's 10 exercises as a saved workbook</div>
         <div class="offer-check">Lifetime access + all future updates</div>
