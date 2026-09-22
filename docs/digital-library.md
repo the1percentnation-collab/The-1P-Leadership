@@ -15,9 +15,18 @@ it never contains one.
 | Admin upload | `/manage-library.html` (`js/manage-library.js`, `js/library-admin.js`); `syncBookGrants` callable grants to existing members |
 
 Every way into a course (checkout, a 100% promo code, enrollFree, admin and
-beta grants) goes through `enrollmentFields()`, which adds the course's books
-to `ownedBookIds`. Books are kept for life: cancelling a subscription or
-revoking a beta grant does not remove them.
+beta grants) goes through `resolveEnrollmentFields()`, which adds the course's
+books to `ownedBookIds`. A bundle grants the books on its own record **and**
+on the records of the courses it unlocks, so attaching the book to the I Can't
+course in Manage Library is enough for both bundles. The book id is never
+assumed in code: the course's `grantsBooks` (Firestore) wins over the
+`COURSE_FULFILLMENT` defaults. Books are kept for life: cancelling a
+subscription or revoking a beta grant does not remove them.
+
+After every course checkout the webhook sends a confirmation
+(`sendPurchaseEmail`): the course link, the book in the library, and for the
+print bundle where the paperback ships. The result is recorded on the purchase
+(`confirmationEmail: sent | failed`).
 
 ## I Can't formats
 
@@ -85,6 +94,8 @@ device's offline copy refreshes on next open, and positions carry over.
 
 - `tests/books-fulfillment.test.cjs`: which purchases grant which books (unit).
 - `tests/firestore-rules.test.mjs`, `tests/storage-rules.test.mjs`: ownership can't be self-granted, the EPUB is served to owners only (emulators).
+- `tests/purchase-email.test.cjs`: what the confirmation email says (unit).
+- `tests/purchase-e2e.test.mjs` (`cd tests && npm run e2e:purchase`): a signed Stripe `checkout.session.completed` posted to the shipped webhook on the Functions emulator, for both bundles: enrollment, the real book id in `ownedBookIds`, purchase and shipping-order records, Stripe retry idempotency, and the confirmation email captured from a local stand-in for the email provider.
 - `tests/reader-e2e.test.mjs`: the shipped reader and `books.js` against the Auth, Firestore and Storage emulators in Chromium: real download through the rule, position and bookmark sync across two devices, IndexedDB cache and version bump, non-owner denied, library shelf, and an admin uploading through Manage Library (file lands in Storage, record and course attachment in Firestore, PDF refused, hidden book proofable, re-upload bumps the edition, non-admin turned away). Needs Playwright and a sample EPUB:
 
   ```bash

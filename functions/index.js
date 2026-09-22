@@ -10,7 +10,30 @@ const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { defineSecret } = require('firebase-functions/params');
-const admin = require('firebase-admin');
+const _adminModule = require('firebase-admin');
+// Under the Functions emulator (firebase-tools 14 stubs firebase-admin),
+// `admin.firestore` comes back as a bound copy of the namespace function
+// that has lost its statics, so `admin.firestore.FieldValue` is undefined
+// and every write in this file fails. Production is untouched: the statics
+// are present there and this is a pass-through. Restoring them from the
+// modular entry point lets the emulator tests run the shipped code.
+const _firestoreStatics = require('firebase-admin/firestore');
+const admin = new Proxy(_adminModule, {
+  get(target, key) {
+    const v = target[key];
+    if (key === 'firestore' && typeof v === 'function' && !v.FieldValue) {
+      return Object.assign(v, {
+        FieldValue: _firestoreStatics.FieldValue,
+        FieldPath: _firestoreStatics.FieldPath,
+        Timestamp: _firestoreStatics.Timestamp,
+        GeoPoint: _firestoreStatics.GeoPoint,
+        Filter: _firestoreStatics.Filter,
+        AggregateField: _firestoreStatics.AggregateField
+      });
+    }
+    return v;
+  }
+});
 const crypto = require('crypto');
 const sgMail = require('@sendgrid/mail');
 
@@ -187,7 +210,9 @@ function getTwilio() {
 // optionally TELNYX_MESSAGING_PROFILE_ID.
 // ────────────────────────────────────────────────────────────────
 
-const TELNYX_API = 'https://api.telnyx.com/v2';
+// Overridable only so the emulator tests can capture outbound email locally;
+// production never sets it.
+const TELNYX_API = (process.env.TELNYX_API_BASE || '').trim() || 'https://api.telnyx.com/v2';
 
 function telnyxApiKey() {
   return (process.env.TELNYX_API_KEY || '').trim();
@@ -5277,7 +5302,7 @@ exports.enrollFree = onCall(async (request) => {
   }
 
   await db.collection('users').doc(uid).set({
-    ...enrollmentFields(slug, course),
+    ...(await resolveEnrollmentFields(db, slug, course)),
     lastActiveAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
 
@@ -5309,7 +5334,7 @@ async function findUserByEmail(db, email) {
 // Enrolls uid in slug (plus whatever the slug unlocks) and records why.
 async function applyGrant(db, uid, slug, course, { note, grantedBy }) {
   await db.collection('users').doc(uid).set({
-    ...enrollmentFields(slug, course),
+    ...(await resolveEnrollmentFields(db, slug, course)),
     lastActiveAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
   await db.collection('users').doc(uid).collection('purchases').doc(`grant-${slug}-${Date.now()}`).set({
@@ -5429,6 +5454,109 @@ async function sendGrantEmail(db, { email, uid, slug, course, note, hasAccount }
     return true;
   } catch (err) {
     console.error('[sendGrantEmail] send failed:', String((err && err.message) || err).slice(0, 300));
+    return false;
+  }
+}
+
+
+// ── Purchase confirmation ────────────────────────────────────────────────
+// Stripe sends the receipt; this is the email that tells the buyer where
+// their things are: the course, the book in their library, and (print
+// bundle) that the paperback is on its way. Same voice as the grant email.
+function purchaseEmailContent({ firstName, courseTitle, courseSlug, books, shipsBook, shipping }) {
+  const name = firstName || 'there';
+  const nameHtml = textToHtml(name);
+  const titleHtml = textToHtml(courseTitle);
+  const courseUrl = `${APP_BASE_URL}/courses.html?course=${encodeURIComponent(courseSlug)}`;
+  const libraryUrl = `${APP_BASE_URL}/library`;
+  const list = (books || []).filter((b) => b && b.title);
+  const bookNames = list.map((b) => b.title);
+  const bookLine = bookNames.length === 1 ? bookNames[0]
+    : bookNames.length ? bookNames.slice(0, -1).join(', ') + ' and ' + bookNames[bookNames.length - 1] : '';
+  const addr = shipping && shipping.address ? shipping.address : null;
+  const place = addr ? [addr.city, addr.state].filter(Boolean).join(', ') : '';
+
+  const subject = `You're in: ${courseTitle}`;
+
+  const bookText = bookLine
+    ? `Your book, ${bookLine}, is in your library now. It reads like a Kindle on your phone, tablet or laptop, and every module of the course opens it at that chapter:\n${libraryUrl}\n\n`
+    : '';
+  const bookHtml = bookLine
+    ? `<p style="margin:0 0 6px;"><strong>Your book is in your library.</strong> ${textToHtml(bookLine)} reads like a Kindle on your phone, tablet or laptop, and every module of the course opens it at that chapter.</p>`
+      + `<p style="margin:0 0 22px;"><a href="${libraryUrl}" style="display:inline-block;background:#111;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">Open my library</a></p>`
+    : '';
+  const shipText = shipsBook
+    ? (place
+      ? `Your paperback ships to ${place}. We will email you when it is on its way.\n\n`
+      : `Your paperback is on its way. We did not get a shipping address from checkout; reply to this email with one and we will send it out.\n\n`)
+    : '';
+  const shipHtml = shipsBook
+    ? `<p style="margin:0 0 22px;">${place
+      ? `<strong>Your paperback ships to ${textToHtml(place)}.</strong> We will email you when it is on its way.`
+      : `<strong>Your paperback is on its way.</strong> We did not get a shipping address from checkout; reply to this email with one and we will send it out.`}</p>`
+    : '';
+
+  const text =
+    `Hi ${name},\n\n` +
+    `You're in. ${courseTitle} is open for you now. Read the chapter, then do its module; your answers are saved as you go.\n` +
+    `${courseUrl}\n\n` +
+    bookText +
+    shipText +
+    `Where you start does not get the final say on where you end up. Get to Chapter 1.\n\n` +
+    `Anthony Brown Sr.\n` +
+    `Founder, The One Percent Nation\n` +
+    `Redefining Success. Realigning Purpose. Releasing Potential.`;
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:560px;margin:0 auto;line-height:1.55;">
+      <h2 style="color:#000;margin:0 0 12px;font-size:22px;">You're in, ${nameHtml}.</h2>
+      <p style="margin:0 0 14px;"><strong>${titleHtml}</strong> is open for you now. Read the chapter, then do its module; your answers are saved as you go.</p>
+      <p style="margin:0 0 22px;"><a href="${courseUrl}" style="display:inline-block;background:#e60306;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">Open the course</a></p>
+      ${bookHtml}
+      ${shipHtml}
+      <p style="margin:0 0 20px;">Where you start does not get the final say on where you end up. Get to Chapter 1.</p>
+      <p style="margin:0;">Anthony Brown Sr.<br/>Founder, The One Percent Nation</p>
+      <hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0;"/>
+      <p style="color:#888;font-size:11px;margin:0;">Redefining Success. Realigning Purpose. Releasing Potential.</p>
+    </div>`;
+
+  return { subject, text, html };
+}
+
+// Never throws: the purchase landed whether or not the email did. Returns
+// true when sent. The calling function must declare `secrets: [sendgridKey]`.
+async function sendPurchaseEmail(db, { email, uid, courseSlug, landingSlug, grantsBooks, shipsBook, shipping }) {
+  const to = normalizeEmail(email);
+  if (!EMAIL_RE.test(to)) return false;
+  try {
+    const [courseSnap, uSnap, bookSnaps] = await Promise.all([
+      db.collection('courses').doc(courseSlug).get(),
+      uid ? db.collection('users').doc(uid).get() : Promise.resolve(null),
+      Promise.all((grantsBooks || []).map((id) => db.collection('books').doc(id).get()))
+    ]);
+    const course = courseSnap.exists ? courseSnap.data() : {};
+    const u = uSnap && uSnap.exists ? (uSnap.data() || {}) : {};
+    const firstName = String(u.displayName || '').trim().split(/\s+/)[0] || '';
+    const crmArgs = (u.crmCompanyId && u.crmContactId)
+      ? { companyId: u.crmCompanyId, contactId: u.crmContactId } : {};
+    const books = bookSnaps.filter((b) => b.exists).map((b) => ({ id: b.id, title: b.data().title || b.id }));
+
+    const { subject, text, html } = purchaseEmailContent({
+      firstName,
+      courseTitle: course.title || course.short || courseSlug,
+      courseSlug: landingSlug || courseSlug,
+      books, shipsBook, shipping
+    });
+    await sendEmail({
+      to,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      subject, text, html,
+      customArgs: Object.assign({ type: 'course_purchase', slug: courseSlug }, crmArgs)
+    });
+    return true;
+  } catch (err) {
+    console.error('[sendPurchaseEmail] send failed:', String((err && err.message) || err).slice(0, 300));
     return false;
   }
 }
@@ -6322,11 +6450,29 @@ function courseFulfillment(slug, course) {
 // and the books attached to either. Books attached to an unlocked course
 // (icant's own grantsBooks) come from COURSE_FULFILLMENT defaults, so a
 // bundle still grants them without an extra read.
-function booksForCourse(slug, course) {
+// `courseDocs` (slug -> Firestore record) lets the courses a bundle unlocks
+// contribute the books on THEIR records, which is where Manage Library
+// writes them. Without it only the code defaults are known for those.
+function booksForCourse(slug, course, courseDocs) {
   const f = courseFulfillment(slug, course);
   const books = new Set(f.grantsBooks);
-  f.enrollsAlso.forEach((s) => courseFulfillment(s, {}).grantsBooks.forEach((b) => books.add(b)));
+  const docs = courseDocs || {};
+  f.enrollsAlso.forEach((s) => courseFulfillment(s, docs[s] || {}).grantsBooks.forEach((b) => books.add(b)));
   return [...books];
+}
+
+// Reads the records of the courses `slug` unlocks so booksForCourse sees
+// what Manage Library attached to them, not just the code defaults.
+async function fulfillmentDocs(db, slug, course) {
+  const f = courseFulfillment(slug, course);
+  const docs = {};
+  await Promise.all(f.enrollsAlso.map(async (s) => {
+    try {
+      const snap = await db.collection('courses').doc(s).get();
+      docs[s] = snap.exists ? snap.data() : {};
+    } catch (e) { docs[s] = {}; }
+  }));
+  return docs;
 }
 
 // Every course slug whose fulfillment (defaults plus the Firestore record)
@@ -6335,13 +6481,19 @@ function grantingSlugsFor(bookId, courseDocs) {
   return Object.keys(courseDocs).filter((slug) => booksForCourse(slug, courseDocs[slug]).includes(bookId));
 }
 
-function enrollmentFields(slug, course) {
+function enrollmentFields(slug, course, courseDocs) {
   const FV = admin.firestore.FieldValue;
   const f = courseFulfillment(slug, course);
-  const books = booksForCourse(slug, course);
+  const books = booksForCourse(slug, course, courseDocs);
   const out = { enrolledCourseSlugs: FV.arrayUnion(slug, ...f.enrollsAlso) };
   if (books.length) out.ownedBookIds = FV.arrayUnion(...books);
   return out;
+}
+
+// The async form every enrollment path uses: fetches the unlocked courses'
+// records first so the books they carry are granted too.
+async function resolveEnrollmentFields(db, slug, course) {
+  return enrollmentFields(slug, course, await fulfillmentDocs(db, slug, course));
 }
 
 // Stripe moved the collected address from `session.shipping_details` to
@@ -6531,7 +6683,7 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
       { kind: 'course', id: slug, priceDollars: dollars });
     if (resolved.isFree) {
       await db.collection('users').doc(uid).set({
-        ...enrollmentFields(slug, course),
+        ...(await resolveEnrollmentFields(db, slug, course)),
         lastActiveAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
       if (fulfil.shipsBook) {
@@ -6594,7 +6746,7 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   if (appliedCoupon) metadata.couponCode = appliedCoupon;
   if (fulfil.shipsBook) metadata.shipsBook = '1';
   if (fulfil.enrollsAlso.length) metadata.enrollsAlso = fulfil.enrollsAlso.join(',');
-  const grantsBooks = booksForCourse(slug, course);
+  const grantsBooks = booksForCourse(slug, course, await fulfillmentDocs(db, slug, course));
   if (grantsBooks.length) metadata.grantsBooks = grantsBooks.join(',');
 
   if (plan) {
@@ -6679,7 +6831,8 @@ exports.syncBookGrants = onCall(async (request) => {
 // send: checkout.session.completed, customer.subscription.deleted,
 // invoice.paid, invoice.payment_failed.
 exports.stripeWebhook = onRequest(
-  { cors: false, invoker: 'public', secrets: STRIPE_SECRETS },
+  // sendgridKey: the purchase confirmation goes out from here.
+  { cors: false, invoker: 'public', secrets: [...STRIPE_SECRETS, sendgridKey] },
   async (req, res) => {
     const stripe = getStripe();
     const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
@@ -6830,7 +6983,7 @@ exports.stripeWebhook = onRequest(
           const metaBooks = session.metadata && session.metadata.grantsBooks;
           const grantsBooks = metaBooks != null
             ? String(metaBooks).split(',').map((x) => x.trim()).filter(Boolean)
-            : booksForCourse(courseSlug, {});
+            : booksForCourse(courseSlug, {}, await fulfillmentDocs(db, courseSlug, {}));
           await db.collection('users').doc(uid).set({
             enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(courseSlug, ...enrollsAlso),
             ...(grantsBooks.length
@@ -6857,6 +7010,17 @@ exports.stripeWebhook = onRequest(
               createdAt: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
           }
+          // The confirmation: where the course is, that the book is in
+          // their library, and (print bundle) that the paperback is coming.
+          const buyerEmail = (session.customer_details && session.customer_details.email)
+            || session.customer_email || null;
+          const emailed = await sendPurchaseEmail(db, {
+            email: buyerEmail, uid, courseSlug,
+            landingSlug: enrollsAlso[0] || courseSlug,
+            grantsBooks,
+            shipsBook: !!(session.metadata && session.metadata.shipsBook === '1'),
+            shipping: sessionShipping(session)
+          });
           await db.collection('users').doc(uid).collection('purchases').doc(session.id).set({
             courseSlug,
             amount: (session.amount_total || 0) / 100,
@@ -6865,6 +7029,7 @@ exports.stripeWebhook = onRequest(
             stripeCustomerId: session.customer || null,
             subscriptionId: session.subscription || null,
             status: session.mode === 'subscription' ? 'active' : 'paid',
+            confirmationEmail: emailed ? 'sent' : 'failed',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
           // Count the promo redemption. The stripeEvents/{eventId} guard

@@ -17,6 +17,7 @@
 //   node setup-digital-library.js              # prints the plan, writes nothing
 //   node setup-digital-library.js --apply      # commits it
 //   node setup-digital-library.js --apply --print-price=227
+//   node setup-digital-library.js --apply --book=<book id>   # if more than one book
 //
 // Idempotent: re-running changes nothing that is already right.
 // ─────────────────────────────────────────────────────────────────────────
@@ -31,14 +32,28 @@ if (!(PRINT_PRICE > 0)) {
   process.exit(1);
 }
 
-const BOOK_ID = 'i-cant';
+// Which book: --book=<id>, else the one live book in books/*.
+const bookArg = (process.argv.find((a) => a.startsWith('--book=')) || '').split('=')[1] || null;
 const GRANTING_SLUGS = ['bundle-icant', 'bundle-icant-print', 'icant'];
+
+async function resolveBookId(db) {
+  if (bookArg) return bookArg;
+  const snap = await db.collection('books').get();
+  const live = snap.docs.filter((d) => d.data().status !== 'hidden').map((d) => d.id);
+  if (live.length === 1) return live[0];
+  console.error(live.length
+    ? `More than one live book (${live.join(', ')}). Pass --book=<id>.`
+    : 'No live book in books/*. Upload one from Manage Library first, or pass --book=<id>.');
+  process.exit(1);
+}
 
 async function main() {
   const { admin, db, projectId } = initAdmin();
   await assertCredentials(db, projectId);
   const FV = admin.firestore.FieldValue;
-  console.log(`Project: ${projectId}${APPLY ? '' : '   (dry run: pass --apply to write)'}\n`);
+  const BOOK_ID = await resolveBookId(db);
+  console.log(`Project: ${projectId}${APPLY ? '' : '   (dry run: pass --apply to write)'}`);
+  console.log(`Book:    books/${BOOK_ID}\n`);
 
   // ── Course records ──────────────────────────────────────────────────
   const bundleRef = db.collection('courses').doc('bundle-icant');
@@ -62,7 +77,7 @@ async function main() {
   }
 
   if (icant.exists && JSON.stringify(icant.data().grantsBooks || null) !== JSON.stringify([BOOK_ID])) {
-    console.log('courses/icant: set grantsBooks ["i-cant"]');
+    console.log(`courses/icant: set grantsBooks ["${BOOK_ID}"]`);
     if (APPLY) await icantRef.set({ grantsBooks: [BOOK_ID] }, { merge: true });
   }
 

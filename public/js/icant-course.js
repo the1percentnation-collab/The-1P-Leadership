@@ -15,17 +15,25 @@
 // file changes with it.
 
 import { mountCoursePlayer } from './course-player.js';
+import { getCourseBySlug } from './courses-data.js';
 
 export const BOOK_URL = 'https://a.co/d/0fSUaomu';
 export const BOOK_TITLE = 'I Can\'t: Is Not A Strategy';
 
 // The digital book lives in the library (read.html), not in this course.
-// Every way into this course also puts the book in the member's library
-// (grantsBooks in functions/index.js), so a module can link straight to its
-// chapter. The Amazon link stays for reviews.
+// Every way into this course also puts the book in the member's library, so
+// a module can link straight to its chapter. Which book is read off the
+// course record's `grantsBooks` (set from Manage Library, Firestore wins in
+// courses-data.js), so the id is never assumed here. The Amazon link stays
+// for reviews.
 export const BOOK_ID = 'i-cant';
+export function bookId() {
+  const c = getCourseBySlug('icant') || {};
+  const ids = Array.isArray(c.grantsBooks) ? c.grantsBooks.filter(Boolean) : [];
+  return ids[0] || BOOK_ID;
+}
 export function readerHref(moduleId) {
-  return `/read?book=${BOOK_ID}&chapter=${encodeURIComponent(moduleId)}`;
+  return `/read?book=${encodeURIComponent(bookId())}&chapter=${encodeURIComponent(moduleId)}`;
 }
 
 export const MODULES = [

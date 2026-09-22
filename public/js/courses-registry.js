@@ -262,9 +262,9 @@ export const COURSES = [
     priceNote: 'Digital book in your library · instant access',
     // Digital by default: the book lands in the member's library (/library)
     // the moment checkout completes, nothing ships. The paperback is the
-    // bundle-icant-print option below, chosen on /bundle.html.
+    // bundle-icant-print option below, chosen on /bundle.html. Which book
+    // is `grantsBooks` on the Firestore record, set from Manage Library.
     shipsBook: false,
-    grantsBooks: ['i-cant'],
     bundleHref: '/bundle.html',
     whatYoullLearn: ICANT_OUTCOMES,
     requirements: ICANT_REQUIREMENTS,
@@ -313,7 +313,6 @@ export const COURSES = [
     priceLabel: '$227',
     priceNote: 'Digital book now · paperback shipped · US addresses',
     shipsBook: true,
-    grantsBooks: ['i-cant'],
     sellable: true,
     showOnSite: false,
     showInDashboard: false,
@@ -355,7 +354,6 @@ export const COURSES = [
     // Members enrolled through the bundle open it here as normal.
     sellable: false,
     showOnSite: false,
-    grantsBooks: ['i-cant'],
     bundleHref: '/bundle.html',
     whatYoullLearn: ICANT_OUTCOMES,
     requirements: ICANT_REQUIREMENTS,

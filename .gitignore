@@ -28,3 +28,6 @@ scripts/node_modules/
 tests/node_modules/
 tests/*.log
 tests/firestore-debug.log
+
+# Emulator-only secrets written by tests/purchase-e2e.test.mjs
+functions/.secret.local

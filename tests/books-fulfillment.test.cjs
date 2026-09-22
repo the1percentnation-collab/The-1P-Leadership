@@ -84,6 +84,19 @@ ok('a missing course record is treated as empty, not a crash', () => {
   assert.strictEqual(lib.courseFulfillment('icant', undefined).sellable, false);
 });
 
+ok('the courses a bundle unlocks contribute the books on THEIR records', () => {
+  const real = 'i-cant-strategies-to-overcoming-your-limiting-beliefs';
+  // Exactly what Manage Library writes: the book attached to icant only.
+  const docs = { icant: { grantsBooks: [real] } };
+  // The bundle's own default plus the real book from the icant record.
+  assert.deepStrictEqual(lib.booksForCourse('bundle-icant', {}, docs), ['i-cant', real]);
+  // With the bundle record also pointing at the real book, nothing stale remains.
+  assert.deepStrictEqual(lib.booksForCourse('bundle-icant', { grantsBooks: [real] }, docs), [real]);
+  assert.deepStrictEqual(lib.enrollmentFields('bundle-icant-print', { grantsBooks: [real] }, docs).ownedBookIds.__union, [real]);
+  // Without records the defaults still apply.
+  assert.deepStrictEqual(lib.booksForCourse('bundle-icant', {}), ['i-cant']);
+});
+
 ok('the sync picks every course that grants the book, from code defaults or the record', () => {
   const docs = { 'bundle-icant': {}, 'bundle-icant-print': {}, 'icant': {}, '1p-clc': {}, 'mindset-foundations': { grantsBooks: ['i-cant'] } };
   assert.deepStrictEqual(lib.grantingSlugsFor('i-cant', docs).sort(),

@@ -82,7 +82,7 @@ function renderCta({ live, enrolled }) {
   if (enrolled) {
     if (pick) pick.hidden = true;
     top.innerHTML = `<a class="btn-enroll" href="${COURSE_URL}">Go to the course →</a>
-      <a class="btn-book" href="/read?book=i-cant" style="margin-top:10px;">Read the book →</a>`;
+      <a class="btn-book" href="/library" style="margin-top:10px;">Read the book →</a>`;
     if (bottom) bottom.outerHTML = `<a class="btn-primary-lg" id="bundle-cta-bottom" href="${COURSE_URL}">Go to the course →</a>`;
     return;
   }
