@@ -5570,7 +5570,7 @@ async function advanceBetaStatus(db, email, status, extra) {
  * record either way and never needs to know which door they came through.
  */
 async function recordBetaApplication(db, { name, email, phone, fields, crmContactId },
-                                     { source = 'form', addedBy = null } = {}) {
+                                     { source = 'form', addedBy = null, courseSlug = null } = {}) {
   const ref = betaTesterRef(db, email);
   if (!ref) return;
   const FV = admin.firestore.FieldValue;
@@ -5588,7 +5588,7 @@ async function recordBetaApplication(db, { name, email, phone, fields, crmContac
     crmContactId: crmContactId || (snap.exists ? snap.data().crmContactId : null) || null,
     ...(snap.exists ? {} : {
       status: 'applied',
-      courseSlug: BETA_DEFAULT_SLUG,
+      courseSlug: courseSlug || BETA_DEFAULT_SLUG,
       cohort: null,
       feedbackCount: 0,
       source,
@@ -5732,6 +5732,20 @@ exports.listBetaTesters = onCall(async (request) => {
     });
   }
 
+  // What the console's course picker offers. A beta runs on content that has
+  // no public face yet, so `beta` and `coming-soon` courses belong here just
+  // as much as live ones; only `inactive` is excluded, since granting access
+  // to a course that is closed for its own students helps nobody.
+  const courseSnap = await db.collection('courses').get();
+  const courses = courseSnap.docs
+    .filter((d) => (d.data().status || 'live') !== 'inactive')
+    .map((d) => ({
+      slug: d.id,
+      title: d.data().title || d.id,
+      status: d.data().status || 'live'
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+
   const summary = { applied: 0, declined: 0, granted: 0, active: 0, completed: 0 };
   rows.forEach((r) => { if (summary[r.status] != null) summary[r.status] += 1; });
 
@@ -5739,6 +5753,8 @@ exports.listBetaTesters = onCall(async (request) => {
     ok: true,
     rows,
     feedback,
+    courses,
+    defaultSlug: BETA_DEFAULT_SLUG,
     summary: {
       ...summary,
       total: rows.length,
@@ -5796,7 +5812,7 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
       phone: String(data.phone || '').trim().slice(0, 40) || null,
       fields: note ? { why: note } : {},
       crmContactId: null
-    }, { source: 'manual', addedBy: actor });
+    }, { source: 'manual', addedBy: actor, courseSlug: String(data.slug || '').trim() || null });
     snap = await ref.get();
     // Adding and approving in one step is the common case for someone already
     // invited, but it stays opt-in: an add on its own leaves them in

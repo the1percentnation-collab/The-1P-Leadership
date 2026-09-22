@@ -27,7 +27,7 @@ const STATUS_LABELS = {
   completed: 'Completed'
 };
 
-let state = { rows: [], feedback: [], summary: {} };
+let state = { rows: [], feedback: [], summary: {}, courses: [], defaultSlug: '' };
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
@@ -80,7 +80,13 @@ async function load() {
   try {
     const res = await httpsCallable(functions, 'listBetaTesters')({});
     const d = (res && res.data) || {};
-    state = { rows: d.rows || [], feedback: d.feedback || [], summary: d.summary || {} };
+    state = {
+      rows: d.rows || [],
+      feedback: d.feedback || [],
+      summary: d.summary || {},
+      courses: d.courses || [],
+      defaultSlug: d.defaultSlug || ''
+    };
     renderAll();
   } catch (e) {
     $('load-error').style.display = '';
@@ -113,6 +119,30 @@ function wireAction(el, handler) {
 
 // ─── Applicants ──────────────────────────────────────────────────────────
 
+/**
+ * Options for a course picker, with `selected` chosen.
+ *
+ * A beta can run on more than one course at once, so which course an approval
+ * grants is a decision per tester, not a constant. Before this the grant
+ * always fell through to the default slug and the choice was invisible.
+ */
+function courseOptions(selected) {
+  const chosen = selected || state.defaultSlug;
+  if (!state.courses.length) {
+    return `<option value="">No courses found</option>`;
+  }
+  return state.courses.map((c) => {
+    const label = c.status === 'live' ? c.title : `${c.title} (${c.status})`;
+    return `<option value="${esc(c.slug)}"${c.slug === chosen ? ' selected' : ''}>${esc(label)}</option>`;
+  }).join('');
+}
+
+/** A course's title for display, falling back to the slug it was granted under. */
+function courseTitle(slug) {
+  const c = state.courses.find((x) => x.slug === slug);
+  return c ? c.title : (slug || '—');
+}
+
 function applicantCard(t, { declined }) {
   const why = t.why
     ? `<div class="tester-why">${esc(t.why)}</div>`
@@ -134,6 +164,12 @@ function applicantCard(t, { declined }) {
         ${t.crmContactId ? `<a href="/contact.html?id=${encodeURIComponent(t.crmContactId)}" style="color:var(--red);">CRM record →</a>` : ''}
       </div>
       <div class="tester-actions">
+        <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--gray-light);">
+          Course
+          <select data-course style="background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 8px; font-size:12px;">
+            ${courseOptions(t.courseSlug)}
+          </select>
+        </label>
         <button class="btn btn-primary" data-act="approve">${declined ? 'Approve anyway' : 'Approve &amp; grant access'}</button>
         ${declined ? '' : '<button class="btn btn-ghost" data-act="decline">Decline</button>'}
       </div>
@@ -160,7 +196,11 @@ function renderApplicants() {
         btn.disabled = false;
         return;
       }
-      const r = await act(email, action);
+      // The picker beside this button decides what they get, so read it at
+      // click time rather than trusting whatever the record was opened with.
+      const picker = btn.closest('.tester-row').querySelector('[data-course]');
+      const slug = picker && picker.value ? picker.value : undefined;
+      const r = await act(email, action, action === 'approve' ? { slug } : undefined);
       if (action === 'approve') {
         // An approval that granted access but could not send the invite is
         // the one outcome the row cannot show, and the one that leaves a
@@ -206,6 +246,7 @@ async function addTester(ev) {
       name,
       email,
       phone: $('add-phone').value.trim() || undefined,
+      slug: $('add-course').value || undefined,
       approve
     });
     const d = (res && res.data) || {};
@@ -240,7 +281,7 @@ function renderCohort() {
   const body = $('cohort-body');
 
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="7" style="color:var(--gray-mid);">Nobody in the cohort matches this filter.</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" style="color:var(--gray-mid);">Nobody in the cohort matches this filter.</td></tr>';
     return;
   }
 
@@ -256,6 +297,7 @@ function renderCohort() {
         <div style="font-size:11px; color:var(--gray-light); font-family:'Space Mono',monospace;">${esc(t.email)}</div>
       </td>
       <td>${statusPill(t.status)}</td>
+      <td style="font-size:12px;">${esc(courseTitle(t.courseSlug))}</td>
       <td>${account}</td>
       <td class="num">${t.lessonsCompleted || 0}</td>
       <td class="num">${t.feedbackCount || 0}</td>
@@ -334,6 +376,13 @@ function renderReadiness() {
 }
 
 function renderAll() {
+  // Rebuilt on every load so a course added in the builder shows up here
+  // without a reload, and the current selection survives the refresh.
+  const addCourse = $('add-course');
+  if (addCourse) {
+    const keep = addCourse.value;
+    addCourse.innerHTML = courseOptions(keep || state.defaultSlug);
+  }
   renderApplicants();
   renderCohort();
   renderFeedback();

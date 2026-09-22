@@ -247,6 +247,38 @@ console.log('beta cohort — the record behind the beta console');
     assert.strictEqual(d.crmContactId, 'old');
   });
 
+  // ── Course choice ──────────────────────────────────────────────────────
+  // A beta can run on more than one course at once, so which course an
+  // approval grants is a decision per tester rather than a constant.
+
+  await ok('a picked course is stored on the new record', async () => {
+    const db = makeDb({});
+    await B.recordBetaApplication(
+      db,
+      { name: 'Dana', email: 'a@b.com', fields: {} },
+      { source: 'manual', addedBy: 'owner@x.com', courseSlug: 'clc' }
+    );
+    assert.strictEqual(db._docs.get('betaTesters/a@b.com').courseSlug, 'clc');
+  });
+
+  await ok('no picked course falls back to the beta default, not to empty', async () => {
+    const db = makeDb({});
+    await B.recordBetaApplication(db, { name: 'Dana', email: 'a@b.com', fields: {} });
+    assert.strictEqual(db._docs.get('betaTesters/a@b.com').courseSlug, B.BETA_DEFAULT_SLUG);
+  });
+
+  await ok('a later add never silently moves an existing tester to another course', async () => {
+    const db = makeDb({
+      'betaTesters/a@b.com': tester({ status: 'granted', courseSlug: 'icant' })
+    });
+    await B.recordBetaApplication(
+      db,
+      { name: 'Dana', email: 'a@b.com', fields: {} },
+      { source: 'manual', addedBy: 'owner@x.com', courseSlug: 'clc' }
+    );
+    assert.strictEqual(db._docs.get('betaTesters/a@b.com').courseSlug, 'icant');
+  });
+
   // ── Feedback ───────────────────────────────────────────────────────────
 
   await ok('feedback from a tester increments their count', async () => {
