@@ -1609,6 +1609,13 @@ exports.onUserCreated = onDocumentCreated(
       console.error('[onUserCreated] pending grants failed:', e && e.message);
     }
 
+    // A beta tester who signed up after being approved. No-ops for everyone else.
+    try {
+      await markBetaActivated(admin.firestore(), user.email, event.params.uid);
+    } catch (e) {
+      console.error('[onUserCreated] beta activation failed:', e && e.message);
+    }
+
     const db = admin.firestore();
     const uid = event.params.uid;
 
@@ -5451,6 +5458,10 @@ exports.grantCourseAccess = onCall({ secrets: [sendgridKey] }, async (request) =
   const userDoc = await findUserByEmail(db, email);
   if (userDoc) {
     await applyGrant(db, userDoc.id, slug, course, { note, grantedBy });
+    // Keeps the beta console truthful when a grant is issued from the course
+    // builder instead of the console. No-ops for anyone who isn't a tester.
+    await markBetaGranted(db, email, { slug, grantedBy, note, applied: true });
+    await markBetaActivated(db, email, userDoc.id);
     // The grant is the deliverable; the email is best-effort on top of it.
     const emailed = notify
       ? await sendGrantEmail(db, {
@@ -5467,6 +5478,7 @@ exports.grantCourseAccess = onCall({ secrets: [sendgridKey] }, async (request) =
     grantedBy,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
+  await markBetaGranted(db, email, { slug, grantedBy, note, applied: false });
 
   // Nobody to sign in yet, so the invite carries the signup link instead.
   const emailed = notify
@@ -5499,6 +5511,354 @@ async function applyPendingGrants(db, uid, email) {
   await ref.delete();
   return slugs.length;
 }
+
+// ── Beta program ────────────────────────────────────────────────────
+// The beta was spread across three systems that never spoke to each other:
+// applications landed in the CRM as leads tagged "Beta Tester", access was
+// granted by hand through grantCourseAccess, and feedback arrived as generic
+// bug reports. Nothing recorded whether an applicant had been approved,
+// whether they ever signed up, or whether they had said anything back, so the
+// cohort could only be reconstructed from memory.
+//
+// betaTesters/{emailLower} is that missing record. It is written only by the
+// Admin SDK — the application hook below, the grant path, signup, and the
+// feedback hook — and read by the beta console through listBetaTesters.
+//
+// Status ladder, in order:
+//   applied   — submitted the form, no decision yet
+//   declined  — turned down; kept so they aren't re-invited by accident
+//   granted   — approved and course access issued (or parked in pendingGrants)
+//   active    — has a portal account, so the grant is really in their hands
+//   completed — finished the beta
+// The ladder only moves forward: a later signal never demotes someone who has
+// already progressed, so a stray feedback write can't knock a completed tester
+// back to active.
+
+const BETA_DEFAULT_SLUG = 'icant';
+const BETA_STATUS_RANK = { applied: 0, declined: 1, granted: 2, active: 3, completed: 4 };
+
+function betaTesterRef(db, email) {
+  const lower = normalizeEmail(email);
+  return lower ? db.collection('betaTesters').doc(lower) : null;
+}
+
+/**
+ * Move a tester to `status`, but never backwards along the ladder.
+ * `extra` is merged regardless, so timestamps still land on a no-op move.
+ */
+async function advanceBetaStatus(db, email, status, extra) {
+  const ref = betaTesterRef(db, email);
+  if (!ref) return false;
+  const snap = await ref.get();
+  if (!snap.exists) return false;
+  const current = snap.data().status || 'applied';
+  const next = (BETA_STATUS_RANK[status] || 0) > (BETA_STATUS_RANK[current] || 0) ? status : current;
+  await ref.set({
+    ...(extra || {}),
+    status: next,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return true;
+}
+
+/** submitLeadForm hook: a beta application creates or refreshes the record. */
+async function recordBetaApplication(db, { name, email, phone, fields, crmContactId }) {
+  const ref = betaTesterRef(db, email);
+  if (!ref) return;
+  const FV = admin.firestore.FieldValue;
+  const f = fields || {};
+  const snap = await ref.get();
+  // Re-applying is not a reset: someone already in the cohort keeps their
+  // status and dates, and only their contact details are refreshed.
+  await ref.set({
+    email: normalizeEmail(email),
+    name: name || (snap.exists ? snap.data().name : '') || '',
+    phone: phone || null,
+    courseName: f.course || null,
+    why: f.why || null,
+    crmContactId: crmContactId || (snap.exists ? snap.data().crmContactId : null) || null,
+    ...(snap.exists ? {} : {
+      status: 'applied',
+      courseSlug: BETA_DEFAULT_SLUG,
+      cohort: null,
+      feedbackCount: 0,
+      appliedAt: FV.serverTimestamp()
+    }),
+    updatedAt: FV.serverTimestamp()
+  }, { merge: true });
+}
+
+/** grantCourseAccess hook: an existing tester moves to `granted`. */
+async function markBetaGranted(db, email, { slug, grantedBy, note, applied }) {
+  return advanceBetaStatus(db, email, 'granted', {
+    courseSlug: slug || BETA_DEFAULT_SLUG,
+    grantedBy: grantedBy || null,
+    grantNote: note || null,
+    grantPending: !applied,
+    grantedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+}
+
+/** onUserCreated hook: the tester now has an account. */
+async function markBetaActivated(db, email, uid) {
+  return advanceBetaStatus(db, email, 'active', {
+    uid: uid || null,
+    activatedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+}
+
+/** reportBug hook: feedback from a tester counts toward their beta record. */
+async function noteBetaFeedback(db, email) {
+  const ref = betaTesterRef(db, email);
+  if (!ref) return false;
+  const snap = await ref.get();
+  if (!snap.exists) return false;
+  await ref.set({
+    feedbackCount: admin.firestore.FieldValue.increment(1),
+    lastFeedbackAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return true;
+}
+
+/** Completed modules for `slug`, counted the way course-renderer writes them. */
+async function countCourseProgress(db, uid, slug) {
+  if (!uid) return 0;
+  try {
+    const snap = await db.collection('users').doc(uid).collection('progress').get();
+    const prefix = `${slug}__m`;
+    return snap.docs.filter((d) => d.id.startsWith(prefix) && d.data().completed === true).length;
+  } catch (e) {
+    console.warn('[beta] progress count failed for', uid, e && e.message);
+    return 0;
+  }
+}
+
+function tsMillis(v) {
+  return v && typeof v.toMillis === 'function' ? v.toMillis() : null;
+}
+
+// listBetaTesters — everything the beta console renders, joined server-side.
+//
+// The join (tester → user account → progress → feedback) needs reads across
+// users/{uid}/progress and bugReports that no client role should hold in bulk,
+// and doing it in the browser would be a request per tester. One callable
+// keeps both problems out of the front end.
+exports.listBetaTesters = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admins only.');
+
+  const snap = await db.collection('betaTesters').orderBy('updatedAt', 'desc').limit(500).get();
+
+  const rows = [];
+  for (const d of snap.docs) {
+    const t = d.data();
+    const slug = t.courseSlug || BETA_DEFAULT_SLUG;
+    // The account may have been created before the record existed (or without
+    // triggering the signup hook), so resolve it on read rather than trusting
+    // the stored uid alone.
+    let accountUid = t.uid || null;
+    let lastActiveAt = null;
+    if (!accountUid) {
+      const userDoc = await findUserByEmail(db, d.id);
+      if (userDoc) accountUid = userDoc.id;
+    }
+    let enrolled = false;
+    if (accountUid) {
+      const userSnap = await db.collection('users').doc(accountUid).get();
+      if (userSnap.exists) {
+        const u = userSnap.data();
+        lastActiveAt = tsMillis(u.lastActiveAt);
+        enrolled = Array.isArray(u.enrolledCourseSlugs) && u.enrolledCourseSlugs.includes(slug);
+      }
+    }
+    rows.push({
+      email: d.id,
+      name: t.name || '',
+      phone: t.phone || null,
+      status: t.status || 'applied',
+      courseSlug: slug,
+      courseName: t.courseName || null,
+      cohort: t.cohort || null,
+      why: t.why || null,
+      note: t.note || null,
+      crmContactId: t.crmContactId || null,
+      grantPending: t.grantPending === true,
+      hasAccount: !!accountUid,
+      enrolled,
+      lessonsCompleted: await countCourseProgress(db, accountUid, slug),
+      feedbackCount: t.feedbackCount || 0,
+      appliedAt: tsMillis(t.appliedAt),
+      grantedAt: tsMillis(t.grantedAt),
+      activatedAt: tsMillis(t.activatedAt),
+      completedAt: tsMillis(t.completedAt),
+      lastFeedbackAt: tsMillis(t.lastFeedbackAt),
+      lastActiveAt
+    });
+  }
+
+  // Feedback from testers, so beta signal reads separately from general site
+  // bugs. Matched on the reporter email recorded by reportBug.
+  const emails = new Set(rows.map((r) => r.email));
+  const feedback = [];
+  if (emails.size) {
+    const bugSnap = await db.collection('bugReports').orderBy('createdAt', 'desc').limit(300).get();
+    bugSnap.docs.forEach((d) => {
+      const b = d.data();
+      const reporter = normalizeEmail(b.reportedByEmail);
+      if (!reporter || !emails.has(reporter)) return;
+      feedback.push({
+        id: d.id,
+        email: reporter,
+        description: b.description || '',
+        severity: b.aiSeverity || 'unknown',
+        status: b.status || 'open',
+        pageUrl: b.pageUrl || '',
+        createdAt: tsMillis(b.createdAt)
+      });
+    });
+  }
+
+  const summary = { applied: 0, declined: 0, granted: 0, active: 0, completed: 0 };
+  rows.forEach((r) => { if (summary[r.status] != null) summary[r.status] += 1; });
+
+  return {
+    ok: true,
+    rows,
+    feedback,
+    summary: {
+      ...summary,
+      total: rows.length,
+      // Everyone past a decision, which is the number the launch call rests on.
+      inCohort: rows.filter((r) => r.status !== 'applied' && r.status !== 'declined').length,
+      withFeedback: rows.filter((r) => r.feedbackCount > 0).length,
+      started: rows.filter((r) => r.lessonsCompleted > 0).length
+    }
+  };
+});
+
+// setBetaTesterStatus — the console's write path. Approving issues the course
+// grant in the same call, which is what removes the hand-typed prompt chain in
+// manage-courses from the workflow.
+// `secrets` is required, not optional: approving a tester sends their invite
+// through sendGrantEmail, which reads sendgridKey.value() on the SendGrid path.
+exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admins only.');
+
+  const data = request.data || {};
+  const email = normalizeEmail(data.email);
+  const action = String(data.action || '').trim();
+  const note = String(data.note || '').trim().slice(0, 200) || null;
+  const cohort = String(data.cohort || '').trim().slice(0, 60) || null;
+  // Default on: an approval nobody is told about leaves the tester waiting on
+  // an email that never comes, which is the gap this console exists to close.
+  const notify = !(data.notify === false);
+  if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'A valid email is required.');
+  if (!['approve', 'decline', 'complete', 'note'].includes(action)) {
+    throw new HttpsError('invalid-argument', 'Unknown action.');
+  }
+
+  const ref = betaTesterRef(db, email);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'No beta record for that email.');
+  const tester = snap.data();
+  const actor = (request.auth.token && request.auth.token.email) || uid;
+  const FV = admin.firestore.FieldValue;
+
+  if (action === 'note') {
+    await ref.set({ note, cohort: cohort || tester.cohort || null, updatedAt: FV.serverTimestamp() }, { merge: true });
+    return { ok: true, status: tester.status || 'applied' };
+  }
+
+  if (action === 'decline') {
+    // Declining is the one move that may go backwards — an applicant can be
+    // turned down — so it is written directly rather than through the ladder.
+    await ref.set({
+      status: 'declined',
+      decidedBy: actor,
+      decidedAt: FV.serverTimestamp(),
+      note: note || tester.note || null,
+      updatedAt: FV.serverTimestamp()
+    }, { merge: true });
+    return { ok: true, status: 'declined' };
+  }
+
+  if (action === 'complete') {
+    await advanceBetaStatus(db, email, 'completed', {
+      completedAt: FV.serverTimestamp(),
+      note: note || tester.note || null
+    });
+    return { ok: true, status: 'completed' };
+  }
+
+  // approve — grant the course, then record the decision. The grant is the
+  // same path manage-courses uses, so an applicant without an account is
+  // parked in pendingGrants and picked up automatically at signup.
+  const slug = String(data.slug || tester.courseSlug || BETA_DEFAULT_SLUG).trim();
+  const courseSnap = await db.collection('courses').doc(slug).get();
+  if (!courseSnap.exists) throw new HttpsError('not-found', `Unknown course "${slug}".`);
+
+  const grantNote = note || 'beta tester';
+  const userDoc = await findUserByEmail(db, email);
+  let applied = false;
+  if (userDoc) {
+    await applyGrant(db, userDoc.id, slug, courseSnap.data(), { note: grantNote, grantedBy: actor });
+    applied = true;
+  } else {
+    await db.collection('pendingGrants').doc(email).set({
+      email,
+      slugs: FV.arrayUnion(slug),
+      notes: FV.arrayUnion(`${slug}: ${grantNote}`),
+      grantedBy: actor,
+      updatedAt: FV.serverTimestamp()
+    }, { merge: true });
+  }
+
+  await ref.set({
+    status: 'granted',
+    courseSlug: slug,
+    cohort: cohort || tester.cohort || null,
+    uid: userDoc ? userDoc.id : tester.uid || null,
+    grantedBy: actor,
+    grantNote,
+    grantPending: !applied,
+    note: note || tester.note || null,
+    decidedBy: actor,
+    decidedAt: FV.serverTimestamp(),
+    grantedAt: FV.serverTimestamp(),
+    updatedAt: FV.serverTimestamp()
+  }, { merge: true });
+
+  if (applied) await markBetaActivated(db, email, userDoc.id);
+
+  // Tell them. A member with an account gets the course link; an applicant
+  // without one gets the signup link and the instruction to use this exact
+  // address, since the grant is parked against it. Best-effort on top of a
+  // grant that already landed, so a mail failure never fails the approval —
+  // the console reports it instead.
+  const emailed = notify
+    ? await sendGrantEmail(db, {
+        email,
+        uid: userDoc ? userDoc.id : null,
+        slug,
+        course: courseSnap.data(),
+        note: note || null,
+        hasAccount: applied
+      })
+    : null;
+  if (notify && !emailed) {
+    await ref.set({ inviteEmailFailedAt: FV.serverTimestamp() }, { merge: true });
+  } else if (emailed) {
+    await ref.set({ inviteEmailedAt: FV.serverTimestamp() }, { merge: true });
+  }
+
+  return { ok: true, status: applied ? 'active' : 'granted', applied, pending: !applied, slug, emailed };
+});
 
 // validateCoupon — pre-checkout preview so the buyer sees the discounted
 // price before committing. Sign-in required (checkout requires it anyway),
@@ -9503,6 +9863,11 @@ exports.reportBug = onCall({ secrets: [sendgridKey, anthropicKey] }, async (requ
   await rateLimitCaller(db, request, { action: 'reportBug', max: 5, windowSec: 600 });
 
   const uid = request.auth && request.auth.uid;
+  // Recorded so beta feedback can be told apart from general site bugs: the
+  // report only ever carried a uid, which nothing else in the portal keys on.
+  const reporterEmail = (request.auth && request.auth.token && request.auth.token.email)
+    ? String(request.auth.token.email).trim().toLowerCase().slice(0, 160)
+    : null;
   const reportRef = db.collection('bugReports').doc();
   const reportId = reportRef.id;
 
@@ -9591,12 +9956,23 @@ exports.reportBug = onCall({ secrets: [sendgridKey, anthropicKey] }, async (requ
     pageUrl: (pageUrl || '').slice(0, 500),
     userAgent: (userAgent || '').slice(0, 500),
     reportedByUid: uid || null,
+    reportedByEmail: reporterEmail,
     screenshotUrl,
     aiAnalysis,
     aiSeverity,
     status: 'open',
     createdAt: admin.firestore.FieldValue.serverTimestamp()
   });
+
+  // Beta testers' reports count toward their cohort record. Best-effort and
+  // a no-op for everyone who isn't one.
+  if (reporterEmail) {
+    try {
+      await noteBetaFeedback(db, reporterEmail);
+    } catch (e) {
+      console.warn('[reportBug] beta feedback count failed:', e && e.message);
+    }
+  }
 
   // ── Email owner ────────────────────────────────────────────────────────────
   try {
@@ -12168,6 +12544,16 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
     parsed: parsedConsent, source: form.source, channel: formType,
     fallbackText: `Opted in via ${form.source.toLowerCase()} form`
   });
+  // A beta application is also a cohort record, not just a lead. Best-effort:
+  // the lead is already saved, so a failure here must not fail the form.
+  if (formType === 'beta-tester') {
+    try {
+      await recordBetaApplication(db, { name, email, phone, fields, crmContactId: ref.id });
+    } catch (e) {
+      console.error('[submitLeadForm] beta record failed:', e && e.message);
+    }
+  }
+
   const summary = Object.entries(fields).map(([k, v]) => `${k}: ${v}`).join(' · ');
   await ref.collection('activities').add({
     type: 'lead_form',

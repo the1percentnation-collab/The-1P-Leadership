@@ -1196,6 +1196,20 @@ service cloud.firestore {
     }
 
     // ────────────────────────────────────────────────────────────────
+    // Beta program — the cohort record behind /beta-admin.html.
+    //
+    // Written only by the Admin SDK (the beta-tester lead form, the course
+    // grant path, signup, and the feedback hook) and read only through the
+    // listBetaTesters callable, which joins in account and progress data no
+    // client should be able to pull in bulk. Direct reads stay open to the
+    // owner for debugging; every write path is server-side.
+    // ────────────────────────────────────────────────────────────────
+    match /betaTesters/{testerEmail} {
+      allow read: if isOwner();
+      allow write: if false;
+    }
+
+    // ────────────────────────────────────────────────────────────────
     // 1P Certification (Life Coach)
     // ────────────────────────────────────────────────────────────────
 
