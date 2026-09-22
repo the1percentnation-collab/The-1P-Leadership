@@ -5543,6 +5543,87 @@ function betaTesterRef(db, email) {
 }
 
 /**
+ * The courses a tester is testing.
+ *
+ * Records written before the beta went multi-course carry a scalar
+ * `courseSlug`. Nothing migrates them, so this is the only place in the
+ * codebase that knows both shapes exist; everything else asks for a list.
+ */
+function testerSlugs(t) {
+  if (!t) return [];
+  if (Array.isArray(t.courseSlugs) && t.courseSlugs.length) {
+    return t.courseSlugs.map(String).filter(Boolean);
+  }
+  return t.courseSlug ? [String(t.courseSlug)] : [];
+}
+
+/** A caller's requested course list, deduped and trimmed, or `fallback`. */
+function normalizeSlugList(input, fallback) {
+  const raw = Array.isArray(input) ? input : (input ? [input] : []);
+  const out = [];
+  raw.forEach((v) => {
+    const slug = String(v || '').trim();
+    if (slug && !out.includes(slug)) out.push(slug);
+  });
+  return out.length ? out : (fallback || []).slice();
+}
+
+/**
+ * Which of `removing` may actually be taken away — pure, no Firestore.
+ *
+ * Enrollment is one shared array on the user: a course somebody bought sits
+ * beside one the beta granted, and nothing in that array tells them apart. So a
+ * beta decision is only ever allowed to undo a beta grant, and three things
+ * block a removal:
+ *
+ *   1. the beta never granted it — it is not the beta's to take;
+ *   2. they paid for it (or comped it with a coupon), so the grant is no longer
+ *      the reason they have access;
+ *   3. a course they are keeping unlocks it anyway, which makes removing it
+ *      incoherent — the bundle would re-imply it on the next write.
+ *
+ * Rule 3 is also what makes unticking a bundle behave: the bundle goes, and the
+ * course it unlocked goes with it only if nothing else holds that course up.
+ *
+ * A block is not an error. Each one comes back with a reason so the console can
+ * say plainly why a course stayed.
+ *
+ * @param betaGranted   slugs the beta granted (from the tester record)
+ * @param keeping       slugs the operator is keeping
+ * @param removing      slugs the operator unticked
+ * @param paidSlugs     slugs with a non-grant purchase receipt
+ * @param enrollsAlsoBy map of slug -> slugs that slug unlocks
+ */
+function revocableSlugs({ betaGranted, keeping, removing, paidSlugs, enrollsAlsoBy }) {
+  const granted = new Set((betaGranted || []).map(String));
+  const paid = new Set((paidSlugs || []).map(String));
+  const kept = (keeping || []).map(String);
+  const also = enrollsAlsoBy || {};
+
+  // Everything the kept courses unlock. Computed once, from the kept set only,
+  // so a slug being removed cannot prop itself up through its own fan-out.
+  const impliedByKept = new Set();
+  kept.forEach((slug) => {
+    (also[slug] || []).forEach((k) => impliedByKept.add(String(k)));
+  });
+
+  const revoke = [];
+  const blocked = [];
+  (removing || []).map(String).forEach((slug) => {
+    if (!granted.has(slug)) {
+      blocked.push({ slug, reason: 'not-beta-granted' });
+    } else if (paid.has(slug)) {
+      blocked.push({ slug, reason: 'paid' });
+    } else if (impliedByKept.has(slug)) {
+      blocked.push({ slug, reason: 'unlocked-by-kept-course' });
+    } else {
+      revoke.push(slug);
+    }
+  });
+  return { revoke, blocked };
+}
+
+/**
  * Move a tester to `status`, but never backwards along the ladder.
  * `extra` is merged regardless, so timestamps still land on a no-op move.
  */
@@ -5570,7 +5651,7 @@ async function advanceBetaStatus(db, email, status, extra) {
  * record either way and never needs to know which door they came through.
  */
 async function recordBetaApplication(db, { name, email, phone, fields, crmContactId },
-                                     { source = 'form', addedBy = null, courseSlug = null } = {}) {
+                                     { source = 'form', addedBy = null, courseSlugs = null } = {}) {
   const ref = betaTesterRef(db, email);
   if (!ref) return;
   const FV = admin.firestore.FieldValue;
@@ -5588,9 +5669,13 @@ async function recordBetaApplication(db, { name, email, phone, fields, crmContac
     crmContactId: crmContactId || (snap.exists ? snap.data().crmContactId : null) || null,
     ...(snap.exists ? {} : {
       status: 'applied',
-      courseSlug: courseSlug || BETA_DEFAULT_SLUG,
+      // `courseSlug` stays written as the first of the list: records predating
+      // multi-course carry the scalar, and testerSlugs() reads either shape.
+      courseSlugs: normalizeSlugList(courseSlugs, [BETA_DEFAULT_SLUG]),
+      courseSlug: normalizeSlugList(courseSlugs, [BETA_DEFAULT_SLUG])[0],
       cohort: null,
       feedbackCount: 0,
+      betaGrantedSlugs: [],
       source,
       addedBy,
       appliedAt: FV.serverTimestamp()
@@ -5599,10 +5684,19 @@ async function recordBetaApplication(db, { name, email, phone, fields, crmContac
   }, { merge: true });
 }
 
-/** grantCourseAccess hook: an existing tester moves to `granted`. */
-async function markBetaGranted(db, email, { slug, grantedBy, note, applied }) {
+/**
+ * grantCourseAccess hook: an existing tester moves to `granted`.
+ *
+ * `betaGrantedSlugs` is what makes a later revoke safe — it records the courses
+ * the beta itself handed over, so unticking can never reach a course the person
+ * bought. It only ever grows here; removals are written by the approve branch.
+ */
+async function markBetaGranted(db, email, { slug, slugs, grantedBy, note, applied }) {
+  const list = normalizeSlugList(slugs || slug, [BETA_DEFAULT_SLUG]);
   return advanceBetaStatus(db, email, 'granted', {
-    courseSlug: slug || BETA_DEFAULT_SLUG,
+    courseSlugs: admin.firestore.FieldValue.arrayUnion(...list),
+    courseSlug: list[0],
+    betaGrantedSlugs: admin.firestore.FieldValue.arrayUnion(...list),
     grantedBy: grantedBy || null,
     grantNote: note || null,
     grantPending: !applied,
@@ -5633,16 +5727,28 @@ async function noteBetaFeedback(db, email) {
 }
 
 /** Completed modules for `slug`, counted the way course-renderer writes them. */
-async function countCourseProgress(db, uid, slug) {
-  if (!uid) return 0;
+/**
+ * Completed modules per course, counted the way course-renderer writes them.
+ *
+ * One read of the progress subcollection covers every course, so a tester
+ * testing three courses costs what testing one used to. Counting per slug
+ * separately would have made an existing per-tester read into three.
+ */
+async function countProgressBySlug(db, uid, slugs) {
+  const out = {};
+  (slugs || []).forEach((s) => { out[s] = 0; });
+  if (!uid || !(slugs || []).length) return out;
   try {
     const snap = await db.collection('users').doc(uid).collection('progress').get();
-    const prefix = `${slug}__m`;
-    return snap.docs.filter((d) => d.id.startsWith(prefix) && d.data().completed === true).length;
+    snap.docs.forEach((d) => {
+      if (d.data().completed !== true) return;
+      const slug = slugs.find((s) => d.id.startsWith(`${s}__m`));
+      if (slug) out[slug] += 1;
+    });
   } catch (e) {
     console.warn('[beta] progress count failed for', uid, e && e.message);
-    return 0;
   }
+  return out;
 }
 
 function tsMillis(v) {
@@ -5655,6 +5761,38 @@ function tsMillis(v) {
 // users/{uid}/progress and bugReports that no client role should hold in bulk,
 // and doing it in the browser would be a request per tester. One callable
 // keeps both problems out of the front end.
+/**
+ * What a beta course picker offers.
+ *
+ * A beta runs on content that has no public face yet, so `beta` and
+ * `coming-soon` belong here as much as live ones. Only `inactive` is excluded:
+ * granting access to a course closed for its own students helps nobody.
+ */
+async function betaCourseOptions(db) {
+  const snap = await db.collection('courses').get();
+  return snap.docs
+    .filter((d) => (d.data().status || 'live') !== 'inactive')
+    .map((d) => ({
+      slug: d.id,
+      title: d.data().title || d.id,
+      status: d.data().status || 'live'
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+// listBetaCourses — the course picker's options, on their own.
+//
+// The CRM contact card needs the same list, and pulling it from
+// listBetaTesters would hand a company admin the whole cohort (every
+// applicant's name, note and progress) to render one row of checkboxes.
+exports.listBetaCourses = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admins only.');
+  return { ok: true, courses: await betaCourseOptions(db), defaultSlug: BETA_DEFAULT_SLUG };
+});
+
 exports.listBetaTesters = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -5666,7 +5804,8 @@ exports.listBetaTesters = onCall(async (request) => {
   const rows = [];
   for (const d of snap.docs) {
     const t = d.data();
-    const slug = t.courseSlug || BETA_DEFAULT_SLUG;
+    const slugs = testerSlugs(t);
+    if (!slugs.length) slugs.push(BETA_DEFAULT_SLUG);
     // The account may have been created before the record existed (or without
     // triggering the signup hook), so resolve it on read rather than trusting
     // the stored uid alone.
@@ -5676,21 +5815,28 @@ exports.listBetaTesters = onCall(async (request) => {
       const userDoc = await findUserByEmail(db, d.id);
       if (userDoc) accountUid = userDoc.id;
     }
-    let enrolled = false;
+    // Enrollment is per course now: somebody can be testing two and have only
+    // one of them actually applied, which is exactly the state worth seeing.
+    const enrolledBySlug = {};
+    slugs.forEach((sl) => { enrolledBySlug[sl] = false; });
     if (accountUid) {
       const userSnap = await db.collection('users').doc(accountUid).get();
       if (userSnap.exists) {
         const u = userSnap.data();
         lastActiveAt = tsMillis(u.lastActiveAt);
-        enrolled = Array.isArray(u.enrolledCourseSlugs) && u.enrolledCourseSlugs.includes(slug);
+        const owned = Array.isArray(u.enrolledCourseSlugs) ? u.enrolledCourseSlugs : [];
+        slugs.forEach((sl) => { enrolledBySlug[sl] = owned.includes(sl); });
       }
     }
+    const lessonsBySlug = await countProgressBySlug(db, accountUid, slugs);
     rows.push({
       email: d.id,
       name: t.name || '',
       phone: t.phone || null,
       status: t.status || 'applied',
-      courseSlug: slug,
+      courseSlugs: slugs,
+      courseSlug: slugs[0],
+      betaGrantedSlugs: Array.isArray(t.betaGrantedSlugs) ? t.betaGrantedSlugs : [],
       courseName: t.courseName || null,
       cohort: t.cohort || null,
       why: t.why || null,
@@ -5698,8 +5844,10 @@ exports.listBetaTesters = onCall(async (request) => {
       crmContactId: t.crmContactId || null,
       grantPending: t.grantPending === true,
       hasAccount: !!accountUid,
-      enrolled,
-      lessonsCompleted: await countCourseProgress(db, accountUid, slug),
+      enrolledBySlug,
+      enrolled: slugs.every((sl) => enrolledBySlug[sl]),
+      lessonsBySlug,
+      lessonsCompleted: Object.values(lessonsBySlug).reduce((a, b) => a + b, 0),
       feedbackCount: t.feedbackCount || 0,
       appliedAt: tsMillis(t.appliedAt),
       grantedAt: tsMillis(t.grantedAt),
@@ -5732,19 +5880,7 @@ exports.listBetaTesters = onCall(async (request) => {
     });
   }
 
-  // What the console's course picker offers. A beta runs on content that has
-  // no public face yet, so `beta` and `coming-soon` courses belong here just
-  // as much as live ones; only `inactive` is excluded, since granting access
-  // to a course that is closed for its own students helps nobody.
-  const courseSnap = await db.collection('courses').get();
-  const courses = courseSnap.docs
-    .filter((d) => (d.data().status || 'live') !== 'inactive')
-    .map((d) => ({
-      slug: d.id,
-      title: d.data().title || d.id,
-      status: d.data().status || 'live'
-    }))
-    .sort((a, b) => a.title.localeCompare(b.title));
+  const courses = await betaCourseOptions(db);
 
   const summary = { applied: 0, declined: 0, granted: 0, active: 0, completed: 0 };
   rows.forEach((r) => { if (summary[r.status] != null) summary[r.status] += 1; });
@@ -5812,7 +5948,7 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
       phone: String(data.phone || '').trim().slice(0, 40) || null,
       fields: note ? { why: note } : {},
       crmContactId: null
-    }, { source: 'manual', addedBy: actor, courseSlug: String(data.slug || '').trim() || null });
+    }, { source: 'manual', addedBy: actor, courseSlugs: normalizeSlugList(data.slugs || data.slug, []) });
     snap = await ref.get();
     // Adding and approving in one step is the common case for someone already
     // invited, but it stays opt-in: an add on its own leaves them in
@@ -5856,7 +5992,7 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
       phone: String(data.phone || '').trim().slice(0, 40) || null,
       fields: {},
       crmContactId: String(data.crmContactId || '').trim() || null
-    }, { source: 'crm', addedBy: actor });
+    }, { source: 'crm', addedBy: actor, courseSlugs: normalizeSlugList(data.slugs || data.slug, []) });
 
     // Switching the toggle back on is an explicit re-inclusion, so it undoes a
     // previous decline. Anyone further along keeps the status they earned.
@@ -5897,34 +6033,158 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
     return { ok: true, status: 'completed' };
   }
 
-  // approve — grant the course, then record the decision. The grant is the
-  // same path manage-courses uses, so an applicant without an account is
-  // parked in pendingGrants and picked up automatically at signup.
-  const slug = String(data.slug || tester.courseSlug || BETA_DEFAULT_SLUG).trim();
-  const courseSnap = await db.collection('courses').doc(slug).get();
-  if (!courseSnap.exists) throw new HttpsError('not-found', `Unknown course "${slug}".`);
+  // approve — the ticked courses ARE the tester's courses. Additions are
+  // granted through the same path manage-courses uses (so an applicant without
+  // an account is parked in pendingGrants and picked up at signup), and
+  // anything unticked is revoked, subject to the guards in revocableSlugs.
+  const wanted = normalizeSlugList(data.slugs || data.slug, testerSlugs(tester));
+  // An empty picker is never a silent full revoke, and the cap is the invite
+  // emails: one goes out per newly granted course.
+  if (!wanted.length) throw new HttpsError('invalid-argument', 'Pick at least one course.');
+  if (wanted.length > 12) throw new HttpsError('invalid-argument', 'That is too many courses for one tester.');
+
+  // Resolve every course up front: a typo in one slug must not leave the
+  // tester half-granted.
+  const courseDocs = {};
+  for (const sl of wanted) {
+    const cs = await db.collection('courses').doc(sl).get();
+    if (!cs.exists) throw new HttpsError('not-found', `Unknown course "${sl}".`);
+    courseDocs[sl] = cs.data();
+  }
+
+  const previous = testerSlugs(tester);
+  // Records granted before multi-course have no betaGrantedSlugs, so this is
+  // empty for them and nothing is revocable until the next approval writes the
+  // field. That is deliberate: inferring "the beta must have granted their one
+  // course" would be guessing, and the guess is wrong for anyone who signed up
+  // and bought it. One re-approval establishes the baseline honestly.
+  const betaGranted = Array.isArray(tester.betaGrantedSlugs) ? tester.betaGrantedSlugs : [];
+  const additions = wanted.filter((sl) => !previous.includes(sl));
+  const removing = previous.filter((sl) => !wanted.includes(sl));
 
   const grantNote = note || 'beta tester';
   const userDoc = await findUserByEmail(db, email);
+  const accountUid = userDoc ? userDoc.id : tester.uid || null;
   let applied = false;
+
+  // ── Grant the additions ───────────────────────────────────────────────
   if (userDoc) {
-    await applyGrant(db, userDoc.id, slug, courseSnap.data(), { note: grantNote, grantedBy: actor });
+    for (const sl of additions) {
+      await applyGrant(db, userDoc.id, sl, courseDocs[sl], { note: grantNote, grantedBy: actor });
+    }
     applied = true;
-  } else {
+  } else if (additions.length) {
     await db.collection('pendingGrants').doc(email).set({
       email,
-      slugs: FV.arrayUnion(slug),
-      notes: FV.arrayUnion(`${slug}: ${grantNote}`),
+      slugs: FV.arrayUnion(...additions),
+      notes: FV.arrayUnion(...additions.map((sl) => `${sl}: ${grantNote}`)),
       grantedBy: actor,
       updatedAt: FV.serverTimestamp()
     }, { merge: true });
   }
 
+  // ── Revoke the removals, if they may be revoked ───────────────────────
+  // Everything here is refusable, and a refusal is reported rather than
+  // thrown: the operator unticked something, and they are owed the reason it
+  // stayed rather than a failed approval.
+  let revoked = [];
+  let blocked = [];
+  if (removing.length) {
+    // Courses held by a real purchase or a comped coupon, which a beta
+    // decision must never undo.
+    const paidSlugs = [];
+    if (accountUid) {
+      const purchases = await db.collection('users').doc(accountUid).collection('purchases').get();
+      purchases.docs.forEach((pd) => {
+        const pdata = pd.data();
+        const bought = String(pdata.courseSlug || '').trim();
+        if (!bought) return;
+        // `grant` is the beta's own receipt, so it protects nothing. A refunded
+        // or cancelled purchase no longer holds access up either — but a
+        // past_due one does: they still have the course, the payment is late.
+        if (!['payment', 'subscription', 'comp'].includes(pdata.mode)) return;
+        if (['refunded', 'canceled', 'failed', 'revoked'].includes(String(pdata.status || ''))) return;
+        paidSlugs.push(bought);
+        // Buying a bundle protects what the bundle unlocks, the same way
+        // granting one enrolls it.
+        const bcs = courseDocs[bought];
+        courseFulfillment(bought, bcs || {}).enrollsAlso.forEach((x) => paidSlugs.push(String(x)));
+      });
+    }
+    // What each KEPT course unlocks on its own, so a bundle that is staying
+    // keeps the course it implies.
+    const enrollsAlsoBy = {};
+    for (const sl of wanted) {
+      enrollsAlsoBy[sl] = courseFulfillment(sl, courseDocs[sl] || {}).enrollsAlso;
+    }
+
+    // Removing a bundle puts what it unlocked on the table too: the operator
+    // unticked the thing that put that course in their hands. revocableSlugs
+    // still decides — it survives if it was granted in its own right and is
+    // still ticked, if it was bought, or if a kept course unlocks it.
+    const removingWithFanout = removing.slice();
+    for (const sl of removing) {
+      const rcs = await db.collection('courses').doc(sl).get();
+      courseFulfillment(sl, rcs.exists ? rcs.data() : {}).enrollsAlso.forEach((x) => {
+        const implied = String(x);
+        if (!removingWithFanout.includes(implied) && !wanted.includes(implied)) {
+          removingWithFanout.push(implied);
+        }
+      });
+    }
+
+    const verdict = revocableSlugs({
+      betaGranted, keeping: wanted, removing: removingWithFanout, paidSlugs, enrollsAlsoBy
+    });
+    revoked = verdict.revoke;
+    blocked = verdict.blocked;
+
+    if (revoked.length) {
+      if (accountUid) {
+        await db.collection('users').doc(accountUid).set({
+          enrolledCourseSlugs: FV.arrayRemove(...revoked)
+        }, { merge: true });
+        // The grant receipt stays as history; this is the matching row saying
+        // it was taken back, so the purchase trail reads in both directions.
+        for (const sl of revoked) {
+          await db.collection('users').doc(accountUid).collection('purchases')
+            .doc(`revoke-${sl}-${Date.now()}`).set({
+              courseSlug: sl,
+              amount: 0,
+              mode: 'revoke',
+              revokedBy: actor,
+              status: 'revoked',
+              createdAt: FV.serverTimestamp()
+            });
+        }
+      } else {
+        // No account yet: the grant is parked, so revoking means unparking it.
+        const pgRef = db.collection('pendingGrants').doc(email);
+        const pg = await pgRef.get();
+        if (pg.exists) {
+          const kept = (Array.isArray(pg.data().slugs) ? pg.data().slugs : [])
+            .filter((sl) => !revoked.includes(sl));
+          if (kept.length) await pgRef.set({ slugs: kept, updatedAt: FV.serverTimestamp() }, { merge: true });
+          else await pgRef.delete();
+        }
+      }
+    }
+  }
+
+  // Blocked removals are still the tester's courses — they kept access, so the
+  // record has to say so or the console and reality drift apart.
+  const finalSlugs = wanted.concat(blocked.map((b) => b.slug)).filter((sl, i, a) => a.indexOf(sl) === i);
+
   await ref.set({
     status: 'granted',
-    courseSlug: slug,
+    courseSlugs: finalSlugs,
+    courseSlug: finalSlugs[0],
+    betaGrantedSlugs: betaGranted
+      .concat(additions)
+      .filter((sl) => !revoked.includes(sl))
+      .filter((sl, i, a) => a.indexOf(sl) === i),
     cohort: cohort || tester.cohort || null,
-    uid: userDoc ? userDoc.id : tester.uid || null,
+    uid: accountUid,
     grantedBy: actor,
     grantNote,
     grantPending: !applied,
@@ -5937,28 +6197,42 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
 
   if (applied) await markBetaActivated(db, email, userDoc.id);
 
-  // Tell them. A member with an account gets the course link; an applicant
-  // without one gets the signup link and the instruction to use this exact
-  // address, since the grant is parked against it. Best-effort on top of a
-  // grant that already landed, so a mail failure never fails the approval —
-  // the console reports it instead.
-  const emailed = notify
-    ? await sendGrantEmail(db, {
+  // Tell them, once per course that is NEW to them. A member with an account
+  // gets the course link; an applicant without one gets the signup link and
+  // the instruction to use this exact address, since the grant is parked
+  // against it. Best-effort on top of a grant that already landed, so a mail
+  // failure never fails the approval — the console reports it instead.
+  const emailed = {};
+  if (notify) {
+    for (const sl of additions) {
+      emailed[sl] = await sendGrantEmail(db, {
         email,
         uid: userDoc ? userDoc.id : null,
-        slug,
-        course: courseSnap.data(),
+        slug: sl,
+        course: courseDocs[sl],
         note: note || null,
         hasAccount: applied
-      })
-    : null;
-  if (notify && !emailed) {
+      });
+    }
+  }
+  const sent = Object.values(emailed);
+  if (sent.length && sent.some((x) => !x)) {
     await ref.set({ inviteEmailFailedAt: FV.serverTimestamp() }, { merge: true });
-  } else if (emailed) {
+  } else if (sent.length) {
     await ref.set({ inviteEmailedAt: FV.serverTimestamp() }, { merge: true });
   }
 
-  return { ok: true, status: applied ? 'active' : 'granted', applied, pending: !applied, slug, emailed };
+  return {
+    ok: true,
+    status: applied ? 'active' : 'granted',
+    applied,
+    pending: !applied,
+    slugs: finalSlugs,
+    granted: additions,
+    revoked,
+    blocked,
+    emailed
+  };
 });
 
 // validateCoupon — pre-checkout preview so the buyer sees the discounted

@@ -26,6 +26,8 @@ const code = src.slice(start, end);
 
 const SENTINEL_TS = '<<serverTimestamp>>';
 function increment(n) { return { __inc: n }; }
+function arrayUnion(...xs) { return { __union: xs }; }
+function arrayRemove(...xs) { return { __remove: xs }; }
 
 function makeDb(seed) {
   const docs = new Map(Object.entries(seed || {}));
@@ -36,7 +38,14 @@ function makeDb(seed) {
     Object.entries(patch).forEach(([k, v]) => {
       if (v === SENTINEL_TS) out[k] = SENTINEL_TS;
       else if (v && v.__inc != null) out[k] = (Number(out[k]) || 0) + v.__inc;
-      else out[k] = v;
+      else if (v && v.__union) {
+        const cur = Array.isArray(out[k]) ? out[k].slice() : [];
+        v.__union.forEach((x) => { if (!cur.includes(x)) cur.push(x); });
+        out[k] = cur;
+      } else if (v && v.__remove) {
+        const cur = Array.isArray(out[k]) ? out[k].slice() : [];
+        out[k] = cur.filter((x) => !v.__remove.includes(x));
+      } else out[k] = v;
     });
     return out;
   }
@@ -72,14 +81,15 @@ function makeDb(seed) {
 }
 
 const admin = {
-  firestore: { FieldValue: { serverTimestamp: () => SENTINEL_TS, increment } }
+  firestore: { FieldValue: { serverTimestamp: () => SENTINEL_TS, increment, arrayUnion, arrayRemove } }
 };
 
 const sandbox = new Function('admin', 'console', `
   function normalizeEmail(e) { return String(e || '').trim().toLowerCase(); }
   ${code}
   return { advanceBetaStatus, recordBetaApplication, markBetaGranted,
-           markBetaActivated, noteBetaFeedback, countCourseProgress,
+           markBetaActivated, noteBetaFeedback, countProgressBySlug,
+           testerSlugs, normalizeSlugList, revocableSlugs,
            BETA_STATUS_RANK, BETA_DEFAULT_SLUG };
 `);
 const B = sandbox(admin, console);
@@ -256,7 +266,7 @@ console.log('beta cohort — the record behind the beta console');
     await B.recordBetaApplication(
       db,
       { name: 'Dana', email: 'a@b.com', fields: {} },
-      { source: 'manual', addedBy: 'owner@x.com', courseSlug: 'clc' }
+      { source: 'manual', addedBy: 'owner@x.com', courseSlugs: ['clc'] }
     );
     assert.strictEqual(db._docs.get('betaTesters/a@b.com').courseSlug, 'clc');
   });
@@ -274,9 +284,156 @@ console.log('beta cohort — the record behind the beta console');
     await B.recordBetaApplication(
       db,
       { name: 'Dana', email: 'a@b.com', fields: {} },
-      { source: 'manual', addedBy: 'owner@x.com', courseSlug: 'clc' }
+      { source: 'manual', addedBy: 'owner@x.com', courseSlugs: ['clc'] }
     );
     assert.strictEqual(db._docs.get('betaTesters/a@b.com').courseSlug, 'icant');
+  });
+
+  // ── Reading a tester's courses ─────────────────────────────────────────
+
+  await ok('a legacy scalar record and a new array record read the same', async () => {
+    assert.deepStrictEqual(B.testerSlugs({ courseSlug: 'icant' }), ['icant']);
+    assert.deepStrictEqual(B.testerSlugs({ courseSlugs: ['icant'] }), ['icant']);
+    assert.deepStrictEqual(B.testerSlugs({ courseSlugs: ['icant', '1p-clc'] }), ['icant', '1p-clc']);
+    // An array wins over a stale scalar left beside it.
+    assert.deepStrictEqual(B.testerSlugs({ courseSlugs: ['1p-clc'], courseSlug: 'icant' }), ['1p-clc']);
+    assert.deepStrictEqual(B.testerSlugs({}), []);
+    assert.deepStrictEqual(B.testerSlugs(null), []);
+  });
+
+  await ok('a requested list is deduped and trimmed, and empty falls back', async () => {
+    assert.deepStrictEqual(B.normalizeSlugList([' icant ', 'icant', '1p-clc'], []), ['icant', '1p-clc']);
+    assert.deepStrictEqual(B.normalizeSlugList('icant', []), ['icant']);
+    assert.deepStrictEqual(B.normalizeSlugList([], ['icant']), ['icant']);
+    assert.deepStrictEqual(B.normalizeSlugList(['', '  '], ['icant']), ['icant']);
+    assert.deepStrictEqual(B.normalizeSlugList(null, ['icant']), ['icant']);
+  });
+
+  // ── Revocation safety ──────────────────────────────────────────────────
+  // The selection is the truth, so unticking takes access away. These pin the
+  // three things that must stop it, because enrollment is one shared array and
+  // a bad removal here destroys something somebody paid for.
+
+  const rev = (over = {}) => B.revocableSlugs({
+    betaGranted: [], keeping: [], removing: [], paidSlugs: [], enrollsAlsoBy: {}, ...over
+  });
+
+  await ok('a beta-granted course with nothing holding it up is revoked', async () => {
+    const r = rev({ betaGranted: ['icant'], removing: ['icant'] });
+    assert.deepStrictEqual(r.revoke, ['icant']);
+    assert.deepStrictEqual(r.blocked, []);
+  });
+
+  await ok('a course the beta never granted is never taken away', async () => {
+    const r = rev({ betaGranted: [], removing: ['icant'] });
+    assert.deepStrictEqual(r.revoke, []);
+    assert.deepStrictEqual(r.blocked, [{ slug: 'icant', reason: 'not-beta-granted' }]);
+  });
+
+  await ok('a course they paid for is kept even though the beta granted it too', async () => {
+    const r = rev({ betaGranted: ['icant'], removing: ['icant'], paidSlugs: ['icant'] });
+    assert.deepStrictEqual(r.revoke, []);
+    assert.deepStrictEqual(r.blocked, [{ slug: 'icant', reason: 'paid' }]);
+  });
+
+  await ok('unticking a bundle takes the course it unlocked with it', async () => {
+    const r = rev({
+      betaGranted: ['bundle-icant', 'icant'],
+      removing: ['bundle-icant', 'icant'],
+      keeping: [],
+      enrollsAlsoBy: { 'bundle-icant': ['icant'] }
+    });
+    assert.deepStrictEqual(r.revoke, ['bundle-icant', 'icant']);
+    assert.deepStrictEqual(r.blocked, []);
+  });
+
+  await ok('a course is kept when a course being kept unlocks it', async () => {
+    const r = rev({
+      betaGranted: ['bundle-icant', 'icant'],
+      keeping: ['bundle-icant'],
+      removing: ['icant'],
+      enrollsAlsoBy: { 'bundle-icant': ['icant'] }
+    });
+    assert.deepStrictEqual(r.revoke, []);
+    assert.deepStrictEqual(r.blocked, [{ slug: 'icant', reason: 'unlocked-by-kept-course' }]);
+  });
+
+  await ok('a bundle being removed cannot prop up its own unlocked course', async () => {
+    // The fan-out is read from the KEPT set only. If it were read from the
+    // removing set too, bundle-icant would imply icant and block its own
+    // removal, and unticking the pair would silently do nothing.
+    const r = rev({
+      betaGranted: ['bundle-icant', 'icant'],
+      keeping: ['1p-clc'],
+      removing: ['bundle-icant', 'icant'],
+      enrollsAlsoBy: { 'bundle-icant': ['icant'] }
+    });
+    assert.deepStrictEqual(r.revoke, ['bundle-icant', 'icant']);
+  });
+
+  await ok('paid beats the bundle rule, and both are reported per course', async () => {
+    const r = rev({
+      betaGranted: ['bundle-icant', 'icant', '1p-clc'],
+      keeping: [],
+      removing: ['bundle-icant', 'icant', '1p-clc'],
+      paidSlugs: ['1p-clc'],
+      enrollsAlsoBy: { 'bundle-icant': ['icant'] }
+    });
+    assert.deepStrictEqual(r.revoke, ['bundle-icant', 'icant']);
+    assert.deepStrictEqual(r.blocked, [{ slug: '1p-clc', reason: 'paid' }]);
+  });
+
+  await ok('removing nothing revokes nothing', async () => {
+    const r = rev({ betaGranted: ['icant'], keeping: ['icant'], removing: [] });
+    assert.deepStrictEqual(r.revoke, []);
+    assert.deepStrictEqual(r.blocked, []);
+  });
+
+  await ok('a new record writes the list and the scalar in agreement', async () => {
+    const db = makeDb({});
+    await B.recordBetaApplication(
+      db,
+      { name: 'Dana', email: 'a@b.com', fields: {} },
+      { source: 'manual', addedBy: 'owner@x.com', courseSlugs: ['1p-clc', 'icant'] }
+    );
+    const d = db._docs.get('betaTesters/a@b.com');
+    assert.deepStrictEqual(d.courseSlugs, ['1p-clc', 'icant']);
+    // The scalar is the first of the list, so anything still reading the old
+    // field gets their primary course rather than undefined.
+    assert.strictEqual(d.courseSlug, '1p-clc');
+    // An application grants nothing, so there is nothing revocable yet.
+    assert.deepStrictEqual(d.betaGrantedSlugs, []);
+  });
+
+  await ok('a grant records what the beta handed over, on top of the list', async () => {
+    const db = makeDb({ 'betaTesters/a@b.com': tester({ courseSlugs: ['icant'], betaGrantedSlugs: [] }) });
+    await B.markBetaGranted(db, 'a@b.com', { slugs: ['icant', '1p-clc'], grantedBy: 'owner', applied: true });
+    const d = db._docs.get('betaTesters/a@b.com');
+    assert.deepStrictEqual(d.courseSlugs, ['icant', '1p-clc']);
+    assert.deepStrictEqual(d.betaGrantedSlugs, ['icant', '1p-clc']);
+    assert.strictEqual(d.status, 'granted');
+  });
+
+  await ok('a grant never claims a course the beta did not hand over', async () => {
+    // The tester bought 1p-clc themselves; a beta grant of icant must not
+    // quietly add it to the revocable set.
+    const db = makeDb({ 'betaTesters/a@b.com': tester({ courseSlugs: ['icant', '1p-clc'], betaGrantedSlugs: [] }) });
+    await B.markBetaGranted(db, 'a@b.com', { slugs: ['icant'], grantedBy: 'owner', applied: true });
+    assert.deepStrictEqual(db._docs.get('betaTesters/a@b.com').betaGrantedSlugs, ['icant']);
+  });
+
+  await ok('a legacy record has nothing revocable until it is approved again', async () => {
+    // Records granted before multi-course have no betaGrantedSlugs. Guessing
+    // that their one course was beta-granted would be wrong for anyone who
+    // bought it, so the honest answer is that nothing is revocable yet.
+    const legacy = { courseSlug: 'icant', status: 'active', grantedAt: SENTINEL_TS };
+    assert.deepStrictEqual(B.testerSlugs(legacy), ['icant']);
+    const r = B.revocableSlugs({
+      betaGranted: Array.isArray(legacy.betaGrantedSlugs) ? legacy.betaGrantedSlugs : [],
+      keeping: [], removing: ['icant'], paidSlugs: [], enrollsAlsoBy: {}
+    });
+    assert.deepStrictEqual(r.revoke, []);
+    assert.deepStrictEqual(r.blocked, [{ slug: 'icant', reason: 'not-beta-granted' }]);
   });
 
   // ── Feedback ───────────────────────────────────────────────────────────
@@ -295,19 +452,46 @@ console.log('beta cohort — the record behind the beta console');
 
   // ── Progress ───────────────────────────────────────────────────────────
 
-  await ok('progress counts completed modules for that course only', async () => {
+  await ok('progress counts completed modules per course, from one read', async () => {
     const db = makeDb({});
     db._progress.set('users/uid1', [
       { id: 'icant__m1', completed: true },
       { id: 'icant__m2', completed: true },
       { id: 'icant__m3', completed: false },
+      { id: '1p-clc__m1', completed: true },
       { id: 'other__m1', completed: true }
     ]);
-    assert.strictEqual(await B.countCourseProgress(db, 'uid1', 'icant'), 2);
+    assert.deepStrictEqual(
+      await B.countProgressBySlug(db, 'uid1', ['icant', '1p-clc']),
+      { icant: 2, '1p-clc': 1 }
+    );
+  });
+
+  await ok('a course with no completed modules reads zero, not missing', async () => {
+    const db = makeDb({});
+    db._progress.set('users/uid1', [{ id: 'icant__m1', completed: true }]);
+    const out = await B.countProgressBySlug(db, 'uid1', ['icant', '1p-clc']);
+    assert.strictEqual(out['1p-clc'], 0);
+    assert.ok('1p-clc' in out);
+  });
+
+  await ok('sibling slugs do not bleed into each other', async () => {
+    // `1p-clc` is a prefix of `1p-clc-leader`. The `__m` separator is what
+    // keeps them apart, so this pins that the separator stays in the match.
+    const db = makeDb({});
+    db._progress.set('users/uid1', [
+      { id: '1p-clc-leader__m1', completed: true },
+      { id: '1p-clc-leader__m2', completed: true },
+      { id: '1p-clc__m1', completed: true }
+    ]);
+    assert.deepStrictEqual(
+      await B.countProgressBySlug(db, 'uid1', ['1p-clc', '1p-clc-leader']),
+      { '1p-clc': 1, '1p-clc-leader': 2 }
+    );
   });
 
   await ok('progress for a tester with no account is zero, not an error', async () => {
-    assert.strictEqual(await B.countCourseProgress(makeDb({}), null, 'icant'), 0);
+    assert.deepStrictEqual(await B.countProgressBySlug(makeDb({}), null, ['icant']), { icant: 0 });
   });
 
   console.log(`\n${passed} checks passed.`);

@@ -126,15 +126,60 @@ function wireAction(el, handler) {
  * grants is a decision per tester, not a constant. Before this the grant
  * always fell through to the default slug and the choice was invisible.
  */
-function courseOptions(selected) {
-  const chosen = selected || state.defaultSlug;
+function coursePicker(selected) {
+  const chosen = (selected && selected.length) ? selected : [state.defaultSlug];
   if (!state.courses.length) {
-    return `<option value="">No courses found</option>`;
+    return '<span style="color:var(--gray-mid); font-size:12px;">No courses found.</span>';
   }
-  return state.courses.map((c) => {
+  return '<div class="camp-recipient-detail" data-course-picker>' + state.courses.map((c) => {
+    const on = chosen.includes(c.slug);
     const label = c.status === 'live' ? c.title : `${c.title} (${c.status})`;
-    return `<option value="${esc(c.slug)}"${c.slug === chosen ? ' selected' : ''}>${esc(label)}</option>`;
-  }).join('');
+    return `<label class="camp-recipient-checkbox${on ? ' checked' : ''}">`
+      + `<input type="checkbox" data-slug="${esc(c.slug)}"${on ? ' checked' : ''} /> ${esc(label)}</label>`;
+  }).join('') + '</div>';
+}
+
+/** The ticked slugs inside `root`. */
+function pickedCourses(root) {
+  if (!root) return [];
+  return Array.from(root.querySelectorAll('[data-slug]'))
+    .filter((x) => x.checked)
+    .map((x) => x.getAttribute('data-slug'));
+}
+
+/** Names for a list of slugs, for a sentence the operator has to act on. */
+function courseNames(slugs) {
+  return (slugs || []).map(courseTitle).join(', ');
+}
+
+/**
+ * Warn before an approval that takes something away, then say what actually
+ * happened — which is not always what was asked, because the server refuses to
+ * revoke a course somebody paid for or one a kept bundle still unlocks.
+ */
+function confirmRemoval(email, before, slugs) {
+  const removing = (before || []).filter((s) => !slugs.includes(s));
+  if (!removing.length) return true;
+  return confirm(
+    `Remove ${courseNames(removing)} from ${email}?\n\n`
+    + `They lose access immediately. Anything they paid for is kept automatically. `
+    + `Re-tick and save to restore.`
+  );
+}
+
+function outcomeLines(r) {
+  const lines = [];
+  if (r.granted && r.granted.length) lines.push(`Granted ${courseNames(r.granted)}.`);
+  if (r.revoked && r.revoked.length) lines.push(`Removed ${courseNames(r.revoked)}.`);
+  (r.blocked || []).forEach((b) => {
+    const why = b.reason === 'paid' ? 'they paid for it separately'
+      : b.reason === 'unlocked-by-kept-course' ? 'a course they still have includes it'
+      : 'the beta never granted it';
+    lines.push(`Kept ${courseTitle(b.slug)} — ${why}.`);
+  });
+  const failed = Object.keys(r.emailed || {}).filter((k) => r.emailed[k] === false);
+  if (failed.length) lines.push(`Invite email failed for ${courseNames(failed)} — send those links yourself.`);
+  return lines;
 }
 
 /** A course's title for display, falling back to the slug it was granted under. */
@@ -164,14 +209,12 @@ function applicantCard(t, { declined }) {
         ${t.crmContactId ? `<a href="/contact.html?id=${encodeURIComponent(t.crmContactId)}" style="color:var(--red);">CRM record →</a>` : ''}
       </div>
       <div class="tester-actions">
-        <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--gray-light);">
-          Course
-          <select data-course style="background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 8px; font-size:12px;">
-            ${courseOptions(t.courseSlug)}
-          </select>
-        </label>
         <button class="btn btn-primary" data-act="approve">${declined ? 'Approve anyway' : 'Approve &amp; grant access'}</button>
         ${declined ? '' : '<button class="btn btn-ghost" data-act="decline">Decline</button>'}
+      </div>
+      <div style="margin-top:10px;">
+        <div style="font-size:11px; font-family:'Space Mono',monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--gray-mid); margin-bottom:6px;">Courses</div>
+        ${coursePicker(t.courseSlugs)}
       </div>
     </div>`;
 }
@@ -191,28 +234,36 @@ function renderApplicants() {
   document.querySelectorAll('#view-applicants [data-act]').forEach((btn) => {
     const email = btn.closest('.tester-row').dataset.email;
     const action = btn.dataset.act;
+    const t = state.rows.find((x) => x.email === email) || {};
     wireAction(btn, async () => {
       if (action === 'decline' && !confirm(`Decline ${email}?`)) {
         btn.disabled = false;
         return;
       }
-      // The picker beside this button decides what they get, so read it at
-      // click time rather than trusting whatever the record was opened with.
-      const picker = btn.closest('.tester-row').querySelector('[data-course]');
-      const slug = picker && picker.value ? picker.value : undefined;
-      const r = await act(email, action, action === 'approve' ? { slug } : undefined);
+      // The picker in this card decides what they get, so read it at click
+      // time rather than trusting whatever the record was opened with.
+      const row = btn.closest('.tester-row');
+      const slugs = pickedCourses(row.querySelector('[data-course-picker]'));
+      if (action === 'approve' && !slugs.length) {
+        alert('Pick at least one course.');
+        btn.disabled = false;
+        return;
+      }
+      if (action === 'approve' && !confirmRemoval(email, t.courseSlugs, slugs)) {
+        btn.disabled = false;
+        return;
+      }
+      const r = await act(email, action, action === 'approve' ? { slugs } : undefined);
       if (action === 'approve') {
-        // An approval that granted access but could not send the invite is
-        // the one outcome the row cannot show, and the one that leaves a
-        // tester waiting on an email that never arrives. Say it here.
-        const mail = r.emailed === false
-          ? ' Their invite email could not be sent, so send them the link yourself.'
-          : '';
+        // Report what happened rather than what was asked: the server refuses
+        // to revoke a paid course or one a kept bundle still unlocks, and a
+        // grant can land while its invite email fails. None of that shows in
+        // the row, so it is said here.
+        const lines = outcomeLines(r);
         if (r.pending) {
-          alert(`${email} has no account yet. Access is parked and applies automatically the moment they sign up at /signup.html.${mail || ' Their invite email is on the way with the signup link.'}`);
-        } else if (mail) {
-          alert(`${email} now has access.${mail}`);
+          lines.unshift(`${email} has no account yet. Access is parked and applies automatically the moment they sign up at /signup.html.`);
         }
+        if (lines.length) alert(lines.join('\n'));
       }
     });
   });
@@ -230,8 +281,10 @@ async function addTester(ev) {
   const name = $('add-name').value.trim();
   const email = $('add-email').value.trim();
   const approve = $('add-approve').checked;
+  const slugs = pickedCourses($('add-course-picker'));
 
   if (!name) { out.innerHTML = '<div class="auth-error">Please enter a name.</div>'; return; }
+  if (!slugs.length) { out.innerHTML = '<div class="auth-error">Pick at least one course.</div>'; return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     out.innerHTML = '<div class="auth-error">Please enter a valid email.</div>';
     return;
@@ -246,7 +299,7 @@ async function addTester(ev) {
       name,
       email,
       phone: $('add-phone').value.trim() || undefined,
-      slug: $('add-course').value || undefined,
+      slugs,
       approve
     });
     const d = (res && res.data) || {};
@@ -255,15 +308,21 @@ async function addTester(ev) {
     const lines = [d.existed
       ? `${email} was already on the list; their details were refreshed.`
       : `${name} added.`];
+    let mailFailed = false;
     if (approve) {
       lines.push(d.pending
         ? 'They have no account yet, so access is parked and applies the moment they sign up.'
         : 'Access granted.');
-      if (d.emailed === false) lines.push('Their invite email could not be sent, so send them the link yourself.');
+      // `emailed` is one flag per course now, since an approval sends one
+      // invite per course that is new to them.
+      const failed = Object.keys(d.emailed || {}).filter((k) => d.emailed[k] === false);
+      mailFailed = failed.length > 0;
+      if (mailFailed) lines.push(`Invite email failed for ${courseNames(failed)} — send those links yourself.`);
     }
-    out.innerHTML = `<div class="${d.emailed === false ? 'auth-error' : 'auth-ok'}">${esc(lines.join(' '))}</div>`;
+    out.innerHTML = `<div class="${mailFailed ? 'auth-error' : 'auth-ok'}">${esc(lines.join(' '))}</div>`;
     $('add-form').reset();
     $('add-approve').checked = false;
+    $('add-course-picker').innerHTML = coursePicker([]);
     await load();
   } catch (e) {
     out.innerHTML = `<div class="auth-error">${esc(e && e.message ? e.message : e)}</div>`;
@@ -297,12 +356,25 @@ function renderCohort() {
         <div style="font-size:11px; color:var(--gray-light); font-family:'Space Mono',monospace;">${esc(t.email)}</div>
       </td>
       <td>${statusPill(t.status)}</td>
-      <td style="font-size:12px;">${esc(courseTitle(t.courseSlug))}</td>
+      <td style="font-size:12px;">${courseCell(t)}</td>
       <td>${account}</td>
       <td class="num">${t.lessonsCompleted || 0}</td>
       <td class="num">${t.feedbackCount || 0}</td>
       <td>${fmtAgo(t.lastActiveAt)}</td>
-      <td>${t.status === 'completed' ? '' : '<button class="btn btn-ghost" data-act="complete" style="padding:2px 10px; font-size:11px;">Mark done</button>'}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-ghost" data-act="edit-courses" style="padding:2px 10px; font-size:11px;">Courses</button>
+        ${t.status === 'completed' ? '' : '<button class="btn btn-ghost" data-act="complete" style="padding:2px 10px; font-size:11px;">Mark done</button>'}
+      </td>
+    </tr>
+    <tr data-editor="${esc(t.email)}" hidden>
+      <td colspan="8" style="background:rgba(255,255,255,.02);">
+        <div style="font-size:11px; font-family:'Space Mono',monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--gray-mid); margin-bottom:6px;">Courses for ${esc(t.name || t.email)}</div>
+        ${coursePicker(t.courseSlugs)}
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn btn-primary" data-act="save-courses" style="padding:4px 12px; font-size:12px;">Save</button>
+          <button class="btn btn-ghost" data-act="cancel-courses" style="padding:4px 12px; font-size:12px;">Cancel</button>
+        </div>
+      </td>
     </tr>`;
   }).join('');
 
@@ -310,6 +382,46 @@ function renderCohort() {
     const email = btn.closest('tr').dataset.email;
     wireAction(btn, () => act(email, 'complete'));
   });
+
+  // Editing courses lives here, not on the Applicants tab: once somebody is
+  // approved they leave Applicants, so this is the only place their course
+  // list can be changed — and the only place a course can be taken back.
+  body.querySelectorAll('[data-act="edit-courses"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const email = btn.closest('tr').dataset.email;
+      const editor = body.querySelector(`[data-editor="${CSS.escape(email)}"]`);
+      if (editor) editor.hidden = !editor.hidden;
+    });
+  });
+  body.querySelectorAll('[data-act="cancel-courses"]').forEach((btn) => {
+    btn.addEventListener('click', () => { btn.closest('[data-editor]').hidden = true; });
+  });
+  body.querySelectorAll('[data-act="save-courses"]').forEach((btn) => {
+    const editorRow = btn.closest('[data-editor]');
+    const email = editorRow.getAttribute('data-editor');
+    const t = state.rows.find((x) => x.email === email) || {};
+    wireAction(btn, async () => {
+      const slugs = pickedCourses(editorRow.querySelector('[data-course-picker]'));
+      if (!slugs.length) { alert('Pick at least one course.'); btn.disabled = false; return; }
+      if (!confirmRemoval(email, t.courseSlugs, slugs)) { btn.disabled = false; return; }
+      const r = await act(email, 'approve', { slugs });
+      const lines = outcomeLines(r);
+      if (lines.length) alert(lines.join('\n'));
+    });
+  });
+}
+
+/** One line per course, with the lesson count and a flag for anything not applied. */
+function courseCell(t) {
+  const slugs = t.courseSlugs && t.courseSlugs.length ? t.courseSlugs : [t.courseSlug];
+  return slugs.map((sl) => {
+    const done = (t.lessonsBySlug && t.lessonsBySlug[sl]) || 0;
+    // A course on the record that never reached their account is the state
+    // worth seeing: the grant is parked, or the revoke half-landed.
+    const pending = t.hasAccount && t.enrolledBySlug && t.enrolledBySlug[sl] === false
+      ? ' <span style="color:var(--red);">not applied</span>' : '';
+    return `<div>${esc(courseTitle(sl))} <span style="color:var(--gray-mid);">· ${done}</span>${pending}</div>`;
+  }).join('');
 }
 
 // ─── Feedback ────────────────────────────────────────────────────────────
@@ -378,10 +490,12 @@ function renderReadiness() {
 function renderAll() {
   // Rebuilt on every load so a course added in the builder shows up here
   // without a reload, and the current selection survives the refresh.
-  const addCourse = $('add-course');
+  const addCourse = $('add-course-picker');
   if (addCourse) {
-    const keep = addCourse.value;
-    addCourse.innerHTML = courseOptions(keep || state.defaultSlug);
+    // Keep whatever is ticked across a refresh, so a load triggered by another
+    // action does not wipe a half-filled form.
+    const keep = pickedCourses(addCourse);
+    addCourse.innerHTML = coursePicker(keep);
   }
   renderApplicants();
   renderCohort();
@@ -411,6 +525,11 @@ async function main() {
     t.addEventListener('click', () => showView(t.dataset.view)));
   $('filter-cohort').addEventListener('change', renderCohort);
   $('add-form').addEventListener('submit', addTester);
+  // Chip state, the same wiring campaigns.js uses for its recipient picker.
+  document.addEventListener('change', (e) => {
+    const cb = e.target.closest('.camp-recipient-checkbox input');
+    if (cb) cb.closest('.camp-recipient-checkbox').classList.toggle('checked', cb.checked);
+  });
   $('btn-refresh').addEventListener('click', load);
 
   const wanted = new URLSearchParams(location.search).get('view');

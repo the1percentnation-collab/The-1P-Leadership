@@ -190,11 +190,67 @@ function renderBetaToggle() {
   const box = $('ct-beta');
   if (!box) return;
   const c = state.contact;
-  box.checked = Array.isArray(c.tags) && c.tags.includes(BETA_TAG);
+  const on = Array.isArray(c.tags) && c.tags.includes(BETA_TAG);
+  box.checked = on;
   const why = !c.email ? 'Add an email address first' : null;
   box.disabled = !!why;
   const wrap = $('ct-beta-wrap');
   if (wrap) wrap.title = why || 'Put this lead in the beta program';
+
+  // The course picker only exists once they are in the programme; it says
+  // which courses they are down to test, and the beta console is still where
+  // access is actually granted.
+  const host = $('ct-beta-courses');
+  if (host) {
+    host.hidden = !on;
+    if (on && !host.dataset.rendered) {
+      renderBetaCoursePicker();
+      host.dataset.rendered = '1';
+    }
+  }
+}
+
+// The contact card has no course list of its own, so it asks for one. A
+// dedicated callable rather than listBetaTesters: a company admin looking at
+// one contact has no business pulling the whole cohort.
+let betaCourses = null;
+async function loadBetaCourses() {
+  if (betaCourses) return betaCourses;
+  try {
+    const res = await httpsCallable(functions, 'listBetaCourses')({});
+    betaCourses = ((res && res.data) || {}).courses || [];
+  } catch (e) {
+    console.warn('[contact] beta course list failed', e);
+    betaCourses = [];
+  }
+  return betaCourses;
+}
+
+async function renderBetaCoursePicker() {
+  const host = $('ct-beta-picker');
+  if (!host) return;
+  const courses = await loadBetaCourses();
+  if (!courses.length) {
+    host.innerHTML = '<span style="font-size:12px; color:var(--gray-mid);">No courses found.</span>';
+    return;
+  }
+  host.innerHTML = '<div class="camp-recipient-detail" data-beta-picker>' + courses.map((c) => {
+    const label = c.status === 'live' ? c.title : `${c.title} (${c.status})`;
+    return `<label class="camp-recipient-checkbox"><input type="checkbox" data-slug="${escapeHtml(c.slug)}" /> ${escapeHtml(label)}</label>`;
+  }).join('') + '</div>';
+  host.querySelectorAll('.camp-recipient-checkbox input').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      cb.closest('.camp-recipient-checkbox').classList.toggle('checked', cb.checked);
+    });
+  });
+}
+
+function pickedBetaCourses() {
+  const host = $('ct-beta-picker');
+  if (!host) return [];
+  return Array.from(host.querySelectorAll('[data-slug]'))
+    .filter((x) => x.checked)
+    .map((x) => x.getAttribute('data-slug'));
 }
 
 function renderTags() {
@@ -1219,6 +1275,7 @@ function wire() {
         email: c.email,
         name: c.name || '',
         phone: c.phone || '',
+        slugs: on ? pickedBetaCourses() : undefined,
         crmContactId: state.contactId
       });
       // The tag is what the card renders from, so it moves with the record.
@@ -1235,6 +1292,26 @@ function wire() {
     } finally {
       e.target.disabled = false;
       renderBetaToggle();
+    }
+  });
+
+  $('btn-beta-courses').addEventListener('click', async () => {
+    const c = state.contact;
+    const slugs = pickedBetaCourses();
+    if (!slugs.length) { setStatus('Pick at least one course.', 'err'); return; }
+    const btn = $('btn-beta-courses');
+    btn.disabled = true;
+    try {
+      await httpsCallable(functions, 'setBetaTesterStatus')({
+        action: 'eligible', eligible: true,
+        email: c.email, name: c.name || '', phone: c.phone || '',
+        slugs, crmContactId: state.contactId
+      });
+      setStatus('Beta courses saved. Grant access in the beta console.', 'ok');
+    } catch (err) {
+      setStatus('Could not save: ' + (err.message || err), 'err');
+    } finally {
+      btn.disabled = false;
     }
   });
 
