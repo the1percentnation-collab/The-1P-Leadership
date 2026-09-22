@@ -110,12 +110,12 @@
                 <label for="add-phone">Phone (optional)</label>
                 <input id="add-phone" type="tel" maxlength="40" />
               </div>
-              <div class="field" style="max-width:220px;">
-                <label for="add-course">Course</label>
-                <select id="add-course"></select>
-              </div>
               <button class="btn btn-primary" type="submit" id="add-submit">Add</button>
             </form>
+            <div style="margin-top:12px;">
+              <div style="font-size:11px; font-family:'Space Mono',monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--gray-mid); margin-bottom:6px;">Courses</div>
+              <div id="add-course-picker"></div>
+            </div>
             <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-top:12px; cursor:pointer;">
               <input type="checkbox" id="add-approve" />
               Also approve them now, granting course access and sending the invite
