@@ -29,9 +29,17 @@ const PRODUCT_STATUS = {
 
 // A course marked 'bundle' is a buyable offer, so it reads as live with the
 // bundle flag set; 'inactive' is the one state that hides a course everywhere.
+//
+// 'beta' is live content with no public face: the people testing it are
+// enrolled, and everyone else must not see it exist. It normalizes to
+// 'hidden' so every catalog surface (homepage, store, dashboard listings)
+// drops it, exactly like 'inactive'. What separates the two is the member
+// library, which reads enrollments rather than the catalog: an inactive
+// course closes for its own students, a beta course stays open for them.
 const COURSE_STATUS = {
   live: 'live',
   'coming-soon': 'coming-soon',
+  beta: 'hidden',
   inactive: 'hidden',
   bundle: 'live'
 };

@@ -79,6 +79,9 @@ export async function enrollInCourse(slug) {
   await loadCourses();
   const known = getCourseBySlug(slug);
   if (!known) throw new Error(`Unknown course: ${slug}`);
+  // Beta is deliberately not self-serve: access is granted by an admin, one
+  // tester at a time. The message stays the same as any other closed course
+  // so a stray link never advertises that a beta exists.
   if (known.status !== 'live') throw new Error('This course isn\'t available to join yet.');
 
   const price = priceInfo(known);
@@ -110,8 +113,11 @@ export function enrolledCourses() {
 }
 
 // Courses you could still buy. A course marked `sellable: false` is only
-// reachable through a bundle, so it never appears here (its bundle does).
+// reachable through a bundle, so it never appears here (its bundle does),
+// and a course in `beta` has no public face at all: it is listed to nobody
+// but the testers who already hold it, who see it under "Your courses".
 export function availableCourses() {
   const set = _cache || new Set();
-  return getCourses().filter((c) => !set.has(c.slug) && c.sellable !== false);
+  return getCourses().filter((c) =>
+    !set.has(c.slug) && c.sellable !== false && c.status !== 'beta');
 }

@@ -190,6 +190,41 @@ doing it, run Actions → *CRM automation tick* → Run workflow with the **dry
 run** box ticked; it reports what it would promote and send, and writes
 nothing.
 
+## Running a beta
+
+A beta is a course that is finished enough to be taken and not ready to be
+announced. It has its own status, so it needs neither the store switches nor a
+hidden price.
+
+1. In `/manage-courses.html`, set the course status to **Beta**. It disappears
+   from the homepage, the member store, the dashboard rails and the available
+   list. Members who do not hold it cannot reach it, even with the link.
+2. Work the applicants in **`/beta-admin.html`** (linked from the owner
+   console, beside Bug Reports). Everyone who applied through `/beta` is
+   listed. **Approve & grant access** issues the course grant and sends the
+   invite in one action, and the record moves applied → granted → active as
+   they sign up.
+3. The tester gets an email with a direct link. If they have no account yet,
+   the grant is parked under their email address and the invite tells them to
+   sign up with that exact address; access applies the moment the account
+   exists. Nothing to redeem either way.
+4. Testers see the course under **Your courses** with a blue *Beta* badge, and
+   open it exactly as a member will. Their notes come back through the bug
+   report form in the chatbot widget; the console counts each tester's
+   feedback, and the reports themselves are in `/bug-reports.html`.
+5. When the beta is done, set the course status to **Live**. Nothing else
+   changes: the testers keep their access, and their progress carries over.
+
+The console is the path to use. `/manage-courses.html` → kebab → **Grant
+access…** still works for a one-off comp or a scholarship outside the beta,
+and it now sends the same invite, stamps the same record and asks before
+emailing. Cancelling at that prompt grants silently, which is what you want
+for access you plan to mention in person.
+
+To email the group at once (a reminder, a deadline, a thank you), use
+Campaigns with recipients **By tag → Beta Tester**: applications are also
+written to the CRM under that tag.
+
 ## Known open items
 
 - The A.L.I.G.N. letters in `public/js/align.js` were written into code, not

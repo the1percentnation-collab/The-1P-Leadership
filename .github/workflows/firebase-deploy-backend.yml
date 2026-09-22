@@ -91,6 +91,9 @@ jobs:
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
           GOOGLE_OAUTH_REDIRECT_URI: ${{ secrets.GOOGLE_OAUTH_REDIRECT_URI }}
           CRM_TICK_SECRET: ${{ secrets.CRM_TICK_SECRET }}
+          # Which provider sends every email: 'sendgrid' (default when unset)
+          # or 'telnyx'. The cutover is this one value.
+          EMAIL_PROVIDER: ${{ secrets.EMAIL_PROVIDER }}
           SENDGRID_WEBHOOK_KEY: ${{ secrets.SENDGRID_WEBHOOK_KEY }}
           INBOUND_EMAIL_DOMAIN: ${{ secrets.INBOUND_EMAIL_DOMAIN }}
           INBOUND_EMAIL_TOKEN: ${{ secrets.INBOUND_EMAIL_TOKEN }}
@@ -105,7 +108,7 @@ jobs:
                       TWILIO_API_KEY_SID TWILIO_API_KEY_SECRET TWILIO_TWIML_APP_SID \
                       TWILIO_CALLER_ID GOOGLE_OAUTH_CLIENT_ID \
                       GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_REDIRECT_URI \
-                      CRM_TICK_SECRET SENDGRID_WEBHOOK_KEY \
+                      CRM_TICK_SECRET EMAIL_PROVIDER SENDGRID_WEBHOOK_KEY \
                       INBOUND_EMAIL_DOMAIN INBOUND_EMAIL_TOKEN FUNCTIONS_BASE_URL; do
             value="${!name}"
             if [ -n "$value" ]; then

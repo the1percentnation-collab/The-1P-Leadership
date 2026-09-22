@@ -194,7 +194,11 @@ function renderAvailableCourses() {
 
   // Enrolled courses live here — above the library.
   const myCards = enrolled.map((c) => courseCardHtml(c, {
-    statusBadge: `<span class="course-badge is-live">Enrolled</span>`,
+    // A tester should know they are in unreleased content, not assume a
+    // half-finished module is a bug in a shipped course.
+    statusBadge: c.status === 'beta'
+      ? `<span class="course-badge is-beta">Beta</span>`
+      : `<span class="course-badge is-live">Enrolled</span>`,
     action: `<a class="course-card-btn" href="/courses.html?course=${encodeURIComponent(c.slug)}">Continue →</a>`
   })).join('');
   const mySection = enrolled.length ? `
@@ -569,10 +573,16 @@ async function main() {
   // Always render welcome content + available courses in case we fall back to welcome.
   renderAvailableCourses();
 
+  // A course opens for the people who hold it when it is Live or in Beta.
+  // Beta is the state for a course that is finished enough to be taken but
+  // not announced: testers granted access open it exactly as members will,
+  // while it stays off the site, the store and the available list.
+  const openable = !!course && (course.status === 'live' || course.status === 'beta');
+
   if (!course) {
     renderSidebar(null);
     showWelcome();
-  } else if (course.status !== 'live' && !preview) {
+  } else if (!openable && !preview) {
     renderSidebar(null);
     renderComingSoon(course);
     showComingSoon();

@@ -1,6 +1,8 @@
 // Cloud Functions v2 — callable endpoints + Firestore triggers + HTTP webhook.
-// Includes SendGrid email features: transactional emails (invite, welcome),
-// 1-on-1 contact emails, campaign broadcast, and the SendGrid Event Webhook.
+// Includes email: transactional sends (invite, welcome, course access), 1-on-1
+// contact emails, campaign broadcast, and delivery-event tracking. Outbound
+// goes through one provider seam (sendEmail/sendEmailBatch) with SendGrid and
+// Telnyx behind it; inbound replies still arrive via SendGrid Inbound Parse.
 //
 // Deploy: `npx firebase-tools deploy --only functions --project the-1p-leadership`
 
@@ -15,21 +17,41 @@ const sgMail = require('@sendgrid/mail');
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
 
+// The bootstrap owner's IDENTITY, not an inbox. This address decides who may
+// claim the owner role (bootstrapOwner), who is given `role: 'owner'` on first
+// sign-in, and which account cannot be deleted. It matches the Firebase auth
+// account and changing it is an account migration, not a config change: point
+// it at an address that cannot sign in and ownership goes with it.
 const OWNER_EMAIL = 'the1percentnation@gmail.com';
 
-// SendGrid identity
-const FROM_EMAIL = 'the1percentnation@gmail.com';
-const FROM_NAME_DEFAULT = 'The One Percent Nation';
-const REPLY_TO = 'the1percentnation@gmail.com';
+// Where the platform's own notifications land: bug reports and new-lead
+// alerts. Separate from OWNER_EMAIL on purpose, so the inbox can move to the
+// business domain without touching who owns the account.
+const NOTIFY_EMAIL = 'anthonybrown@the1pnation.com';
 
-// CRM 1-on-1 email identity. Deliberately separate from the transactional
-// identity above: invites and welcome mail are from the brand, but a lead
-// emailed from their contact card is being emailed by a person, and a reply
-// that lands in a shared brand mailbox is a reply nobody owns.
+// The address every member-facing email comes from.
 //
-// The domain here must be authenticated in SendGrid (Settings → Sender
-// Authentication → Domain Authentication on the1pnation.com) or every send is
-// unsigned and lands in spam. See docs/email-setup.md.
+// This is a the1pnation.com alias on purpose. Sending as @gmail.com through
+// any provider fails DMARC by design — Google publishes a strict policy for
+// its own domain and a third party cannot DKIM-sign mail as gmail.com — which
+// is the most reliable way to land in spam. An authenticated sending domain
+// is what makes a course invite arrive.
+//
+// The domain must be authenticated at whichever provider EMAIL_PROVIDER
+// names, or every send is unsigned at best and rejected at worst. See
+// docs/email-setup.md.
+const FROM_EMAIL = 'anthonybrown@the1pnation.com';
+const FROM_NAME_DEFAULT = 'The One Percent Nation';
+const REPLY_TO = 'anthonybrown@the1pnation.com';
+
+// CRM 1-on-1 email identity. Same mailbox as the transactional identity above,
+// different display name: brand mail is from The One Percent Nation, a lead
+// emailed from their contact card is from Anthony. It stays a separate
+// constant because a company can override it in CRM → Settings → Email, which
+// transactional mail never does.
+//
+// The domain here must be authenticated at the active provider or every send
+// is unsigned and lands in spam. See docs/email-setup.md.
 const CRM_FROM_EMAIL = 'anthonybrown@the1pnation.com';
 const CRM_FROM_NAME = 'Anthony Brown';
 
@@ -192,7 +214,7 @@ function telnyxSmsConfig() {
  * far more useful than a generic 4xx when a number is not on the account or a
  * messaging profile is wrong.
  */
-async function telnyx(method, path, body) {
+async function telnyx(method, path, body, { raw = false } = {}) {
   const apiKey = telnyxApiKey();
   if (!apiKey) throw new Error('TELNYX_API_KEY is not set');
   const res = await fetch(`${TELNYX_API}${path}`, {
@@ -214,6 +236,10 @@ async function telnyx(method, path, body) {
     err.status = res.status;
     throw err;
   }
+  // Most endpoints wrap their payload in `data`. Batch sending does not: its
+  // envelope carries `data`, `errors` and `meta` side by side, and unwrapping
+  // would throw away exactly the part that says what failed.
+  if (raw) return json;
   return json && json.data !== undefined ? json.data : json;
 }
 
@@ -238,6 +264,216 @@ async function sendTelnyxSms({ to, body }) {
   const recipient = data && Array.isArray(data.to) ? data.to[0] : null;
   const status = (recipient && recipient.status) || 'queued';
   return { sid, status, from: cfg.from };
+}
+
+// ────────────────────────────────────────────────────────────────
+// Email — one seam, two providers.
+//
+// Every email in this file goes through sendEmail() or sendEmailBatch(). The
+// provider behind them is chosen by EMAIL_PROVIDER at call time, so moving
+// from SendGrid to Telnyx is an environment change, not a code change, and
+// rolling back is the same switch in the other direction.
+//
+//   EMAIL_PROVIDER=sendgrid   (default) — @sendgrid/mail, SENDGRID_API_KEY
+//   EMAIL_PROVIDER=telnyx               — REST, TELNYX_API_KEY
+//
+// The message shape is the SendGrid one the call sites already wrote, because
+// changing 20-odd call sites and the wire format in the same step would make
+// a delivery failure impossible to attribute. Each adapter maps that shape to
+// its own API:
+//
+//   to, from {email,name}, replyTo, subject, text, html, headers, customArgs
+//
+// customArgs is metadata that comes back on delivery/open/click events and is
+// what puts a send on the right CRM contact timeline. SendGrid calls it
+// custom args; Telnyx calls it metadata. Same job, one name here.
+// ────────────────────────────────────────────────────────────────
+
+const EMAIL_PROVIDERS = ['sendgrid', 'telnyx'];
+
+function emailProvider() {
+  const p = (process.env.EMAIL_PROVIDER || 'sendgrid').trim().toLowerCase();
+  return EMAIL_PROVIDERS.includes(p) ? p : 'sendgrid';
+}
+
+/**
+ * Is the active provider configured? Callers that must not throw when email
+ * has never been set up (the automation tick, lead notifications) check this
+ * and skip, exactly as they checked for a SendGrid key before.
+ */
+function emailConfigured() {
+  const provider = emailProvider();
+  if (provider === 'telnyx') return !!telnyxApiKey();
+  try { return !!sendgridKey.value(); } catch (e) { return false; }
+}
+
+/** "Name <addr>" when there is a name, otherwise the bare address. */
+function emailAddrString(a) {
+  if (!a) return '';
+  if (typeof a === 'string') return a;
+  const email = String(a.email || '').trim();
+  const name = String(a.name || '').trim();
+  return name ? `${name} <${email}>` : email;
+}
+
+function emailAddrOnly(a) {
+  if (!a) return '';
+  if (typeof a === 'string') {
+    const m = a.match(/<([^>]+)>/);
+    return (m ? m[1] : a).trim();
+  }
+  return String(a.email || '').trim();
+}
+
+function emailAddrList(v) {
+  if (!v) return [];
+  return (Array.isArray(v) ? v : [v]).map(emailAddrString).filter(Boolean);
+}
+
+/**
+ * Apply a personalization's substitutions to a rendered body.
+ *
+ * SendGrid does this server-side from `substitutions` + `substitutionWrappers`.
+ * Telnyx has no equivalent, so the same replacement happens here before the
+ * message goes out. Keys arrive unwrapped and the wrappers are applied, which
+ * matches how the campaign sender already builds its placeholders.
+ */
+function applySubstitutions(body, subs, wrappers) {
+  if (!body || !subs) return body;
+  const [open, close] = wrappers && wrappers.length === 2 ? wrappers : ['-', '-'];
+  let out = String(body);
+  for (const [k, v] of Object.entries(subs)) {
+    out = out.split(`${open}${k}${close}`).join(v == null ? '' : String(v));
+  }
+  return out;
+}
+
+// ── SendGrid adapter ─────────────────────────────────────────────────────
+// Exactly what the call sites did before the seam existed, moved behind it.
+
+async function sendEmailViaSendGrid(msg) {
+  const key = sendgridKey.value();
+  if (!key) throw new Error('SENDGRID_API_KEY is not set');
+  sgMail.setApiKey(key);
+  const [resp] = await sgMail.send(msg);
+  return {
+    provider: 'sendgrid',
+    messageId: (resp && resp.headers && resp.headers['x-message-id']) || null
+  };
+}
+
+// ── Telnyx adapter ───────────────────────────────────────────────────────
+// POST /v2/email_messages. Field names differ from SendGrid in three places
+// worth naming: bodies are text_body/html_body, custom args are metadata, and
+// reply_to keeps only the address (Telnyx drops a display name on it).
+
+function telnyxEmailBody(msg) {
+  const body = {
+    from: emailAddrString(msg.from),
+    to: emailAddrList(msg.to),
+    subject: msg.subject || ''
+  };
+  if (msg.text) body.text_body = msg.text;
+  if (msg.html) body.html_body = msg.html;
+  if (msg.replyTo) body.reply_to = emailAddrOnly(msg.replyTo);
+  if (msg.cc) body.cc = emailAddrList(msg.cc);
+  if (msg.bcc) body.bcc = emailAddrList(msg.bcc);
+  if (msg.headers && Object.keys(msg.headers).length) body.headers = msg.headers;
+  if (msg.customArgs && Object.keys(msg.customArgs).length) {
+    body.metadata = msg.customArgs;
+    // `type` is how every send in this file labels itself. As a tag it also
+    // reaches the Email Detail Records, which is where per-kind delivery
+    // rates are read.
+    if (msg.customArgs.type) body.tags = [String(msg.customArgs.type)];
+  }
+  return body;
+}
+
+async function sendEmailViaTelnyx(msg) {
+  const data = await telnyx('POST', '/email_messages', telnyxEmailBody(msg));
+  return { provider: 'telnyx', messageId: (data && data.id) || null };
+}
+
+/**
+ * Send one email.
+ *
+ * Returns { provider, messageId }. messageId is what the CRM and the user doc
+ * store to tie later delivery events back to the send, so it is returned
+ * uniformly even though the two APIs report it in different places.
+ */
+async function sendEmail(msg) {
+  return emailProvider() === 'telnyx'
+    ? sendEmailViaTelnyx(msg)
+    : sendEmailViaSendGrid(msg);
+}
+
+/**
+ * Send the same email to many people, one message each.
+ *
+ * `recipients` is [{ email, name?, subject?, headers?, customArgs?,
+ * substitutions? }]. Nobody sees anybody else's address either way: SendGrid
+ * splits a personalization per recipient, Telnyx sends a batch of individual
+ * messages. Both cap at 1000 per call, which is the chunk size the callers
+ * already use.
+ *
+ * Returns { accepted, failed, errors } rather than throwing, because a
+ * campaign that fails for 3 of 900 people has not failed.
+ */
+async function sendEmailBatch({
+  from, replyTo, subject, text, html, recipients, customArgs,
+  substitutionWrappers = ['-', '-']
+}) {
+  const list = (recipients || []).filter((r) => r && r.email);
+  if (!list.length) return { accepted: 0, failed: 0, errors: [] };
+
+  if (emailProvider() === 'telnyx') {
+    // Telnyx has no server-side substitution, so each message is rendered
+    // here and sent as its own item in the batch.
+    const messages = list.map((r) => telnyxEmailBody({
+      to: r.name ? { email: r.email, name: r.name } : r.email,
+      from,
+      replyTo,
+      subject: applySubstitutions(r.subject || subject, r.substitutions, substitutionWrappers),
+      text: applySubstitutions(text, r.substitutions, substitutionWrappers),
+      html: applySubstitutions(html, r.substitutions, substitutionWrappers),
+      headers: r.headers,
+      customArgs: Object.assign({}, customArgs, r.customArgs)
+    }));
+    const res = await telnyx('POST', '/email_messages/batch', { messages }, { raw: true });
+    const meta = (res && res.meta) || {};
+    const errors = ((res && res.errors) || []).slice(0, 5)
+      .map((e) => `${e.code}: ${e.message}`);
+    // An envelope without meta means the API accepted the whole batch and
+    // said nothing more; treat that as all accepted rather than silently
+    // reporting zero.
+    const succeeded = typeof meta.succeeded === 'number' ? meta.succeeded : list.length;
+    const failed = typeof meta.failed === 'number' ? meta.failed : 0;
+    return { accepted: succeeded, failed, errors };
+  }
+
+  const personalizations = list.map((r) => {
+    const p = { to: [{ email: r.email, name: r.name || undefined }] };
+    if (r.subject) p.subject = r.subject;
+    if (r.substitutions) p.substitutions = r.substitutions;
+    if (r.headers) p.headers = r.headers;
+    if (r.customArgs) p.customArgs = r.customArgs;
+    return p;
+  });
+
+  try {
+    await sendEmailViaSendGrid({
+      from, replyTo, subject, text, html, personalizations, customArgs,
+      substitutionWrappers
+    });
+    return { accepted: list.length, failed: 0, errors: [] };
+  } catch (err) {
+    // SendGrid rejects or accepts a personalization set as a whole.
+    return {
+      accepted: 0,
+      failed: list.length,
+      errors: [String((err && err.message) || err).slice(0, 300)]
+    };
+  }
 }
 
 /**
@@ -1281,7 +1517,7 @@ exports.bootstrapOwner = onCall(async (request) => {
 
 /**
  * onInviteCreated — Firestore trigger on companies/{companyId}/invites/{inviteId}.
- * Sends an invite email via SendGrid and records emailStatus on the invite doc.
+ * Sends an invite email and records emailStatus on the invite doc.
  */
 exports.onInviteCreated = onDocumentCreated(
   { document: 'companies/{companyId}/invites/{inviteId}', secrets: [sendgridKey] },
@@ -1297,8 +1533,6 @@ exports.onInviteCreated = onDocumentCreated(
     }
 
     try {
-      sgMail.setApiKey(sendgridKey.value());
-
       let companyName = 'the team';
       try {
         const cSnap = await admin.firestore().collection('companies').doc(companyId).get();
@@ -1324,7 +1558,7 @@ exports.onInviteCreated = onDocumentCreated(
           <p style="color:#999;font-size:11px;">The One Percent Nation</p>
         </div>`;
 
-      const [resp] = await sgMail.send({
+      const { messageId } = await sendEmail({
         to: invite.email,
         from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
         replyTo: REPLY_TO,
@@ -1337,8 +1571,6 @@ exports.onInviteCreated = onDocumentCreated(
           inviteId: snap.id
         }
       });
-
-      const messageId = resp && resp.headers && resp.headers['x-message-id'] || null;
 
       await snap.ref.update({
         emailStatus: 'sent',
@@ -1471,8 +1703,6 @@ exports.sendContactEmail = onCall(
     // address alone.
     const replyAddress = replyAddressFor(companyId, contactId);
 
-    sgMail.setApiKey(sendgridKey.value());
-
     let messageId = null;
     try {
       const headers = {};
@@ -1480,7 +1710,7 @@ exports.sendContactEmail = onCall(
         headers['In-Reply-To'] = inReplyTo;
         headers['References'] = inReplyTo;
       }
-      const [resp] = await sgMail.send({
+      const sent = await sendEmail({
         to: contact.email,
         from: { email: identity.fromEmail, name: identity.fromName },
         replyTo: replyAddress || identity.replyTo,
@@ -1495,10 +1725,10 @@ exports.sendContactEmail = onCall(
           emailId: emailRef.id
         }
       });
-      messageId = resp && resp.headers && resp.headers['x-message-id'] || null;
+      messageId = sent.messageId;
     } catch (err) {
       console.error('[sendContactEmail] failed:', err && err.message);
-      throw new HttpsError('internal', 'SendGrid rejected the send: ' + ((err && err.message) || 'unknown'));
+      throw new HttpsError('internal', 'The email provider rejected the send: ' + ((err && err.message) || 'unknown'));
     }
 
     // Actor name lookup
@@ -1845,8 +2075,7 @@ exports.inboundEmailWebhook = onRequest(
       try {
         const identity = await getCompanyEmailIdentity(db, companyId);
         if (identity.forwardInboundTo) {
-          sgMail.setApiKey(sendgridKey.value());
-          await sgMail.send({
+          await sendEmail({
             to: identity.forwardInboundTo,
             from: { email: identity.fromEmail, name: identity.fromName },
             replyTo: from.email,
@@ -1857,7 +2086,7 @@ exports.inboundEmailWebhook = onRequest(
         }
       } catch (e) { console.warn('[inboundEmail] forward failed:', e && e.message); }
     } catch (e) {
-      // Never 5xx: SendGrid retries hard, and a retry storm on a parse bug
+      // Never 5xx: the parse webhook retries hard, and a retry storm on a bug
       // would replay the same message onto the card dozens of times.
       console.error('[inboundEmail]', e && e.message);
     }
@@ -2094,8 +2323,6 @@ exports.sendCampaign = onCall(
       return { ok: true, recipientCount: 0, acceptedCount: 0, failedCount: 0 };
     }
 
-    sgMail.setApiKey(sendgridKey.value());
-
     let accepted = 0;
     let failed = 0;
     const errorSample = [];
@@ -2104,7 +2331,7 @@ exports.sendCampaign = onCall(
     const BATCH_SIZE = 1000;
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
       const chunk = recipients.slice(i, i + BATCH_SIZE);
-      const personalizations = chunk.map((r) => {
+      const perRecipient = chunk.map((r) => {
         const personalizedSubject = subject.replace(/\{\{\s*firstName\s*\}\}/g, r.firstName || '');
         // Per-recipient opt-out. A contact row carries a token; a company
         // member (all_users mode) has no contact doc, so they fall back to the
@@ -2113,11 +2340,11 @@ exports.sendCampaign = onCall(
           ? unsubscribeUrl(companyId, r.contactId, r.unsubToken)
           : `mailto:${REPLY_TO}?subject=Unsubscribe`;
         return {
-          to: [{ email: r.email, name: r.name || undefined }],
+          email: r.email,
+          name: r.name || undefined,
           subject: personalizedSubject,
-          // Key is unwrapped: the SendGrid helper wraps it with
-          // substitutionWrappers below, producing -unsubscribe_url- to match
-          // the placeholder in the body.
+          // The key is unwrapped: the wrappers below turn it into
+          // -unsubscribe_url-, matching the placeholder in the body.
           substitutions: { unsubscribe_url: link },
           headers: {
             // One-click opt-out for mail clients that surface it.
@@ -2147,31 +2374,25 @@ exports.sendCampaign = onCall(
 You are receiving this because you signed up with The One Percent Nation.
 Unsubscribe: -unsubscribe_url-`;
 
-      const msg = {
+      const res = await sendEmailBatch({
         from: { email: FROM_EMAIL, name: fromName },
         replyTo: REPLY_TO,
-        subject, // fallback; personalizations override per-message
+        subject, // fallback; each recipient carries its own
         text: textPersonalized,
         html: htmlPersonalized,
-        personalizations,
-        // Keys in `substitutions` above are already wrapped in `-`, so tell
-        // the helper not to wrap them a second time.
+        recipients: perRecipient,
         substitutionWrappers: ['-', '-'],
         customArgs: {
           type: 'campaign',
           companyId,
           campaignId
         }
-      };
-
-      try {
-        await sgMail.send(msg);
-        accepted += chunk.length;
-      } catch (err) {
-        failed += chunk.length;
-        const msgStr = String((err && err.message) || err).slice(0, 300);
-        if (errorSample.length < 5) errorSample.push(msgStr);
-        console.error('[sendCampaign] batch send failed:', msgStr);
+      });
+      accepted += res.accepted;
+      failed += res.failed;
+      for (const e of res.errors) {
+        if (errorSample.length < 5) errorSample.push(e);
+        console.error('[sendCampaign] batch send failed:', e);
       }
     }
 
@@ -2291,33 +2512,30 @@ exports.shareEventToContacts = onCall(
 
     const { subject, text, html } = eventEmail(event, APP_BASE_URL, customMessage);
 
-    sgMail.setApiKey(sendgridKey.value());
     let accepted = 0;
     let failed = 0;
     const errorSample = [];
     const BATCH_SIZE = 1000;
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
       const chunk = recipients.slice(i, i + BATCH_SIZE);
-      const personalizations = chunk.map((r) => ({
-        to: [{ email: r.email, name: r.name || undefined }],
-        customArgs: { type: 'event', companyId, eventId, recipientEmail: r.email }
-      }));
-      try {
-        await sgMail.send({
-          from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
-          replyTo: REPLY_TO,
-          subject,
-          text,
-          html,
-          personalizations,
-          customArgs: { type: 'event', companyId, eventId }
-        });
-        accepted += chunk.length;
-      } catch (err) {
-        failed += chunk.length;
-        const msgStr = String((err && err.message) || err).slice(0, 300);
-        if (errorSample.length < 5) errorSample.push(msgStr);
-        console.error('[shareEventToContacts] batch send failed:', msgStr);
+      const res = await sendEmailBatch({
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject,
+        text,
+        html,
+        recipients: chunk.map((r) => ({
+          email: r.email,
+          name: r.name || undefined,
+          customArgs: { type: 'event', companyId, eventId, recipientEmail: r.email }
+        })),
+        customArgs: { type: 'event', companyId, eventId }
+      });
+      accepted += res.accepted;
+      failed += res.failed;
+      for (const e of res.errors) {
+        if (errorSample.length < 5) errorSample.push(e);
+        console.error('[shareEventToContacts] batch send failed:', e);
       }
     }
 
@@ -2736,8 +2954,6 @@ async function sendWelcomeEmail(db, uid, user, { crm } = {}) {
   if (!claimed) return { status: 'skipped', reason: 'already-sent' };
 
   try {
-    sgMail.setApiKey(sendgridKey.value());
-
     let companyName = null;
     if (user.companyId) {
       try {
@@ -2748,15 +2964,15 @@ async function sendWelcomeEmail(db, uid, user, { crm } = {}) {
     const firstName = (user.displayName || '').trim().split(/\s+/)[0] || '';
     const { subject, text, html } = welcomeEmailContent({ firstName, companyName });
 
-    // companyId + contactId (without campaignId) route SendGrid delivery,
-    // open and click events onto the CRM contact's timeline via the webhook.
+    // companyId + contactId (without campaignId) route delivery, open and
+    // click events onto the CRM contact's timeline via the provider webhook.
     const customArgs = { type: 'welcome', uid };
     if (crm && crm.companyId && crm.contactId) {
       customArgs.companyId = crm.companyId;
       customArgs.contactId = crm.contactId;
     }
 
-    const [resp] = await sgMail.send({
+    const { messageId } = await sendEmail({
       to: email,
       from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
       replyTo: REPLY_TO,
@@ -2765,7 +2981,6 @@ async function sendWelcomeEmail(db, uid, user, { crm } = {}) {
       html,
       customArgs
     });
-    const messageId = (resp && resp.headers && resp.headers['x-message-id']) || null;
 
     await userRef.set({
       welcomeEmailStatus: 'sent',
@@ -3087,6 +3302,167 @@ function verifySignature(publicKeyPem, payloadRaw, signature, timestamp) {
   }
 }
 
+// ── Delivery events, whichever provider reported them ────────────────────
+//
+// SendGrid and Telnyx both report what happened to a sent email, in different
+// words and different envelopes. Each webhook normalises its payload into the
+// shape below and hands it here, so the CRM has one code path writing
+// timelines, campaign counters and opt-outs no matter who sent the mail.
+//
+// The normalised event:
+//   { event, companyId, campaignId, contactId, emailId, email, timestamp,
+//     url, reason, messageId, eventId }
+//
+// `event` uses the SendGrid vocabulary — delivered, open, click, bounce,
+// dropped, spamreport, unsubscribe — because that is what is already written
+// to Firestore and read by the CRM. Telnyx's names are translated on the way
+// in rather than forking the storage format, which would leave a contact
+// card showing "opened" for one provider and "clicked" for the other.
+async function applyEmailEvent(db, ev, bump, { source }) {
+  const type = ev.event || 'unknown';
+  const { companyId, campaignId, contactId, email } = ev;
+  const timestamp = ev.timestamp || new Date();
+  const eventId = ev.eventId
+    || `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  if (companyId && campaignId) {
+    const evRef = db.collection('companies').doc(companyId)
+      .collection('campaigns').doc(campaignId)
+      .collection('events').doc(eventId);
+    await evRef.set({
+      type,
+      email: email || null,
+      timestamp,
+      url: ev.url || null,
+      reason: ev.reason || null,
+      source,
+      raw: {
+        messageId: ev.messageId || null,
+        useragent: ev.useragent || null,
+        ip: ev.ip || null
+      }
+    }, { merge: true });
+
+    // Aggregate counters.
+    if (type === 'delivered') bump(`${companyId}/${campaignId}`, 'stats.delivered');
+    else if (type === 'open') bump(`${companyId}/${campaignId}`, 'stats.opens');
+    else if (type === 'click') bump(`${companyId}/${campaignId}`, 'stats.clicks');
+    else if (type === 'bounce' || type === 'dropped') bump(`${companyId}/${campaignId}`, 'stats.bounces');
+    else if (type === 'unsubscribe' || type === 'group_unsubscribe' || type === 'spamreport') bump(`${companyId}/${campaignId}`, 'stats.unsubs');
+  }
+
+  // Suppress the contact on an opt-out or complaint.
+  //
+  // Without this, someone who unsubscribed in their mail client — or reported
+  // the message as spam — stays on the list and is mailed again by the next
+  // campaign. Matched by email as well as id, because a provider's own
+  // unsubscribe UI does not carry our contactId.
+  if (companyId && email
+      && (type === 'unsubscribe' || type === 'group_unsubscribe' || type === 'spamreport')) {
+    try {
+      const FV = admin.firestore.FieldValue;
+      const contactsCol = db.collection('companies').doc(companyId).collection('contacts');
+      const match = contactId
+        ? [await contactsCol.doc(contactId).get()].filter((d) => d.exists)
+        : (await contactsCol.where('email', '==', String(email).toLowerCase()).limit(5).get()).docs;
+      for (const d of match) {
+        await d.ref.set({
+          emailOptOut: true,
+          emailOptOutAt: FV.serverTimestamp(),
+          emailOptOutSource: type,
+          marketingConsent: false,
+          tags: FV.arrayUnion('Unsubscribed'),
+          updatedAt: FV.serverTimestamp()
+        }, { merge: true });
+      }
+    } catch (e) {
+      console.warn('[emailEvent] opt-out suppression failed:', e && e.message);
+    }
+  }
+
+  // 1-on-1 contact email events → append activity.
+  if (companyId && contactId && !campaignId) {
+    try {
+      const contactRef = db.collection('companies').doc(companyId)
+        .collection('contacts').doc(contactId);
+      await contactRef.collection('activities').add({
+        type: 'email_event',
+        description: `Email ${type}${email ? ' · ' + email : ''}`,
+        actorUid: 'system',
+        actorName: source,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        meta: {
+          eventType: type,
+          email: email || null,
+          url: ev.url || null,
+          reason: ev.reason || null,
+          messageId: ev.messageId || null
+        }
+      });
+
+      // Delivery state on the message itself, so the thread on the contact
+      // card shows "delivered" or "bounced" rather than leaving every sent
+      // email reading "sent" forever. emailId rides along as custom args
+      // (SendGrid) or metadata (Telnyx), set by sendContactEmail.
+      if (ev.emailId) {
+        const STATUS_RANK = { sent: 0, processed: 1, delivered: 2, open: 3, click: 4 };
+        const patch = {
+          lastEventType: type,
+          lastEventAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+        if (type === 'bounce' || type === 'dropped' || type === 'spamreport') {
+          patch.status = type === 'spamreport' ? 'spam' : type;
+          patch.failureReason = ev.reason || null;
+        } else if (STATUS_RANK[type] !== undefined) {
+          // Never walk the status backwards: events arrive out of order, and
+          // a late "processed" would erase "opened".
+          patch.status = type === 'open' ? 'opened' : (type === 'click' ? 'clicked' : type);
+          patch.statusRank = STATUS_RANK[type];
+        }
+        const emRef = contactRef.collection('emails').doc(String(ev.emailId));
+        const emSnap = await emRef.get();
+        if (emSnap.exists) {
+          const prevRank = emSnap.data().statusRank;
+          if (patch.statusRank !== undefined && prevRank !== undefined && prevRank >= patch.statusRank) {
+            delete patch.status; delete patch.statusRank;
+          }
+          await emRef.set(patch, { merge: true });
+        }
+      }
+    } catch (e) {
+      console.warn('[emailEvent] contact activity write failed:', e && e.message);
+    }
+  }
+}
+
+/** Apply the campaign counters one webhook call accumulated. */
+async function flushCampaignCounters(db, campaignIncrements) {
+  for (const [key, fields] of campaignIncrements.entries()) {
+    const [companyId, campaignId] = key.split('/');
+    const campRef = db.collection('companies').doc(companyId).collection('campaigns').doc(campaignId);
+    const updates = {};
+    Object.keys(fields).forEach((f) => {
+      updates[f] = admin.firestore.FieldValue.increment(fields[f]);
+    });
+    try {
+      await campRef.set(updates, { merge: true });
+    } catch (e) {
+      console.warn('[emailEvent] campaign counter update failed:', e && e.message);
+    }
+  }
+}
+
+function newCounterBag() {
+  const campaignIncrements = new Map();
+  const bump = (cid, field) => {
+    if (!cid) return;
+    const m = campaignIncrements.get(cid) || {};
+    m[field] = (m[field] || 0) + 1;
+    campaignIncrements.set(cid, m);
+  };
+  return { campaignIncrements, bump };
+}
+
 exports.sendgridEventWebhook = onRequest(
   { cors: false, invoker: 'public' },
   async (req, res) => {
@@ -3117,157 +3493,141 @@ exports.sendgridEventWebhook = onRequest(
 
       const events = Array.isArray(req.body) ? req.body : [];
       const db = admin.firestore();
-
-      // Counter per campaign, increments per type.
-      const campaignIncrements = new Map();
-
-      function bump(cid, field) {
-        if (!cid) return;
-        const m = campaignIncrements.get(cid) || {};
-        m[field] = (m[field] || 0) + 1;
-        campaignIncrements.set(cid, m);
-      }
+      const { campaignIncrements, bump } = newCounterBag();
 
       for (const ev of events) {
         try {
-          const type = ev.event || 'unknown';
-          const companyId = ev.companyId;
-          const campaignId = ev.campaignId;
-          const contactId = ev.contactId;
-          const email = ev.email || null;
-          const timestamp = ev.timestamp ? new Date(ev.timestamp * 1000) : new Date();
-          const eventId = ev.sg_event_id || (`${type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
-
-          if (companyId && campaignId) {
-            // Write event to events subcollection.
-            const evRef = db.collection('companies').doc(companyId)
-              .collection('campaigns').doc(campaignId)
-              .collection('events').doc(eventId);
-            await evRef.set({
-              type,
-              email,
-              timestamp,
-              url: ev.url || null,
-              reason: ev.reason || ev.response || null,
-              raw: {
-                sg_message_id: ev.sg_message_id || null,
-                useragent: ev.useragent || null,
-                ip: ev.ip || null
-              }
-            }, { merge: true });
-
-            // Aggregate counters.
-            if (type === 'delivered') bump(`${companyId}/${campaignId}`, 'stats.delivered');
-            else if (type === 'open') bump(`${companyId}/${campaignId}`, 'stats.opens');
-            else if (type === 'click') bump(`${companyId}/${campaignId}`, 'stats.clicks');
-            else if (type === 'bounce' || type === 'dropped') bump(`${companyId}/${campaignId}`, 'stats.bounces');
-            else if (type === 'unsubscribe' || type === 'group_unsubscribe' || type === 'spamreport') bump(`${companyId}/${campaignId}`, 'stats.unsubs');
-          }
-
-          // Suppress the contact on an opt-out or complaint.
-          //
-          // This used to only increment stats.unsubs, so someone who
-          // unsubscribed in their mail client — or reported the message as
-          // spam — stayed on the list and was mailed again by the next
-          // campaign. Matched by email because SendGrid's own unsubscribe UI
-          // does not carry our contactId.
-          if (companyId && email
-              && (type === 'unsubscribe' || type === 'group_unsubscribe' || type === 'spamreport')) {
-            try {
-              const FV = admin.firestore.FieldValue;
-              const contactsCol = db.collection('companies').doc(companyId).collection('contacts');
-              const match = contactId
-                ? [await contactsCol.doc(contactId).get()].filter((d) => d.exists)
-                : (await contactsCol.where('email', '==', String(email).toLowerCase()).limit(5).get()).docs;
-              for (const d of match) {
-                await d.ref.set({
-                  emailOptOut: true,
-                  emailOptOutAt: FV.serverTimestamp(),
-                  emailOptOutSource: type,
-                  marketingConsent: false,
-                  tags: FV.arrayUnion('Unsubscribed'),
-                  updatedAt: FV.serverTimestamp()
-                }, { merge: true });
-              }
-            } catch (e) {
-              console.warn('[webhook] opt-out suppression failed:', e && e.message);
-            }
-          }
-
-          // 1-on-1 contact email events → append activity.
-          if (companyId && contactId && !campaignId) {
-            try {
-              const contactRef = db.collection('companies').doc(companyId)
-                .collection('contacts').doc(contactId);
-              await contactRef.collection('activities').add({
-                type: 'email_event',
-                description: `Email ${type}${email ? ' · ' + email : ''}`,
-                actorUid: 'system',
-                actorName: 'SendGrid',
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                meta: {
-                  eventType: type,
-                  email,
-                  url: ev.url || null,
-                  reason: ev.reason || ev.response || null,
-                  messageId: ev.sg_message_id || null
-                }
-              });
-
-              // Delivery state on the message itself, so the thread on the
-              // contact card shows "delivered" or "bounced" rather than
-              // leaving every sent email reading "sent" forever. emailId is a
-              // customArg set by sendContactEmail.
-              if (ev.emailId) {
-                const STATUS_RANK = { sent: 0, processed: 1, delivered: 2, open: 3, click: 4 };
-                const patch = { lastEventType: type, lastEventAt: admin.firestore.FieldValue.serverTimestamp() };
-                if (type === 'bounce' || type === 'dropped' || type === 'spamreport') {
-                  patch.status = type === 'spamreport' ? 'spam' : type;
-                  patch.failureReason = ev.reason || ev.response || null;
-                } else if (STATUS_RANK[type] !== undefined) {
-                  // Never walk the status backwards: SendGrid delivers events
-                  // out of order, and a late "processed" would erase "opened".
-                  patch.status = type === 'open' ? 'opened' : (type === 'click' ? 'clicked' : type);
-                  patch.statusRank = STATUS_RANK[type];
-                }
-                const emRef = contactRef.collection('emails').doc(String(ev.emailId));
-                const emSnap = await emRef.get();
-                if (emSnap.exists) {
-                  const prevRank = emSnap.data().statusRank;
-                  if (patch.statusRank !== undefined && prevRank !== undefined && prevRank >= patch.statusRank) {
-                    delete patch.status; delete patch.statusRank;
-                  }
-                  await emRef.set(patch, { merge: true });
-                }
-              }
-            } catch (e) {
-              console.warn('[webhook] contact activity write failed:', e && e.message);
-            }
-          }
+          await applyEmailEvent(db, {
+            event: ev.event || 'unknown',
+            companyId: ev.companyId,
+            campaignId: ev.campaignId,
+            contactId: ev.contactId,
+            emailId: ev.emailId,
+            email: ev.email || null,
+            timestamp: ev.timestamp ? new Date(ev.timestamp * 1000) : new Date(),
+            url: ev.url || null,
+            reason: ev.reason || ev.response || null,
+            messageId: ev.sg_message_id || null,
+            useragent: ev.useragent || null,
+            ip: ev.ip || null,
+            eventId: ev.sg_event_id || null
+          }, bump, { source: 'SendGrid' });
         } catch (perEvErr) {
           console.warn('[webhook] event error:', perEvErr && perEvErr.message);
         }
       }
 
-      // Apply aggregate counter updates.
-      for (const [key, fields] of campaignIncrements.entries()) {
-        const [companyId, campaignId] = key.split('/');
-        const campRef = db.collection('companies').doc(companyId).collection('campaigns').doc(campaignId);
-        const updates = {};
-        Object.keys(fields).forEach((f) => {
-          updates[f] = admin.firestore.FieldValue.increment(fields[f]);
-        });
-        try {
-          await campRef.set(updates, { merge: true });
-        } catch (e) {
-          console.warn('[webhook] campaign counter update failed:', e && e.message);
-        }
-      }
+      await flushCampaignCounters(db, campaignIncrements);
 
       res.status(200).send('ok');
     } catch (err) {
       console.error('[webhook] fatal:', err && err.message);
       res.status(200).send('ok'); // Always 200 to prevent SendGrid from retrying.
+    }
+  }
+);
+
+// ── Telnyx email events ──────────────────────────────────────────────────
+//
+// The other half of EMAIL_PROVIDER=telnyx. Without this, mail sent through
+// Telnyx shows on a contact card as sent and never moves: no delivered, no
+// open, no bounce, and an unsubscribe in a mail client never suppresses the
+// contact. The routing ids (companyId, contactId, campaignId, emailId) ride
+// out as metadata on every send and come back on every event.
+//
+// Telnyx's event vocabulary is its own, so it is translated into the names
+// already stored. Two translations are worth naming: `complained` is a spam
+// report, and `failed`/`rejected` are a drop rather than a bounce — the mail
+// never reached a receiving server to bounce off.
+const TELNYX_EMAIL_EVENT_MAP = {
+  delivered: 'delivered',
+  opened: 'open',
+  clicked: 'click',
+  bounced: 'bounce',
+  complained: 'spamreport',
+  unsubscribed: 'unsubscribe',
+  failed: 'dropped',
+  rejected: 'dropped',
+  deferred: 'deferred',
+  sent: 'processed',
+  sending: 'processed',
+  queued: 'processed'
+};
+
+/**
+ * Normalise one Telnyx email event.
+ *
+ * Accepts both envelopes Telnyx uses: the messaging-style
+ * `{ data: { event_type, payload } }` wrapper and a flat email event
+ * `{ data: { type, email_id, metadata } }`. Reading both costs a few lines
+ * and means a webhook that arrives in the other shape is processed rather
+ * than silently dropped.
+ */
+function telnyxEmailEvent(body) {
+  const data = (body && body.data) || body || {};
+  const payload = data.payload || {};
+  const inner = payload.email || payload.message || {};
+
+  // `email.delivered` and `delivered` both appear; keep the last segment.
+  const rawType = String(data.event_type || data.type || payload.type || '')
+    .split('.').pop().toLowerCase();
+
+  const metadata = data.metadata || payload.metadata || inner.metadata || {};
+  const toList = Array.isArray(payload.to) ? payload.to
+    : (Array.isArray(inner.to) ? inner.to : []);
+  const firstTo = toList[0];
+
+  return {
+    rawType,
+    event: TELNYX_EMAIL_EVENT_MAP[rawType] || rawType || 'unknown',
+    eventId: data.id || payload.id || null,
+    messageId: data.email_id || payload.email_id || inner.id || null,
+    email: payload.recipient || payload.email
+      || (firstTo && (firstTo.email || firstTo)) || null,
+    occurredAt: data.occurred_at || payload.occurred_at || null,
+    url: payload.url || payload.link || null,
+    reason: payload.reason || payload.detail || payload.description || null,
+    metadata
+  };
+}
+
+exports.telnyxEmailEventWebhook = onRequest(
+  { cors: false, invoker: 'public' },
+  async (req, res) => {
+    // Fail closed, exactly like the SMS webhooks: an unsigned request is not
+    // a Telnyx request, and an event that suppresses a contact is not
+    // something to accept on trust.
+    if (!telnyxSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
+
+    try {
+      const e = telnyxEmailEvent(req.body);
+      if (!e.rawType) { res.status(200).send('ignored'); return; }
+
+      const md = e.metadata || {};
+      const db = admin.firestore();
+      const { campaignIncrements, bump } = newCounterBag();
+
+      await applyEmailEvent(db, {
+        event: e.event,
+        companyId: md.companyId || null,
+        campaignId: md.campaignId || null,
+        contactId: md.contactId || null,
+        emailId: md.emailId || null,
+        email: e.email,
+        timestamp: e.occurredAt ? new Date(e.occurredAt) : new Date(),
+        url: e.url,
+        reason: e.reason,
+        messageId: e.messageId,
+        eventId: e.eventId
+      }, bump, { source: 'Telnyx' });
+
+      await flushCampaignCounters(db, campaignIncrements);
+      res.status(200).send('ok');
+    } catch (err) {
+      // 200 on anything we cannot act on, so Telnyx does not retry a payload
+      // we will never understand.
+      console.error('[telnyxEmailEvent] fatal:', err && err.message);
+      res.status(200).send('ok');
     }
   }
 );
@@ -4964,7 +5324,119 @@ async function applyGrant(db, uid, slug, course, { note, grantedBy }) {
   });
 }
 
-exports.grantCourseAccess = onCall(async (request) => {
+// ── The invite email that makes a grant real ─────────────────────────────
+//
+// A grant used to be silent: the enrollment landed and the member was never
+// told. Every beta round then ran on a hand-written email per tester, which
+// is the step that does not scale. This is that email, sent by the grant.
+//
+// Two versions, one template. A member who already has an account gets the
+// direct link to the course. Someone who does not gets the signup link and
+// the one instruction that matters: use this exact address, or the access
+// waiting for it will not find them.
+function grantEmailContent({ firstName, courseTitle, slug, note, hasAccount }) {
+  const name = firstName || 'there';
+  const nameHtml = textToHtml(name);
+  const titleHtml = textToHtml(courseTitle);
+  const noteHtml = textToHtml(note);
+  const courseUrl = `${APP_BASE_URL}/courses.html?course=${encodeURIComponent(slug)}`;
+  const signupUrl = `${APP_BASE_URL}/signup.html`;
+
+  const subject = `Your access to ${courseTitle} is open`;
+
+  const askText = note
+    ? `Where to start: ${note}\n\n`
+    : '';
+  const askHtml = note
+    ? `<p style="margin:0 0 14px;"><strong>Where to start:</strong> ${noteHtml}</p>`
+    : '';
+
+  const stepText = hasAccount
+    ? `Sign in and open it here:\n${courseUrl}\n\n`
+    : `Two steps. Create your account using this email address, then open the course.\n`
+      + `1. Create your account: ${signupUrl}\n`
+      + `2. Open the course: ${courseUrl}\n\n`
+      + `Use this exact email address when you sign up. Your access is attached to it and applies the moment the account exists.\n\n`;
+
+  const stepHtml = hasAccount
+    ? `<p style="margin:0 0 22px;"><a href="${courseUrl}" style="display:inline-block;background:#e60306;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">Open the course</a></p>`
+    : `<p style="margin:0 0 10px;">Two steps. Create your account using this email address, then open the course.</p>`
+      + `<p style="margin:0 0 14px;"><a href="${signupUrl}" style="display:inline-block;background:#e60306;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">Create your account</a></p>`
+      + `<p style="margin:0 0 22px;font-size:13px;color:#555;">Use this exact email address when you sign up. Your access is attached to it and applies the moment the account exists. Then open the course here: <a href="${courseUrl}" style="color:#155eef;">${courseUrl}</a></p>`;
+
+  const text =
+    `Hi ${name},\n\n` +
+    `You have access to ${courseTitle}. No payment, nothing to redeem.\n\n` +
+    askText +
+    stepText +
+    `Tell us what lands and what does not. Honest notes are worth more to us than polite ones.\n\n` +
+    `Anthony Brown Sr.\n` +
+    `Founder, The One Percent Nation\n` +
+    `Redefining Success. Realigning Purpose. Releasing Potential.`;
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:560px;margin:0 auto;line-height:1.55;">
+      <h2 style="color:#000;margin:0 0 12px;font-size:22px;">You're in, ${nameHtml}.</h2>
+      <p style="margin:0 0 14px;">You have access to <strong>${titleHtml}</strong>. No payment, nothing to redeem.</p>
+      ${askHtml}
+      ${stepHtml}
+      <p style="margin:0 0 20px;">Tell us what lands and what does not. Honest notes are worth more to us than polite ones.</p>
+      <p style="margin:0;">Anthony Brown Sr.<br/>Founder, The One Percent Nation</p>
+      <hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0;"/>
+      <p style="color:#888;font-size:11px;margin:0;">Redefining Success. Realigning Purpose. Releasing Potential.</p>
+    </div>`;
+
+  return { subject, text, html };
+}
+
+// Sends the invite for one grant. Never throws: a grant that landed must not
+// be reported as failed because SendGrid was unhappy, so the caller gets a
+// boolean and the admin is told to send the link by hand.
+// The calling function must declare `secrets: [sendgridKey]`.
+async function sendGrantEmail(db, { email, uid, slug, course, note, hasAccount }) {
+  const to = normalizeEmail(email);
+  if (!EMAIL_RE.test(to)) return false;
+  const courseTitle = (course && (course.title || course.short)) || slug;
+
+  let firstName = '';
+  let crmArgs = {};
+  if (uid) {
+    try {
+      const uSnap = await db.collection('users').doc(uid).get();
+      const u = uSnap.exists ? (uSnap.data() || {}) : {};
+      firstName = String(u.displayName || '').trim().split(/\s+/)[0] || '';
+      // Routes delivery, open and click events onto the CRM timeline, the
+      // same way the welcome email does.
+      if (u.crmCompanyId && u.crmContactId) {
+        crmArgs = { companyId: u.crmCompanyId, contactId: u.crmContactId };
+      }
+    } catch (e) { /* name is a nicety, not a blocker */ }
+  }
+
+  const { subject, text, html } = grantEmailContent({
+    firstName, courseTitle, slug, note, hasAccount
+  });
+
+  try {
+    await sendEmail({
+      to,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      subject,
+      text,
+      html,
+      customArgs: Object.assign({ type: 'course_grant', slug }, crmArgs)
+    });
+    return true;
+  } catch (err) {
+    console.error('[sendGrantEmail] send failed:', String((err && err.message) || err).slice(0, 300));
+    return false;
+  }
+}
+
+// `secrets` is required, not optional: this sends the invite email through
+// sendGrantEmail, which reads sendgridKey.value().
+exports.grantCourseAccess = onCall({ secrets: [sendgridKey] }, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
   const db = admin.firestore();
@@ -4973,6 +5445,8 @@ exports.grantCourseAccess = onCall(async (request) => {
   const email = normalizeEmail(request.data && request.data.email);
   const slug = String((request.data && request.data.slug) || '').trim();
   const note = String((request.data && request.data.note) || '').trim().slice(0, 200) || null;
+  // Default on: a grant nobody is told about is the problem this replaces.
+  const notify = !(request.data && request.data.notify === false);
   if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
   if (!slug) throw new HttpsError('invalid-argument', 'slug is required.');
 
@@ -4988,7 +5462,13 @@ exports.grantCourseAccess = onCall(async (request) => {
     // builder instead of the console. No-ops for anyone who isn't a tester.
     await markBetaGranted(db, email, { slug, grantedBy, note, applied: true });
     await markBetaActivated(db, email, userDoc.id);
-    return { ok: true, applied: true, email };
+    // The grant is the deliverable; the email is best-effort on top of it.
+    const emailed = notify
+      ? await sendGrantEmail(db, {
+          email, uid: userDoc.id, slug, course, note, hasAccount: true
+        })
+      : null;
+    return { ok: true, applied: true, email, emailed };
   }
 
   await db.collection('pendingGrants').doc(email).set({
@@ -4999,10 +5479,22 @@ exports.grantCourseAccess = onCall(async (request) => {
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
   await markBetaGranted(db, email, { slug, grantedBy, note, applied: false });
-  return { ok: true, applied: false, pending: true, email };
+
+  // Nobody to sign in yet, so the invite carries the signup link instead.
+  const emailed = notify
+    ? await sendGrantEmail(db, { email, uid: null, slug, course, note, hasAccount: false })
+    : null;
+  return { ok: true, applied: false, pending: true, email, emailed };
 });
 
 // Called from onUserCreated: apply anything parked for this email.
+//
+// No email is sent from here on purpose. The invite already went out when the
+// grant was parked, carrying both steps (create the account, then open the
+// course) and the direct course link, and onUserCreated sends the welcome
+// email a moment later. A third message would say nothing the tester does not
+// already have. It also means a grant made silently stays silent all the way
+// through signup, which is what the admin asked for when they chose that.
 async function applyPendingGrants(db, uid, email) {
   const lower = normalizeEmail(email);
   if (!lower) return 0;
@@ -5250,7 +5742,9 @@ exports.listBetaTesters = onCall(async (request) => {
 // setBetaTesterStatus — the console's write path. Approving issues the course
 // grant in the same call, which is what removes the hand-typed prompt chain in
 // manage-courses from the workflow.
-exports.setBetaTesterStatus = onCall(async (request) => {
+// `secrets` is required, not optional: approving a tester sends their invite
+// through sendGrantEmail, which reads sendgridKey.value() on the SendGrid path.
+exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
   const db = admin.firestore();
@@ -5261,6 +5755,9 @@ exports.setBetaTesterStatus = onCall(async (request) => {
   const action = String(data.action || '').trim();
   const note = String(data.note || '').trim().slice(0, 200) || null;
   const cohort = String(data.cohort || '').trim().slice(0, 60) || null;
+  // Default on: an approval nobody is told about leaves the tester waiting on
+  // an email that never comes, which is the gap this console exists to close.
+  const notify = !(data.notify === false);
   if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'A valid email is required.');
   if (!['approve', 'decline', 'complete', 'note'].includes(action)) {
     throw new HttpsError('invalid-argument', 'Unknown action.');
@@ -5339,7 +5836,28 @@ exports.setBetaTesterStatus = onCall(async (request) => {
 
   if (applied) await markBetaActivated(db, email, userDoc.id);
 
-  return { ok: true, status: applied ? 'active' : 'granted', applied, pending: !applied, slug };
+  // Tell them. A member with an account gets the course link; an applicant
+  // without one gets the signup link and the instruction to use this exact
+  // address, since the grant is parked against it. Best-effort on top of a
+  // grant that already landed, so a mail failure never fails the approval —
+  // the console reports it instead.
+  const emailed = notify
+    ? await sendGrantEmail(db, {
+        email,
+        uid: userDoc ? userDoc.id : null,
+        slug,
+        course: courseSnap.data(),
+        note: note || null,
+        hasAccount: applied
+      })
+    : null;
+  if (notify && !emailed) {
+    await ref.set({ inviteEmailFailedAt: FV.serverTimestamp() }, { merge: true });
+  } else if (emailed) {
+    await ref.set({ inviteEmailedAt: FV.serverTimestamp() }, { merge: true });
+  }
+
+  return { ok: true, status: applied ? 'active' : 'granted', applied, pending: !applied, slug, emailed };
 });
 
 // validateCoupon — pre-checkout preview so the buyer sees the discounted
@@ -8221,11 +8739,9 @@ async function executeSequenceStep(db, companyId, enrollment, step, seq) {
     if (!contact.email) return 'skipped: no email';
     if (contact.emailUnsubscribed === true || contact.unsubscribed === true) return 'skipped: unsubscribed';
     if (!body) return 'skipped: empty body';
-    const key = sendgridKey.value();
-    if (!key) return 'skipped: email not configured';
-    sgMail.setApiKey(key);
+    if (!emailConfigured()) return 'skipped: email not configured';
     const fromName = (ownerDoc && (ownerDoc.displayName || ownerDoc.name)) || FROM_NAME_DEFAULT;
-    await sgMail.send({
+    await sendEmail({
       to: contact.email,
       from: { email: FROM_EMAIL, name: fromName },
       replyTo: (ownerDoc && ownerDoc.email) || REPLY_TO,
@@ -8385,9 +8901,7 @@ async function renewAllGoogleWatches(db) {
 async function sendReminders(db) {
   const now = admin.firestore.Timestamp.now();
   const horizon = admin.firestore.Timestamp.fromMillis(now.toMillis() + 24 * 3600 * 1000);
-  const key = sendgridKey.value();
-  if (!key) return { tasks: 0, appointments: 0, skipped: 'email not configured' };
-  sgMail.setApiKey(key);
+  if (!emailConfigured()) return { tasks: 0, appointments: 0, skipped: 'email not configured' };
   let tasks = 0, appts = 0;
 
   try {
@@ -8399,7 +8913,7 @@ async function sendReminders(db) {
       if (email) {
         const due = t.dueAt.toDate ? t.dueAt.toDate() : new Date(t.dueAt);
         try {
-          await sgMail.send({
+          await sendEmail({
             to: email, from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
             subject: `Reminder: ${t.title}`,
             html: reminderHtml('Task reminder', [
@@ -8425,7 +8939,7 @@ async function sendReminders(db) {
       if (email) {
         const start = a.startAt.toDate ? a.startAt.toDate() : new Date(a.startAt);
         try {
-          await sgMail.send({
+          await sendEmail({
             to: email, from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
             subject: `Upcoming: ${a.title}`,
             html: reminderHtml('Appointment reminder', [
@@ -8756,7 +9270,6 @@ exports.joinEarlyAccess = onCall(async (request) => {
 async function sendLaunchEmails({ name, summary, url, recipients }) {
   const list = (recipients || []).filter((e) => e && EMAIL_RE.test(e));
   if (!list.length) return 0;
-  sgMail.setApiKey(sendgridKey.value());
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:540px;margin:0 auto;">
     <h2 style="color:#E60306;margin:0 0 10px;">It's here: ${name}</h2>
     <p style="font-size:15px;color:#222;">You asked to be the first to know — ${name} is now open.</p>
@@ -8767,16 +9280,17 @@ async function sendLaunchEmails({ name, summary, url, recipients }) {
   let sent = 0;
   for (let i = 0; i < list.length; i += 900) {
     const chunk = list.slice(i, i + 900);
-    try {
-      await sgMail.send({
-        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
-        subject: `It's here: ${name}`, html,
-        text: `${name} is now open. Visit ${url}`,
-        isMultiple: true,
-        personalizations: chunk.map((to) => ({ to }))
-      });
-      sent += chunk.length;
-    } catch (e) { console.warn('[launchEmail] send failed', e && e.message); }
+    const res = await sendEmailBatch({
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      subject: `It's here: ${name}`,
+      html,
+      text: `${name} is now open. Visit ${url}`,
+      recipients: chunk.map((to) => ({ email: to })),
+      customArgs: { type: 'launch' }
+    });
+    sent += res.accepted;
+    for (const e of res.errors) console.warn('[launchEmail] send failed', e);
   }
   return sent;
 }
@@ -9462,8 +9976,6 @@ exports.reportBug = onCall({ secrets: [sendgridKey, anthropicKey] }, async (requ
 
   // ── Email owner ────────────────────────────────────────────────────────────
   try {
-    const sgKey = sendgridKey.value();
-    sgMail.setApiKey(sgKey);
     const shortDesc = description.trim().slice(0, 80);
     const htmlBody = [
       `<h2 style="color:#c20000;">Bug Report — ${textToHtml(shortDesc)}</h2>`,
@@ -9482,8 +9994,8 @@ exports.reportBug = onCall({ secrets: [sendgridKey, anthropicKey] }, async (requ
       `<hr/><p><a href="https://the-1p-leadership.web.app/bug-reports.html" style="color:#c20000;">Review all bug reports →</a></p>`
     ].join('');
 
-    await sgMail.send({
-      to: OWNER_EMAIL,
+    await sendEmail({
+      to: NOTIFY_EMAIL,
       from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
       replyTo: REPLY_TO,
       subject: `[Bug][${aiSeverity.toUpperCase()}] ${shortDesc}`,
@@ -11815,9 +12327,7 @@ const LEAD_FORMS = {
  */
 async function notifyOwnerOfLead({ source, name, email, phone, fields, contactUrl }) {
   try {
-    const key = sendgridKey.value();
-    if (!key) return;
-    sgMail.setApiKey(key);
+    if (!emailConfigured()) return;
 
     const rows = Object.entries(fields || {})
       .map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top;">${escapeHtmlBasic(k)}</td><td style="padding:4px 0;">${escapeHtmlBasic(v)}</td></tr>`)
@@ -11825,8 +12335,8 @@ async function notifyOwnerOfLead({ source, name, email, phone, fields, contactUr
     const textRows = Object.entries(fields || {})
       .map(([k, v]) => `${k}: ${v}`).join('\n');
 
-    await sgMail.send({
-      to: OWNER_EMAIL,
+    await sendEmail({
+      to: NOTIFY_EMAIL,
       from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
       // Replying to the notification replies to the person who wrote in.
       replyTo: email || REPLY_TO,

@@ -1,28 +1,84 @@
-# Two-way email in the CRM
+# Email: sending, receiving, and the provider behind it
 
-Send from a lead's contact card and have their reply come back onto the same
-card. Outbound uses SendGrid; inbound uses SendGrid Inbound Parse on a
-dedicated subdomain.
+Every email in the platform comes from **anthonybrown@the1pnation.com** and
+goes through one seam in `functions/index.js`: `sendEmail()` for a single
+message and `sendEmailBatch()` for many. Which provider that seam uses is
+decided by one environment variable.
 
-The mailbox this is built around is **anthonybrown@the1pnation.com**.
+| `EMAIL_PROVIDER` | Provider | Key |
+| --- | --- | --- |
+| unset or `sendgrid` | SendGrid (`@sendgrid/mail`) | `SENDGRID_API_KEY` (Secret Manager) |
+| `telnyx` | Telnyx Email API (REST) | `TELNYX_API_KEY` (the same key the SMS path uses) |
+
+Because it is one variable, the cutover is a config change and the rollback is
+the same change in reverse. No code edit, no redeploy of logic.
+
+**Delivery events follow the provider.** Each posts to its own webhook and
+both write the same CRM timeline; section 5 has the Telnyx endpoint, and it
+should be configured at the same time as the switch.
+
+**Inbound replies are still SendGrid Inbound Parse.** Outbound and inbound are
+independent, and moving inbound means changing an MX record, so it is a
+separate step. Section 6 covers it.
 
 ---
 
-## What already works vs. what needs setup
+## What needs setup
 
 | Capability | Needs |
 | --- | --- |
-| Sending from a contact card | `SENDGRID_API_KEY` (already set) |
-| Sending as anthonybrown@the1pnation.com without landing in spam | Domain authentication on `the1pnation.com` |
+| Sending at all | A key for the active provider |
+| Landing in the inbox rather than spam | Domain authentication for `the1pnation.com` **at the active provider** |
 | Receiving replies onto the contact card | `INBOUND_EMAIL_DOMAIN` + `INBOUND_EMAIL_TOKEN` + an MX record + an Inbound Parse host |
 
-Outbound works the moment domain authentication is done. Inbound is a separate
-switch and is **fail-closed**: until the token is set, the webhook rejects
-everything rather than accepting unverified mail.
+Authentication does not carry across providers. A domain verified in SendGrid
+means nothing to Telnyx: each signs with its own DKIM keys, so the records must
+exist for whichever one is sending. Both sets can coexist in DNS, which is what
+makes the switch reversible.
+
+> **Never send as `@gmail.com`.** Google publishes a strict DMARC policy for
+> its own domain and no third party can DKIM-sign mail as `gmail.com`, so those
+> sends fail alignment by design and land in spam or get rejected. That is why
+> the from address is a `the1pnation.com` alias.
 
 ---
 
-## 1. Authenticate the sending domain (required)
+## 0. Switching to Telnyx
+
+In order. Do not set `EMAIL_PROVIDER=telnyx` before the domain verifies, or
+every send is rejected.
+
+1. **Authenticate the domain.** Telnyx Mission Control → **Email → Domains →
+   Add Domain**, enter `the1pnation.com`. Telnyx returns SPF, DKIM and DMARC
+   records. Add them at your DNS host alongside the SendGrid records, which
+   stay put so rollback works.
+2. **Wait for verification.** The dashboard shows the domain verified once DNS
+   propagates. Telnyx then watches for DNS drift, which is the failure mode
+   nobody catches by hand.
+3. **Confirm the key.** `TELNYX_API_KEY` is already a repository secret for
+   SMS. The same bearer token covers the Email API, so there is nothing new to
+   create.
+4. **Flip the switch.** Add a repository secret `EMAIL_PROVIDER` with the value
+   `telnyx`, then re-run *Deploy Firestore rules + Storage rules + Cloud
+   Functions*. The workflow writes it into `functions/.env`.
+   Register the delivery-event webhook in the same sitting (section 5), or
+   every send after this point looks stuck at "sent" in the CRM.
+5. **Send one real test.** Grant course access to an address you control, or
+   send from a contact card, and confirm it arrives. Check Mission Control →
+   Email for the delivery event.
+6. **Warm up.** A new sending domain has no reputation. Send a few small,
+   expected batches before a large campaign; a first send to 900 addresses is
+   how a new domain gets throttled.
+
+**Rollback:** set `EMAIL_PROVIDER` back to `sendgrid` and re-run the deploy.
+Nothing else changes, because nothing else moved.
+
+---
+
+## 1. Authenticate the sending domain in SendGrid
+
+Only needed while `EMAIL_PROVIDER` is `sendgrid` (the default). For Telnyx, see
+section 0 above.
 
 SendGrid → **Settings → Sender Authentication → Authenticate Your Domain**.
 
@@ -55,7 +111,7 @@ half-filled form never silently breaks sending.
 
 ---
 
-## 3. Turn on receiving (Inbound Parse)
+## 3. Turn on receiving (Inbound Parse, SendGrid)
 
 Replies route by address, not by guesswork: every outbound CRM email carries
 
@@ -123,6 +179,52 @@ If a reply does not arrive, in order:
   does not match `INBOUND_EMAIL_TOKEN`, and `inbound email not configured`
   means the token is not set on the deployed function at all
 - SendGrid → Activity Feed confirms the mail reached SendGrid
+
+---
+
+## 5. Delivery events (do this with the cutover)
+
+Both providers report what happened after a send, and both feed the same code
+path (`applyEmailEvent`), so a contact card reads the same either way. Each
+provider posts to its own endpoint.
+
+Telnyx → Mission Control → **Email → Webhooks** (or the sending domain's
+webhook settings) → add:
+
+```
+https://us-central1-the-1p-leadership.cloudfunctions.net/telnyxEmailEventWebhook
+```
+
+Subscribe to delivered, opened, clicked, bounced, complained, unsubscribed and
+failed at minimum. The handler translates Telnyx's names into the ones already
+stored (`complained` → spam report, `failed` and `rejected` → dropped), so
+nothing downstream changes.
+
+The endpoint is **fail-closed**: it verifies the Ed25519 signature over the raw
+body using `TELNYX_PUBLIC_KEY`, the same key the SMS webhooks use, and answers
+403 to anything unsigned. If events never appear, check that variable first.
+
+Routing works because every send carries `companyId`, `contactId`,
+`campaignId` and `emailId` as metadata, and every event carries it back. That
+is what puts an open on the right contact and a bounce on the right campaign.
+
+Set this up at the same time as the provider switch. Without it, mail sent
+through Telnyx shows on a contact card as sent and never moves, and an
+unsubscribe in someone's mail client never suppresses them, which is a
+compliance problem rather than a cosmetic one.
+
+---
+
+## 6. What is still on SendGrid
+
+One thing: **reply capture**. `reply.the1pnation.com` has an MX record pointing
+at `mx.sendgrid.net`, and `inboundEmailWebhook` parses what SendGrid posts.
+Moving it to a Telnyx inbox means a new MX record and a new handler, and while
+the MX is changing, replies can be lost. Do it on its own, in a quiet window,
+not alongside the outbound cutover.
+
+Until then SendGrid stays in the stack for inbound only, which costs nothing
+and breaks nothing.
 
 ---
 

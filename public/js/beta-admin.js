@@ -161,8 +161,18 @@ function renderApplicants() {
         return;
       }
       const r = await act(email, action);
-      if (action === 'approve' && r.pending) {
-        alert(`${email} has no account yet. Access is parked and applies automatically the moment they sign up at /signup.html.`);
+      if (action === 'approve') {
+        // An approval that granted access but could not send the invite is
+        // the one outcome the row cannot show, and the one that leaves a
+        // tester waiting on an email that never arrives. Say it here.
+        const mail = r.emailed === false
+          ? ' Their invite email could not be sent, so send them the link yourself.'
+          : '';
+        if (r.pending) {
+          alert(`${email} has no account yet. Access is parked and applies automatically the moment they sign up at /signup.html.${mail || ' Their invite email is on the way with the signup link.'}`);
+        } else if (mail) {
+          alert(`${email} now has access.${mail}`);
+        }
       }
     });
   });
