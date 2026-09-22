@@ -12,11 +12,12 @@
 // already lands in one of them, so nothing has to be re-plumbed to show up
 // here, and a feature added later appears automatically.
 
-import { db, firebaseReady } from './firebase.js';
+import { db, functions, firebaseReady } from './firebase.js';
 import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { renderTopbar } from './topbar.js';
 import { collection, getDocs, query, where, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import {
   STAGES, SOURCES, stageMeta,
   getContact, updateContact, changeStage,
@@ -38,6 +39,10 @@ import { dialer, onDialerEvent } from './dialer-core.js';
 import { mountTemplatePicker } from './merge-fields.js';
 
 const $ = (id) => document.getElementById(id);
+
+// The tag the beta-tester lead form already applies (LEAD_FORMS in
+// functions/index.js). Reused here so one lead is marked one way.
+const BETA_TAG = 'Beta Tester';
 
 const state = {
   uid: null,
@@ -170,7 +175,26 @@ function renderContactHeader() {
   const emailBtn = $('btn-send-email');
   if (emailBtn) { emailBtn.disabled = !!emailBlock; emailBtn.title = emailBlock || 'Email this contact'; }
 
+  renderBetaToggle();
   renderTags();
+}
+
+// The beta toggle reads from the "Beta Tester" CRM tag rather than the
+// betaTesters record: the tag is already on this contact (the beta form sets
+// it, and so does this toggle), and the record itself is owner-read only, so
+// a company admin looking at the card could not see it.
+//
+// Without an email there is nobody to key a beta record on, so the toggle is
+// disabled rather than failing on submit.
+function renderBetaToggle() {
+  const box = $('ct-beta');
+  if (!box) return;
+  const c = state.contact;
+  box.checked = Array.isArray(c.tags) && c.tags.includes(BETA_TAG);
+  const why = !c.email ? 'Add an email address first' : null;
+  box.disabled = !!why;
+  const wrap = $('ct-beta-wrap');
+  if (wrap) wrap.title = why || 'Put this lead in the beta program';
 }
 
 function renderTags() {
@@ -1177,6 +1201,40 @@ function wire() {
     } catch (err) {
       e.target.checked = !on;
       setStatus('Could not save: ' + (err.message || err), 'err');
+    }
+  });
+
+  $('ct-beta').addEventListener('change', async (e) => {
+    const on = e.target.checked;
+    const c = state.contact;
+    if (on && !confirm(`Put ${c.email} in the beta program? They appear in the beta console as an applicant; access is granted there, not here.`)) {
+      e.target.checked = false;
+      return;
+    }
+    e.target.disabled = true;
+    try {
+      const res = await httpsCallable(functions, 'setBetaTesterStatus')({
+        action: 'eligible',
+        eligible: on,
+        email: c.email,
+        name: c.name || '',
+        phone: c.phone || '',
+        crmContactId: state.contactId
+      });
+      // The tag is what the card renders from, so it moves with the record.
+      if (on) await addTag(state.companyId, state.contactId, BETA_TAG);
+      else await removeTag(state.companyId, state.contactId, BETA_TAG);
+      await Promise.all([refreshContact(), refreshTimeline()]);
+      const d = (res && res.data) || {};
+      setStatus(on
+        ? (d.restored ? 'Back in the beta program' : 'Added to the beta program as an applicant')
+        : 'Removed from the beta program', 'ok');
+    } catch (err) {
+      e.target.checked = !on;
+      setStatus('Could not save: ' + (err.message || err), 'err');
+    } finally {
+      e.target.disabled = false;
+      renderBetaToggle();
     }
   });
 

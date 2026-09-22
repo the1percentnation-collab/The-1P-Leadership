@@ -5770,7 +5770,7 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
   // an email that never comes, which is the gap this console exists to close.
   const notify = !(data.notify === false);
   if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'A valid email is required.');
-  if (!['add', 'approve', 'decline', 'complete', 'note'].includes(action)) {
+  if (!['add', 'eligible', 'approve', 'decline', 'complete', 'note'].includes(action)) {
     throw new HttpsError('invalid-argument', 'Unknown action.');
   }
 
@@ -5804,6 +5804,52 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
     if (!(data.approve === true)) {
       return { ok: true, status: snap.data().status || 'applied', added: !already, existed: already };
     }
+  }
+
+  // `eligible` is the CRM contact card's toggle: mark a lead as in or out of
+  // the beta without leaving their record. Like `add` it may run with no
+  // record, because turning it on is what creates one.
+  //
+  // Turning it off never deletes anything — it moves them to `declined`, the
+  // same state the console's Decline button uses, so the history survives and
+  // turning it back on restores them. And it refuses outright once they are
+  // past a decision: revoking live course access is not something a checkbox
+  // on a CRM card should do by accident.
+  if (action === 'eligible') {
+    const on = data.eligible === true;
+    const current = snap.exists ? (snap.data().status || 'applied') : null;
+
+    if (!on) {
+      if (!snap.exists) return { ok: true, status: null, eligible: false };
+      if (['granted', 'active', 'completed'].includes(current)) {
+        throw new HttpsError('failed-precondition',
+          'They already have beta access. Remove them from the beta console, not from here.');
+      }
+      await ref.set({
+        status: 'declined',
+        decidedBy: actor,
+        decidedAt: FV.serverTimestamp(),
+        updatedAt: FV.serverTimestamp()
+      }, { merge: true });
+      return { ok: true, status: 'declined', eligible: false };
+    }
+
+    await recordBetaApplication(db, {
+      name: String(data.name || '').trim().slice(0, 120),
+      email,
+      phone: String(data.phone || '').trim().slice(0, 40) || null,
+      fields: {},
+      crmContactId: String(data.crmContactId || '').trim() || null
+    }, { source: 'crm', addedBy: actor });
+
+    // Switching the toggle back on is an explicit re-inclusion, so it undoes a
+    // previous decline. Anyone further along keeps the status they earned.
+    if (current === 'declined') {
+      await ref.set({ status: 'applied', updatedAt: FV.serverTimestamp() }, { merge: true });
+      return { ok: true, status: 'applied', eligible: true, restored: true };
+    }
+    const after = await ref.get();
+    return { ok: true, status: after.data().status || 'applied', eligible: true, created: !snap.exists };
   }
 
   if (!snap.exists) throw new HttpsError('not-found', 'No beta record for that email.');

@@ -212,6 +212,41 @@ console.log('beta cohort — the record behind the beta console');
     assert.strictEqual(d.phone, '555');        // details still refreshed
   });
 
+  // ── CRM eligibility toggle ─────────────────────────────────────────────
+  // The contact card's toggle runs through the same helper, stamped 'crm'.
+  // Its two risky moves are pinned by the callable, not here: turning it off
+  // declines rather than deletes, and it refuses once somebody has access.
+  // What is testable at this level is that turning it on is the same write
+  // the form makes.
+
+  await ok('the CRM toggle opens a record stamped crm, with the contact linked', async () => {
+    const db = makeDb({});
+    await B.recordBetaApplication(
+      db,
+      { name: 'Dana', email: 'a@b.com', fields: {}, crmContactId: 'contact123' },
+      { source: 'crm', addedBy: 'owner@x.com' }
+    );
+    const d = db._docs.get('betaTesters/a@b.com');
+    assert.strictEqual(d.status, 'applied');
+    assert.strictEqual(d.source, 'crm');
+    assert.strictEqual(d.crmContactId, 'contact123');
+  });
+
+  await ok('the CRM toggle never disturbs a tester who already has access', async () => {
+    const db = makeDb({
+      'betaTesters/a@b.com': tester({ status: 'granted', feedbackCount: 2, crmContactId: 'old' })
+    });
+    await B.recordBetaApplication(
+      db,
+      { name: 'Dana', email: 'a@b.com', fields: {} },
+      { source: 'crm', addedBy: 'owner@x.com' }
+    );
+    const d = db._docs.get('betaTesters/a@b.com');
+    assert.strictEqual(d.status, 'granted');
+    assert.strictEqual(d.feedbackCount, 2);
+    assert.strictEqual(d.crmContactId, 'old');
+  });
+
   // ── Feedback ───────────────────────────────────────────────────────────
 
   await ok('feedback from a tester increments their count', async () => {
