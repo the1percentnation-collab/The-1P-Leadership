@@ -248,8 +248,12 @@ async function main() {
   renderTopbar({ user: u, role: info.role, currentPage: 'library-admin' });
   if (!info.isAdmin) { location.replace('/index.html'); return; }
   $('panel').style.display = 'block';
-  $('btn-new-book').addEventListener('click', () => openModal(null));
-  try { await reload(); } catch (e) { gate('Could not load the library: ' + (e.message || e)); }
+  // Held until the books and courses are in, so the "Attached to courses"
+  // list in the modal is never opened empty.
+  const addBtn = $('btn-new-book');
+  addBtn.disabled = true;
+  addBtn.addEventListener('click', () => openModal(null));
+  try { await reload(); addBtn.disabled = false; } catch (e) { gate('Could not load the library: ' + (e.message || e)); }
 }
 
 main();

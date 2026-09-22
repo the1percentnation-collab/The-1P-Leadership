@@ -6784,6 +6784,52 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   return { ok: true, url: session.url };
 });
 
+// bookFile — serves a digital book's EPUB to its owner from the site's own
+// domain (Hosting rewrites /api/book-file here), so the reader never needs
+// the Storage bucket's CORS configured. The rule it enforces is the same as
+// storage.rules: owners of the book, or admins/owner (who also see hidden
+// books, to proof them). The caller proves who they are with their Firebase
+// ID token in the Authorization header.
+exports.bookFile = onRequest({ cors: false, invoker: 'public', memory: '512MiB', timeoutSeconds: 120 }, async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  if (req.method !== 'GET') { res.status(405).send('method not allowed'); return; }
+  const bookId = String(req.query.book || '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(bookId)) { res.status(400).send('bad book id'); return; }
+
+  const m = /^Bearer (.+)$/.exec(String(req.get('Authorization') || ''));
+  if (!m) { res.status(401).send('sign in required'); return; }
+  let token;
+  try { token = await admin.auth().verifyIdToken(m[1]); } catch (e) { res.status(401).send('sign in required'); return; }
+
+  const db = admin.firestore();
+  const [userSnap, bookSnap] = await Promise.all([
+    db.collection('users').doc(token.uid).get(),
+    db.collection('books').doc(bookId).get()
+  ]);
+  if (!bookSnap.exists) { res.status(404).send('unknown book'); return; }
+  const u = userSnap.exists ? (userSnap.data() || {}) : {};
+  const isAdmin = token.role === 'owner' || u.role === 'admin' || u.role === 'owner';
+  const owns = Array.isArray(u.ownedBookIds) && u.ownedBookIds.includes(bookId);
+  const book = bookSnap.data() || {};
+  if (!isAdmin && (!owns || book.status === 'hidden')) { res.status(403).send('not in your library'); return; }
+
+  const file = admin.storage().bucket().file(book.filePath || `books/${bookId}/book.epub`);
+  try {
+    const [meta] = await file.getMetadata();
+    res.set('Content-Type', 'application/epub+zip');
+    if (meta && meta.size) res.set('Content-Length', String(meta.size));
+  } catch (e) {
+    res.status(404).send('book file missing');
+    return;
+  }
+  file.createReadStream()
+    .on('error', (err) => {
+      console.error('[bookFile] stream failed:', err && err.message);
+      if (!res.headersSent) res.status(500).send('read failed'); else res.end();
+    })
+    .pipe(res);
+});
+
 // syncBookGrants — put a digital book in the library of everyone already
 // enrolled in a course that grants it. Checkout and grants do this for new
 // members automatically (enrollmentFields); this covers members who were

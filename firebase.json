@@ -21,6 +21,13 @@
               ],
               "rewrites": [
                         {
+                                    "source": "/api/book-file",
+                                    "function": {
+                                              "functionId": "bookFile",
+                                              "region": "us-central1"
+                                    }
+                        },
+                        {
                                     "source": "/api/unsubscribe",
                                     "function": {
                                               "functionId": "unsubscribe",

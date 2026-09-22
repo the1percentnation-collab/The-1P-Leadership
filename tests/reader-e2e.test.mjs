@@ -9,9 +9,7 @@
 //
 // Needs the Auth, Firestore and Storage emulators, Chromium via Playwright,
 // and a sample EPUB. From the repo root (which holds firebase.json):
-//   READER_E2E_EPUB=/path/to/sample.epub \
-//   tests/node_modules/.bin/firebase emulators:exec --only auth,firestore,storage \
-//     --project demo-1p "node tests/reader-e2e.test.mjs"
+//   READER_E2E_EPUB=/path/to/sample.epub tests/run-e2e.sh reader
 import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
@@ -47,7 +45,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── Static server for public/ ─────────────────────────────────────────────
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.json': 'application/json' };
+// Stands in for Firebase Hosting, including the /api/book-file rewrite to
+// the bookFile function on the Functions emulator. Counted as a download.
+const bookFileHits = new Map();
 const server = http.createServer((req, res) => {
+  if (req.url.startsWith('/api/book-file')) {
+    const who = req.headers['x-e2e-ctx'] || 'unknown';
+    bookFileHits.set(who, (bookFileHits.get(who) || 0) + 1);
+    const up = http.request(`http://127.0.0.1:5001/${PROJECT}/us-central1/bookFile${req.url.slice('/api/book-file'.length)}`,
+      { method: req.method, headers: { authorization: req.headers.authorization || '' } },
+      (r) => { res.writeHead(r.statusCode, r.headers); r.pipe(res); });
+    up.on('error', () => { res.writeHead(502); res.end(); });
+    up.end();
+    return;
+  }
   let p = decodeURIComponent(new URL(req.url, ORIGIN).pathname);
   if (p === '/') p = '/index.html';
   let f = path.join(PUB, p);
@@ -144,6 +155,10 @@ async function makeContext(who, { device = devices['iPhone 13'], id = 'ctx' } = 
       return route.abort();
     }
     if (u.port === '9199' && u.pathname.includes('book.epub') && route.request().method() === 'GET') storageHits.set(id, storageHits.get(id) + 1);
+    if (u.pathname === '/api/book-file') {
+      storageHits.set(id, storageHits.get(id) + 1);
+      return route.continue({ headers: { ...route.request().headers(), 'x-e2e-ctx': id } });
+    }
     if (u.hostname === '127.0.0.1' && u.port === String(PORT)) {
       if (u.pathname === '/js/firebase.js') return route.fulfill({ body: firebaseJs, contentType: 'text/javascript' });
       if (u.pathname === '/js/auth.js') return route.fulfill({ body: authJs, contentType: 'text/javascript' });
@@ -175,11 +190,12 @@ let tapFraction = null;
 
 // ── 1. Owner: real download, page turns, synced position ─────────────────
 const A = await makeContext(OWNER, { id: 'A' });
-await t('owner opens the book through storage.rules with getBlob()', async () => {
+await t('owner opens the book through the same-origin /api/book-file route', async () => {
   await A.page.goto(`${ORIGIN}/read?book=i-cant`);
   await opened(A.page);
   await A.page.waitForTimeout(600);
   assert(storageHits.get('A') === 1, `expected 1 EPUB download, saw ${storageHits.get('A')}`);
+  assert(bookFileHits.get('A') === 1, 'the download did not go through the same-origin /api/book-file route');
   assert((await A.page.textContent('#run-head')).length > 0, 'no running header');
 });
 
@@ -247,6 +263,17 @@ await t('a member who does not own the book is stopped, and no file is fetched',
   assert(!hasView, 'reader mounted for a non-owner');
 });
 
+await t('the /api/book-file route refuses a non-owner and a signed-out request', async () => {
+  const r = await C.page.evaluate(async () => {
+    const { auth } = await import('/js/firebase.js');
+    const t = await auth.currentUser.getIdToken();
+    const a = await fetch('/api/book-file?book=i-cant', { headers: { Authorization: `Bearer ${t}` } });
+    const b = await fetch('/api/book-file?book=i-cant');
+    return [a.status, b.status];
+  });
+  assert(r[0] === 403 && r[1] === 401, 'statuses: ' + r.join(','));
+});
+
 await t('storage.rules deny the file to a non-owner even when asked directly', async () => {
   const denied = await C.page.evaluate(async () => {
     const { app } = await import('/js/firebase.js');
@@ -275,7 +302,7 @@ await t('a member with no books sees the empty shelf, not an error', async () =>
 const D = await makeContext(ADMIN, { id: 'D', device: { viewport: { width: 1280, height: 900 } } });
 await t('admin uploads a book from Manage Library and it lands in Storage + Firestore', async () => {
   await D.page.goto(`${ORIGIN}/manage-library.html`);
-  await D.page.waitForSelector('#btn-new-book', { timeout: 20000 });
+  await D.page.waitForSelector('#btn-new-book:not([disabled])', { timeout: 20000 });
   await D.page.click('#btn-new-book');
   await D.page.fill('#b-title', 'Proof Copy');
   assert((await D.page.inputValue('#b-id')) === 'proof-copy', 'id not derived from title');

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Runs tests/purchase-e2e.test.mjs on the emulators. The functions emulator
-# needs fake secrets and an email provider it can reach; both files are
-# gitignored and removed afterwards. Run from anywhere.
+# Runs an emulator e2e: `tests/run-e2e.sh purchase` or `tests/run-e2e.sh reader`
+# (the reader one needs READER_E2E_EPUB=/path/to/sample.epub).
+# The Functions emulator needs fake secrets and an email provider it can
+# reach; both files are gitignored and removed afterwards.
 set -euo pipefail
+WHICH="${1:-purchase}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 [ -d functions/node_modules ] || (cd functions && npm ci)
@@ -19,4 +21,4 @@ STRIPE_WEBHOOK_SECRET=whsec_e2e_fake
 SENDGRID_API_KEY=SG.fake
 SEC
 tests/node_modules/.bin/firebase emulators:exec --only auth,firestore,storage,functions \
-  --project demo-1p "node tests/purchase-e2e.test.mjs"
+  --project demo-1p "node tests/${WHICH}-e2e.test.mjs"

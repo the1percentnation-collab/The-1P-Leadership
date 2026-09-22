@@ -11,7 +11,7 @@ it never contains one.
 | Reading position and bookmarks | `users/{uid}/bookProgress/{bookId}` |
 | Course → book link | `grantsBooks` on the course (`COURSE_FULFILLMENT` in `functions/index.js`, overridable on `courses/{slug}`) |
 | Shelf | `/library` (`library.html`, `js/library-page.js`) |
-| Reader | `/read?book={id}[&chapter=N]` (`read.html`, `js/reader.js`, `vendor/foliate-js`) |
+| Reader | `/read?book={id}[&chapter=N]` (`read.html`, `js/reader.js`, `vendor/foliate-js`); the file comes from `/api/book-file` (`bookFile` function) |
 | Admin upload | `/manage-library.html` (`js/manage-library.js`, `js/library-admin.js`); `syncBookGrants` callable grants to existing members |
 
 Every way into a course (checkout, a 100% promo code, enrollFree, admin and
@@ -42,14 +42,11 @@ Firestore course records, so change them in Manage Courses without a deploy.
 ## Launch checklist (one time)
 
 1. **Deploy** rules and functions (merging to `main` does this).
-2. **Allow browser downloads from Storage.** The reader fetches the EPUB with
-   the Storage SDK (`getBlob`), which needs CORS on the bucket:
-
-   ```bash
-   gcloud storage buckets update gs://the-1p-leadership.firebasestorage.app --cors-file=storage-cors.json
-   ```
-
-   Add any other domain that serves the site to `storage-cors.json` first.
+2. **Nothing to configure for downloads.** The reader fetches the EPUB from
+   `/api/book-file` on the site's own domain (a Hosting rewrite to the
+   `bookFile` function, which checks the member's ID token and ownership the
+   same way `storage.rules` does), so the Storage bucket needs no CORS setup.
+   `storage-cors.json` is kept only for the direct-Storage fallback.
 3. **Upload the book from the admin area.** Export the final manuscript as
    EPUB (Vellum, Atticus, Kindle Create, Draft2Digital or Calibre). Open
    **Library** in the admin rail (`/manage-library.html`), click **Add book**,

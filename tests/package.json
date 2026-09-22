@@ -16,8 +16,8 @@
     "test:points": "node points-history.test.mjs",
     "test:catalog": "node catalog.test.mjs",
     "test:books": "node books-fulfillment.test.cjs && node purchase-email.test.cjs",
-    "e2e:purchase": "bash run-purchase-e2e.sh",
-    "e2e:reader": "cd .. && tests/node_modules/.bin/firebase emulators:exec --only auth,firestore,storage --project demo-1p \"node tests/reader-e2e.test.mjs\"",
+    "e2e:purchase": "bash run-e2e.sh purchase",
+    "e2e:reader": "bash run-e2e.sh reader",
     "test:beta": "node beta-cohort.test.cjs"
   },
   "devDependencies": {

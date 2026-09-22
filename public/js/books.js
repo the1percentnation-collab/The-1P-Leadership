@@ -9,7 +9,7 @@
 // A course attaches a book through `grantsBooks` in functions/index.js; nothing
 // here reads course data, so a course change can never break the reader.
 
-import { app, db, firebaseReady } from './firebase.js';
+import { app, auth, db, firebaseReady } from './firebase.js';
 import { currentUser } from './auth.js';
 import {
   doc, getDoc, setDoc, serverTimestamp
@@ -186,8 +186,41 @@ export async function getBookFile(book) {
     if (hit) return new File([hit], `${book.id}.epub`, { type: 'application/epub+zip' });
   } catch (e) { /* private mode or blocked storage: fall through to network */ }
 
-  const path = book.filePath || `books/${book.id}/book.epub`;
-  const blob = await getBlob(ref(getStorage(app), path));
+  let blob;
+  try {
+    blob = await fetchFromSite(book.id);
+  } catch (e) {
+    // Only if the site route is unavailable (e.g. not deployed yet) try
+    // Storage directly. That path needs the bucket's CORS configured, and
+    // without it the SDK retries silently for minutes, so it is capped.
+    if (e && (e.status === 401 || e.status === 403 || e.status === 404 && e.known)) throw e;
+    const path = book.filePath || `books/${book.id}/book.epub`;
+    blob = await withTimeout(getBlob(ref(getStorage(app), path)), 25000);
+  }
   try { await idbPutReplacing(`${book.id}:`, key, blob); } catch (e) {}
   return new File([blob], `${book.id}.epub`, { type: 'application/epub+zip' });
+}
+
+function withTimeout(p, ms) {
+  return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('download timed out')), ms))]);
+}
+
+// The primary path: /api/book-file on the site's own domain (a Hosting
+// rewrite to the bookFile function), authorised by the member's ID token.
+// Same origin, so no bucket CORS is involved.
+async function fetchFromSite(bookId) {
+  const u = auth && auth.currentUser;
+  if (!u) throw Object.assign(new Error('not signed in'), { status: 401 });
+  const token = await u.getIdToken();
+  const r = await withTimeout(fetch(`/api/book-file?book=${encodeURIComponent(bookId)}`, {
+    headers: { Authorization: `Bearer ${token}` }, cache: 'no-store'
+  }), 60000);
+  const type = r.headers.get('Content-Type') || '';
+  if (!r.ok || !type.includes('epub')) {
+    // A 404 from the function itself (unknown book / missing file) is real;
+    // a 404 page from Hosting means the route isn't there yet.
+    const known = r.status === 404 && /unknown book|book file missing/.test(await r.text().catch(() => ''));
+    throw Object.assign(new Error(`book download failed (${r.status})`), { status: r.status, known });
+  }
+  return r.blob();
 }
