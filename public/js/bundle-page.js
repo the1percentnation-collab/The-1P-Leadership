@@ -1,12 +1,18 @@
-// Bundle sales page (/bundle.html) — turns the "coming soon" block into a real
-// Enroll button once the bundle is live, and routes the click through the
+// The I Can't sales page (/bundle.html) — turns the "coming soon" block into a
+// real Enroll button once the course is live, and routes the click through the
 // same createCheckoutSession the course landing page uses.
 //
-// Buying the bundle enrolls the member in icant and includes the digital
-// edition of the book. The paperback is an optional add-on for the cost of
-// shipping — ticking it collects a US address in Stripe Checkout and puts the
-// book order in the store console. Someone already enrolled sees
-// "Go to course".
+// This page used to sell `bundle-icant`, a separate record. The bundle and the
+// course became the same offer at the same price, so the record was retired
+// (sellable: false, checkout refuses the slug) and this page sells `icant`
+// directly. Everything on it — price, liveness, the paperback add-on — is
+// read from that one course record, so the page can't advertise terms
+// checkout won't honor.
+//
+// The purchase includes the digital edition of the book. The paperback is an
+// optional add-on for the cost of shipping — ticking it collects a US address
+// in Stripe Checkout and puts the book order in the store console. Someone
+// already enrolled sees "Go to course".
 
 import { loadCourses, getCourseBySlug, priceInfo } from './courses-data.js';
 import { onAuthReady, currentUser } from './auth.js';
@@ -15,8 +21,10 @@ import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { loadEnrollments, isEnrolled } from './enrollments.js';
 import { getRefCode } from './referral.js';
 
-const BUNDLE_SLUG = 'bundle-icant';
 const COURSE_SLUG = 'icant';
+// The retired record. Still checked for enrollment: members who bought the
+// bundle before it was retired own the course through it.
+const LEGACY_BUNDLE_SLUG = 'bundle-icant';
 // Display only. createCheckoutSession prices the add-on from
 // courses/{slug}.paperbackShipping and re-validates the whole request.
 const PAPERBACK_SHIPPING_FALLBACK = 9.95;
@@ -25,13 +33,13 @@ function fmtMoney(n) {
   return '$' + (Number.isInteger(n) ? n : Number(n).toFixed(2));
 }
 
-function paperbackOffer(bundle) {
-  return !!bundle && bundle.paperbackUpgrade === true && bundle.shipsBook !== true;
+function paperbackOffer(course) {
+  return !!course && course.paperbackUpgrade === true && course.shipsBook !== true;
 }
 
-function paperbackShipping(bundle) {
-  return (bundle && typeof bundle.paperbackShipping === 'number' && bundle.paperbackShipping > 0)
-    ? bundle.paperbackShipping
+function paperbackShipping(course) {
+  return (course && typeof course.paperbackShipping === 'number' && course.paperbackShipping > 0)
+    ? course.paperbackShipping
     : PAPERBACK_SHIPPING_FALLBACK;
 }
 
@@ -59,22 +67,22 @@ function requireLogin() {
 }
 
 // The paperback tick box, above the top Enroll button. Rendered only when the
-// bundle actually offers the add-on, so the copy on the page and what checkout
+// course actually offers the add-on, so the copy on the page and what checkout
 // does can never disagree.
-function addonHtml(bundle) {
-  if (!paperbackOffer(bundle)) return '';
+function addonHtml(course) {
+  if (!paperbackOffer(course)) return '';
   return `
     <label class="bundle-addon" for="bundle-paperback">
       <input type="checkbox" id="bundle-paperback">
       <span>
-        <b>Add the paperback — ${fmtMoney(paperbackShipping(bundle))} shipping only.</b>
+        <b>Add the paperback — ${fmtMoney(paperbackShipping(course))} shipping only.</b>
         The printed copy mailed to you. The book is free; you cover shipping.
         US addresses, collected at checkout.
       </span>
     </label>`;
 }
 
-function renderCta({ live, enrolled, label, bundle }) {
+function renderCta({ live, enrolled, label, course }) {
   const top = $('bundle-cta');
   const bottom = $('bundle-cta-bottom');
   if (!top) return;
@@ -89,7 +97,7 @@ function renderCta({ live, enrolled, label, bundle }) {
   const promoNote = PROMO
     ? `<div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--gold);text-align:center;margin-bottom:10px;">Promo ${PROMO} will be applied at checkout</div>`
     : '';
-  top.innerHTML = `${promoNote}${addonHtml(bundle)}<button class="btn-enroll" id="bundle-enroll" type="button">Enroll now — ${label}</button>`;
+  top.innerHTML = `${promoNote}${addonHtml(course)}<button class="btn-enroll" id="bundle-enroll" type="button">Enroll now — ${label}</button>`;
   if (bottom) bottom.outerHTML = `<button class="btn-primary-lg" id="bundle-cta-bottom" type="button">Enroll now — ${label}</button>`;
 
   const buttons = [$('bundle-enroll'), $('bundle-cta-bottom')].filter(Boolean);
@@ -103,7 +111,7 @@ async function startCheckout(buttons, label) {
   try {
     const box = $('bundle-paperback');
     const res = await httpsCallable(functions, 'createCheckoutSession')({
-      slug: BUNDLE_SLUG,
+      slug: COURSE_SLUG,
       addPaperback: (box && box.checked) || undefined,
       refCode: getRefCode() || undefined,
       couponCode: PROMO || undefined
@@ -127,11 +135,11 @@ async function init() {
   try { await withTimeout(loadCourses(), 5000); } catch (e) {}
   try { if (user) await withTimeout(loadEnrollments(), 4000); } catch (e) {}
 
-  const bundle = getCourseBySlug(BUNDLE_SLUG);
-  const live = !!bundle && bundle.status === 'live';
-  const enrolled = !!user && (isEnrolled(COURSE_SLUG) || isEnrolled(BUNDLE_SLUG));
-  const p = bundle ? priceInfo(bundle) : null;
-  renderCta({ live, enrolled, label: (p && p.label) || '$197', bundle });
+  const course = getCourseBySlug(COURSE_SLUG);
+  const live = !!course && course.status === 'live';
+  const enrolled = !!user && (isEnrolled(COURSE_SLUG) || isEnrolled(LEGACY_BUNDLE_SLUG));
+  const p = course ? priceInfo(course) : null;
+  renderCta({ live, enrolled, label: (p && p.label) || '$197', course });
 }
 
 init();

@@ -83,6 +83,10 @@ export function normalizeCourse(c, { now = Date.now() } = {}) {
     status: COURSE_STATUS[c.status] || 'coming-soon',
     isBundle,
     bundleHref: c.bundleHref || null,
+    // A course can own a dedicated sales page instead of the shared landing
+    // page — /bundle.html is the I Can't course's. Only honored on the public
+    // site, and only while the course is live.
+    salesHref: c.salesHref || null,
     externalUrl: null,
     inventory: null,
     soldOut: false,
@@ -107,6 +111,7 @@ export function normalizeProduct(p, { now = Date.now() } = {}) {
     status: PRODUCT_STATUS[p.status] || 'hidden',
     isBundle: false,
     bundleHref: null,
+    salesHref: null,
     externalUrl: p.externalUrl || null,
     inventory,
     soldOut: inventory != null && inventory <= 0,
@@ -141,6 +146,11 @@ export function visibleOn(item, channel) {
  * goes to its anchor on the public products page. A course goes to its sales
  * page on the marketing site and to the member library in the dashboard —
  * the library handles both "open my course" and "buy this" for a member.
+ *
+ * A live course with its own `salesHref` goes there from the public site,
+ * the same way a bundle goes to its `bundleHref`. Not live means the shared
+ * course page either way: a sales page invites a purchase that can't happen,
+ * where the course page offers the waitlist instead.
  */
 export function hrefFor(item, channel, { enrolled = false } = {}) {
   if (!item) return '/';
@@ -150,6 +160,7 @@ export function hrefFor(item, channel, { enrolled = false } = {}) {
   }
   const slug = encodeURIComponent(item.slug);
   if (item.isBundle && item.bundleHref && item.status === 'live') return item.bundleHref;
+  if (channel === 'site' && item.salesHref && item.status === 'live') return item.salesHref;
   if (channel === 'dashboard' && (enrolled || item.status === 'live')) return `/courses.html?course=${slug}`;
   return `/course.html?course=${slug}`;
 }

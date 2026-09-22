@@ -105,7 +105,8 @@ hand from the Actions tab.
 ## 3. Flip the finished products live — MOSTLY DONE
 
 **Checked 2026-09-12.** These three are already `live`: `bundle-icant` at $197,
-`icant` at $197, and `1p-clc-leader` at $497. Nothing to do for them.
+`icant` at $197, and `1p-clc-leader` at $497. Nothing to do for them — but see
+3b: `bundle-icant` is retired, and the migration takes it off sale.
 
 Still `coming-soon`: **`1p-clc`, the Life Coach at $3,497.** Set it live in
 `/manage-courses.html`, but only after the cohort dates in step 5 are filled
@@ -123,13 +124,19 @@ only), and the course opens.
 
 ## 3b. Run the I Can't offer migration — DO THIS FIRST
 
-`node scripts/enable-icant-standalone.js` (see `scripts/README.md`). Both
-`icant` and `bundle-icant` sell at $197 with the **digital** edition of the
-book included, and both offer the paperback at checkout for the cost of
-shipping ($9.95). The stored Firestore docs still describe the old
-bundle-only arrangement, and Firestore overrides the code registry, so
-without this the course stays unsellable on its own and the bundle keeps
-promising a free shipped paperback. Safe to re-run.
+`node scripts/enable-icant-standalone.js` (see `scripts/README.md`). There is
+one I Can't offer now: `icant` at $197, with the **digital** edition of the
+book included and the paperback available at checkout for the cost of
+shipping ($9.95). `bundle-icant` was the same offer at the same price, so it
+is retired — `sellable: false` takes it off every listing and makes checkout
+refuse the slug, while the members who bought it keep their enrollment and
+their purchase history. `/bundle.html` stays as the course's long-form sales
+page and now checks out `icant`.
+
+The stored Firestore docs still describe the old bundle-only arrangement, and
+Firestore overrides the code registry, so without this the course stays
+unsellable on its own and the bundle keeps selling a free shipped paperback
+nothing will send. Safe to re-run.
 
 Then paste the digital book's download link under Settings in the course
 builder for both records. It is stored at `courses/{slug}/private/ebook`,

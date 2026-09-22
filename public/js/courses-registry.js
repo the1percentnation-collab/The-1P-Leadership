@@ -248,6 +248,17 @@ export const COURSES = [
   },
   {
     slug: 'bundle-icant',
+    // Retired. The course and this bundle ended up the same offer at the same
+    // price — $197 with the digital book, paperback for shipping — so there
+    // were two records to keep in sync and no reason for the second one.
+    // /bundle.html survives as the I Can't course's sales page and checks out
+    // `icant` directly (see bundle-page.js); this record stays only so the
+    // members who bought it keep their purchase history. `sellable: false`
+    // takes it out of every listing and makes checkout refuse the slug.
+    sellable: false,
+    unavailableNote: 'The Complete I Can\'t Experience is now just '
+      + 'I Can\'t: The Course — same $197, same digital book, same paperback '
+      + 'option. Enroll in the course.',
     // An offer, not content: buying it enrolls the member in `icant`. The
     // library uses this to keep the record out of "My courses".
     kind: 'bundle',
@@ -260,9 +271,6 @@ export const COURSES = [
     price: 197,
     priceLabel: '$197',
     priceNote: 'Digital book included · paperback for shipping only',
-    // The $197 includes the digital edition of the book. The paperback is the
-    // same shipping-only add-on the course offers, so neither offer
-    // undercuts the other.
     includesEbook: true,
     paperbackUpgrade: true,
     paperbackShipping: 9.95,
@@ -310,12 +318,15 @@ export const COURSES = [
     price: 197,
     priceLabel: '$197',
     priceNote: 'Digital book included · paperback for shipping only',
-    // Sold on its own now. Every purchase includes the digital edition of the
+    // Sold on its own. Every purchase includes the digital edition of the
     // book, and checkout offers the paperback as a shipping-only add-on
-    // (see COURSE_FULFILLMENT in functions/index.js). The bundle stays for
-    // buyers who want the printed copy with shipping already covered.
+    // (see COURSE_FULFILLMENT in functions/index.js).
     sellable: true,
     showOnSite: true,
+    // /bundle.html is this course's sales page — the long-form one that
+    // converts. It checks out this slug. /course.html?course=icant still
+    // works and sells the same thing.
+    salesHref: '/bundle.html',
     includesEbook: true,
     paperbackUpgrade: true,
     paperbackShipping: 9.95,

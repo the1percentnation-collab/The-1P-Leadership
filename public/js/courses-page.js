@@ -187,13 +187,15 @@ function renderAvailableCourses() {
     // A course with a checkout add-on (today: the paperback of I Can't at
     // shipping cost) goes through its sales page, where the choice is made.
     // Checking out straight from this card would take the money and never
-    // offer the book.
+    // offer the book. `salesHref` is the course's own long-form page when it
+    // has one (/bundle.html for I Can't); otherwise the shared landing page.
     const hasAddOn = c.paperbackUpgrade === true && c.shipsBook !== true;
+    const salesHref = c.salesHref || `/course.html?course=${encodeURIComponent(c.slug)}`;
     const action = isBundle
       ? `<a class="course-card-btn available-bundle-link" href="${escapeHtml(c.bundleHref || '/bundle.html')}">See Bundle ↗</a>`
       : isLive
         ? (hasAddOn && !p.isFree
-          ? `<a class="course-card-btn" href="/course.html?course=${encodeURIComponent(c.slug)}">Join Course</a>`
+          ? `<a class="course-card-btn" href="${escapeHtml(salesHref)}">Join Course</a>`
           : `<button class="course-card-btn available-enroll" data-slug="${escapeHtml(c.slug)}">${p.isFree ? 'Join Free' : 'Join Course'}</button>`)
         : `<button class="course-card-btn available-notify${joined ? ' is-joined' : ''}" data-slug="${escapeHtml(c.slug)}" data-title="${escapeHtml(c.title)}"${joined ? ' disabled' : ''}>${joined ? "✓ You're on the list" : 'Notify me when live'}</button>`;
     return courseCardHtml(c, { action, statusBadge, saleBadge, soon: !isLive });

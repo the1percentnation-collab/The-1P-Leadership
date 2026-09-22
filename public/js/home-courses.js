@@ -147,12 +147,13 @@ function cardHtml(item, i) {
     ? `<img class="course-thumb-img" src="${escapeHtml(item.imageUrl)}" alt="" loading="lazy" onerror="this.remove()">`
     : '';
 
-  // Bundles have their own sales page; everything else uses the shared public
-  // course landing page. A course that isn't live goes to the course page
-  // whatever its kind — a bundle sales page would invite a purchase that
-  // can't happen, where the course page offers the waitlist instead.
+  // Bundles, and courses with a sales page of their own, go there; everything
+  // else uses the shared public course landing page. A course that isn't live
+  // goes to the course page whatever its kind — a sales page would invite a
+  // purchase that can't happen, where the course page offers the waitlist
+  // instead.
   const isLive = item.status === 'live' || item.status === 'preorder';
-  const href = (isLive && item.bundleHref) || `/course.html?course=${slug}`;
+  const href = (isLive && (item.bundleHref || item.salesHref)) || `/course.html?course=${slug}`;
 
   return `
       <div class="course-card fade-up${delay}">

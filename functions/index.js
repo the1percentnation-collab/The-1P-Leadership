@@ -4901,7 +4901,9 @@ exports.enrollFree = onCall(async (request) => {
     // self-enrollable either; their access comes from buying the bundle or
     // from an admin grant.
     if (courseFulfillment(slug, course).sellable === false) {
-      throw new HttpsError('failed-precondition', 'This course is included in a bundle and can\'t be joined on its own.');
+      throw new HttpsError('failed-precondition',
+        String(course.unavailableNote || '').trim()
+        || 'This course is sold as part of another offer and can\'t be joined on its own.');
     }
     const price = effectivePriceDollars(course);
     if (price !== 0) {
@@ -5074,13 +5076,17 @@ exports.validateCoupon = onCall(async (request) => {
 //   and it suppresses the upgrade (there is nothing to upsell).
 // `enrollsAlso` — other courses this purchase unlocks. The bundle uses it to
 //   enroll the buyer in the course itself (bundle-icant has no lessons).
-// `sellable: false` — the course can only be reached through a bundle, and
-//   checkout refuses the slug directly.
+// `sellable: false` — the record is not for sale on its own: it is sold inside
+//   another offer, or retired. Checkout refuses the slug and tells the buyer
+//   where to go, from `courses/{slug}.unavailableNote` when one is set.
 //
 // Firestore `courses/{slug}` overrides every one of these fields, so the offer
 // can change from /manage-courses.html without a deploy.
 const COURSE_FULFILLMENT = {
-  'bundle-icant': { shipsBook: false, enrollsAlso: ['icant'], sellable: true,
+  // Retired: the same offer as `icant` at the same price, so /bundle.html now
+  // checks out the course directly and this slug is refused. The record stays
+  // for the purchase history of the members who bought it.
+  'bundle-icant': { shipsBook: false, enrollsAlso: ['icant'], sellable: false,
                     includesEbook: true, paperbackUpgrade: true },
   'icant':        { shipsBook: false, enrollsAlso: [],        sellable: true,
                     includesEbook: true, paperbackUpgrade: true }
@@ -5281,8 +5287,12 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   }
   const fulfil = courseFulfillment(slug, course);
   if (fulfil.sellable === false) {
+    // The note names the offer that replaced this one, so a buyer who lands
+    // on a stale link or an old promo is told where to go instead of being
+    // stopped by a message about a bundle that no longer sells.
     throw new HttpsError('failed-precondition',
-      'This course is included in The Complete I Can\'t Experience. Enroll through the bundle.');
+      String(course.unavailableNote || '').trim()
+      || 'This course is sold as part of another offer. Enroll through that offer instead.');
   }
 
   const userSnap = await db.collection('users').doc(uid).get();

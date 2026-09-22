@@ -109,8 +109,9 @@ export function enrolledCourses() {
   return getCourses().filter((c) => set.has(c.slug) && c.kind !== 'bundle');
 }
 
-// Courses you could still buy. A course marked `sellable: false` is only
-// reachable through a bundle, so it never appears here (its bundle does).
+// Courses you could still buy. A course marked `sellable: false` is not for
+// sale on its own — sold inside another offer, or retired — so it never
+// appears here; whatever replaced it does.
 export function availableCourses() {
   const set = _cache || new Set();
   return getCourses().filter((c) => !set.has(c.slug) && c.sellable !== false);

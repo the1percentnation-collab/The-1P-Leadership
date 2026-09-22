@@ -25,13 +25,15 @@ const now = Date.now();
 const ROWS = [
   {
     id: 'seed-live',
-    title: 'The Complete I Can\'t Experience is open',
-    body: 'Book, course, and workbook in one. Start the module that matches where you are stuck.',
+    title: 'I Can\'t: The Course is open',
+    body: 'The book and the course in one: the digital edition is included, and '
+      + 'every chapter\'s exercise is a workbook you keep. Start the module that '
+      + 'matches where you are stuck.',
     kind: 'promo',
     priority: 20,
     audience: 'all',
-    ctaLabel: 'See the bundle',
-    ctaHref: '/courses.html?course=bundle-icant',
+    ctaLabel: 'See the course',
+    ctaHref: '/bundle.html',
     publishAt: new Date(now - DAY),
     expiresAt: null,
     active: true

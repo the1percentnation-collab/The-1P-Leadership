@@ -56,23 +56,13 @@ ok('the course sells on its own, with the digital book and the paperback add-on'
   assert.strictEqual(f.paperbackShipping, PAPERBACK_SHIPPING_DEFAULT);
 });
 
-ok('the bundle makes the same offer, and still unlocks the course', () => {
+// The bundle was the same offer at the same price, so it is retired: not for
+// sale, but it still unlocks the course for the members who bought it, which
+// is what the webhook reads when their old session is replayed.
+ok('the retired bundle is not for sale and still unlocks the course', () => {
   const f = courseFulfillment('bundle-icant', {});
-  assert.strictEqual(f.shipsBook, false);
-  assert.strictEqual(f.includesEbook, true);
-  assert.strictEqual(f.paperbackUpgrade, true);
+  assert.strictEqual(f.sellable, false);
   assert.deepStrictEqual(f.enrollsAlso, ['icant']);
-});
-
-// The two records are priced the same, so if one threw in the paperback and
-// the other charged shipping for it, nobody would ever take the add-on.
-ok('neither the course nor the bundle undercuts the other', () => {
-  const course = courseFulfillment('icant', {});
-  const bundle = courseFulfillment('bundle-icant', {});
-  assert.strictEqual(course.includesEbook, bundle.includesEbook);
-  assert.strictEqual(course.paperbackUpgrade, bundle.paperbackUpgrade);
-  assert.strictEqual(course.shipsBook, bundle.shipsBook);
-  assert.strictEqual(course.paperbackShipping, bundle.paperbackShipping);
 });
 
 ok('an unlisted course gets neither the book nor the add-on', () => {

@@ -180,6 +180,27 @@ ok('a live bundle goes to its bundle page', () => {
   assert.strictEqual(hrefFor(i, 'site'), '/bundle.html');
 });
 
+// A course can own a long-form sales page — /bundle.html belongs to I Can't
+// now that the bundle record is retired. It wins on the public site only:
+// the dashboard is where a member opens what they already bought, and a
+// course that isn't live must show the waitlist rather than an Enroll button.
+ok('a live course with its own sales page goes there from the site', () => {
+  const i = normalizeCourse(course({ salesHref: '/bundle.html' }));
+  assert.strictEqual(hrefFor(i, 'site'), '/bundle.html');
+  assert.strictEqual(hrefFor(i, 'dashboard'), '/courses.html?course=c1');
+});
+
+ok('a sales page is not advertised before the course is live', () => {
+  const i = normalizeCourse(course({ salesHref: '/bundle.html', status: 'coming-soon' }));
+  assert.strictEqual(hrefFor(i, 'site'), '/course.html?course=c1');
+});
+
+ok('a retired record is listed nowhere', () => {
+  const i = normalizeCourse(course({ sellable: false }));
+  assert.strictEqual(visibleOn(i, 'site'), false);
+  assert.strictEqual(visibleOn(i, 'dashboard'), false);
+});
+
 ok('the call to action follows the state', () => {
   assert.strictEqual(ctaFor(normalizeCourse(course()), { enrolled: true }).kind, 'open');
   assert.strictEqual(ctaFor(normalizeCourse(course({ status: 'coming-soon' }))).kind, 'notify');
