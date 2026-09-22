@@ -1007,6 +1007,16 @@ function fillSettingsForm(c) {
   const ships = !!(c && c.shipsBook === true);
   $('f-shipsbook').checked = ships;
   $('f-shipsbook-label').textContent = ships ? 'Ships the book' : 'No shipped item';
+  const ebook = !!(c && c.includesEbook === true);
+  $('f-ebook').checked = ebook;
+  $('f-ebook-label').textContent = ebook ? 'Digital book included' : 'No digital book';
+  fillEbookLink(c);
+  const paperback = !!(c && c.paperbackUpgrade === true);
+  $('f-paperback').checked = paperback;
+  $('f-paperback-label').textContent = paperback
+    ? 'Paperback upgrade at checkout' : 'No paperback upgrade';
+  $('f-paperbackship').value = (c && typeof c.paperbackShipping === 'number')
+    ? c.paperbackShipping : '';
   $('settings-result').innerHTML = '';
   fillCohortForm(c);
   S.suppress = false;
@@ -1069,6 +1079,36 @@ async function fillCohortForm(c) {
   }
 }
 
+// The digital book's download link. Kept in courses/{slug}/private/ebook
+// rather than on the course doc, which is world-readable — the same reason
+// the cohort join link lives there. Enrolled members and admins can read it.
+async function fillEbookLink(c) {
+  $('f-ebookurl').value = '';
+  if (!c || !S.slug) return;
+  try {
+    const snap = await getDoc(doc(db, 'courses', S.slug, 'private', 'ebook'));
+    if (snap.exists()) $('f-ebookurl').value = (snap.data() || {}).url || '';
+  } catch (e) {
+    console.warn('[builder] could not read the digital book link', e);
+  }
+}
+
+function ebookLinkValue() {
+  const url = $('f-ebookurl').value.trim();
+  if (url && !/^https?:\/\//i.test(url)) {
+    throw new Error('The digital book link must start with http:// or https://');
+  }
+  return url;
+}
+
+async function saveEbookLink(url) {
+  await setDoc(doc(db, 'courses', S.slug, 'private', 'ebook'), {
+    url: url || null,
+    updatedAt: serverTimestamp(),
+    updatedBy: _userEmail
+  }, { merge: true });
+}
+
 async function saveCohort() {
   const out = $('cohort-result');
   try {
@@ -1119,6 +1159,9 @@ async function saveSettings() {
   try {
     const title = $('f-title').value.trim();
     if (!title) throw new Error('Title is required.');
+    // Validated before anything is written, so a mistyped link can't leave
+    // half the settings saved.
+    const ebookUrl = ebookLinkValue();
     const source = $('f-content').value === 'code' ? 'code' : 'firestore';
     if (source === 'firestore' && CODE_CONTENT_SLUGS.has(S.slug) && isCodeContent(S.course)) {
       if (!confirm('Switch this course to editable content? Its lessons will render from the database. If you haven\'t migrated them yet, the course may appear empty until you add lessons.')) {
@@ -1135,9 +1178,17 @@ async function saveSettings() {
       contentSource: source,
       showOnSite: $('f-onsite').checked,
       shipsBook: $('f-shipsbook').checked,
+      includesEbook: $('f-ebook').checked,
+      paperbackUpgrade: $('f-paperback').checked,
+      // Blank means "use the default" — the callable clamps and falls back to
+      // $9.95, so an empty field must not be written as 0.
+      paperbackShipping: $('f-paperbackship').value.trim()
+        ? Number($('f-paperbackship').value)
+        : null,
       updatedAt: serverTimestamp(),
       updatedBy: _userEmail
     }, { merge: true });
+    await saveEbookLink(ebookUrl);
     ok(out, `Saved <b>${escapeHtml(title)}</b>.`);
     $('builder-title').textContent = title;
     await reloadCourse();

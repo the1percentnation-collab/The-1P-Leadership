@@ -326,6 +326,24 @@
                 </label>
                 <div class="mc-field-note">When on, Stripe Checkout asks the buyer for a US address and the paperback order appears under Orders in the store console.</div>
               </div>
+              <div style="margin-top:16px;">
+                <label class="mc-switch" title="Add the digital edition of the book to this course's checkout at no charge">
+                  <input type="checkbox" id="f-ebook">
+                  <span class="mc-switch-track"></span>
+                  <span id="f-ebook-label">Digital book included</span>
+                </label>
+                <div class="mc-field-note">Shows on the Stripe page as a $0 line item and records the buyer's digital copy. Paste the download link below so the course page can hand it over.</div>
+                <div class="field" style="margin-top:10px;"><label for="f-ebookurl">Digital book download link</label><input id="f-ebookurl" type="url" placeholder="https://…"></div>
+              </div>
+              <div style="margin-top:16px;">
+                <label class="mc-switch" title="Offer the printed book at checkout for the cost of shipping">
+                  <input type="checkbox" id="f-paperback">
+                  <span class="mc-switch-track"></span>
+                  <span id="f-paperback-label">Paperback upgrade at checkout</span>
+                </label>
+                <div class="mc-field-note">Adds an optional "send me the printed copy" tick box to the sales page. The book is free; the buyer pays shipping, Stripe collects a US address, and the order appears under Orders. Ignored when "Ships the book" is on — that already includes the paperback.</div>
+                <div class="field" style="max-width:180px; margin-top:10px;"><label for="f-paperbackship">Shipping charge ($)</label><input id="f-paperbackship" type="number" step="0.01" min="1" max="49" placeholder="9.95"></div>
+              </div>
               <div style="display:flex; gap:10px; margin-top:16px;">
                 <button class="btn btn-primary" type="button" id="btn-save-settings">Save settings</button>
               </div>

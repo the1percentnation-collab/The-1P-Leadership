@@ -48,6 +48,7 @@ account key. Move them onto `lib/init.js` before running any of them.
 | `seed-booking.js` | Writes `config/booking` with the Zoom scheduler URL. | Optional. `/book-a-call.html` already works from a hardcoded fallback. |
 | `seed-resale-products.js` | Creates the A.L.I.G.N. client workbook, assessment and six-week program as draft products. | Not yet. They have no content or final pricing. |
 | `seed-financial-partner.js` | Creates the financial services partner company and its waitlist products. | Not yet. The partner name is still a placeholder. |
+| `enable-icant-standalone.js` | Opens `courses/icant` for standalone checkout: clears the bundle-only flags, turns on the included digital book and the shipping-only paperback add-on. | **Yes, once**, before selling the course on its own. Safe to re-run. |
 
 ## Running the CLC slug fix
 

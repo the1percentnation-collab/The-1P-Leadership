@@ -184,10 +184,17 @@ function renderAvailableCourses() {
     const p = priceInfo(c);
     const saleBadge = p.onSale ? `<span class="course-badge is-sale">Sale</span>` : '';
     const joined = courseInterests.has(c.slug);
+    // A course with a checkout add-on (today: the paperback of I Can't at
+    // shipping cost) goes through its sales page, where the choice is made.
+    // Checking out straight from this card would take the money and never
+    // offer the book.
+    const hasAddOn = c.paperbackUpgrade === true && c.shipsBook !== true;
     const action = isBundle
       ? `<a class="course-card-btn available-bundle-link" href="${escapeHtml(c.bundleHref || '/bundle.html')}">See Bundle ↗</a>`
       : isLive
-        ? `<button class="course-card-btn available-enroll" data-slug="${escapeHtml(c.slug)}">${p.isFree ? 'Join Free' : 'Join Course'}</button>`
+        ? (hasAddOn && !p.isFree
+          ? `<a class="course-card-btn" href="/course.html?course=${encodeURIComponent(c.slug)}">Join Course</a>`
+          : `<button class="course-card-btn available-enroll" data-slug="${escapeHtml(c.slug)}">${p.isFree ? 'Join Free' : 'Join Course'}</button>`)
         : `<button class="course-card-btn available-notify${joined ? ' is-joined' : ''}" data-slug="${escapeHtml(c.slug)}" data-title="${escapeHtml(c.title)}"${joined ? ' disabled' : ''}>${joined ? "✓ You're on the list" : 'Notify me when live'}</button>`;
     return courseCardHtml(c, { action, statusBadge, saleBadge, soon: !isLive });
   }).join('');

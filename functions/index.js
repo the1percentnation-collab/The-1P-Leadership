@@ -5056,32 +5056,103 @@ exports.validateCoupon = onCall(async (request) => {
 // createCheckoutSession — starts a Stripe Checkout for a live paid course or
 // a sellable product. Price is always read server-side (courses/{slug} or
 // products/{productId}); the client sends only the identifier, an optional
-// refCode, and an optional couponCode.
+// refCode, an optional couponCode, and whether the buyer wants the paperback.
 // ── Course fulfillment ──────────────────────────────────────────────
-// Courses that ship a physical item and/or unlock other courses when bought.
-// The I Can't course and its bundle both ship a paperback of the book:
-// Checkout collects a US shipping address and the webhook writes the order
-// to `orders` for Anthony to work from the store console. The bundle also
-// enrolls the buyer in the course itself (bundle-icant has no lessons of its
-// own). Firestore `courses/{slug}.shipsBook` / `.enrollsAlso` override these
-// defaults so the owner can change them without a deploy.
-// `sellable: false` means the course can only be reached through a bundle:
-// checkout refuses it directly. The I Can't course is sold only as
-// The Complete I Can't Experience (bundle-icant), which ships the paperback.
+// What a course owes the buyer beyond the lessons: a physical item, the
+// digital book, other courses it unlocks.
+//
+// `shipsBook` — the paperback is in the price. Checkout collects a US
+//   shipping address and the webhook writes the order to `orders` for Anthony
+//   to work from the store console. The bundle does this, and also enrolls
+//   the buyer in the course itself (bundle-icant has no lessons of its own).
+// `includesEbook` — the digital edition rides along at no charge. It shows on
+//   the Stripe page as a $0 line item so the buyer can see what they are
+//   getting, and the webhook records the entitlement on the user.
+// `paperbackUpgrade` — the printed copy is an optional add-on at the cost of
+//   shipping. The buyer ticks it on the sales page; that adds one shipping
+//   line item, turns on US address collection, and writes the same book order
+//   `shipsBook` would have. This is how I Can't: The Course sells on its own.
+// `sellable: false` — the course can only be reached through a bundle, and
+//   checkout refuses the slug directly.
+//
+// Firestore `courses/{slug}` overrides every one of these fields, so the offer
+// can change from /manage-courses.html without a deploy.
 const COURSE_FULFILLMENT = {
-  'bundle-icant': { shipsBook: true,  enrollsAlso: ['icant'], sellable: true },
-  'icant':        { shipsBook: false, enrollsAlso: [],        sellable: false }
+  'bundle-icant': { shipsBook: true,  enrollsAlso: ['icant'], sellable: true,
+                    includesEbook: true, paperbackUpgrade: false },
+  'icant':        { shipsBook: false, enrollsAlso: [],        sellable: true,
+                    includesEbook: true, paperbackUpgrade: true }
 };
 const SHIPPED_BOOK_NAME = 'I Can\'t: Is Not A Strategy (paperback)';
+const EBOOK_NAME = 'I Can\'t: Is Not A Strategy (digital edition)';
+// The entitlement written on the buyer for the digital edition. Matches the
+// book's product slug in `products` so one id means one book everywhere.
+const EBOOK_EDITION = 'i-cant';
+// Shipping and handling on the paperback add-on. Overridable per course with
+// `courses/{slug}.paperbackShipping`; clamped so a bad edit can't charge $900
+// or drop under Stripe's 50c floor.
+const PAPERBACK_SHIPPING_DEFAULT = 9.95;
+const PAPERBACK_SHIPPING_MIN = 1;
+const PAPERBACK_SHIPPING_MAX = 49;
 
 function courseFulfillment(slug, course) {
-  const d = COURSE_FULFILLMENT[slug] || { shipsBook: false, enrollsAlso: [], sellable: true };
+  const d = COURSE_FULFILLMENT[slug]
+    || { shipsBook: false, enrollsAlso: [], sellable: true,
+         includesEbook: false, paperbackUpgrade: false };
   const shipsBook = typeof course.shipsBook === 'boolean' ? course.shipsBook : d.shipsBook;
   const sellable = typeof course.sellable === 'boolean' ? course.sellable : d.sellable;
+  const includesEbook = typeof course.includesEbook === 'boolean'
+    ? course.includesEbook : !!d.includesEbook;
+  // A course that already ships the paperback has nothing to upsell.
+  const paperbackUpgrade = !shipsBook && (typeof course.paperbackUpgrade === 'boolean'
+    ? course.paperbackUpgrade : !!d.paperbackUpgrade);
+  const raw = typeof course.paperbackShipping === 'number'
+    ? course.paperbackShipping : PAPERBACK_SHIPPING_DEFAULT;
+  const paperbackShipping = Math.min(PAPERBACK_SHIPPING_MAX,
+    Math.max(PAPERBACK_SHIPPING_MIN, Math.round(raw * 100) / 100));
   const enrollsAlso = Array.isArray(course.enrollsAlso)
     ? course.enrollsAlso.map(String).filter(Boolean)
     : d.enrollsAlso;
-  return { shipsBook, enrollsAlso, sellable };
+  return { shipsBook, enrollsAlso, sellable, includesEbook, paperbackUpgrade, paperbackShipping };
+}
+
+// The Stripe line items for a course checkout. Pure so the shape is testable:
+// the course (or its installment) first, then the digital book at $0 when it
+// is included, then the paperback shipping charge when the buyer took the
+// add-on. The $0 and add-on lines are payment-mode only — mixing them into a
+// subscription would bill them again on every renewal.
+function courseLineItems({ course, slug, fulfil, chargeDollars, plan, isSubscription, wantsPaperback }) {
+  const recurring = !!(isSubscription || plan);
+  const priceData = {
+    currency: 'usd',
+    unit_amount: plan ? plan.monthlyCents : Math.max(50, Math.round(chargeDollars * 100)),
+    product_data: { name: plan ? `${course.title || slug} (${plan.label})` : (course.title || slug) }
+  };
+  if (isSubscription) priceData.recurring = { interval: (course.pricing && course.pricing.interval === 'year') ? 'year' : 'month' };
+  if (plan) priceData.recurring = { interval: 'month' };
+
+  const items = [{ price_data: priceData, quantity: 1 }];
+  if (fulfil.includesEbook && !recurring) {
+    items.push({
+      quantity: 1,
+      price_data: {
+        currency: 'usd',
+        unit_amount: 0,
+        product_data: { name: `${EBOOK_NAME} — included` }
+      }
+    });
+  }
+  if (wantsPaperback && !recurring) {
+    items.push({
+      quantity: 1,
+      price_data: {
+        currency: 'usd',
+        unit_amount: Math.round(fulfil.paperbackShipping * 100),
+        product_data: { name: `${SHIPPED_BOOK_NAME} — shipping only` }
+      }
+    });
+  }
+  return items;
 }
 
 // Stripe moved the collected address from `session.shipping_details` to
@@ -5224,9 +5295,6 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   }
 
   const isSubscription = !!(course.pricing && course.pricing.mode === 'subscription');
-  const interval = isSubscription
-    ? (course.pricing.interval === 'year' ? 'year' : 'month')
-    : null;
 
   // ── Payment plans (1P Certified Life Coach) ─────────────────────────
   // Fixed-count installments modeled as a monthly subscription that the
@@ -5247,6 +5315,24 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   if (plan && couponCode) {
     throw new HttpsError('failed-precondition', 'Promo codes can\'t be combined with a payment plan.');
   }
+
+  // ── Paperback add-on (shipping only) ────────────────────────────────
+  // The buyer ticked "send me the printed copy" on the sales page. Refused
+  // loudly rather than ignored: silently dropping it would take the money for
+  // a course and never send the book the buyer asked for.
+  const wantsPaperback = (request.data && request.data.addPaperback) === true;
+  if (wantsPaperback) {
+    if (!fulfil.paperbackUpgrade) {
+      throw new HttpsError('failed-precondition',
+        'A printed copy isn\'t offered with this course.');
+    }
+    if (isSubscription || plan) {
+      throw new HttpsError('failed-precondition',
+        'The paperback add-on can\'t be combined with a payment plan or subscription.');
+    }
+  }
+  // Either path collects a US address in Stripe Checkout.
+  const needsAddress = fulfil.shipsBook || wantsPaperback;
 
   // ── Promo code ──────────────────────────────────────────────────────
   // Validated in Firestore and baked into the session's unit_amount. A code
@@ -5269,14 +5355,22 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
         enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(slug, ...fulfil.enrollsAlso),
         lastActiveAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
-      if (fulfil.shipsBook) {
-        // No Stripe session, so no address was collected. The order lands in
-        // the store console flagged so Anthony can ask for one.
+      if (fulfil.includesEbook) {
+        await db.collection('users').doc(uid).set({
+          ebookEditions: admin.firestore.FieldValue.arrayUnion(EBOOK_EDITION)
+        }, { merge: true });
+      }
+      if (needsAddress) {
+        // No Stripe session, so no address was collected and no shipping was
+        // charged. The order lands in the store console flagged so Anthony
+        // can ask for one.
         await db.collection('orders').doc(`comp-${slug}-${uid}`).set({
           kind: 'course-book',
           courseSlug: slug,
           productName: SHIPPED_BOOK_NAME,
           productType: 'book',
+          paperbackUpgrade: wantsPaperback,
+          shippingPaid: false,
           uid,
           email: (request.auth.token && request.auth.token.email) || null,
           amountTotal: 0,
@@ -5328,6 +5422,11 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   }
   if (appliedCoupon) metadata.couponCode = appliedCoupon;
   if (fulfil.shipsBook) metadata.shipsBook = '1';
+  if (fulfil.includesEbook) metadata.ebook = '1';
+  if (wantsPaperback) {
+    metadata.paperback = '1';
+    metadata.paperbackShipping = String(fulfil.paperbackShipping);
+  }
   if (fulfil.enrollsAlso.length) metadata.enrollsAlso = fulfil.enrollsAlso.join(',');
 
   if (plan) {
@@ -5335,22 +5434,19 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
     metadata.plan = planKey;
   }
 
-  const priceData = {
-    currency: 'usd',
-    unit_amount: plan ? plan.monthlyCents : Math.max(50, Math.round(chargeDollars * 100)),
-    product_data: { name: plan ? `${course.title || slug} (${plan.label})` : (course.title || slug) }
-  };
-  if (isSubscription) priceData.recurring = { interval };
-  if (plan) priceData.recurring = { interval: 'month' };
+  const lineItems = courseLineItems({
+    course, slug, fulfil, chargeDollars, plan, isSubscription, wantsPaperback
+  });
 
   // No allow_promotion_codes: coupons are validated in Firestore above and
   // priced into unit_amount, so per-item scoping and the active toggle are
   // actually enforced. Stripe-native promo codes would bypass both.
   const session = await stripe.checkout.sessions.create({
     mode: (isSubscription || plan) ? 'subscription' : 'payment',
-    line_items: [{ price_data: priceData, quantity: 1 }],
-    // Courses that ship the book ask for a US address inside Stripe Checkout.
-    ...(fulfil.shipsBook ? { shipping_address_collection: { allowed_countries: ['US'] } } : {}),
+    line_items: lineItems,
+    // Courses that ship the book — always, or because the buyer took the
+    // paperback add-on — ask for a US address inside Stripe Checkout.
+    ...(needsAddress ? { shipping_address_collection: { allowed_countries: ['US'] } } : {}),
     customer_email: (request.auth.token && request.auth.token.email) || undefined,
     client_reference_id: uid,
     metadata,
@@ -5520,14 +5616,30 @@ exports.stripeWebhook = onRequest(
             enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(courseSlug, ...enrollsAlso)
           }, { merge: true });
 
-          // The book ships with this course: record the order with the address
-          // Stripe collected. Worked from the store console like product orders.
-          if (session.metadata && session.metadata.shipsBook === '1') {
+          // The digital edition is part of the offer: record the entitlement so
+          // the course page can hand over the download.
+          if (session.metadata && session.metadata.ebook === '1') {
+            await db.collection('users').doc(uid).set({
+              ebookEditions: admin.firestore.FieldValue.arrayUnion(EBOOK_EDITION)
+            }, { merge: true });
+          }
+
+          // A paperback is owed — either because the course always ships one,
+          // or because the buyer took the shipping-only add-on. Record the
+          // order with the address Stripe collected, worked from the store
+          // console like product orders.
+          const paperbackAddOn = !!(session.metadata && session.metadata.paperback === '1');
+          if ((session.metadata && session.metadata.shipsBook === '1') || paperbackAddOn) {
+            const shippingPaid = paperbackAddOn
+              ? Number(session.metadata.paperbackShipping) || 0
+              : 0;
             await db.collection('orders').doc(session.id).set({
               kind: 'course-book',
               courseSlug,
               productName: SHIPPED_BOOK_NAME,
               productType: 'book',
+              paperbackUpgrade: paperbackAddOn,
+              shippingPaid,
               uid,
               email: (session.customer_details && session.customer_details.email)
                 || session.customer_email || null,
@@ -5543,6 +5655,8 @@ exports.stripeWebhook = onRequest(
             courseSlug,
             amount: (session.amount_total || 0) / 100,
             mode: session.mode,
+            ebook: !!(session.metadata && session.metadata.ebook === '1'),
+            paperback: paperbackAddOn,
             couponCode: couponCode || null,
             stripeCustomerId: session.customer || null,
             subscriptionId: session.subscription || null,

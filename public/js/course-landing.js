@@ -9,7 +9,8 @@
 import { loadCourses, getCourses, getCourseBySlug, priceInfo } from './courses-data.js';
 import { launchDateMs, fmtLaunchDate, launchCountdown } from './launch-date.js';
 import { onAuthReady, currentUser } from './auth.js';
-import { firebaseReady, functions } from './firebase.js';
+import { db, firebaseReady, functions } from './firebase.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { escapeHtml, getUserProfile } from './community.js';
 import { renderTopbar } from './topbar.js';
@@ -274,6 +275,21 @@ function soonNote(course) {
     : "Coming soon — enrollment isn't open yet.";
 }
 
+// A course offers the paperback add-on when it is flagged for it and does not
+// already ship the book in the price. Mirrors courseFulfillment() in
+// functions/index.js, which is the authority.
+const PAPERBACK_SHIPPING_FALLBACK = 9.95;
+
+function paperbackOffer(course) {
+  return course.paperbackUpgrade === true && course.shipsBook !== true;
+}
+
+function paperbackShipping(course) {
+  return typeof course.paperbackShipping === 'number' && course.paperbackShipping > 0
+    ? course.paperbackShipping
+    : PAPERBACK_SHIPPING_FALLBACK;
+}
+
 function purchaseCardHtml(course, { enrolled }) {
   const p = priceInfo(course);
   const isBundle = course.status === 'bundle' || !!course.bundleHref;
@@ -297,7 +313,27 @@ function purchaseCardHtml(course, { enrolled }) {
     </div>
     ${course.priceNote ? `<div class="cl-price-note">${escapeHtml(course.priceNote)}</div>` : ''}
     ${course.shipsBook ? `<div class="cl-price-note">Includes a paperback of <em>I Can't: Is Not A Strategy</em>. We ask for your US shipping address at checkout.</div>` : ''}
+    ${course.includesEbook && !course.shipsBook ? `<div class="cl-price-note">Includes the digital edition of <em>I Can't: Is Not A Strategy</em> — yours the moment you enroll.</div>` : ''}
     ${!live && !isBundle ? `<div class="cl-soon-note">${escapeHtml(soonNote(course))}</div>` : ''}`;
+
+  // The digital book, once it is theirs. The download link lives in
+  // courses/{slug}/private/ebook — enrolled members and admins only, so a
+  // world-readable course doc never leaks the file (see firestore.rules).
+  // Filled in by bindEbook after the card renders.
+  const ebookHtml = (enrolled && course.includesEbook) ? `<div id="cl-ebook"></div>` : '';
+
+  // Paperback add-on — the printed book at shipping cost, ticked at checkout.
+  // Priced and re-validated server-side by createCheckoutSession; the amount
+  // here is display only.
+  const addonHtml = (!enrolled && live && paperbackOffer(course) && !p.isFree) ? `
+    <label class="cl-addon" id="cl-paperback-row" for="cl-paperback">
+      <input type="checkbox" id="cl-paperback">
+      <span class="cl-addon-body">
+        <span class="cl-addon-title">Add the paperback — ${escapeHtml(fmtMoney(paperbackShipping(course)))} shipping only</span>
+        <span class="cl-addon-note">The printed copy of <em>I Can't: Is Not A Strategy</em> mailed to you.
+          The book is free; you cover shipping. US addresses, collected at checkout.</span>
+      </span>
+    </label>` : '';
 
   // The Life Coach certification offers fixed-count payment plans. Pay in
   // full is the default; a plan can't be combined with a promo code, which
@@ -323,6 +359,8 @@ function purchaseCardHtml(course, { enrolled }) {
       </div>
       <div class="cl-buy-body">
         ${priceHtml}
+        ${ebookHtml}
+        ${addonHtml}
         ${planHtml}
         ${cta}
         <div id="cl-cta-msg" class="cl-cta-msg"></div>
@@ -484,9 +522,12 @@ function bindEnroll(course) {
       } else {
         const planInput = document.querySelector('input[name="cl-plan"]:checked');
         const plan = planInput && planInput.value ? planInput.value : undefined;
+        const paperbackBox = document.getElementById('cl-paperback');
+        const addPaperback = !!(paperbackBox && paperbackBox.checked && paperbackOffer(course));
         const res = await httpsCallable(functions, 'createCheckoutSession')({
           slug: course.slug,
           plan,
+          addPaperback: addPaperback || undefined,
           refCode: getRefCode() || undefined,
           couponCode: plan ? undefined : (appliedPromo || undefined)
         });
@@ -507,6 +548,26 @@ function bindEnroll(course) {
       ctaMsg(err.message || 'Could not start enrollment. Please try again.');
     }
   });
+}
+
+// Hands the buyer their digital copy. Silent when no link is on file yet:
+// the entitlement is still recorded, and Anthony pastes the link in the
+// course builder when the file is ready.
+async function bindEbook(course) {
+  const host = document.getElementById('cl-ebook');
+  if (!host || !firebaseReady) return;
+  try {
+    const snap = await getDoc(doc(db, 'courses', course.slug, 'private', 'ebook'));
+    const url = snap.exists() ? (snap.data() || {}).url : null;
+    if (!url) return;
+    const a = document.createElement('a');
+    a.className = 'cl-ebook-link';
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = 'Download your digital copy of the book ↓';
+    host.appendChild(a);
+  } catch (e) { /* not enrolled, or nothing on file — say nothing */ }
 }
 
 function bindNotify(course) {
@@ -592,6 +653,7 @@ async function main() {
   bindEnroll(course);
   bindPromo(course);
   bindNotify(course);
+  bindEbook(course);
 
   // Shell + chip. Navigation and sign-out live in the sidebar, so the chip
   // keeps only search, the bell and the avatar.

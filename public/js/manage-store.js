@@ -262,7 +262,9 @@ async function renderOrders() {
       const when = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate().toLocaleDateString() : '—';
       return `<tr>
         <td>${escapeHtml(when)}</td>
-        <td><b>${escapeHtml(o.productName || o.productId || '—')}</b>${o.couponCode ? `<div class="store-addr">code ${escapeHtml(o.couponCode)}</div>` : ''}</td>
+        <td><b>${escapeHtml(o.productName || o.productId || '—')}</b>${o.paperbackUpgrade
+          ? `<div class="store-addr">paperback add-on · ${o.shippingPaid ? money(o.shippingPaid) + ' shipping paid' : 'shipping not paid'}</div>`
+          : ''}${o.couponCode ? `<div class="store-addr">code ${escapeHtml(o.couponCode)}</div>` : ''}</td>
         <td class="store-addr">${escapeHtml(o.email || '—')}</td>
         <td>${money(o.amountTotal)}</td>
         <td>${shippingHtml(o.shipping)}</td>

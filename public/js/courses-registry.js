@@ -261,6 +261,10 @@ export const COURSES = [
     priceLabel: '$197',
     priceNote: 'Paperback shipped to you · US addresses',
     shipsBook: true,
+    includesEbook: true,
+    // The printed copy and its shipping are already in the price here, so
+    // there is nothing to upsell at checkout.
+    paperbackUpgrade: false,
     bundleHref: '/bundle.html',
     whatYoullLearn: ICANT_OUTCOMES,
     requirements: ICANT_REQUIREMENTS,
@@ -303,16 +307,21 @@ export const COURSES = [
     category: 'Mindset & Personal Growth',
     price: 197,
     priceLabel: '$197',
-    priceNote: 'Included in The Complete I Can\'t Experience',
-    // Sold only through the bundle: hidden from the library and the homepage
-    // for people who don't own it, and checkout refuses the slug directly.
-    // Members enrolled through the bundle open it here as normal.
-    sellable: false,
-    showOnSite: false,
-    bundleHref: '/bundle.html',
+    priceNote: 'Digital book included · paperback for shipping only',
+    // Sold on its own now. Every purchase includes the digital edition of the
+    // book, and checkout offers the paperback as a shipping-only add-on
+    // (see COURSE_FULFILLMENT in functions/index.js). The bundle stays for
+    // buyers who want the printed copy with shipping already covered.
+    sellable: true,
+    showOnSite: true,
+    includesEbook: true,
+    paperbackUpgrade: true,
+    paperbackShipping: 9.95,
     whatYoullLearn: ICANT_OUTCOMES,
     requirements: ICANT_REQUIREMENTS,
     includes: [
+      'The digital edition of I Can\'t: Is Not A Strategy — included free',
+      'Paperback available at checkout for shipping only',
       '10 chapter modules plus a Start Here module',
       'The book\'s 10 exercises as a guided, saved Workbook',
       'Anthony\'s story and the core teaching from every chapter',
