@@ -3295,6 +3295,167 @@ function verifySignature(publicKeyPem, payloadRaw, signature, timestamp) {
   }
 }
 
+// ── Delivery events, whichever provider reported them ────────────────────
+//
+// SendGrid and Telnyx both report what happened to a sent email, in different
+// words and different envelopes. Each webhook normalises its payload into the
+// shape below and hands it here, so the CRM has one code path writing
+// timelines, campaign counters and opt-outs no matter who sent the mail.
+//
+// The normalised event:
+//   { event, companyId, campaignId, contactId, emailId, email, timestamp,
+//     url, reason, messageId, eventId }
+//
+// `event` uses the SendGrid vocabulary — delivered, open, click, bounce,
+// dropped, spamreport, unsubscribe — because that is what is already written
+// to Firestore and read by the CRM. Telnyx's names are translated on the way
+// in rather than forking the storage format, which would leave a contact
+// card showing "opened" for one provider and "clicked" for the other.
+async function applyEmailEvent(db, ev, bump, { source }) {
+  const type = ev.event || 'unknown';
+  const { companyId, campaignId, contactId, email } = ev;
+  const timestamp = ev.timestamp || new Date();
+  const eventId = ev.eventId
+    || `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  if (companyId && campaignId) {
+    const evRef = db.collection('companies').doc(companyId)
+      .collection('campaigns').doc(campaignId)
+      .collection('events').doc(eventId);
+    await evRef.set({
+      type,
+      email: email || null,
+      timestamp,
+      url: ev.url || null,
+      reason: ev.reason || null,
+      source,
+      raw: {
+        messageId: ev.messageId || null,
+        useragent: ev.useragent || null,
+        ip: ev.ip || null
+      }
+    }, { merge: true });
+
+    // Aggregate counters.
+    if (type === 'delivered') bump(`${companyId}/${campaignId}`, 'stats.delivered');
+    else if (type === 'open') bump(`${companyId}/${campaignId}`, 'stats.opens');
+    else if (type === 'click') bump(`${companyId}/${campaignId}`, 'stats.clicks');
+    else if (type === 'bounce' || type === 'dropped') bump(`${companyId}/${campaignId}`, 'stats.bounces');
+    else if (type === 'unsubscribe' || type === 'group_unsubscribe' || type === 'spamreport') bump(`${companyId}/${campaignId}`, 'stats.unsubs');
+  }
+
+  // Suppress the contact on an opt-out or complaint.
+  //
+  // Without this, someone who unsubscribed in their mail client — or reported
+  // the message as spam — stays on the list and is mailed again by the next
+  // campaign. Matched by email as well as id, because a provider's own
+  // unsubscribe UI does not carry our contactId.
+  if (companyId && email
+      && (type === 'unsubscribe' || type === 'group_unsubscribe' || type === 'spamreport')) {
+    try {
+      const FV = admin.firestore.FieldValue;
+      const contactsCol = db.collection('companies').doc(companyId).collection('contacts');
+      const match = contactId
+        ? [await contactsCol.doc(contactId).get()].filter((d) => d.exists)
+        : (await contactsCol.where('email', '==', String(email).toLowerCase()).limit(5).get()).docs;
+      for (const d of match) {
+        await d.ref.set({
+          emailOptOut: true,
+          emailOptOutAt: FV.serverTimestamp(),
+          emailOptOutSource: type,
+          marketingConsent: false,
+          tags: FV.arrayUnion('Unsubscribed'),
+          updatedAt: FV.serverTimestamp()
+        }, { merge: true });
+      }
+    } catch (e) {
+      console.warn('[emailEvent] opt-out suppression failed:', e && e.message);
+    }
+  }
+
+  // 1-on-1 contact email events → append activity.
+  if (companyId && contactId && !campaignId) {
+    try {
+      const contactRef = db.collection('companies').doc(companyId)
+        .collection('contacts').doc(contactId);
+      await contactRef.collection('activities').add({
+        type: 'email_event',
+        description: `Email ${type}${email ? ' · ' + email : ''}`,
+        actorUid: 'system',
+        actorName: source,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        meta: {
+          eventType: type,
+          email: email || null,
+          url: ev.url || null,
+          reason: ev.reason || null,
+          messageId: ev.messageId || null
+        }
+      });
+
+      // Delivery state on the message itself, so the thread on the contact
+      // card shows "delivered" or "bounced" rather than leaving every sent
+      // email reading "sent" forever. emailId rides along as custom args
+      // (SendGrid) or metadata (Telnyx), set by sendContactEmail.
+      if (ev.emailId) {
+        const STATUS_RANK = { sent: 0, processed: 1, delivered: 2, open: 3, click: 4 };
+        const patch = {
+          lastEventType: type,
+          lastEventAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+        if (type === 'bounce' || type === 'dropped' || type === 'spamreport') {
+          patch.status = type === 'spamreport' ? 'spam' : type;
+          patch.failureReason = ev.reason || null;
+        } else if (STATUS_RANK[type] !== undefined) {
+          // Never walk the status backwards: events arrive out of order, and
+          // a late "processed" would erase "opened".
+          patch.status = type === 'open' ? 'opened' : (type === 'click' ? 'clicked' : type);
+          patch.statusRank = STATUS_RANK[type];
+        }
+        const emRef = contactRef.collection('emails').doc(String(ev.emailId));
+        const emSnap = await emRef.get();
+        if (emSnap.exists) {
+          const prevRank = emSnap.data().statusRank;
+          if (patch.statusRank !== undefined && prevRank !== undefined && prevRank >= patch.statusRank) {
+            delete patch.status; delete patch.statusRank;
+          }
+          await emRef.set(patch, { merge: true });
+        }
+      }
+    } catch (e) {
+      console.warn('[emailEvent] contact activity write failed:', e && e.message);
+    }
+  }
+}
+
+/** Apply the campaign counters one webhook call accumulated. */
+async function flushCampaignCounters(db, campaignIncrements) {
+  for (const [key, fields] of campaignIncrements.entries()) {
+    const [companyId, campaignId] = key.split('/');
+    const campRef = db.collection('companies').doc(companyId).collection('campaigns').doc(campaignId);
+    const updates = {};
+    Object.keys(fields).forEach((f) => {
+      updates[f] = admin.firestore.FieldValue.increment(fields[f]);
+    });
+    try {
+      await campRef.set(updates, { merge: true });
+    } catch (e) {
+      console.warn('[emailEvent] campaign counter update failed:', e && e.message);
+    }
+  }
+}
+
+function newCounterBag() {
+  const campaignIncrements = new Map();
+  const bump = (cid, field) => {
+    if (!cid) return;
+    const m = campaignIncrements.get(cid) || {};
+    m[field] = (m[field] || 0) + 1;
+    campaignIncrements.set(cid, m);
+  };
+  return { campaignIncrements, bump };
+}
+
 exports.sendgridEventWebhook = onRequest(
   { cors: false, invoker: 'public' },
   async (req, res) => {
@@ -3325,157 +3486,141 @@ exports.sendgridEventWebhook = onRequest(
 
       const events = Array.isArray(req.body) ? req.body : [];
       const db = admin.firestore();
-
-      // Counter per campaign, increments per type.
-      const campaignIncrements = new Map();
-
-      function bump(cid, field) {
-        if (!cid) return;
-        const m = campaignIncrements.get(cid) || {};
-        m[field] = (m[field] || 0) + 1;
-        campaignIncrements.set(cid, m);
-      }
+      const { campaignIncrements, bump } = newCounterBag();
 
       for (const ev of events) {
         try {
-          const type = ev.event || 'unknown';
-          const companyId = ev.companyId;
-          const campaignId = ev.campaignId;
-          const contactId = ev.contactId;
-          const email = ev.email || null;
-          const timestamp = ev.timestamp ? new Date(ev.timestamp * 1000) : new Date();
-          const eventId = ev.sg_event_id || (`${type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
-
-          if (companyId && campaignId) {
-            // Write event to events subcollection.
-            const evRef = db.collection('companies').doc(companyId)
-              .collection('campaigns').doc(campaignId)
-              .collection('events').doc(eventId);
-            await evRef.set({
-              type,
-              email,
-              timestamp,
-              url: ev.url || null,
-              reason: ev.reason || ev.response || null,
-              raw: {
-                sg_message_id: ev.sg_message_id || null,
-                useragent: ev.useragent || null,
-                ip: ev.ip || null
-              }
-            }, { merge: true });
-
-            // Aggregate counters.
-            if (type === 'delivered') bump(`${companyId}/${campaignId}`, 'stats.delivered');
-            else if (type === 'open') bump(`${companyId}/${campaignId}`, 'stats.opens');
-            else if (type === 'click') bump(`${companyId}/${campaignId}`, 'stats.clicks');
-            else if (type === 'bounce' || type === 'dropped') bump(`${companyId}/${campaignId}`, 'stats.bounces');
-            else if (type === 'unsubscribe' || type === 'group_unsubscribe' || type === 'spamreport') bump(`${companyId}/${campaignId}`, 'stats.unsubs');
-          }
-
-          // Suppress the contact on an opt-out or complaint.
-          //
-          // This used to only increment stats.unsubs, so someone who
-          // unsubscribed in their mail client — or reported the message as
-          // spam — stayed on the list and was mailed again by the next
-          // campaign. Matched by email because SendGrid's own unsubscribe UI
-          // does not carry our contactId.
-          if (companyId && email
-              && (type === 'unsubscribe' || type === 'group_unsubscribe' || type === 'spamreport')) {
-            try {
-              const FV = admin.firestore.FieldValue;
-              const contactsCol = db.collection('companies').doc(companyId).collection('contacts');
-              const match = contactId
-                ? [await contactsCol.doc(contactId).get()].filter((d) => d.exists)
-                : (await contactsCol.where('email', '==', String(email).toLowerCase()).limit(5).get()).docs;
-              for (const d of match) {
-                await d.ref.set({
-                  emailOptOut: true,
-                  emailOptOutAt: FV.serverTimestamp(),
-                  emailOptOutSource: type,
-                  marketingConsent: false,
-                  tags: FV.arrayUnion('Unsubscribed'),
-                  updatedAt: FV.serverTimestamp()
-                }, { merge: true });
-              }
-            } catch (e) {
-              console.warn('[webhook] opt-out suppression failed:', e && e.message);
-            }
-          }
-
-          // 1-on-1 contact email events → append activity.
-          if (companyId && contactId && !campaignId) {
-            try {
-              const contactRef = db.collection('companies').doc(companyId)
-                .collection('contacts').doc(contactId);
-              await contactRef.collection('activities').add({
-                type: 'email_event',
-                description: `Email ${type}${email ? ' · ' + email : ''}`,
-                actorUid: 'system',
-                actorName: 'SendGrid',
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                meta: {
-                  eventType: type,
-                  email,
-                  url: ev.url || null,
-                  reason: ev.reason || ev.response || null,
-                  messageId: ev.sg_message_id || null
-                }
-              });
-
-              // Delivery state on the message itself, so the thread on the
-              // contact card shows "delivered" or "bounced" rather than
-              // leaving every sent email reading "sent" forever. emailId is a
-              // customArg set by sendContactEmail.
-              if (ev.emailId) {
-                const STATUS_RANK = { sent: 0, processed: 1, delivered: 2, open: 3, click: 4 };
-                const patch = { lastEventType: type, lastEventAt: admin.firestore.FieldValue.serverTimestamp() };
-                if (type === 'bounce' || type === 'dropped' || type === 'spamreport') {
-                  patch.status = type === 'spamreport' ? 'spam' : type;
-                  patch.failureReason = ev.reason || ev.response || null;
-                } else if (STATUS_RANK[type] !== undefined) {
-                  // Never walk the status backwards: SendGrid delivers events
-                  // out of order, and a late "processed" would erase "opened".
-                  patch.status = type === 'open' ? 'opened' : (type === 'click' ? 'clicked' : type);
-                  patch.statusRank = STATUS_RANK[type];
-                }
-                const emRef = contactRef.collection('emails').doc(String(ev.emailId));
-                const emSnap = await emRef.get();
-                if (emSnap.exists) {
-                  const prevRank = emSnap.data().statusRank;
-                  if (patch.statusRank !== undefined && prevRank !== undefined && prevRank >= patch.statusRank) {
-                    delete patch.status; delete patch.statusRank;
-                  }
-                  await emRef.set(patch, { merge: true });
-                }
-              }
-            } catch (e) {
-              console.warn('[webhook] contact activity write failed:', e && e.message);
-            }
-          }
+          await applyEmailEvent(db, {
+            event: ev.event || 'unknown',
+            companyId: ev.companyId,
+            campaignId: ev.campaignId,
+            contactId: ev.contactId,
+            emailId: ev.emailId,
+            email: ev.email || null,
+            timestamp: ev.timestamp ? new Date(ev.timestamp * 1000) : new Date(),
+            url: ev.url || null,
+            reason: ev.reason || ev.response || null,
+            messageId: ev.sg_message_id || null,
+            useragent: ev.useragent || null,
+            ip: ev.ip || null,
+            eventId: ev.sg_event_id || null
+          }, bump, { source: 'SendGrid' });
         } catch (perEvErr) {
           console.warn('[webhook] event error:', perEvErr && perEvErr.message);
         }
       }
 
-      // Apply aggregate counter updates.
-      for (const [key, fields] of campaignIncrements.entries()) {
-        const [companyId, campaignId] = key.split('/');
-        const campRef = db.collection('companies').doc(companyId).collection('campaigns').doc(campaignId);
-        const updates = {};
-        Object.keys(fields).forEach((f) => {
-          updates[f] = admin.firestore.FieldValue.increment(fields[f]);
-        });
-        try {
-          await campRef.set(updates, { merge: true });
-        } catch (e) {
-          console.warn('[webhook] campaign counter update failed:', e && e.message);
-        }
-      }
+      await flushCampaignCounters(db, campaignIncrements);
 
       res.status(200).send('ok');
     } catch (err) {
       console.error('[webhook] fatal:', err && err.message);
       res.status(200).send('ok'); // Always 200 to prevent SendGrid from retrying.
+    }
+  }
+);
+
+// ── Telnyx email events ──────────────────────────────────────────────────
+//
+// The other half of EMAIL_PROVIDER=telnyx. Without this, mail sent through
+// Telnyx shows on a contact card as sent and never moves: no delivered, no
+// open, no bounce, and an unsubscribe in a mail client never suppresses the
+// contact. The routing ids (companyId, contactId, campaignId, emailId) ride
+// out as metadata on every send and come back on every event.
+//
+// Telnyx's event vocabulary is its own, so it is translated into the names
+// already stored. Two translations are worth naming: `complained` is a spam
+// report, and `failed`/`rejected` are a drop rather than a bounce — the mail
+// never reached a receiving server to bounce off.
+const TELNYX_EMAIL_EVENT_MAP = {
+  delivered: 'delivered',
+  opened: 'open',
+  clicked: 'click',
+  bounced: 'bounce',
+  complained: 'spamreport',
+  unsubscribed: 'unsubscribe',
+  failed: 'dropped',
+  rejected: 'dropped',
+  deferred: 'deferred',
+  sent: 'processed',
+  sending: 'processed',
+  queued: 'processed'
+};
+
+/**
+ * Normalise one Telnyx email event.
+ *
+ * Accepts both envelopes Telnyx uses: the messaging-style
+ * `{ data: { event_type, payload } }` wrapper and a flat email event
+ * `{ data: { type, email_id, metadata } }`. Reading both costs a few lines
+ * and means a webhook that arrives in the other shape is processed rather
+ * than silently dropped.
+ */
+function telnyxEmailEvent(body) {
+  const data = (body && body.data) || body || {};
+  const payload = data.payload || {};
+  const inner = payload.email || payload.message || {};
+
+  // `email.delivered` and `delivered` both appear; keep the last segment.
+  const rawType = String(data.event_type || data.type || payload.type || '')
+    .split('.').pop().toLowerCase();
+
+  const metadata = data.metadata || payload.metadata || inner.metadata || {};
+  const toList = Array.isArray(payload.to) ? payload.to
+    : (Array.isArray(inner.to) ? inner.to : []);
+  const firstTo = toList[0];
+
+  return {
+    rawType,
+    event: TELNYX_EMAIL_EVENT_MAP[rawType] || rawType || 'unknown',
+    eventId: data.id || payload.id || null,
+    messageId: data.email_id || payload.email_id || inner.id || null,
+    email: payload.recipient || payload.email
+      || (firstTo && (firstTo.email || firstTo)) || null,
+    occurredAt: data.occurred_at || payload.occurred_at || null,
+    url: payload.url || payload.link || null,
+    reason: payload.reason || payload.detail || payload.description || null,
+    metadata
+  };
+}
+
+exports.telnyxEmailEventWebhook = onRequest(
+  { cors: false, invoker: 'public' },
+  async (req, res) => {
+    // Fail closed, exactly like the SMS webhooks: an unsigned request is not
+    // a Telnyx request, and an event that suppresses a contact is not
+    // something to accept on trust.
+    if (!telnyxSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
+
+    try {
+      const e = telnyxEmailEvent(req.body);
+      if (!e.rawType) { res.status(200).send('ignored'); return; }
+
+      const md = e.metadata || {};
+      const db = admin.firestore();
+      const { campaignIncrements, bump } = newCounterBag();
+
+      await applyEmailEvent(db, {
+        event: e.event,
+        companyId: md.companyId || null,
+        campaignId: md.campaignId || null,
+        contactId: md.contactId || null,
+        emailId: md.emailId || null,
+        email: e.email,
+        timestamp: e.occurredAt ? new Date(e.occurredAt) : new Date(),
+        url: e.url,
+        reason: e.reason,
+        messageId: e.messageId,
+        eventId: e.eventId
+      }, bump, { source: 'Telnyx' });
+
+      await flushCampaignCounters(db, campaignIncrements);
+      res.status(200).send('ok');
+    } catch (err) {
+      // 200 on anything we cannot act on, so Telnyx does not retry a payload
+      // we will never understand.
+      console.error('[telnyxEmailEvent] fatal:', err && err.message);
+      res.status(200).send('ok');
     }
   }
 );

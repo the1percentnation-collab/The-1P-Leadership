@@ -13,9 +13,13 @@ decided by one environment variable.
 Because it is one variable, the cutover is a config change and the rollback is
 the same change in reverse. No code edit, no redeploy of logic.
 
+**Delivery events follow the provider.** Each posts to its own webhook and
+both write the same CRM timeline; section 5 has the Telnyx endpoint, and it
+should be configured at the same time as the switch.
+
 **Inbound replies are still SendGrid Inbound Parse.** Outbound and inbound are
 independent, and moving inbound means changing an MX record, so it is a
-separate step. Section 5 covers it.
+separate step. Section 6 covers it.
 
 ---
 
@@ -57,6 +61,8 @@ every send is rejected.
 4. **Flip the switch.** Add a repository secret `EMAIL_PROVIDER` with the value
    `telnyx`, then re-run *Deploy Firestore rules + Storage rules + Cloud
    Functions*. The workflow writes it into `functions/.env`.
+   Register the delivery-event webhook in the same sitting (section 5), or
+   every send after this point looks stuck at "sent" in the CRM.
 5. **Send one real test.** Grant course access to an address you control, or
    send from a contact card, and confirm it arrives. Check Mission Control →
    Email for the delivery event.
@@ -176,23 +182,49 @@ If a reply does not arrive, in order:
 
 ---
 
-## 5. What is still on SendGrid
+## 5. Delivery events (do this with the cutover)
 
-Two things, both inbound, both independent of the outbound switch:
+Both providers report what happened after a send, and both feed the same code
+path (`applyEmailEvent`), so a contact card reads the same either way. Each
+provider posts to its own endpoint.
 
-- **Reply capture.** `reply.the1pnation.com` has an MX record pointing at
-  `mx.sendgrid.net`, and `inboundEmailWebhook` parses what SendGrid posts.
-  Moving this to a Telnyx inbox means a new MX record and a new webhook
-  handler, and while the MX is changing, replies can be lost. Do it on its own,
-  not alongside the outbound cutover.
-- **Delivery events.** `sendgridEventWebhook` records delivered, opened,
-  clicked and bounced on the CRM timeline. Mail sent through Telnyx does not
-  reach it, so while `EMAIL_PROVIDER=telnyx` those timelines show the send but
-  not what happened next. A Telnyx email-events webhook is the fix; the
-  metadata it needs (`companyId`, `contactId`) is already attached to every
-  message.
+Telnyx → Mission Control → **Email → Webhooks** (or the sending domain's
+webhook settings) → add:
 
-Neither blocks sending. Both are the next piece of work.
+```
+https://us-central1-the-1p-leadership.cloudfunctions.net/telnyxEmailEventWebhook
+```
+
+Subscribe to delivered, opened, clicked, bounced, complained, unsubscribed and
+failed at minimum. The handler translates Telnyx's names into the ones already
+stored (`complained` → spam report, `failed` and `rejected` → dropped), so
+nothing downstream changes.
+
+The endpoint is **fail-closed**: it verifies the Ed25519 signature over the raw
+body using `TELNYX_PUBLIC_KEY`, the same key the SMS webhooks use, and answers
+403 to anything unsigned. If events never appear, check that variable first.
+
+Routing works because every send carries `companyId`, `contactId`,
+`campaignId` and `emailId` as metadata, and every event carries it back. That
+is what puts an open on the right contact and a bounce on the right campaign.
+
+Set this up at the same time as the provider switch. Without it, mail sent
+through Telnyx shows on a contact card as sent and never moves, and an
+unsubscribe in someone's mail client never suppresses them, which is a
+compliance problem rather than a cosmetic one.
+
+---
+
+## 6. What is still on SendGrid
+
+One thing: **reply capture**. `reply.the1pnation.com` has an MX record pointing
+at `mx.sendgrid.net`, and `inboundEmailWebhook` parses what SendGrid posts.
+Moving it to a Telnyx inbox means a new MX record and a new handler, and while
+the MX is changing, replies can be lost. Do it on its own, in a quiet window,
+not alongside the outbound cutover.
+
+Until then SendGrid stays in the stack for inbound only, which costs nothing
+and breaks nothing.
 
 ---
 
