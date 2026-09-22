@@ -71,6 +71,7 @@ async function createAuthUser(email, password) {
 const PW = 'password123';
 const ownerUid = await createAuthUser('owner@e2e.test', PW);
 const otherUid = await createAuthUser('other@e2e.test', PW);
+const adminUid = await createAuthUser('admin@e2e.test', PW);
 
 const env = await initializeTestEnvironment({
   projectId: PROJECT,
@@ -83,6 +84,8 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'books/i-cant'), { title: 'I Can\'t: Is Not A Strategy', author: 'Anthony Brown Sr.', status: 'live', version: '1', filePath: 'books/i-cant/book.epub', buyHref: '/bundle.html' });
   await setDoc(doc(db, `users/${ownerUid}`), { email: 'owner@e2e.test', role: 'user', onboardingComplete: true, ownedBookIds: ['i-cant'] });
   await setDoc(doc(db, `users/${otherUid}`), { email: 'other@e2e.test', role: 'user', onboardingComplete: true, ownedBookIds: [] });
+  await setDoc(doc(db, `users/${adminUid}`), { email: 'admin@e2e.test', role: 'admin', onboardingComplete: true });
+  await setDoc(doc(db, 'courses/bundle-icant'), { title: 'The Complete I Can\'t Experience', status: 'live', kind: 'bundle', price: 197 });
   await uploadBytes(ref(ctx.storage(`gs://${BUCKET}`), 'books/i-cant/book.epub'), epubBytes, { contentType: 'application/epub+zip' });
 });
 async function readProgress(uid) {
@@ -157,6 +160,7 @@ async function makeContext(who, { device = devices['iPhone 13'], id = 'ctx' } = 
 }
 const OWNER = { email: 'owner@e2e.test', password: PW };
 const OTHER = { email: 'other@e2e.test', password: PW };
+const ADMIN = { email: 'admin@e2e.test', password: PW };
 const opened = (page) => page.waitForSelector('#splash.gone', { timeout: 30000 });
 const fraction = (page) => page.evaluate(() => document.querySelector('foliate-view')?.lastLocation?.fraction ?? null);
 const hasIdb = (page) => page.evaluate(() => new Promise((res) => {
@@ -265,6 +269,77 @@ await t('a member with no books sees the empty shelf, not an error', async () =>
   await C.page.goto(`${ORIGIN}/library`);
   await C.page.waitForSelector('.lib-empty', { timeout: 20000 });
   assert(/empty/i.test(await C.page.textContent('.lib-empty')));
+});
+
+// ── 5. Manage Library: an admin uploads through the page ─────────────────
+const D = await makeContext(ADMIN, { id: 'D', device: { viewport: { width: 1280, height: 900 } } });
+await t('admin uploads a book from Manage Library and it lands in Storage + Firestore', async () => {
+  await D.page.goto(`${ORIGIN}/manage-library.html`);
+  await D.page.waitForSelector('#btn-new-book', { timeout: 20000 });
+  await D.page.click('#btn-new-book');
+  await D.page.fill('#b-title', 'Proof Copy');
+  assert((await D.page.inputValue('#b-id')) === 'proof-copy', 'id not derived from title');
+  await D.page.fill('#b-author', 'Anthony Brown Sr.');
+  await D.page.selectOption('#b-status', 'hidden');
+  await D.page.setInputFiles('#b-epub', EPUB_PATH);
+  await D.page.waitForFunction(() => /✓/.test(document.getElementById('b-epub-name').textContent));
+  await D.page.check('#b-courses input[data-slug="bundle-icant"]');
+  await D.page.click('#b-save');
+  await D.page.waitForFunction(() => !document.getElementById('modal-bd'), null, { timeout: 30000 });
+  await D.page.waitForFunction(() => /Proof Copy/.test(document.getElementById('book-list').textContent));
+  let bookDoc = null; let courseDoc = null; let bytes = 0;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    bookDoc = (await getDoc(doc(ctx.firestore(), 'books/proof-copy'))).data();
+    courseDoc = (await getDoc(doc(ctx.firestore(), 'courses/bundle-icant'))).data();
+    const { getBytes } = await import('firebase/storage');
+    bytes = (await getBytes(ref(ctx.storage(`gs://${BUCKET}`), 'books/proof-copy/book.epub'))).byteLength;
+  });
+  assert(bookDoc && bookDoc.status === 'hidden' && bookDoc.filePath === 'books/proof-copy/book.epub' && /^\d{13}$/.test(bookDoc.version), 'book record: ' + JSON.stringify(bookDoc));
+  assert(bytes === epubBytes.length, `stored ${bytes} bytes, expected ${epubBytes.length}`);
+  assert(courseDoc.grantsBooks && courseDoc.grantsBooks.includes('proof-copy'), 'course not attached: ' + JSON.stringify(courseDoc.grantsBooks));
+  const row = await D.page.textContent('#book-list');
+  assert(/hidden \(proofing\)/.test(row) && /Complete I Can't Experience/.test(row), 'row: ' + row.replace(/\s+/g, ' ').slice(0, 200));
+});
+
+await t('a PDF is refused before any upload', async () => {
+  await D.page.click('#btn-new-book');
+  await D.page.fill('#b-title', 'Wrong File');
+  await D.page.setInputFiles('#b-epub', { name: 'book.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 not a book') });
+  await D.page.waitForFunction(() => document.getElementById('b-err').textContent.length > 0);
+  assert(/not an EPUB/.test(await D.page.textContent('#b-err')));
+  await D.page.click('#b-cancel');
+});
+
+await t('the admin can proof the hidden upload in the reader', async () => {
+  await D.page.goto(`${ORIGIN}/read?book=proof-copy`);
+  await opened(D.page); await D.page.waitForTimeout(500);
+  assert(/Proof Copy/.test(await D.page.title()), 'title: ' + await D.page.title());
+});
+
+await t('a member who was not granted the new book cannot open it', async () => {
+  await A.page.goto(`${ORIGIN}/read?book=proof-copy`);
+  await A.page.waitForFunction(() => /isn't in your library/.test(document.getElementById('splash-msg').textContent), null, { timeout: 20000 });
+});
+
+await t('re-uploading the EPUB publishes a new edition (version changes)', async () => {
+  let before = null;
+  await env.withSecurityRulesDisabled(async (ctx) => { before = (await getDoc(doc(ctx.firestore(), 'books/proof-copy'))).data().version; });
+  await D.page.goto(`${ORIGIN}/manage-library.html`);
+  await D.page.waitForSelector('[data-edit="proof-copy"]', { timeout: 20000 });
+  await D.page.click('[data-edit="proof-copy"]');
+  await D.page.setInputFiles('#b-epub', EPUB_PATH);
+  await D.page.waitForFunction(() => /✓/.test(document.getElementById('b-epub-name').textContent));
+  await sleep(5);
+  await D.page.click('#b-save');
+  await D.page.waitForFunction(() => !document.getElementById('modal-bd'), null, { timeout: 30000 });
+  let after = null;
+  await env.withSecurityRulesDisabled(async (ctx) => { after = (await getDoc(doc(ctx.firestore(), 'books/proof-copy'))).data().version; });
+  assert(after !== before, 'version did not change');
+});
+
+await t('a non-admin is turned away from Manage Library', async () => {
+  await C.page.goto(`${ORIGIN}/manage-library.html`);
+  await C.page.waitForFunction(() => !/manage-library/.test(location.pathname), null, { timeout: 20000 });
 });
 
 await browser.close();

@@ -12,6 +12,7 @@ it never contains one.
 | Course → book link | `grantsBooks` on the course (`COURSE_FULFILLMENT` in `functions/index.js`, overridable on `courses/{slug}`) |
 | Shelf | `/library` (`library.html`, `js/library-page.js`) |
 | Reader | `/read?book={id}[&chapter=N]` (`read.html`, `js/reader.js`, `vendor/foliate-js`) |
+| Admin upload | `/manage-library.html` (`js/manage-library.js`, `js/library-admin.js`); `syncBookGrants` callable grants to existing members |
 
 Every way into a course (checkout, a 100% promo code, enrollFree, admin and
 beta grants) goes through `enrollmentFields()`, which adds the course's books
@@ -40,28 +41,32 @@ Firestore course records, so change them in Manage Courses without a deploy.
    ```
 
    Add any other domain that serves the site to `storage-cors.json` first.
-3. **Upload the book.** Export the final manuscript as EPUB (Vellum, Atticus,
-   Kindle Create, Draft2Digital or Calibre), then:
+3. **Upload the book from the admin area.** Export the final manuscript as
+   EPUB (Vellum, Atticus, Kindle Create, Draft2Digital or Calibre). Open
+   **Library** in the admin rail (`/manage-library.html`), click **Add book**,
+   drop in the EPUB and cover, set visibility to **Hidden**, tick the courses
+   that include it (the two I Can't bundles and the course), and save.
+   - Proof it with **Open in reader** (owners and admins can always open a
+     hidden book), then edit it and switch visibility to **Live**.
+   - **Grant to enrolled members** adds it to anyone who was already in an
+     attached course. New buyers get it automatically.
+   - A new edition is the same flow: edit, choose the new EPUB, save. Every
+     device refreshes its copy on next open; pages and bookmarks are kept.
+
+   The CLI does the same thing if you prefer a terminal:
+   `cd scripts && node upload-book.js --id=i-cant --epub=... --cover=... --status=hidden`.
+4. **Switch the bundle to digital** (one time):
 
    ```bash
    cd scripts && npm install
-   node upload-book.js --id=i-cant --epub=/path/to/book.epub --cover=/path/to/cover.jpg \
-     --title="I Can't: Is Not A Strategy" --author="Anthony Brown Sr." --status=hidden
-   ```
-
-   `--status=hidden` lets you (owner/admin) proof it at `/read?book=i-cant`
-   before members see it. Re-run without it to publish.
-4. **Switch the bundle to digital and grant existing members:**
-
-   ```bash
    node setup-digital-library.js            # dry run
    node setup-digital-library.js --apply
    ```
 
    This sets `shipsBook: false` on `bundle-icant` (an old `true` on the record
-   would otherwise keep collecting addresses), creates `bundle-icant-print`
-   with the same status as the digital bundle, and adds the book to everyone
-   already enrolled.
+   would otherwise keep collecting addresses) and creates `bundle-icant-print`
+   with the same status as the digital bundle. It also grants the book to
+   existing members, the same as the button above.
 
 ## Chapter links from the course
 
@@ -80,7 +85,7 @@ device's offline copy refreshes on next open, and positions carry over.
 
 - `tests/books-fulfillment.test.cjs`: which purchases grant which books (unit).
 - `tests/firestore-rules.test.mjs`, `tests/storage-rules.test.mjs`: ownership can't be self-granted, the EPUB is served to owners only (emulators).
-- `tests/reader-e2e.test.mjs`: the shipped reader and `books.js` against the Auth, Firestore and Storage emulators in Chromium: real download through the rule, position and bookmark sync across two devices, IndexedDB cache and version bump, non-owner denied, library shelf. Needs Playwright and a sample EPUB:
+- `tests/reader-e2e.test.mjs`: the shipped reader and `books.js` against the Auth, Firestore and Storage emulators in Chromium: real download through the rule, position and bookmark sync across two devices, IndexedDB cache and version bump, non-owner denied, library shelf, and an admin uploading through Manage Library (file lands in Storage, record and course attachment in Firestore, PDF refused, hidden book proofable, re-upload bumps the edition, non-admin turned away). Needs Playwright and a sample EPUB:
 
   ```bash
   cd tests && READER_E2E_EPUB=/path/to/sample.epub npm run e2e:reader

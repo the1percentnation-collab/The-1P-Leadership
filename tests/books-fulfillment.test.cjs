@@ -26,7 +26,7 @@ const admin = {
 };
 // eslint-disable-next-line no-new-func
 const lib = new Function('admin', `${src.slice(start, end)}
-  return { courseFulfillment, booksForCourse, enrollmentFields };`)(admin);
+  return { courseFulfillment, booksForCourse, enrollmentFields, grantingSlugsFor };`)(admin);
 
 let passed = 0;
 function ok(name, run) {
@@ -82,6 +82,15 @@ ok('the course record in Firestore overrides the code defaults', () => {
 ok('a missing course record is treated as empty, not a crash', () => {
   assert.deepStrictEqual(lib.booksForCourse('icant', null), ['i-cant']);
   assert.strictEqual(lib.courseFulfillment('icant', undefined).sellable, false);
+});
+
+ok('the sync picks every course that grants the book, from code defaults or the record', () => {
+  const docs = { 'bundle-icant': {}, 'bundle-icant-print': {}, 'icant': {}, '1p-clc': {}, 'mindset-foundations': { grantsBooks: ['i-cant'] } };
+  assert.deepStrictEqual(lib.grantingSlugsFor('i-cant', docs).sort(),
+    ['bundle-icant', 'bundle-icant-print', 'icant', 'mindset-foundations']);
+  assert.deepStrictEqual(lib.grantingSlugsFor('work-less', docs), []);
+  // A record can also take a default grant away.
+  assert.deepStrictEqual(lib.grantingSlugsFor('i-cant', { icant: { grantsBooks: [] }, 'bundle-icant': {} }), ['bundle-icant']);
 });
 
 console.log(`\n${passed} passed`);

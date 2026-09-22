@@ -6329,6 +6329,12 @@ function booksForCourse(slug, course) {
   return [...books];
 }
 
+// Every course slug whose fulfillment (defaults plus the Firestore record)
+// grants `bookId`, given a map of slug -> course record.
+function grantingSlugsFor(bookId, courseDocs) {
+  return Object.keys(courseDocs).filter((slug) => booksForCourse(slug, courseDocs[slug]).includes(bookId));
+}
+
 function enrollmentFields(slug, course) {
   const FV = admin.firestore.FieldValue;
   const f = courseFulfillment(slug, course);
@@ -6624,6 +6630,48 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   });
 
   return { ok: true, url: session.url };
+});
+
+// syncBookGrants — put a digital book in the library of everyone already
+// enrolled in a course that grants it. Checkout and grants do this for new
+// members automatically (enrollmentFields); this covers members who were
+// enrolled before the book was attached, or before it existed. Called from
+// /manage-library.html. users.ownedBookIds is Admin-SDK-only, so a browser
+// cannot do this itself.
+exports.syncBookGrants = onCall(async (request) => {
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admins only.');
+  const bookId = String((request.data && request.data.bookId) || '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,60}$/.test(bookId)) throw new HttpsError('invalid-argument', 'bookId is required.');
+  const bookSnap = await db.collection('books').doc(bookId).get();
+  if (!bookSnap.exists) throw new HttpsError('not-found', 'Unknown book.');
+
+  const coursesSnap = await db.collection('courses').get();
+  const courseDocs = {};
+  coursesSnap.forEach((d) => { courseDocs[d.id] = d.data(); });
+  // Code defaults cover courses with no Firestore record yet.
+  Object.keys(COURSE_FULFILLMENT).forEach((slug) => { if (!courseDocs[slug]) courseDocs[slug] = {}; });
+  const grantingSlugs = grantingSlugsFor(bookId, courseDocs);
+
+  const seen = new Set();
+  let granted = 0;
+  const FV = admin.firestore.FieldValue;
+  let batch = db.batch();
+  let inBatch = 0;
+  for (const slug of grantingSlugs) {
+    const snap = await db.collection('users').where('enrolledCourseSlugs', 'array-contains', slug).get();
+    for (const d of snap.docs) {
+      if (seen.has(d.id)) continue;
+      seen.add(d.id);
+      const owned = Array.isArray(d.data().ownedBookIds) ? d.data().ownedBookIds : [];
+      if (owned.includes(bookId)) continue;
+      batch.set(d.ref, { ownedBookIds: FV.arrayUnion(bookId) }, { merge: true });
+      granted++;
+      if (++inBatch >= 400) { await batch.commit(); batch = db.batch(); inBatch = 0; }
+    }
+  }
+  if (inBatch) await batch.commit();
+  return { ok: true, granted, checked: seen.size, courses: grantingSlugs };
 });
 
 // stripeWebhook — enrolls buyers after checkout and revokes subscription
