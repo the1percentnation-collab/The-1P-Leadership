@@ -5561,15 +5561,24 @@ async function advanceBetaStatus(db, email, status, extra) {
   return true;
 }
 
-/** submitLeadForm hook: a beta application creates or refreshes the record. */
-async function recordBetaApplication(db, { name, email, phone, fields, crmContactId }) {
+/**
+ * Opens or refreshes a tester record.
+ *
+ * Two callers, one shape: the beta form (`source: 'form'`) and an owner adding
+ * somebody by hand from the console (`source: 'manual'`). Everything
+ * downstream — the ladder, the console, the feedback count — reads the same
+ * record either way and never needs to know which door they came through.
+ */
+async function recordBetaApplication(db, { name, email, phone, fields, crmContactId },
+                                     { source = 'form', addedBy = null } = {}) {
   const ref = betaTesterRef(db, email);
   if (!ref) return;
   const FV = admin.firestore.FieldValue;
   const f = fields || {};
   const snap = await ref.get();
   // Re-applying is not a reset: someone already in the cohort keeps their
-  // status and dates, and only their contact details are refreshed.
+  // status and dates, and only their contact details are refreshed. The same
+  // holds for a manual add of somebody who already applied.
   await ref.set({
     email: normalizeEmail(email),
     name: name || (snap.exists ? snap.data().name : '') || '',
@@ -5582,6 +5591,8 @@ async function recordBetaApplication(db, { name, email, phone, fields, crmContac
       courseSlug: BETA_DEFAULT_SLUG,
       cohort: null,
       feedbackCount: 0,
+      source,
+      addedBy,
       appliedAt: FV.serverTimestamp()
     }),
     updatedAt: FV.serverTimestamp()
@@ -5759,16 +5770,44 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
   // an email that never comes, which is the gap this console exists to close.
   const notify = !(data.notify === false);
   if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'A valid email is required.');
-  if (!['approve', 'decline', 'complete', 'note'].includes(action)) {
+  if (!['add', 'approve', 'decline', 'complete', 'note'].includes(action)) {
     throw new HttpsError('invalid-argument', 'Unknown action.');
   }
 
   const ref = betaTesterRef(db, email);
-  const snap = await ref.get();
-  if (!snap.exists) throw new HttpsError('not-found', 'No beta record for that email.');
-  const tester = snap.data();
+  let snap = await ref.get();
   const actor = (request.auth.token && request.auth.token.email) || uid;
   const FV = admin.firestore.FieldValue;
+
+  // `add` is the only action that may run without an existing record — it is
+  // the one that creates it. Somebody invited directly never fills in the beta
+  // form, and granting them the course from the builder writes no record at
+  // all, so without this they stay invisible to the console forever.
+  //
+  // It is deliberately one person at a time: a bulk import of old CRM leads is
+  // a different decision, and not this one.
+  if (action === 'add') {
+    const addName = String(data.name || '').trim().slice(0, 120);
+    if (!addName) throw new HttpsError('invalid-argument', 'A name is required.');
+    const already = snap.exists;
+    await recordBetaApplication(db, {
+      name: addName,
+      email,
+      phone: String(data.phone || '').trim().slice(0, 40) || null,
+      fields: note ? { why: note } : {},
+      crmContactId: null
+    }, { source: 'manual', addedBy: actor });
+    snap = await ref.get();
+    // Adding and approving in one step is the common case for someone already
+    // invited, but it stays opt-in: an add on its own leaves them in
+    // Applicants, where the ordinary decision is made.
+    if (!(data.approve === true)) {
+      return { ok: true, status: snap.data().status || 'applied', added: !already, existed: already };
+    }
+  }
+
+  if (!snap.exists) throw new HttpsError('not-found', 'No beta record for that email.');
+  const tester = snap.data();
 
   if (action === 'note') {
     await ref.set({ note, cohort: cohort || tester.cohort || null, updatedAt: FV.serverTimestamp() }, { merge: true });

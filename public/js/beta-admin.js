@@ -178,6 +178,59 @@ function renderApplicants() {
   });
 }
 
+// ─── Add a tester by hand ────────────────────────────────────────────────
+// For somebody invited directly who will never fill in the beta form. Without
+// this they have no record, so granting them the course from the builder
+// leaves them invisible to the Cohort tab and their feedback uncounted.
+
+async function addTester(ev) {
+  ev.preventDefault();
+  const out = $('add-result');
+  const btn = $('add-submit');
+  const name = $('add-name').value.trim();
+  const email = $('add-email').value.trim();
+  const approve = $('add-approve').checked;
+
+  if (!name) { out.innerHTML = '<div class="auth-error">Please enter a name.</div>'; return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    out.innerHTML = '<div class="auth-error">Please enter a valid email.</div>';
+    return;
+  }
+  if (approve && !confirm(`Add ${email} and approve them now? This grants course access and sends their invite.`)) return;
+
+  btn.disabled = true;
+  out.innerHTML = '<div style="color:var(--gray-light); font-size:12px;">Adding…</div>';
+  try {
+    const res = await httpsCallable(functions, 'setBetaTesterStatus')({
+      action: 'add',
+      name,
+      email,
+      phone: $('add-phone').value.trim() || undefined,
+      approve
+    });
+    const d = (res && res.data) || {};
+    // Adding somebody who already has a record is a no-op on their status, not
+    // an error — say so rather than implying a new tester appeared.
+    const lines = [d.existed
+      ? `${email} was already on the list; their details were refreshed.`
+      : `${name} added.`];
+    if (approve) {
+      lines.push(d.pending
+        ? 'They have no account yet, so access is parked and applies the moment they sign up.'
+        : 'Access granted.');
+      if (d.emailed === false) lines.push('Their invite email could not be sent, so send them the link yourself.');
+    }
+    out.innerHTML = `<div class="${d.emailed === false ? 'auth-error' : 'auth-ok'}">${esc(lines.join(' '))}</div>`;
+    $('add-form').reset();
+    $('add-approve').checked = false;
+    await load();
+  } catch (e) {
+    out.innerHTML = `<div class="auth-error">${esc(e && e.message ? e.message : e)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ─── Cohort ──────────────────────────────────────────────────────────────
 
 function renderCohort() {
@@ -308,6 +361,7 @@ async function main() {
   document.querySelectorAll('.console-tab').forEach((t) =>
     t.addEventListener('click', () => showView(t.dataset.view)));
   $('filter-cohort').addEventListener('change', renderCohort);
+  $('add-form').addEventListener('submit', addTester);
   $('btn-refresh').addEventListener('click', load);
 
   const wanted = new URLSearchParams(location.search).get('view');
