@@ -460,22 +460,25 @@ export const COURSES = [
     short: 'Business',
     subtitle: 'Build a business that reflects your values and sustains your life.',
     status: 'coming-soon',
+    // Lessons live in Firestore, seeded from scripts/course-content/
+    // business-alignment by `node seed-course.js business-alignment`.
+    contentSource: 'firestore',
     eyebrow: 'Self-paced · 6 Modules',
     category: 'Business & Purpose',
     price: 297,
     priceLabel: '$297',
     whatYoullLearn: [
-      'Run the alignment audit first — a baseline of where your business and your values diverge.',
+      'Run the alignment audit first, a baseline of where your business and your values diverge.',
       'Translate your values into offers, pricing, and positioning that feel like you.',
       'Set boundaries and capacity limits that protect the life the business is supposed to fund.',
       'Connect money, mission, and metrics so growth doesn\'t drift you off course.',
-      'Install an operating rhythm — weekly and quarterly — that keeps the business aligned by default.',
+      'Install an operating rhythm, weekly and quarterly, that keeps the business aligned by default.',
       'Finish with the 4-week 1% Challenge and a re-run audit that shows the realignment.'
     ],
     requirements: [
       'A business, side hustle, or serious business idea to apply the work to.',
       '15–20 minutes a day for the rewirement practices, plus one honest audit at the start and end.',
-      'A willingness to change what the audit reveals — including offers and prices.'
+      'A willingness to change what the audit reveals, including offers and prices.'
     ],
     includes: [
       '6 modules of on-demand lessons',
@@ -486,7 +489,7 @@ export const COURSES = [
     ],
     description: [
       'Plenty of businesses grow while their owners shrink. This course is for builders who want the ' +
-      'other thing: a business that reflects their values and sustains their life — and still performs.',
+      'other thing: a business that reflects their values and sustains their life, and still performs.',
       METHOD_PARAGRAPH,
       'Six modules walk the full realignment: audit where you actually are, turn values into value, ' +
       'rebuild offers, set capacity boundaries, wire money to mission with honest metrics, and install ' +
@@ -498,23 +501,23 @@ export const COURSES = [
         title: 'Start Here: The Alignment Audit',
         lessons: [
           { t: 'How this course works: Learn → Rewire → Measure', d: '4 min' },
-          { t: 'The Alignment Audit — your baseline', d: '15 min', kind: 'assessment' }
+          { t: 'The Alignment Audit: your baseline', d: '15 min', kind: 'assessment' }
         ]
       },
       {
         title: 'Realign the Business',
         lessons: [
-          { t: 'Module 1 — The Alignment Audit, debriefed: where you drifted', d: '22 min' },
+          { t: 'Module 1: The Alignment Audit, debriefed · where you drifted', d: '22 min' },
           { t: 'Rewirement: Name the one misalignment costing you most', d: '10 min', kind: 'practice' },
-          { t: 'Module 2 — Values Into Value: positioning that feels like you', d: '25 min' },
+          { t: 'Module 2: Values Into Value · positioning that feels like you', d: '25 min' },
           { t: 'Rewirement: Rewrite one piece of your messaging', d: '12 min', kind: 'practice' },
-          { t: 'Module 3 — Offers That Reflect You', d: '25 min' },
+          { t: 'Module 3: Offers That Reflect You', d: '25 min' },
           { t: 'Rewirement: The offer alignment scorecard', d: '12 min', kind: 'practice' },
-          { t: 'Module 4 — Boundaries & Capacity: protect the life the business funds', d: '22 min' },
+          { t: 'Module 4: Boundaries & Capacity · protect the life the business funds', d: '22 min' },
           { t: 'Rewirement: Set one boundary this week', d: '8 min', kind: 'practice' },
-          { t: 'Module 5 — Money, Mission & Metrics', d: '25 min' },
+          { t: 'Module 5: Money, Mission & Metrics', d: '25 min' },
           { t: 'Rewirement: Your three aligned metrics', d: '10 min', kind: 'practice' },
-          { t: 'Module 6 — The Aligned Operating Rhythm', d: '22 min' },
+          { t: 'Module 6: The Aligned Operating Rhythm', d: '22 min' },
           { t: 'Rewirement: Book your weekly alignment review', d: '8 min', kind: 'practice' }
         ]
       },

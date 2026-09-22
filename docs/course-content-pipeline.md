@@ -93,10 +93,18 @@ FOUNDING coupon and the certification config. Do not fold it into this one.
 | Slug | Modules | State |
 |---|---|---|
 | `mindset-foundations` | 7 (Start Here, five teaching modules, the 1% Challenge) | Written, not yet seeded |
+| `business-alignment` | 8 (Start Here with the Alignment Audit, six teaching modules, the 1% Challenge) | Written, not yet seeded |
 
-Still outlined in the registry with no lessons written: `business-alignment`
-(6 modules, $297), `faith-leadership` (4 modules, $197),
-`performance-discipline` (5 modules, $197). Each is now content work only.
+Still outlined in the registry with no lessons written: `faith-leadership`
+(4 modules, $197) and `performance-discipline` (5 modules, $197). Both are now
+content work only.
+
+Business Alignment differs from Mindset Foundations in one way worth knowing
+before writing the next pack: its audit is half hard numbers (revenue
+concentration, time split, the drain, owner pay) and half self-assessment, and
+its rewirements are client-facing. A buyer who runs it will reprice something,
+publish something, or state a boundary to a real person. That is the standard
+for any course sold to owners rather than to individuals.
 
 ## Known gap: assessments and challenge tracking
 

@@ -11,7 +11,8 @@ The order matters. Each step assumes the ones above it are done.
 | I Can't: The Course | ✅ 11 modules | n/a | sold only inside the bundle |
 | 1P Certified Life Coach ($3,497) | ✅ 8 modules seeded + exam bank | ❌ | status is `coming-soon`; cohort dates + Stripe |
 | Mindset Foundations ($197) | ✅ 7 modules written | ❌ | not seeded yet; Stripe + flip live |
-| Business Alignment, Faith & Leadership, Performance & Discipline | ❌ none | ❌ | outline only, no lessons |
+| Business Alignment ($297) | ✅ 8 modules written | ❌ | not seeded yet; Stripe + flip live |
+| Faith & Leadership, Performance & Discipline | ❌ none | ❌ | outline only, no lessons |
 | Silence The Voice | 6 modules | ❌ | superseded draft, archived by step 1 |
 
 ## 1. Fix the CLC slug collision — ALREADY DONE
@@ -212,9 +213,30 @@ Before you flip it live:
   enrolled.
 - Set `courses/mindset-foundations` to `live` in `/manage-courses.html`.
 
-The other three self-paced courses (Business Alignment $297, Faith & Leadership
-$197, Performance & Discipline $197) are now content work only. The pipeline,
-the seeder and the tests are built. See `docs/course-content-pipeline.md`.
+## 7. Seed Business Alignment
+
+Same pipeline, same command, eight modules instead of seven.
+
+```bash
+cd scripts
+node seed-course.js business-alignment --dry-run
+node seed-course.js business-alignment
+```
+
+Start Here carries the Alignment Audit: four hard numbers (revenue
+concentration, time split, the biggest drain, what the business actually paid
+the owner) plus 30 statements across the six modules. Module 8 re-runs both.
+The statements are identical in both files and the test suite fails if they
+ever drift.
+
+One thing to read before selling it. The rewirements in this course are
+client-facing: rewriting live messaging, repricing or retiring an offer,
+stating a boundary to a real client. A buyer will ask you about at least one of
+them, so run the ones that apply to your own business first.
+
+The two remaining self-paced courses (Faith & Leadership $197, Performance &
+Discipline $197) are now content work only. The pipeline, the seeder and the
+tests are built. See `docs/course-content-pipeline.md`.
 
 ## Known open items
 
