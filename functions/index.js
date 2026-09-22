@@ -17,7 +17,17 @@ const sgMail = require('@sendgrid/mail');
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
 
+// The bootstrap owner's IDENTITY, not an inbox. This address decides who may
+// claim the owner role (bootstrapOwner), who is given `role: 'owner'` on first
+// sign-in, and which account cannot be deleted. It matches the Firebase auth
+// account and changing it is an account migration, not a config change: point
+// it at an address that cannot sign in and ownership goes with it.
 const OWNER_EMAIL = 'the1percentnation@gmail.com';
+
+// Where the platform's own notifications land: bug reports and new-lead
+// alerts. Separate from OWNER_EMAIL on purpose, so the inbox can move to the
+// business domain without touching who owns the account.
+const NOTIFY_EMAIL = 'anthonybrown@the1pnation.com';
 
 // The address every member-facing email comes from.
 //
@@ -9464,7 +9474,7 @@ exports.reportBug = onCall({ secrets: [sendgridKey, anthropicKey] }, async (requ
     ].join('');
 
     await sendEmail({
-      to: OWNER_EMAIL,
+      to: NOTIFY_EMAIL,
       from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
       replyTo: REPLY_TO,
       subject: `[Bug][${aiSeverity.toUpperCase()}] ${shortDesc}`,
@@ -11805,7 +11815,7 @@ async function notifyOwnerOfLead({ source, name, email, phone, fields, contactUr
       .map(([k, v]) => `${k}: ${v}`).join('\n');
 
     await sendEmail({
-      to: OWNER_EMAIL,
+      to: NOTIFY_EMAIL,
       from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
       // Replying to the notification replies to the person who wrote in.
       replyTo: email || REPLY_TO,
