@@ -170,6 +170,48 @@ console.log('beta cohort — the record behind the beta console');
     assert.strictEqual(d.why, 'again');
   });
 
+  // ── Manual add ─────────────────────────────────────────────────────────
+  // The console's "Add a tester" path runs through the same helper as the beta
+  // form, so a hand-added tester is indistinguishable downstream apart from
+  // the source stamp that says who put them there.
+
+  await ok('a manual add opens the record at applied and stamps who added them', async () => {
+    const db = makeDb({});
+    await B.recordBetaApplication(
+      db,
+      { name: 'Dana', email: 'a@b.com', fields: {} },
+      { source: 'manual', addedBy: 'owner@x.com' }
+    );
+    const d = db._docs.get('betaTesters/a@b.com');
+    assert.strictEqual(d.status, 'applied');
+    assert.strictEqual(d.source, 'manual');
+    assert.strictEqual(d.addedBy, 'owner@x.com');
+  });
+
+  await ok('a form application is stamped as such without being asked', async () => {
+    const db = makeDb({});
+    await B.recordBetaApplication(db, { name: 'Dana', email: 'a@b.com', fields: {} });
+    const d = db._docs.get('betaTesters/a@b.com');
+    assert.strictEqual(d.source, 'form');
+    assert.strictEqual(d.addedBy, null);
+  });
+
+  await ok('manually adding someone already in the cohort does not reset them', async () => {
+    const db = makeDb({
+      'betaTesters/a@b.com': tester({ status: 'active', feedbackCount: 4, source: 'form' })
+    });
+    await B.recordBetaApplication(
+      db,
+      { name: 'Dana', email: 'a@b.com', phone: '555', fields: {} },
+      { source: 'manual', addedBy: 'owner@x.com' }
+    );
+    const d = db._docs.get('betaTesters/a@b.com');
+    assert.strictEqual(d.status, 'active');
+    assert.strictEqual(d.feedbackCount, 4);
+    assert.strictEqual(d.source, 'form');      // not rewritten
+    assert.strictEqual(d.phone, '555');        // details still refreshed
+  });
+
   // ── Feedback ───────────────────────────────────────────────────────────
 
   await ok('feedback from a tester increments their count', async () => {
