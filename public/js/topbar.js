@@ -622,26 +622,85 @@ export function renderTopbar({
       document.removeEventListener('touchend', onDocDismiss);
     };
 
+    // The toggle sits inside a horizontally scrollable chip strip, so its
+    // position on screen has nothing to do with the viewport's right edge.
+    // The old code anchored the menu with `right: innerWidth - rect.right`,
+    // which on a phone (button scrolled to the far left of the strip) pushed
+    // a 170px+ menu most of the way off the left edge: half of it was
+    // invisible and none of it was tappable. Measure the menu, right-align it
+    // to the button, then clamp both axes into the viewport instead.
+    const positionMenu = (menu) => {
+      const EDGE = 8;   // minimum breathing room from any viewport edge
+      const GAP = 6;    // space between the toggle and the menu
+      const rect = ddBtn.getBoundingClientRect();
+      const vw = document.documentElement.clientWidth || window.innerWidth;
+      const vh = window.innerHeight;
+
+      menu.style.maxWidth = Math.max(160, vw - EDGE * 2) + 'px';
+
+      const width = menu.offsetWidth;
+      let left = rect.right - width;
+      if (left + width > vw - EDGE) left = vw - EDGE - width;
+      if (left < EDGE) left = EDGE;
+      menu.style.right = 'auto';
+      menu.style.left = Math.round(left) + 'px';
+
+      // Flip above the toggle when there is more room up there — a short
+      // landscape phone otherwise gets a 2-item scroll box.
+      const below = vh - rect.bottom - GAP - EDGE;
+      const above = rect.top - GAP - EDGE;
+      if (below < 180 && above > below) {
+        menu.style.top = 'auto';
+        menu.style.bottom = Math.round(vh - rect.top + GAP) + 'px';
+        menu.style.maxHeight = Math.max(140, above) + 'px';
+      } else {
+        menu.style.bottom = 'auto';
+        menu.style.top = Math.round(rect.bottom + GAP) + 'px';
+        menu.style.maxHeight = Math.max(140, below) + 'px';
+      }
+      menu.style.overflowY = 'auto';
+    };
+
+    // The menu is position:fixed, so anything that moves the toggle (page
+    // scroll, the chip strip scrolling sideways, a rotation) would leave it
+    // stranded. Re-anchor instead of closing.
+    const onReflow = () => {
+      const m = document.getElementById(MENU_ID);
+      if (m) positionMenu(m);
+    };
+
+    const bindReflow = () => {
+      window.addEventListener('resize', onReflow);
+      window.addEventListener('orientationchange', onReflow);
+      document.addEventListener('scroll', onReflow, { capture: true, passive: true });
+    };
+
+    const unbindReflow = () => {
+      window.removeEventListener('resize', onReflow);
+      window.removeEventListener('orientationchange', onReflow);
+      document.removeEventListener('scroll', onReflow, { capture: true });
+    };
+
     const closeMenu = () => {
       unbindDismiss();
+      unbindReflow();
       const m = document.getElementById(MENU_ID);
       if (m) m.remove();
     };
 
     const openMenu = () => {
-      const rect = ddBtn.getBoundingClientRect();
       const menu = document.createElement('div');
       menu.className = 'c-admin-dropdown-menu';
       menu.id = MENU_ID;
-      menu.style.top = (rect.bottom + 6) + 'px';
-      menu.style.right = Math.max(8, window.innerWidth - rect.right) + 'px';
-      // Keep the menu inside the viewport on short phone screens.
-      menu.style.maxHeight = Math.max(180, window.innerHeight - rect.bottom - 20) + 'px';
-      menu.style.overflowY = 'auto';
+      // Hidden for the first frame: it has to be in the DOM to be measured,
+      // and an unpositioned menu flashing at 0,0 is worse than no menu.
+      menu.style.visibility = 'hidden';
       menu.innerHTML = adminBtns.map((b) =>
         `<a class="c-admin-dropdown-item" href="${escapeHtml(b.href)}">${escapeHtml(b.label)}</a>`
       ).join('');
       document.body.appendChild(menu);
+      positionMenu(menu);
+      menu.style.visibility = '';
 
       // Navigate explicitly on tap. Relying on the anchor's default click is
       // fragile on mobile, where a scroll-cancelled or re-targeted click can
@@ -656,6 +715,8 @@ export function renderTopbar({
           window.location.assign(href);
         });
       });
+
+      bindReflow();
 
       // Bind dismissal after this tick so the opening tap doesn't immediately
       // trigger it.
