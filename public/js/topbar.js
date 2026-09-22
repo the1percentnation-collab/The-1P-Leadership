@@ -62,6 +62,9 @@ const ADMIN_BUTTONS = [
   { key: 'affiliates-admin', href: '/manage-affiliates.html', label: 'Affiliates', requires: 'admin' },
   { key: 'certification-admin', href: '/certification-admin.html', label: 'Certification', requires: 'admin' },
   { key: 'admin', href: '/admin.html', label: 'Admin', requires: 'admin' },
+  // Beta runs on its own clock during a launch, so it earns a place here
+  // rather than only on the owner console it hangs off.
+  { key: 'beta-admin', href: '/beta-admin.html', label: 'Beta', requires: 'owner' },
   { key: 'owner', href: '/owner.html', label: 'Owner', requires: 'owner' }
 ];
 

@@ -295,7 +295,9 @@ async function main() {
   if (!u) { location.replace('/login.html?next=' + encodeURIComponent('/beta-admin.html')); return; }
 
   const info = await getRoleInfo(true);
-  renderTopbar({ user: u, role: info.role, currentPage: 'owner' });
+  // 'beta-admin' matches this page's key in the topbar's privileged menu, so
+  // the menu drops Beta (where we already are) and keeps Owner reachable.
+  renderTopbar({ user: u, role: info.role, currentPage: 'beta-admin' });
   if (info.role !== 'owner') {
     gate(`You are signed in as <b>${esc(u.email)}</b> but your role is <b>${esc(info.role)}</b>. Owner access required.`);
     return;
