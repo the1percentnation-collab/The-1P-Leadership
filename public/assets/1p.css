@@ -290,3 +290,9 @@ footer {
   .form-panel-header { padding: 24px; }
   .nav-inner { padding: 0 20px; }
 }
+
+/* Mobile only: form controls at 16px so iOS Safari doesn't auto-zoom on focus.
+   Scoped to phones; desktop rendering is unchanged. */
+@media (max-width: 760px) {
+  input, select, textarea { font-size: 16px !important; }
+}

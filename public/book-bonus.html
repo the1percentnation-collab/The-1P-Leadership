@@ -278,7 +278,13 @@
     @media (max-width: 600px) {
       .page-wrap { padding: calc(var(--nav-h) + 42px) 20px 60px; }
     }
-  </style>
+  
+/* Mobile only: form controls at 16px so iOS Safari doesn't auto-zoom on focus.
+   Scoped to phones; desktop rendering is unchanged. */
+@media (max-width: 760px) {
+  input, select, textarea { font-size: 16px !important; }
+}
+</style>
 </head>
 <body>
 

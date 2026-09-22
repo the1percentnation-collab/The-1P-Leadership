@@ -181,7 +181,13 @@
       .panel-title { font-size: 32px; }
       footer { padding: 24px 20px; }
     }
-  </style>
+  
+/* Mobile only: form controls at 16px so iOS Safari doesn't auto-zoom on focus.
+   Scoped to phones; desktop rendering is unchanged. */
+@media (max-width: 760px) {
+  input, select, textarea { font-size: 16px !important; }
+}
+</style>
 </head>
 <body>
 <div class="hero-grid"></div>

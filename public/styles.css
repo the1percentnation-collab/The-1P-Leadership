@@ -12846,3 +12846,9 @@ body.tour-open { overflow: hidden; }
   .tour-foot-actions .btn { flex: 1 1 0; justify-content: center; text-align: center; }
   .tour-skip { text-align: center; padding-top: 4px; }
 }
+
+/* Mobile only: form controls at 16px so iOS Safari doesn't auto-zoom on focus.
+   Scoped to phones; desktop rendering is unchanged. */
+@media (max-width: 760px) {
+  input, select, textarea { font-size: 16px !important; }
+}
