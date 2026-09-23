@@ -274,6 +274,38 @@
     .kr-text{font-size:14px;font-weight:400;color:var(--gray-400);flex:1;}
     .kr-bar-wrap{width:100px;height:3px;background:var(--border);border-radius:2px;flex-shrink:0;}
     .kr-bar{height:100%;background:var(--red);border-radius:2px;}
+    .kr-tag{font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.12em;
+      text-transform:uppercase;padding:3px 8px;border-radius:2px;flex-shrink:0;}
+    .kr-tag.lead{color:var(--red);border:1px solid var(--border-red);background:var(--red-glow);}
+    .kr-tag.lag{color:var(--gray-400);border:1px solid var(--border);}
+
+    /* LEAD VS LAG MEASURES */
+    .ll-explain{background:var(--charcoal);border:1px solid var(--border);border-radius:12px;
+      padding:28px;margin-bottom:16px;}
+    .ll-explain p{font-size:14px;font-weight:300;color:var(--gray-400);line-height:1.7;}
+    .ll-explain p + p{margin-top:10px;}
+    .ll-explain strong{color:var(--white);font-weight:600;}
+    .ll-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+    .ll-card{background:var(--charcoal);border:1px solid var(--border);border-radius:12px;padding:24px 26px;}
+    .ll-card.lead{border-color:var(--border-red);}
+    .ll-card-tag{display:inline-block;font-family:var(--font-mono);font-size:9px;font-weight:700;
+      letter-spacing:0.18em;text-transform:uppercase;padding:4px 10px;border-radius:2px;margin-bottom:14px;}
+    .ll-card.lag .ll-card-tag{color:var(--gray-400);border:1px solid var(--border);}
+    .ll-card.lead .ll-card-tag{color:var(--red);border:1px solid var(--border-red);background:var(--red-glow);}
+    .ll-card-title{font-family:var(--font-display);font-size:26px;letter-spacing:0.04em;color:var(--white);margin-bottom:4px;}
+    .ll-card-sub{font-size:12px;font-weight:300;color:var(--gray-600);margin-bottom:16px;}
+    .ll-items{display:flex;flex-direction:column;gap:10px;}
+    .ll-item{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-radius:6px;
+      background:var(--surface);border:1px solid var(--border);}
+    .ll-item-val{font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.06em;
+      flex-shrink:0;padding-top:1px;white-space:nowrap;min-width:72px;}
+    .ll-card.lag .ll-item-val{color:var(--white);}
+    .ll-card.lead .ll-item-val{color:var(--red);}
+    .ll-item-text{font-size:13px;font-weight:400;color:var(--gray-400);line-height:1.5;}
+    .ll-review{background:var(--charcoal);border:1px solid var(--border);border-left:3px solid var(--red);
+      border-radius:8px;padding:16px 20px;font-size:13px;font-weight:300;color:var(--gray-400);
+      line-height:1.6;margin-bottom:32px;}
+    .daily-sub{font-size:13px;font-weight:300;color:var(--gray-600);margin:-14px 0 20px;}
 
     .habits-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:24px;}
     .habit-card{
@@ -323,6 +355,7 @@
     @media(max-width:900px){
       .problem-inner{grid-template-columns:1fr;}
       .habits-grid{grid-template-columns:1fr;}
+      .ll-grid{grid-template-columns:1fr;}
     }
     @media(max-width:600px){
       .hero{padding:calc(var(--nav-h) + 42px) 24px 60px;}
@@ -718,6 +751,30 @@
         </div>
       </div>
 
+      <!-- LEAD VS LAG MEASURES -->
+      <div style="margin-bottom:12px;">
+        <div style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:var(--gray-600);margin-bottom:16px;">Your Scoreboard: Lead vs Lag Measures</div>
+      </div>
+      <div class="ll-explain">
+        <p><strong>Lag measures are the results you want.</strong> Income hit. Milestone reached. By the time you can read one, it is already history. You cannot act on a lag measure directly.</p>
+        <p><strong>Lead measures are the actions that produce those results.</strong> They are predictive, and they are inside your control today. Track both, but put your effort on the lead side. Move the lead measures consistently and the lag measures follow.</p>
+      </div>
+      <div class="ll-grid">
+        <div class="ll-card lag">
+          <div class="ll-card-tag">Lag · Results</div>
+          <div class="ll-card-title">WHAT YOU WANT</div>
+          <div class="ll-card-sub">Read these in your weekly review. Do not stare at them daily.</div>
+          <div class="ll-items" id="ll-lag-list"></div>
+        </div>
+        <div class="ll-card lead">
+          <div class="ll-card-tag">Lead · Actions</div>
+          <div class="ll-card-title">WHAT YOU CONTROL</div>
+          <div class="ll-card-sub">Act on these every day. This is where the plan lives.</div>
+          <div class="ll-items" id="ll-lead-list"></div>
+        </div>
+      </div>
+      <div class="ll-review" id="ll-review-note"></div>
+
       <!-- OKR PLAN -->
       <div style="margin-bottom:12px;">
         <div style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:var(--gray-600);margin-bottom:16px;">Your 90-Day OKR Framework</div>
@@ -731,6 +788,7 @@
       <!-- DAILY CHECKLIST -->
       <div class="daily-checklist">
         <div class="daily-title">DAILY EXECUTION CHECKLIST</div>
+        <div class="daily-sub">Every item below is a lead measure. All six are inside your control today.</div>
         <div class="check-rows stagger-list" id="checklist-output"></div>
       </div>
 
@@ -837,7 +895,8 @@ function generatePlan() {
   document.getElementById('out-income').innerHTML = `<span class="red">$${income.toLocaleString()}</span>`;
   document.getElementById('out-monthly').innerHTML = `<span class="red">$${monthly.toLocaleString()}</span>`;
   document.getElementById('out-weekly').innerHTML = `<span class="red">$${weekly.toLocaleString()}</span>`;
-  document.getElementById('out-daily').innerHTML = `<span class="red">${parseInt(hours) >= 20 ? '5' : parseInt(hours) >= 10 ? '3' : '2'}</span>`;
+  const dailyActions = parseInt(hours) >= 20 ? 5 : parseInt(hours) >= 10 ? 3 : 2;
+  document.getElementById('out-daily').innerHTML = `<span class="red">${dailyActions}</span>`;
 
   // Generate OKR blocks
   const focusLabels = {
@@ -861,27 +920,27 @@ function generatePlan() {
       phase: 'M1', objective: 'ESTABLISH THE FOUNDATION',
       period: 'Month 1 · Days 1–30',
       krs: [
-        { text: `Define 3 revenue actions that generate $${Math.round(q1Target/3).toLocaleString()} toward Q1 target`, progress: 0 },
-        { text: `Build a daily habit stack matching your ${hours}-hour/week commitment`, progress: 0 },
-        { text: `Complete a full audit of current blockers: ${barrier}`, progress: 0 },
+        { text: `Define 3 revenue actions that generate $${Math.round(q1Target/3).toLocaleString()} toward Q1 target`, progress: 0, type: 'lead' },
+        { text: `Build a daily habit stack matching your ${hours}-hour/week commitment`, progress: 0, type: 'lead' },
+        { text: `Complete a full audit of current blockers: ${barrier}`, progress: 0, type: 'lead' },
       ]
     },
     {
       phase: 'M2', objective: 'BUILD EXECUTION MOMENTUM',
       period: 'Month 2 · Days 31–60',
       krs: [
-        { text: `Hit $${Math.round(income/6).toLocaleString()} in cumulative progress toward annual target`, progress: 0 },
-        { text: `Establish ${reviewDay} weekly review habit — track 4 consecutive reviews`, progress: 0 },
-        { text: `Document and systemize top 2 income-generating activities`, progress: 0 },
+        { text: `Hit $${Math.round(income/6).toLocaleString()} in cumulative progress toward annual target`, progress: 0, type: 'lag' },
+        { text: `Establish ${reviewDay} weekly review habit — track 4 consecutive reviews`, progress: 0, type: 'lead' },
+        { text: `Document and systemize top 2 income-generating activities`, progress: 0, type: 'lead' },
       ]
     },
     {
       phase: 'M3', objective: 'COMPOUND THE GAINS',
       period: 'Month 3 · Days 61–90',
       krs: [
-        { text: `Reach $${Math.round(income/4).toLocaleString()} toward annual target — 25% milestone`, progress: 0 },
-        { text: `Achieve consistency score of 80%+ on daily execution checklist`, progress: 0 },
-        { text: `Complete a 90-day retrospective and set next quarter's OKRs`, progress: 0 },
+        { text: `Reach $${Math.round(income/4).toLocaleString()} toward annual target — 25% milestone`, progress: 0, type: 'lag' },
+        { text: `Achieve consistency score of 80%+ on daily execution checklist`, progress: 0, type: 'lead' },
+        { text: `Complete a 90-day retrospective and set next quarter's OKRs`, progress: 0, type: 'lead' },
       ]
     }
   ];
@@ -900,6 +959,7 @@ function generatePlan() {
           <div class="kr-row">
             <div class="kr-num">KR ${i+1}</div>
             <div class="kr-text">${kr.text}</div>
+            <div class="kr-tag ${kr.type}">${kr.type}</div>
             <div class="kr-bar-wrap"><div class="kr-bar" style="width:${kr.progress}%"></div></div>
           </div>
         `).join('')}
@@ -934,6 +994,34 @@ function generatePlan() {
     `;
   }).join('');
   document.getElementById('habits-output').innerHTML = habitsHTML;
+
+  // Lead vs lag scoreboard. Lag measures are outcomes read after the fact;
+  // lead measures are the controllable actions the plan bets on.
+  const reviewPhrase = reviewDay === 'Flexible' ? 'on a day you pick each week'
+    : reviewDay === 'Daily' ? 'as a short daily check-in'
+    : 'every ' + reviewDay;
+  const lagMeasures = [
+    { val: '$' + income.toLocaleString(), text: 'Annual income target' },
+    { val: '$' + Math.round(income/4).toLocaleString(), text: '25% milestone banked by day 90' },
+    { val: '$' + weekly.toLocaleString(), text: 'Weekly revenue pace that keeps the year on track' },
+  ];
+  const leadMeasures = [
+    { val: dailyActions + '/day', text: 'Revenue-generating actions completed each working day' },
+    { val: hours + ' hrs/wk', text: 'Focused execution hours protected on your calendar' },
+    { val: activeHabits.length + ' habits', text: 'Daily 1% habit stack held at 80% completion or better' },
+    { val: '1/wk', text: 'Progress review completed ' + reviewPhrase },
+  ];
+  const llRow = m => `
+    <div class="ll-item">
+      <div class="ll-item-val">${m.val}</div>
+      <div class="ll-item-text">${m.text}</div>
+    </div>`;
+  document.getElementById('ll-lag-list').innerHTML = lagMeasures.map(llRow).join('');
+  document.getElementById('ll-lead-list').innerHTML = leadMeasures.map(llRow).join('');
+  document.getElementById('ll-review-note').textContent =
+    'How to use this in your weekly review: score the lead measures first. ' +
+    'If the lead measures are green and the lag measures are not moving, change the actions, not the effort. ' +
+    'If the lead measures are red, the problem is not the goal. It is the week. Rebuild the week and go again.';
 
   // Generate daily checklist
   const checkItems = [
