@@ -81,11 +81,20 @@ async function boot() {
   bind(user);
   if (await pushAvailable()) {
     $('cm-push-row').hidden = false;
+    const note = $('cm-push-note');
     if (isIosNotInstalled()) {
-      const note = $('cm-push-note');
       note.hidden = false;
       note.textContent = 'On iPhone, add this site to your Home Screen first (Share → Add to Home Screen) to get push.';
+    } else if (state.channels.push && Notification.permission !== 'granted') {
+      // The saved plan says push, but this browser can't receive it. Show
+      // what's actually true rather than a checked box that does nothing.
+      state.channels.push = false;
+      $('cm-ch-push').checked = false;
+      note.hidden = false;
+      note.textContent = 'Push isn\'t enabled on this device yet. Turn it on to get reminders here.';
     }
+  } else {
+    state.channels.push = false;
   }
   // Editing skips the intro; the member already knows the law.
   go(existing ? 1 : 0);
@@ -276,21 +285,30 @@ function bind(user) {
 
   $('cm-ch-email').addEventListener('change', (e) => { state.channels.email = e.target.checked; });
   $('cm-ch-inapp').addEventListener('change', (e) => { state.channels.inapp = e.target.checked; });
-  $('cm-ch-push').addEventListener('change', async (e) => {
+  $('cm-ch-push').addEventListener('change', (e) => {
     if (!e.target.checked) { state.channels.push = false; return; }
     const note = $('cm-push-note');
-    const res = await enablePush(user.uid);
-    if (res.ok) {
-      state.channels.push = true;
-      note.hidden = true;
-    } else {
-      e.target.checked = false;
-      state.channels.push = false;
-      note.hidden = false;
-      note.textContent = res.reason === 'denied'
-        ? 'Notifications are blocked for this site. Allow them in your browser settings, then try again.'
-        : 'Push isn\'t available in this browser. Email and in-app reminders still have you covered.';
-    }
+    const btn = $('cm-submit');
+    // While the browser's permission prompt is open, saving would drop push
+    // silently. Hold the Commit button, and have submit() wait on this too.
+    btn.disabled = true;
+    note.hidden = false;
+    note.textContent = 'Waiting for you to allow notifications…';
+    pushPending = enablePush(user.uid).then((res) => {
+      if (res.ok) {
+        state.channels.push = true;
+        note.hidden = true;
+      } else {
+        e.target.checked = false;
+        state.channels.push = false;
+        note.hidden = false;
+        if (res.message) console.warn('[commit] push enable failed:', res.message);
+        note.textContent = PUSH_ERRORS[res.reason] || PUSH_ERRORS.error;
+      }
+    }).finally(() => {
+      pushPending = null;
+      if (!saving) btn.disabled = false;
+    });
   });
 
   document.addEventListener('keydown', (e) => {
@@ -302,9 +320,20 @@ function bind(user) {
 
 // ─── Save ────────────────────────────────────────────────────────────────
 
+const PUSH_ERRORS = {
+  denied: 'Notifications are blocked for this site. Allow them in your browser settings, then try again.',
+  dismissed: 'No problem. Turn push on any time; email and in-app reminders have you covered.',
+  unsupported: 'Push isn\'t available in this browser. Email and in-app reminders still have you covered.',
+  error: 'Couldn\'t turn on push just now. Try the toggle again.'
+};
+
 let saving = false;
+let pushPending = null;
 async function submit() {
   if (saving) return;
+  // A push toggle still waiting on the permission prompt must land in the
+  // saved plan, not be dropped because Commit was clicked first.
+  if (pushPending) await pushPending;
   const payload = {
     slug,
     goalDate: state.goalDate,

@@ -13118,6 +13118,7 @@ body.tour-open { overflow: hidden; }
   background: var(--surface); border: 1px solid var(--border-red); border-radius: 14px;
   padding: 16px 20px; margin: 0 0 24px;
 }
+.cm-roadmap-card .cm-rc-label { flex-basis: 100%; font: 700 11px var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--red); }
 .cm-roadmap-card .cm-rc-stat { display: flex; flex-direction: column; }
 .cm-roadmap-card .cm-rc-stat span { font: 700 10px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--gray-light); }
 .cm-roadmap-card .cm-rc-stat strong { font: 400 26px/1.1 var(--font-display); letter-spacing: .02em; }

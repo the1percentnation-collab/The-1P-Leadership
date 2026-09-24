@@ -220,4 +220,28 @@ ok('the collection-group query has its index', () => {
   assert.ok(o && o.indexes.some((x) => x.queryScope === 'COLLECTION_GROUP'));
 });
 
+console.log('\nlive-test fixes');
+
+ok('email reminders fall back to the Auth email and name why they were skipped', () => {
+  const body = grab('sendCourseWorkReminders');
+  assert.match(body, /admin\.auth\(\)\.getUser\(uid\)/);
+  for (const k of ['emailNoAddress', 'emailNotConfigured', 'emailFailed', 'emailError']) {
+    assert.ok(body.includes(k), 'missing ' + k);
+  }
+});
+
+ok('push waits for an active service worker before asking FCM for a token', () => {
+  const push = read('public/js/push.js');
+  const fn = push.slice(push.indexOf('export async function enablePush'));
+  assert.ok(fn.indexOf('await whenActive(reg)') > 0);
+  assert.ok(fn.indexOf('await whenActive(reg)') < fn.indexOf('getToken('));
+});
+
+ok('saving waits on a pending push permission instead of dropping it', () => {
+  const page = read('public/js/commit-page.js');
+  const fn = page.slice(page.indexOf('async function submit()'));
+  assert.ok(fn.indexOf('await pushPending') > 0);
+  assert.ok(fn.indexOf('await pushPending') < fn.indexOf('const payload'));
+});
+
 console.log(`\n${passed} passed`);

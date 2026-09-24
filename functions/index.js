@@ -10000,7 +10000,7 @@ function courseReminderHtml(msg) {
 /** Tick step: send every course work reminder that is due right now. */
 async function sendCourseWorkReminders(db, { now = new Date() } = {}) {
   const FV = admin.firestore.FieldValue;
-  const out = { due: 0, email: 0, push: 0, inapp: 0, deadlines: 0 };
+  const out = { due: 0, email: 0, emailNoAddress: 0, emailNotConfigured: 0, emailFailed: 0, push: 0, inapp: 0, deadlines: 0 };
   const snap = await db.collectionGroup('courseCommitments').where('active', '==', true).limit(2000).get();
   const titles = new Map();
 
@@ -10051,16 +10051,33 @@ async function sendCourseWorkReminders(db, { now = new Date() } = {}) {
       out.due++;
       if (due.kind === 'deadline') out.deadlines++;
 
-      if (ch.email !== false && u.email && emailConfigured()) {
-        try {
-          await sendEmail({
-            to: u.email, from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
-            subject: msg.subject,
-            html: courseReminderHtml(msg),
-            text: `${msg.body}\n\n${msg.cta}: ${msg.url}\n\nChange your plan or turn reminders off: ${msg.editUrl}`
-          });
-          out.email++;
-        } catch (e) { console.warn('[tick] course reminder email failed', e && e.message); }
+      // Every skipped email names its cause in the tick summary (printed in
+      // the Actions log), so "sent 0" is never a mystery again.
+      if (ch.email !== false) {
+        let to = u.email || '';
+        if (!to) {
+          try { to = (await admin.auth().getUser(uid)).email || ''; } catch (e) { /* no auth record */ }
+        }
+        if (!to) {
+          out.emailNoAddress++;
+        } else if (!emailConfigured()) {
+          out.emailNotConfigured++;
+          out.emailProvider = emailProvider();
+        } else {
+          try {
+            await sendEmail({
+              to, from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
+              subject: msg.subject,
+              html: courseReminderHtml(msg),
+              text: `${msg.body}\n\n${msg.cta}: ${msg.url}\n\nChange your plan or turn reminders off: ${msg.editUrl}`
+            });
+            out.email++;
+          } catch (e) {
+            out.emailFailed++;
+            if (!out.emailError) out.emailError = String((e && e.message) || e).slice(0, 200);
+            console.warn('[tick] course reminder email failed', e && e.message);
+          }
+        }
       }
 
       if (ch.inapp !== false) {
