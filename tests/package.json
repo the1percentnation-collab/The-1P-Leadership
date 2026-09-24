@@ -10,7 +10,7 @@
     "test:indexes": "node firestore-indexes.test.cjs",
     "test:deploy": "node no-scheduled-functions.test.cjs",
     "test:crm": "node crm-freshness.test.cjs && node crm-assistant.test.cjs && node crm-ai-log.test.cjs",
-    "test": "npm run test:deploy && npm run test:indexes && npm run test:hub && npm run test:launch && npm run test:points && npm run test:catalog && npm run test:books && npm run test:beta && npm run test:telnyx && npm run test:email && npm run test:crm && npm run emulator",
+    "test": "npm run test:deploy && npm run test:indexes && npm run test:hub && npm run test:commitment && npm run test:launch && npm run test:points && npm run test:catalog && npm run test:books && npm run test:beta && npm run test:telnyx && npm run test:email && npm run test:crm && npm run emulator",
     "test:hub": "node hub-nextup.test.mjs && node hub-welcome.test.mjs",
     "test:launch": "node launch-date.test.mjs",
     "test:points": "node points-history.test.mjs",
@@ -18,7 +18,8 @@
     "test:books": "node books-fulfillment.test.cjs && node purchase-email.test.cjs",
     "e2e:purchase": "bash run-e2e.sh purchase",
     "e2e:reader": "bash run-e2e.sh reader",
-    "test:beta": "node beta-cohort.test.cjs"
+    "test:beta": "node beta-cohort.test.cjs",
+    "test:commitment": "node commitment.test.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
