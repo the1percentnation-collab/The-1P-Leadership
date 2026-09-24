@@ -152,6 +152,8 @@ function notifIcon(type) {
   if (type === 'channel_request') return '🔑';
   if (type === 'channel_access_granted') return '🔓';
   if (type === 'channel_access_denied') return '🔒';
+  if (type === 'course_reminder') return '⏱';
+  if (type === 'course_deadline') return '🏁';
   return '🔔';
 }
 
@@ -167,6 +169,8 @@ function notifLine(n) {
   if (n.type === 'channel_request') return `${who} requested access to ${channelLabel(n)}`;
   if (n.type === 'channel_access_granted') return `You now have access to ${channelLabel(n)}`;
   if (n.type === 'channel_access_denied') return `Your request for ${channelLabel(n)} wasn't approved`;
+  if (n.type === 'course_reminder') return `Time to get to work: ${who}`;
+  if (n.type === 'course_deadline') return `Deadline check-in: ${who}`;
   return `${who} did something`;
 }
 
@@ -176,6 +180,8 @@ function isChannelNotif(n) {
 }
 
 function notifHref(n) {
+  // Course work reminders carry their own site-relative link.
+  if (n && typeof n.link === 'string' && n.link.startsWith('/') && !n.link.startsWith('//')) return n.link;
   if (isChannelNotif(n) && n.category) {
     return `/community.html?channel=${encodeURIComponent(n.category)}`;
   }

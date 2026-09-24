@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Set your deadline | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+  <!-- The course commitment questionnaire. Mandatory before a member's first
+       session in each course (commitment-guard.js sends them here). Five short
+       steps, one question per screen; logic lives in js/commit-page.js. -->
+  <div class="auth-shell cm-shell">
+    <div class="auth-card cm-card">
+      <div class="cm-top">
+        <button type="button" class="cm-back" id="cm-back" hidden>← Back</button>
+        <span class="cm-course" id="cm-course"></span>
+      </div>
+      <div class="cm-progress" aria-hidden="true"><span id="cm-bar"></span></div>
+
+      <div class="cm-stage" id="cm-stage" aria-live="polite">
+
+        <!-- 1. The Law -->
+        <section class="cm-step" data-step="0">
+          <div class="cm-eyebrow">Parkinson's Law</div>
+          <h1 class="cm-law">Work expands to fill the <span>time you give it.</span></h1>
+          <p class="cm-lead">Give a course "someday" and it takes forever. Give it a deadline and a daily slot, and it gets done.</p>
+          <p class="cm-lead cm-dim">Sixty seconds: pick your finish line and your rhythm. We'll tell you when it's time to work.</p>
+          <button type="button" class="btn btn-primary cm-next" data-next>Set my deadline →</button>
+        </section>
+
+        <!-- 2. Goal date -->
+        <section class="cm-step" data-step="1" hidden>
+          <div class="cm-eyebrow">Step 1 of 4</div>
+          <h2 class="cm-q">When will you <span>finish?</span></h2>
+          <p class="cm-hint">Tighter deadlines get finished. Pick one that stretches you.</p>
+          <div class="cm-chips" id="cm-goal-chips" role="radiogroup" aria-label="Goal date"></div>
+          <label class="cm-custom">
+            <span>Or pick a date</span>
+            <input type="date" id="cm-goal-date">
+          </label>
+          <p class="cm-live" id="cm-goal-live"></p>
+          <button type="button" class="btn btn-primary cm-next" data-next>Next →</button>
+        </section>
+
+        <!-- 3. Weekly time -->
+        <section class="cm-step" data-step="2" hidden>
+          <div class="cm-eyebrow">Step 2 of 4</div>
+          <h2 class="cm-q">How much time <span>each week?</span></h2>
+          <p class="cm-hint">Be honest. A number you'll hit beats one you won't.</p>
+          <div class="cm-chips" id="cm-week-chips" role="radiogroup" aria-label="Hours per week"></div>
+          <button type="button" class="btn btn-primary cm-next" data-next>Next →</button>
+        </section>
+
+        <!-- 4. Daily rhythm -->
+        <section class="cm-step" data-step="3" hidden>
+          <div class="cm-eyebrow">Step 3 of 4</div>
+          <h2 class="cm-q">Your daily <span>rhythm</span></h2>
+          <div class="cm-group-label">Each session</div>
+          <div class="cm-chips" id="cm-session-chips" role="radiogroup" aria-label="Minutes per session"></div>
+          <div class="cm-group-label">On these days</div>
+          <div class="cm-days" id="cm-days" role="group" aria-label="Days"></div>
+          <div class="cm-group-label">Remind me at</div>
+          <input type="time" id="cm-time" class="cm-time" value="19:00" step="900">
+          <p class="cm-live" id="cm-rhythm-live"></p>
+          <button type="button" class="btn btn-primary cm-next" data-next>Next →</button>
+        </section>
+
+        <!-- 5. Lock it in -->
+        <section class="cm-step" data-step="4" hidden>
+          <div class="cm-eyebrow">Step 4 of 4</div>
+          <h2 class="cm-q">Lock it <span>in</span></h2>
+          <div class="cm-summary" id="cm-summary"></div>
+          <p class="cm-live" id="cm-fit"></p>
+          <div class="cm-group-label">Tell me it's time to work by</div>
+          <div class="cm-toggles">
+            <label class="cm-toggle"><input type="checkbox" id="cm-ch-email" checked><span>Email</span></label>
+            <label class="cm-toggle"><input type="checkbox" id="cm-ch-inapp" checked><span>In-app notification</span></label>
+            <label class="cm-toggle" id="cm-push-row" hidden><input type="checkbox" id="cm-ch-push"><span>Browser / phone push</span></label>
+          </div>
+          <p class="cm-hint cm-push-note" id="cm-push-note" hidden></p>
+          <div id="cm-msg"></div>
+          <button type="button" class="btn btn-primary cm-next" id="cm-submit">Commit &amp; start →</button>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/commit-page.js"></script>
+</body>
+</html>
