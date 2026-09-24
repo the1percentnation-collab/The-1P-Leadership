@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs an emulator e2e: `tests/run-e2e.sh purchase` or `tests/run-e2e.sh reader`
+# Runs an emulator e2e: `tests/run-e2e.sh purchase`, `reader` or `notify`
 # (the reader one needs READER_E2E_EPUB=/path/to/sample.epub).
 # The Functions emulator needs fake secrets and an email provider it can
 # reach; both files are gitignored and removed afterwards.
@@ -14,6 +14,7 @@ cat > functions/.env.local <<ENV
 EMAIL_PROVIDER=telnyx
 TELNYX_API_KEY=KEYe2efake
 TELNYX_API_BASE=http://127.0.0.1:8766/v2
+CRM_TICK_SECRET=e2e-tick-secret
 ENV
 cat > functions/.secret.local <<SEC
 STRIPE_SECRET_KEY=sk_test_fake

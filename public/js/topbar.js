@@ -154,6 +154,7 @@ function notifIcon(type) {
   if (type === 'channel_access_denied') return '🔒';
   if (type === 'course_reminder') return '⏱';
   if (type === 'course_deadline') return '🏁';
+  if (type === 'announcement') return '📣';
   return '🔔';
 }
 
@@ -163,6 +164,7 @@ function channelLabel(n) {
 
 function notifLine(n) {
   const who = escapeHtml(n.fromName || 'Someone');
+  if (n.type === 'announcement') return escapeHtml(n.title || 'New announcement');
   if (n.type === 'like') return `${who} liked your post`;
   if (n.type === 'comment') return `${who} commented on your post`;
   if (n.type === 'mention') return `${who} mentioned you`;
@@ -180,8 +182,10 @@ function isChannelNotif(n) {
 }
 
 function notifHref(n) {
-  // Course work reminders carry their own site-relative link.
+  // Course work reminders and announcements carry their own site-relative
+  // link. Only same-site paths are honored: a bell click never leaves the portal.
   if (n && typeof n.link === 'string' && n.link.startsWith('/') && !n.link.startsWith('//')) return n.link;
+  if (n && n.type === 'announcement') return '/dashboard';
   if (isChannelNotif(n) && n.category) {
     return `/community.html?channel=${encodeURIComponent(n.category)}`;
   }
