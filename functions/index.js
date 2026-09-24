@@ -4173,6 +4173,10 @@ async function notifyUser(db, recipientUid, notif, { typePrefKey } = {}) {
       fromUid: notif.fromUid || null,
       fromName: notif.fromName || '',
       fromAvatar: notif.fromAvatar || null,
+      // Announcements carry their own headline and destination; community
+      // notifications leave both null and keep deep-linking via postId.
+      title: notif.title || null,
+      href: notif.href || null,
       postId: notif.postId || null,
       commentId: notif.commentId || null,
       // `category` is the channel key across the whole app — post notifications
@@ -4237,6 +4241,167 @@ async function fanOutMentions(db, mentionedUids, ctx) {
       }).catch(() => {});
     }
   }
+}
+
+// ── Announcements → the bell ────────────────────────────────────────
+// Publishing an announcement (manage-announcements.html) fans one
+// notification out to every member it targets, so a portal update rings the
+// bell instead of waiting to be discovered on the dashboard spotlight.
+//
+// Two paths reach the same fan-out, and both are safe to race:
+//   - onAnnouncementWritten fires the moment an announcement is created or
+//     edited into a live state (active, publish time reached).
+//   - the automation tick sweeps for scheduled announcements whose publish
+//     time arrived with no edit to trigger on.
+// A transaction claims `notifiedAt` on the announcement before anything is
+// sent, so the fan-out runs once ever; the deterministic notification id
+// (`ann_{announcementId}`) collapses any retry that slips through.
+
+function announcementMillis(v) {
+  if (!v) return null;
+  if (typeof v.toMillis === 'function') return v.toMillis();
+  if (v instanceof Date) return v.getTime();
+  const n = Date.parse(v);
+  return Number.isNaN(n) ? null : n;
+}
+
+// Mirrors the dashboard's visibility window (announcements.js isVisibleTo):
+// active, published, not expired.
+function announcementIsLive(a, nowMs) {
+  if (!a || a.active === false) return false;
+  const pub = announcementMillis(a.publishAt);
+  if (pub && pub > nowMs) return false;
+  const exp = announcementMillis(a.expiresAt);
+  if (exp && exp <= nowMs) return false;
+  return true;
+}
+
+// How long after going live an announcement may still ring the bell. The
+// sweep rides a tick that GitHub delivers every couple of hours at best, so
+// this has to outlast a slow clock — but it also keeps announcements that
+// were already live before this fan-out shipped (they carry no notifiedAt)
+// from buzzing every member about old news on the first tick after deploy,
+// and keeps an edit to a months-old announcement from re-announcing it.
+const ANNOUNCEMENT_NOTIFY_WINDOW_MS = 72 * 3600 * 1000;
+
+function announcementShouldNotify(a, nowMs) {
+  if (!a || a.notifiedAt || !announcementIsLive(a, nowMs)) return false;
+  // Went live at its publish time, or at creation when it had none. With
+  // neither there is no way to tell old from new, so stay quiet.
+  const liveAt = announcementMillis(a.publishAt) || announcementMillis(a.createdAt);
+  return !!liveAt && nowMs - liveAt <= ANNOUNCEMENT_NOTIFY_WINDOW_MS;
+}
+
+// Which members an announcement targets. `members` rows carry
+// { uid, role, companyId, enrolledCourseSlugs }; the audience semantics
+// match the dashboard exactly, so the bell never rings for someone the
+// spotlight would hide it from.
+function announcementTargets(a, members) {
+  const audience = a && a.audience;
+  return (members || []).filter((m) => {
+    if (!m || !m.uid) return false;
+    const slugs = Array.isArray(m.enrolledCourseSlugs) ? m.enrolledCourseSlugs : [];
+    switch (audience) {
+      case 'enrolled':
+        return a.courseSlug ? slugs.includes(a.courseSlug) : slugs.length > 0;
+      case 'company':
+        return !!a.companyId && m.companyId === a.companyId;
+      case 'admin':
+        return m.role === 'owner' || m.role === 'admin';
+      default:
+        return true;
+    }
+  }).map((m) => m.uid);
+}
+
+async function fanOutAnnouncement(db, announcementId, a) {
+  const ref = db.collection('announcements').doc(announcementId);
+
+  // Claim before sending: whichever caller wins the transaction fans out,
+  // the other sees notifiedAt and walks away.
+  const claimed = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists || snap.data().notifiedAt) return false;
+    tx.set(ref, { notifiedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return true;
+  });
+  if (!claimed) return { notified: 0, claimed: false };
+
+  // Full member scan, same as syncMembersToCrm: the membership is small and
+  // the audiences ('enrolled' without a slug, role checks) don't reduce to a
+  // single Firestore query anyway.
+  const usersSnap = await db.collection('users').get();
+  const members = usersSnap.docs.map((d) => {
+    const u = d.data() || {};
+    return {
+      uid: d.id,
+      role: u.role || 'user',
+      companyId: u.companyId || null,
+      enrolledCourseSlugs: Array.isArray(u.enrolledCourseSlugs) ? u.enrolledCourseSlugs : []
+    };
+  });
+
+  const title = String(a.title || 'New update').slice(0, 200);
+  const href = a.ctaHref || '/dashboard';
+  const pushUrl = /^https?:\/\//.test(href) ? href : `${APP_BASE_URL}${href.startsWith('/') ? '' : '/'}${href}`;
+  const preview = clampPreview(a.body || '');
+
+  let notified = 0;
+  for (const uid of announcementTargets(a, members)) {
+    try {
+      const wasNew = await notifyUser(db, uid, {
+        id: `ann_${announcementId}`,
+        type: 'announcement',
+        fromName: 'The One Percent',
+        title,
+        href,
+        preview
+      }, { typePrefKey: 'announcements' });
+      if (wasNew) {
+        notified += 1;
+        pushToUser(db, uid, {
+          title,
+          body: preview || 'Open the portal to see what\'s new.',
+          data: { url: pushUrl, type: 'announcement', announcementId }
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.error(`[announcement] notify ${uid} failed:`, err && err.message);
+    }
+  }
+  console.log(`[announcement] ${announcementId} → ${notified} member(s)`);
+  return { notified, claimed: true };
+}
+
+exports.onAnnouncementWritten = onDocumentWritten(
+  { document: 'announcements/{announcementId}' },
+  async (event) => {
+    const after = event.data && event.data.after;
+    if (!after || !after.exists) return;
+    const a = after.data() || {};
+    // Our own notifiedAt claim re-fires this trigger; the field is the guard.
+    if (!announcementShouldNotify(a, Date.now())) return;
+    try {
+      await fanOutAnnouncement(admin.firestore(), event.params.announcementId, a);
+    } catch (err) {
+      console.error('[onAnnouncementWritten] fan-out failed:', err && err.message);
+    }
+  }
+);
+
+// The tick's sweep: scheduled announcements whose publish time has arrived
+// get no document write to trigger on, so the clock picks them up.
+async function fanOutDueAnnouncements(db, { dryRun = false } = {}) {
+  const snap = await db.collection('announcements').where('active', '==', true).get();
+  const now = Date.now();
+  const due = snap.docs.filter((d) => announcementShouldNotify(d.data() || {}, now));
+  if (dryRun) return { wouldNotify: due.map((d) => d.id) };
+  let sent = 0;
+  for (const d of due) {
+    const r = await fanOutAnnouncement(db, d.id, d.data() || {});
+    if (r.claimed) sent += 1;
+  }
+  return { announcements: sent };
 }
 
 // Replace the Phase 2 onPostCreated to also fan out mention notifs, and
@@ -5262,6 +5427,16 @@ function countCouponRedemption(db, code) {
   }, { merge: true });
 }
 
+// The legacy 1P-CLC player (store.js) saved progress under bare module ids
+// ('0'…'6'); every Firestore-authored course namespaces its docs as
+// `{slug}__m{id}` (course-renderer.js). Only the bare ids prove pre-enrollment
+// CLC history — a namespaced doc is some other course's progress, and counting
+// it here once handed the paid Leader Coach course to anyone who finished one
+// lesson of anything (an icant beta tester, for instance).
+function isLegacyClcProgressId(id) {
+  return !String(id).includes('__');
+}
+
 // enrollFree — server-side enrollment for free (or legacy) courses. All
 // client enrollment goes through here; firestore rules freeze
 // enrolledCourseSlugs on self-writes.
@@ -5276,11 +5451,13 @@ exports.enrollFree = onCall(async (request) => {
   const course = courseSnap.exists ? courseSnap.data() : null;
 
   // Legacy migration: users with pre-enrollment 1P-CLC progress keep access
-  // even though the course is paid. Server-verifies the progress exists.
+  // even though the course is paid. Server-verifies that legacy progress
+  // exists — namespaced docs from other courses don't count.
   const legacy = !!(request.data && request.data.legacy) && slug === '1p-clc-leader';
   if (legacy) {
-    const prog = await db.collection('users').doc(uid).collection('progress').limit(1).get();
-    if (prog.empty) throw new HttpsError('failed-precondition', 'No prior progress found.');
+    const prog = await db.collection('users').doc(uid).collection('progress').get();
+    const hasLegacy = prog.docs.some((d) => isLegacyClcProgressId(d.id));
+    if (!hasLegacy) throw new HttpsError('failed-precondition', 'No prior progress found.');
   } else {
     if (!course) throw new HttpsError('not-found', 'Unknown course.');
     if (course.status !== 'live') {
@@ -9671,16 +9848,17 @@ async function runTick(db, { dryRun = false } = {}) {
     return { error: (e && e.message) || String(e) };
   });
 
-  const [sequences, watches, reminders, launches] = await Promise.all([
+  const [sequences, watches, reminders, launches, announcements] = await Promise.all([
     step('sequences', processDueEnrollments(db, { dryRun })),
     // These two only ever renew or send; there is nothing to preview, so a dry
     // run skips them rather than pretending to measure something.
     step('watches', dryRun ? { skipped: 'dryRun' } : renewAllGoogleWatches(db)),
     step('reminders', dryRun ? { skipped: 'dryRun' } : sendReminders(db)),
-    step('launches', promoteLaunchedItems(db, { dryRun }))
+    step('launches', promoteLaunchedItems(db, { dryRun })),
+    step('announcements', fanOutDueAnnouncements(db, { dryRun }))
   ]);
 
-  const steps = { sequences, watches, reminders, launches };
+  const steps = { sequences, watches, reminders, launches, announcements };
   const failedSteps = Object.keys(steps).filter((k) => steps[k] && steps[k].error);
   const summary = { ok: failedSteps.length === 0, dryRun, ms: Date.now() - startedAt, ...steps };
   if (failedSteps.length) summary.failedSteps = failedSteps;

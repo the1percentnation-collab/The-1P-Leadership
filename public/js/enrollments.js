@@ -9,7 +9,7 @@
 
 import { auth, db, functions, firebaseReady } from './firebase.js';
 import {
-  doc, getDoc, collection, getDocs, limit, query
+  doc, getDoc, collection, getDocs
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { loadCourses, getCourses, getCourseBySlug, priceInfo } from './courses-data.js';
@@ -54,11 +54,13 @@ export async function loadEnrollments({ force = false } = {}) {
 
     // Legacy migration: users with 1P-CLC progress from before enrollments
     // shipped get enrolled server-side (the callable verifies the progress).
+    // Only bare-id docs ('0'…'6', the old CLC player's format) count —
+    // Firestore-authored courses namespace theirs as `{slug}__m{id}`, and
+    // those must not trigger the migration (the server re-checks this).
     if (!_cache.has('1p-clc-leader')) {
       try {
-        const progQ = query(collection(db, 'users', uid, 'progress'), limit(1));
-        const progSnap = await getDocs(progQ);
-        if (!progSnap.empty) {
+        const progSnap = await getDocs(collection(db, 'users', uid, 'progress'));
+        if (progSnap.docs.some((d) => !d.id.includes('__'))) {
           await httpsCallable(functions, 'enrollFree')({ slug: '1p-clc-leader', legacy: true });
           _cache.add('1p-clc-leader');
           lsSet(_cache);

@@ -152,6 +152,7 @@ function notifIcon(type) {
   if (type === 'channel_request') return '🔑';
   if (type === 'channel_access_granted') return '🔓';
   if (type === 'channel_access_denied') return '🔒';
+  if (type === 'announcement') return '📣';
   return '🔔';
 }
 
@@ -161,6 +162,7 @@ function channelLabel(n) {
 
 function notifLine(n) {
   const who = escapeHtml(n.fromName || 'Someone');
+  if (n.type === 'announcement') return escapeHtml(n.title || 'New announcement');
   if (n.type === 'like') return `${who} liked your post`;
   if (n.type === 'comment') return `${who} commented on your post`;
   if (n.type === 'mention') return `${who} mentioned you`;
@@ -176,6 +178,13 @@ function isChannelNotif(n) {
 }
 
 function notifHref(n) {
+  // Announcements carry their own destination (the CTA link, or the
+  // dashboard). Only same-site paths are honored: a notification is
+  // server-written, but a bell click should never leave the portal.
+  if (n && n.type === 'announcement') {
+    const href = typeof n.href === 'string' ? n.href : '';
+    return href.startsWith('/') && !href.startsWith('//') ? href : '/dashboard';
+  }
   if (isChannelNotif(n) && n.category) {
     return `/community.html?channel=${encodeURIComponent(n.category)}`;
   }
