@@ -13033,3 +13033,94 @@ body.tour-open { overflow: hidden; }
   .stat-card { padding: 14px; }
   .stat-value { font-size: 28px; }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   Course commitment questionnaire (/commit.html)
+   Parkinson's Law intro + deadline, weekly time, daily rhythm.
+   ════════════════════════════════════════════════════════════════ */
+.cm-card { max-width: 540px; padding: 28px 36px 36px; text-align: left; overflow: hidden; }
+.cm-top { display: flex; align-items: center; justify-content: space-between; min-height: 28px; gap: 12px; }
+.cm-back { background: none; border: 0; color: var(--gray-light); font: 500 14px var(--font-body); cursor: pointer; padding: 4px 0; }
+.cm-back:hover { color: var(--white); }
+.cm-course { margin-left: auto; font: 700 11px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--gray-light); text-align: right; }
+.cm-progress { height: 3px; background: var(--gray-dark); border-radius: 3px; margin: 14px 0 28px; overflow: hidden; }
+.cm-progress span { display: block; height: 100%; width: 20%; background: var(--red); border-radius: 3px; transition: width .35s ease; }
+
+.cm-step { display: flex; flex-direction: column; gap: 14px; }
+.cm-in-fwd { animation: cm-in-fwd .32s ease both; }
+.cm-in-back { animation: cm-in-back .32s ease both; }
+@keyframes cm-in-fwd { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes cm-in-back { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .cm-in-fwd, .cm-in-back { animation: none; } .cm-progress span { transition: none; } }
+
+.cm-eyebrow { font: 700 11px var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--red); }
+.cm-law { font: 400 clamp(40px, 8vw, 56px)/0.95 var(--font-display); letter-spacing: .01em; margin: 0; }
+.cm-q { font: 400 clamp(34px, 6vw, 44px)/1 var(--font-display); letter-spacing: .01em; margin: 0; }
+.cm-law, .cm-q { text-align: left; }
+.cm-law span, .cm-q span { color: var(--red); }
+.cm-lead { font-size: 17px; line-height: 1.55; color: var(--white-dim); margin: 0; }
+.cm-dim { color: var(--gray-light); font-size: 15px; }
+.cm-hint { font-size: 14px; color: var(--gray-light); margin: -4px 0 4px; }
+.cm-live { font-size: 14px; color: var(--white-dim); margin: 0; min-height: 20px; }
+.cm-live strong { color: var(--white); }
+.cm-err { color: #ff6b6d; font-size: 14px; margin: 0; }
+.cm-group-label { font: 700 11px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--gray-light); margin-top: 6px; }
+
+.cm-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+.cm-chip {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  background: var(--black-2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px; color: var(--white); font: 600 16px var(--font-body); cursor: pointer;
+  transition: border-color .15s, background .15s, transform .1s; text-align: left;
+}
+.cm-chip small { font: 400 12px var(--font-body); color: var(--gray-light); }
+.cm-chip:hover { border-color: var(--border-red); }
+.cm-chip:active { transform: scale(.97); }
+.cm-chip.is-on { border-color: var(--red); background: var(--red-glow); box-shadow: 0 0 0 1px var(--red) inset; }
+
+.cm-custom { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--gray-light); }
+.cm-custom input, .cm-time {
+  background: var(--black-2); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--white); font: 500 16px var(--font-body); padding: 10px 12px; color-scheme: dark;
+}
+.cm-time { width: 160px; }
+
+.cm-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.cm-day {
+  aspect-ratio: 1; max-height: 52px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--black-2); color: var(--gray-light); font: 700 13px var(--font-body); cursor: pointer;
+  transition: all .15s;
+}
+.cm-day.is-on { background: var(--red); border-color: var(--red); color: var(--white); }
+
+.cm-summary { background: var(--black-2); border: 1px solid var(--border-red); border-radius: 14px; padding: 6px 18px; }
+.cm-sum-row { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 15px; }
+.cm-sum-row:last-child { border-bottom: 0; }
+.cm-sum-row span { color: var(--gray-light); }
+.cm-sum-row strong { text-align: right; }
+
+.cm-toggles { display: flex; flex-direction: column; gap: 8px; }
+.cm-toggle { display: flex; align-items: center; gap: 12px; font-size: 15px; cursor: pointer; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; }
+.cm-toggle input { width: 18px; height: 18px; accent-color: var(--red); }
+
+.cm-next { margin-top: 10px; width: 100%; padding: 16px; font-size: 16px; }
+
+@media (max-width: 600px) {
+  .cm-shell { padding: 16px; align-items: flex-start; }
+  .cm-card { padding: 20px 18px 26px; }
+  .cm-chips { grid-template-columns: repeat(2, 1fr); }
+  .cm-custom { flex-direction: column; align-items: stretch; }
+}
+
+/* Roadmap "Your commitment" card (courses.html) */
+.cm-roadmap-card {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px;
+  background: var(--surface); border: 1px solid var(--border-red); border-radius: 14px;
+  padding: 16px 20px; margin: 0 0 24px;
+}
+.cm-roadmap-card .cm-rc-stat { display: flex; flex-direction: column; }
+.cm-roadmap-card .cm-rc-stat span { font: 700 10px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--gray-light); }
+.cm-roadmap-card .cm-rc-stat strong { font: 400 26px/1.1 var(--font-display); letter-spacing: .02em; }
+.cm-roadmap-card .cm-rc-stat strong.is-behind { color: var(--red); }
+.cm-roadmap-card .cm-rc-edit { margin-left: auto; font-size: 13px; color: var(--gray-light); }
+.cm-roadmap-card .cm-rc-edit:hover { color: var(--white); }

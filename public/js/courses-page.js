@@ -25,6 +25,8 @@ import { getRefCode } from './referral.js';
 import { certificateHref, courseCompleteHtml } from './certificate.js';
 import { loadCourseCompletion } from './course-progress.js';
 import { ensureOnboarded } from './onboarding-guard.js';
+import { ensureCommitted } from './commitment-guard.js';
+import { isoDay, daysBetween, fmtDate } from './commitment-state.js';
 import { db } from './firebase.js';
 import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
@@ -413,7 +415,7 @@ function roadmapHtml(course, { modules, completedSet, currentId, certHref = null
   `;
 }
 
-async function renderRoadmap(course, { preview = false } = {}) {
+async function renderRoadmap(course, { preview = false, commitment = null } = {}) {
   const slot = $('workspace-roadmap');
   if (!slot) return;
   slot.innerHTML = '<div class="roadmap-container"><p style="color:var(--gray-mid);">Loading roadmap…</p></div>';
@@ -460,6 +462,34 @@ async function renderRoadmap(course, { preview = false } = {}) {
     // wouldn't be the one members reach — no certificate offered.
     certHref: preview || course.certificate === false ? null : certificateHref(course.slug)
   });
+  renderCommitmentCard(slot, course, commitment, { total: modules.length, done: modules.filter((m) => completedSet.has(m.id)).length });
+}
+
+/**
+ * "Your commitment" strip on the roadmap: the deadline stays in view, with
+ * where the member is against where the plan says they should be.
+ */
+function renderCommitmentCard(slot, course, c, { total, done }) {
+  if (!c || typeof c !== 'object' || !c.goalDate) return;
+  const today = isoDay();
+  const daysLeft = daysBetween(today, c.goalDate);
+  const start = c.startDate || today;
+  const span = Math.max(1, daysBetween(start, c.goalDate));
+  const expected = Math.min(1, Math.max(0, daysBetween(start, today) / span));
+  const actual = total ? done / total : 0;
+  const behind = total > 0 && actual + 0.05 < expected;
+  const pace = !total ? '—' : actual >= 1 ? 'Done' : behind ? 'Behind' : 'On pace';
+  const left = daysLeft > 0 ? `${daysLeft} days` : daysLeft === 0 ? 'Today' : 'Passed';
+  const card = document.createElement('div');
+  card.className = 'cm-roadmap-card';
+  card.innerHTML = `
+    <div class="cm-rc-stat"><span>Finish by</span><strong>${escapeHtml(fmtDate(c.goalDate))}</strong></div>
+    <div class="cm-rc-stat"><span>Time left</span><strong class="${daysLeft < 0 ? 'is-behind' : ''}">${left}</strong></div>
+    <div class="cm-rc-stat"><span>Progress</span><strong>${Math.round(actual * 100)}%</strong></div>
+    <div class="cm-rc-stat"><span>Pace</span><strong class="${behind ? 'is-behind' : ''}">${pace}</strong></div>
+    <a class="cm-rc-edit" href="/commit.html?course=${encodeURIComponent(course.slug)}&edit=1">${daysLeft < 0 ? 'Reset deadline →' : 'Edit plan'}</a>`;
+  const hero = slot.querySelector('.roadmap-hero');
+  if (hero) hero.after(card); else slot.firstElementChild ? slot.firstElementChild.prepend(card) : slot.prepend(card);
 }
 
 // ─── Workspace swap ───────────────────────────────────────────────────────
@@ -570,6 +600,17 @@ async function main() {
     }
   }
 
+  // Parkinson's Law gate: before the first session in a course the member
+  // sets a deadline and a weekly rhythm (commit.html). Sits here, after the
+  // enrollment check, so free enrolls, Stripe returns, admin grants and deep
+  // links all pass through it. Owner preview is exempt.
+  let commitment = null;
+  if (course && firebaseReady && currentUser() && !preview && isEnrolled(course.slug)
+      && (course.status === 'live' || course.status === 'beta')) {
+    commitment = await ensureCommitted(currentUser(), course.slug);
+    if (!commitment) return;
+  }
+
   // Always render welcome content + available courses in case we fall back to welcome.
   renderAvailableCourses();
 
@@ -618,7 +659,7 @@ async function main() {
   } else {
     // Roadmap view — default landing for an enrolled course.
     renderSidebar(course.slug);
-    await renderRoadmap(course, { preview });
+    await renderRoadmap(course, { preview, commitment });
     showRoadmap();
   }
 

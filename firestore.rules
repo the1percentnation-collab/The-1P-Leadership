@@ -318,8 +318,18 @@ service cloud.firestore {
           && request.resource.data.createdAt == resource.data.createdAt
           && request.resource.data.get('preview', '') == resource.data.get('preview', '')
           && request.resource.data.get('fromName', '') == resource.data.get('fromName', '')
-          && request.resource.data.get('fromAvatar', null) == resource.data.get('fromAvatar', null);
+          && request.resource.data.get('fromAvatar', null) == resource.data.get('fromAvatar', null)
+          && request.resource.data.get('link', null) == resource.data.get('link', null);
         allow delete: if isOwner() || isSelf(uid);
+      }
+
+      // users/{uid}/courseCommitments/{slug} — the Parkinson's Law
+      // questionnaire answers (deadline, weekly time, reminder schedule).
+      // Written only by the saveCourseCommitment callable, which validates
+      // the schedule and checks enrollment; the reminder sender relies on it.
+      match /courseCommitments/{slug} {
+        allow read: if isOwner() || isSelf(uid);
+        allow write: if false;
       }
 
       // users/{uid}/registrations/{eventId} — a per-member mirror of the

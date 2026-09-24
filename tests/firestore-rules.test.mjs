@@ -325,6 +325,24 @@ await t('member CANNOT stash arbitrary fields in a reading position',
 await t('member CANNOT read someone else\'s reading position',
   () => assertFails(getDoc(doc(solo, 'users/reader/bookProgress/i-cant'))));
 
+// ── Course commitments (Parkinson's Law questionnaire) ─────────────────────
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), 'users/solo/courseCommitments/icant'), {
+    goalDate: '2026-10-24', days: [1, 3, 5], reminderTime: '19:00', active: true
+  });
+});
+
+await t('member CAN read their own course commitment',
+  () => assertSucceeds(getDoc(doc(solo, 'users/solo/courseCommitments/icant'))));
+
+await t('member CANNOT write a commitment directly (callable only)',
+  () => assertFails(setDoc(doc(solo, 'users/solo/courseCommitments/icant'), {
+    goalDate: '2026-10-24', days: [1], reminderTime: '19:00', active: true, lastRemindedDate: '2099-01-01'
+  })));
+
+await t('member CANNOT read someone else\'s course commitment',
+  () => assertFails(getDoc(doc(emp, 'users/solo/courseCommitments/icant'))));
+
 await env.cleanup();
 
 let failed = 0;

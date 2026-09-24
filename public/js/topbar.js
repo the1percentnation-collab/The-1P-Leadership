@@ -152,6 +152,8 @@ function notifIcon(type) {
   if (type === 'channel_request') return '🔑';
   if (type === 'channel_access_granted') return '🔓';
   if (type === 'channel_access_denied') return '🔒';
+  if (type === 'course_reminder') return '⏱';
+  if (type === 'course_deadline') return '🏁';
   if (type === 'announcement') return '📣';
   return '🔔';
 }
@@ -169,6 +171,8 @@ function notifLine(n) {
   if (n.type === 'channel_request') return `${who} requested access to ${channelLabel(n)}`;
   if (n.type === 'channel_access_granted') return `You now have access to ${channelLabel(n)}`;
   if (n.type === 'channel_access_denied') return `Your request for ${channelLabel(n)} wasn't approved`;
+  if (n.type === 'course_reminder') return `Time to get to work: ${who}`;
+  if (n.type === 'course_deadline') return `Deadline check-in: ${who}`;
   return `${who} did something`;
 }
 
@@ -178,13 +182,10 @@ function isChannelNotif(n) {
 }
 
 function notifHref(n) {
-  // Announcements carry their own destination (the CTA link, or the
-  // dashboard). Only same-site paths are honored: a notification is
-  // server-written, but a bell click should never leave the portal.
-  if (n && n.type === 'announcement') {
-    const href = typeof n.href === 'string' ? n.href : '';
-    return href.startsWith('/') && !href.startsWith('//') ? href : '/dashboard';
-  }
+  // Course work reminders and announcements carry their own site-relative
+  // link. Only same-site paths are honored: a bell click never leaves the portal.
+  if (n && typeof n.link === 'string' && n.link.startsWith('/') && !n.link.startsWith('//')) return n.link;
+  if (n && n.type === 'announcement') return '/dashboard';
   if (isChannelNotif(n) && n.category) {
     return `/community.html?channel=${encodeURIComponent(n.category)}`;
   }

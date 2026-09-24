@@ -4173,10 +4173,9 @@ async function notifyUser(db, recipientUid, notif, { typePrefKey } = {}) {
       fromUid: notif.fromUid || null,
       fromName: notif.fromName || '',
       fromAvatar: notif.fromAvatar || null,
-      // Announcements carry their own headline and destination; community
-      // notifications leave both null and keep deep-linking via postId.
+      // Announcements carry their own headline; community notifications leave
+      // it null and build their line from fromName.
       title: notif.title || null,
-      href: notif.href || null,
       postId: notif.postId || null,
       commentId: notif.commentId || null,
       // `category` is the channel key across the whole app — post notifications
@@ -4186,6 +4185,9 @@ async function notifyUser(db, recipientUid, notif, { typePrefKey } = {}) {
       channelName: notif.channelName || null,
       answerCount: typeof notif.answerCount === 'number' ? notif.answerCount : null,
       preview: notif.preview || '',
+      // Where the bell row should go, for notifications that aren't about a
+      // post or channel (course work reminders, announcements). Site-relative.
+      link: notif.link || null,
       read: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
@@ -4342,8 +4344,11 @@ async function fanOutAnnouncement(db, announcementId, a) {
   });
 
   const title = String(a.title || 'New update').slice(0, 200);
-  const href = a.ctaHref || '/dashboard';
-  const pushUrl = /^https?:\/\//.test(href) ? href : `${APP_BASE_URL}${href.startsWith('/') ? '' : '/'}${href}`;
+  // The bell only follows site-relative links; an external CTA still opens
+  // from the push, while the bell row falls back to the dashboard.
+  const cta = String(a.ctaHref || '').trim();
+  const link = cta.startsWith('/') && !cta.startsWith('//') ? cta : '/dashboard';
+  const pushUrl = /^https?:\/\//.test(cta) ? cta : `${APP_BASE_URL}${link}`;
   const preview = clampPreview(a.body || '');
 
   let notified = 0;
@@ -4354,7 +4359,7 @@ async function fanOutAnnouncement(db, announcementId, a) {
         type: 'announcement',
         fromName: 'The One Percent',
         title,
-        href,
+        link,
         preview
       }, { typePrefKey: 'announcements' });
       if (wasNew) {
@@ -5440,6 +5445,51 @@ function isLegacyClcProgressId(id) {
 // enrollFree — server-side enrollment for free (or legacy) courses. All
 // client enrollment goes through here; firestore rules freeze
 // enrolledCourseSlugs on self-writes.
+/**
+ * saveCourseCommitment — the course commitment questionnaire (/commit.html).
+ * Validates and stores users/{uid}/courseCommitments/{slug}; the member must
+ * hold the course. Saving again (editing the plan) re-arms the one-time
+ * deadline check-in, so a reset deadline gets its own.
+ */
+exports.saveCourseCommitment = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const data = request.data || {};
+  const slug = String(data.slug || '').trim();
+  if (!slug || slug.length > 120 || slug.includes('/')) throw new HttpsError('invalid-argument', 'slug is required.');
+
+  const timezone = String(data.timezone || 'America/New_York').slice(0, 64);
+  const clock = commitmentLocalClock(new Date(), timezone);
+  if (!clock) throw new HttpsError('invalid-argument', 'Unrecognized timezone.');
+
+  const v = validateCommitmentInput(data, clock.date);
+  if (v.error) throw new HttpsError('invalid-argument', v.error);
+
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  const slugs = (userSnap.exists && userSnap.data().enrolledCourseSlugs) || [];
+  if (!Array.isArray(slugs) || !slugs.includes(slug)) {
+    throw new HttpsError('permission-denied', 'Enroll in this course first.');
+  }
+
+  const FV = admin.firestore.FieldValue;
+  const ref = userRef.collection('courseCommitments').doc(slug);
+  const prev = await ref.get();
+  await ref.set({
+    ...v.value,
+    timezone,
+    courseTitle: String(data.courseTitle || '').slice(0, 160),
+    startDate: clock.date,
+    active: true,
+    deadlineNoticeSent: false,
+    updatedAt: FV.serverTimestamp(),
+    ...(prev.exists ? {} : { createdAt: FV.serverTimestamp() })
+  }, { merge: true });
+
+  return { ok: true };
+});
+
 exports.enrollFree = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -9814,6 +9864,233 @@ async function sendReminders(db) {
   return { tasks, appointments: appts };
 }
 
+// ════════════════════════════════════════════════════════════════
+// Course commitments — Parkinson's Law reminders.
+// Before a member's first session in a course, /commit.html has them set a
+// finish date, a weekly budget and a daily rhythm (days + reminder time in
+// their own timezone). Stored at users/{uid}/courseCommitments/{slug}; only
+// saveCourseCommitment writes it. Each tick, sendCourseWorkReminders sends
+// "time to get to work" by email, push and the in-app bell to anyone whose
+// reminder time has arrived today.
+// ════════════════════════════════════════════════════════════════
+
+/** Local calendar date, weekday (0=Sun) and minutes past midnight in `timeZone`; null for a bad zone. */
+function commitmentLocalClock(now, timeZone) {
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat('en-US', {
+      timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+      weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    }).formatToParts(now);
+  } catch (e) { return null; }
+  const g = (t) => (parts.find((p) => p.type === t) || {}).value;
+  const WD = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return {
+    date: `${g('year')}-${g('month')}-${g('day')}`,
+    weekday: WD[g('weekday')],
+    minutes: (Number(g('hour')) % 24) * 60 + Number(g('minute'))
+  };
+}
+
+/**
+ * Is a reminder due for this commitment right now?
+ *   { kind: 'work' | 'deadline', date } or null.
+ *
+ * Due once per local day, on a chosen weekday, from the reminder time until
+ * six hours after it. The window absorbs the tick's lateness (it runs about
+ * hourly, sometimes two hours apart) without sending a 7 PM reminder at 3 AM.
+ * `lastRemindedDate` makes it once-only per day. After the goal date passes,
+ * a single 'deadline' check-in replaces the daily reminders until the member
+ * sets a new date.
+ */
+function commitmentDue(c, now) {
+  if (!c || c.active === false) return null;
+  const clock = commitmentLocalClock(now, c.timezone || 'America/New_York');
+  if (!clock) return null;
+  if (c.lastRemindedDate === clock.date) return null;
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(c.reminderTime || '');
+  if (!m) return null;
+  const at = Number(m[1]) * 60 + Number(m[2]);
+  if (clock.minutes < at || clock.minutes >= at + 360) return null;
+  if (c.goalDate && clock.date > c.goalDate) {
+    return c.deadlineNoticeSent ? null : { kind: 'deadline', date: clock.date };
+  }
+  if (!Array.isArray(c.days) || !c.days.includes(clock.weekday)) return null;
+  return { kind: 'work', date: clock.date };
+}
+
+/**
+ * Validate a commitment from the questionnaire. `today` is the member's
+ * local date. Returns { value } or { error } (a message for the member).
+ */
+function validateCommitmentInput(data, today) {
+  const d = data || {};
+  const dayMs = (iso) => { const [y, mo, da] = iso.split('-').map(Number); return Date.UTC(y, mo - 1, da); };
+  const goalDate = String(d.goalDate || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(goalDate) || Number.isNaN(dayMs(goalDate))) return { error: 'Pick a finish date.' };
+  if (goalDate <= today) return { error: 'Your finish date needs to be in the future.' };
+  if ((dayMs(goalDate) - dayMs(today)) / 86400000 > 366) return { error: 'Keep your finish date within a year.' };
+  const weeklyMinutes = Math.round(Number(d.weeklyMinutes));
+  if (!(weeklyMinutes >= 30 && weeklyMinutes <= 1680)) return { error: 'Choose how much time you\'ll give it each week.' };
+  const sessionMinutes = Math.round(Number(d.sessionMinutes));
+  if (!(sessionMinutes >= 10 && sessionMinutes <= 240)) return { error: 'Choose a session length.' };
+  if (!Array.isArray(d.days)) return { error: 'Pick at least one day.' };
+  const days = [...new Set(d.days.map(Number))].filter((n) => Number.isInteger(n) && n >= 0 && n <= 6).sort((a, b) => a - b);
+  if (!days.length || days.length !== d.days.length) return { error: 'Pick at least one day.' };
+  const reminderTime = String(d.reminderTime || '');
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(reminderTime)) return { error: 'Pick a reminder time.' };
+  const ch = d.channels || {};
+  const channels = { email: ch.email !== false, inapp: ch.inapp !== false, push: ch.push === true };
+  return { value: { goalDate, weeklyMinutes, sessionMinutes, days, reminderTime, channels } };
+}
+
+const PARKINSON_LINES = [
+  'Work expands to fill the time you give it. Give this {m} minutes, starting now.',
+  'Your deadline is doing its job. Do yours: {m} focused minutes.',
+  'The 1% show up when it\'s scheduled, not when it\'s convenient.',
+  'No open-ended sessions. Set a timer for {m} minutes and go.',
+  '{d} days to your finish line. Today\'s session keeps it real.',
+  'Momentum is built in small, scheduled blocks. This is one of them.'
+];
+
+/** Title, body and link for one reminder. Pure, so the copy is testable. */
+function courseReminderMessage(c, slug, due, courseTitle) {
+  const title = courseTitle || slug;
+  const dayMs = (iso) => { const [y, mo, da] = iso.split('-').map(Number); return Date.UTC(y, mo - 1, da); };
+  const daysLeft = c.goalDate ? Math.round((dayMs(c.goalDate) - dayMs(due.date)) / 86400000) : null;
+  const courseUrl = `https://the1pnation.com/courses.html?course=${encodeURIComponent(slug)}`;
+  const editUrl = `https://the1pnation.com/commit.html?course=${encodeURIComponent(slug)}&edit=1`;
+  if (due.kind === 'deadline') {
+    return {
+      subject: `Deadline check-in: ${title}`,
+      heading: 'Your deadline has passed',
+      body: `Your finish date for ${title} came and went. No judgment, just data. Set a new, tighter date and let Parkinson's Law work for you again.`,
+      cta: 'Set a new deadline',
+      url: editUrl,
+      editUrl
+    };
+  }
+  let n = 0;
+  for (const ch of due.date + slug) n = (n * 31 + ch.charCodeAt(0)) >>> 0;
+  const line = PARKINSON_LINES[n % PARKINSON_LINES.length]
+    .replace('{m}', String(c.sessionMinutes || 30))
+    .replace('{d}', String(daysLeft != null ? daysLeft : ''));
+  const left = daysLeft == null ? '' : daysLeft === 0 ? ' Today is your finish date.' : ` ${daysLeft} day${daysLeft === 1 ? '' : 's'} to your deadline.`;
+  return {
+    subject: `Time to get to work: ${title}`,
+    heading: 'Time to get to work',
+    body: `${line} Your ${c.sessionMinutes || 30}-minute ${title} session is on the calendar.${left}`,
+    cta: 'Start session',
+    url: courseUrl,
+    editUrl
+  };
+}
+
+function courseReminderHtml(msg) {
+  const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:8px;">
+    <h2 style="color:#E60306;margin:0 0 12px;font-size:22px;">${esc(msg.heading)}</h2>
+    <p style="font-size:16px;line-height:1.5;color:#222;margin:0 0 20px;">${esc(msg.body)}</p>
+    <p style="margin:0 0 24px;"><a href="${esc(msg.url)}" style="display:inline-block;background:#E60306;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px;">${esc(msg.cta)} →</a></p>
+    <p style="font-size:12px;color:#888;margin:0;">You set this reminder when you committed to this course. <a href="${esc(msg.editUrl)}" style="color:#888;">Change your plan or turn reminders off</a>.</p>
+    <p style="font-size:12px;color:#888;margin:6px 0 0;">The One Percent Academy</p>
+  </div>`;
+}
+
+/** Tick step: send every course work reminder that is due right now. */
+async function sendCourseWorkReminders(db, { now = new Date() } = {}) {
+  const FV = admin.firestore.FieldValue;
+  const out = { due: 0, email: 0, push: 0, inapp: 0, deadlines: 0 };
+  const snap = await db.collectionGroup('courseCommitments').where('active', '==', true).limit(2000).get();
+  const titles = new Map();
+
+  for (const d of snap.docs) {
+    const c = d.data() || {};
+    const due = commitmentDue(c, now);
+    if (!due) continue;
+    const userRef = d.ref.parent.parent;
+    const uid = userRef.id;
+    const slug = d.id;
+
+    // Claim the day before sending, so overlapping ticks can't double-send.
+    let claimed = false;
+    try {
+      claimed = await db.runTransaction(async (tx) => {
+        const s = await tx.get(d.ref);
+        if (!s.exists || (s.data() || {}).lastRemindedDate === due.date) return false;
+        tx.update(d.ref, {
+          lastRemindedDate: due.date,
+          lastRemindedAt: FV.serverTimestamp(),
+          ...(due.kind === 'deadline' ? { deadlineNoticeSent: true } : {})
+        });
+        return true;
+      });
+    } catch (e) { claimed = false; }
+    if (!claimed) continue;
+
+    try {
+      const userSnap = await userRef.get();
+      const u = userSnap.exists ? (userSnap.data() || {}) : null;
+      if (!u) continue;
+      // Access revoked (refund, expired grant): stop reminding.
+      if (!Array.isArray(u.enrolledCourseSlugs) || !u.enrolledCourseSlugs.includes(slug)) {
+        await d.ref.set({ active: false }, { merge: true });
+        continue;
+      }
+
+      if (!titles.has(slug)) {
+        let t = c.courseTitle || '';
+        try {
+          const cs = await db.collection('courses').doc(slug).get();
+          if (cs.exists && cs.data().title) t = cs.data().title;
+        } catch (e) { /* keep fallback */ }
+        titles.set(slug, t || slug);
+      }
+      const msg = courseReminderMessage(c, slug, due, titles.get(slug));
+      const ch = c.channels || {};
+      out.due++;
+      if (due.kind === 'deadline') out.deadlines++;
+
+      if (ch.email !== false && u.email && emailConfigured()) {
+        try {
+          await sendEmail({
+            to: u.email, from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
+            subject: msg.subject,
+            html: courseReminderHtml(msg),
+            text: `${msg.body}\n\n${msg.cta}: ${msg.url}\n\nChange your plan or turn reminders off: ${msg.editUrl}`
+          });
+          out.email++;
+        } catch (e) { console.warn('[tick] course reminder email failed', e && e.message); }
+      }
+
+      if (ch.inapp !== false) {
+        try {
+          await notifyUser(db, uid, {
+            id: `course_${due.kind}_${slug}_${due.date}`,
+            type: due.kind === 'deadline' ? 'course_deadline' : 'course_reminder',
+            fromName: titles.get(slug),
+            preview: msg.body,
+            link: msg.url.replace(APP_BASE_URL, '')
+          });
+          out.inapp++;
+        } catch (e) { console.warn('[tick] course reminder in-app failed', e && e.message); }
+      }
+
+      if (ch.push === true) {
+        const r = await pushToUser(db, uid, {
+          title: msg.subject,
+          body: msg.body,
+          data: { url: msg.url, type: 'course_reminder', slug }
+        });
+        out.push += r.sent || 0;
+      }
+    } catch (e) {
+      console.warn('[tick] course reminder failed', slug, e && e.message);
+    }
+  }
+  return out;
+}
+
 // Constant-time string compare that tolerates unequal lengths.
 //
 // crypto.timingSafeEqual throws a RangeError when the two buffers differ in
@@ -9828,7 +10105,7 @@ function timingSafeEqualStr(a, b) {
 }
 
 /**
- * One tick: the four time-based jobs this project has, run together.
+ * One tick: the time-based jobs this project has, run together.
  *
  * Shared by the scheduled function and the HTTP endpoint so there is exactly
  * one definition of what a tick does, rather than two that can drift.
@@ -9848,17 +10125,18 @@ async function runTick(db, { dryRun = false } = {}) {
     return { error: (e && e.message) || String(e) };
   });
 
-  const [sequences, watches, reminders, launches, announcements] = await Promise.all([
+  const [sequences, watches, reminders, courseReminders, launches, announcements] = await Promise.all([
     step('sequences', processDueEnrollments(db, { dryRun })),
-    // These two only ever renew or send; there is nothing to preview, so a dry
+    // These only ever renew or send; there is nothing to preview, so a dry
     // run skips them rather than pretending to measure something.
     step('watches', dryRun ? { skipped: 'dryRun' } : renewAllGoogleWatches(db)),
     step('reminders', dryRun ? { skipped: 'dryRun' } : sendReminders(db)),
+    step('courseReminders', dryRun ? { skipped: 'dryRun' } : sendCourseWorkReminders(db)),
     step('launches', promoteLaunchedItems(db, { dryRun })),
     step('announcements', fanOutDueAnnouncements(db, { dryRun }))
   ]);
 
-  const steps = { sequences, watches, reminders, launches, announcements };
+  const steps = { sequences, watches, reminders, courseReminders, launches, announcements };
   const failedSteps = Object.keys(steps).filter((k) => steps[k] && steps[k].error);
   const summary = { ok: failedSteps.length === 0, dryRun, ms: Date.now() - startedAt, ...steps };
   if (failedSteps.length) summary.failedSteps = failedSteps;

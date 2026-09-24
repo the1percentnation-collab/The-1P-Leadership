@@ -80,7 +80,7 @@ await t('publishing an announcement to I Can\'t members rings their bells', asyn
   const n = await eventually(async () => (await bell('beta')).find((x) => x.id === 'ann_beta-week2'));
   assert(n, 'the beta tester\'s bell never rang');
   assert(n.type === 'announcement' && n.title === 'Week 2 is open', 'wrong notification: ' + JSON.stringify(n));
-  assert(n.href === '/courses.html?course=icant' && n.read === false, 'bad href/read: ' + JSON.stringify(n));
+  assert(n.link === '/courses.html?course=icant' && n.read === false, 'bad link/read: ' + JSON.stringify(n));
   assert(n.preview === 'Module 3 just went live.', 'preview missing');
   const u = await read('users/beta');
   assert(u.unreadNotifCount === 1, 'unread badge count is ' + u.unreadNotifCount);
