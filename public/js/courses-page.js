@@ -483,6 +483,7 @@ function renderCommitmentCard(slot, course, c, { total, done }) {
   const card = document.createElement('div');
   card.className = 'cm-roadmap-card';
   card.innerHTML = `
+    <div class="cm-rc-label">Your commitment</div>
     <div class="cm-rc-stat"><span>Finish by</span><strong>${escapeHtml(fmtDate(c.goalDate))}</strong></div>
     <div class="cm-rc-stat"><span>Time left</span><strong class="${daysLeft < 0 ? 'is-behind' : ''}">${left}</strong></div>
     <div class="cm-rc-stat"><span>Progress</span><strong>${Math.round(actual * 100)}%</strong></div>

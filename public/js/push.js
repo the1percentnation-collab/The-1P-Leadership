@@ -35,25 +35,53 @@ export async function pushAvailable() {
 }
 
 /**
+ * Resolve once `reg` has an active worker. getToken() on a brand-new
+ * registration fails with "no active Service Worker" otherwise: that was the
+ * first-toggle failure in the live test, which a second toggle "fixed" only
+ * because the worker had finished activating by then.
+ */
+function whenActive(reg, timeoutMs = 10000) {
+  if (reg.active) return Promise.resolve();
+  const sw = reg.installing || reg.waiting;
+  if (!sw) return navigator.serviceWorker.ready.then(() => {});
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, timeoutMs);
+    sw.addEventListener('statechange', () => {
+      if (sw.state === 'activated') { clearTimeout(timer); resolve(); }
+    });
+  });
+}
+
+/**
  * Ask permission, register the service worker and save this device's token.
- * Returns { ok:true } or { ok:false, reason:'denied'|'unsupported'|'error' }.
+ * Returns { ok:true } or
+ * { ok:false, reason:'denied'|'dismissed'|'unsupported'|'error', message? }.
  */
 export async function enablePush(uid) {
   if (!(await pushAvailable())) return { ok: false, reason: 'unsupported' };
   try {
     const perm = await Notification.requestPermission();
-    if (perm !== 'granted') return { ok: false, reason: 'denied' };
+    if (perm === 'denied') return { ok: false, reason: 'denied' };
+    if (perm !== 'granted') return { ok: false, reason: 'dismissed' };
     const { getMessaging, getToken } = await import(SDK);
     const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-    const token = await getToken(getMessaging(app), {
-      vapidKey: VAPID_PUBLIC_KEY,
-      serviceWorkerRegistration: reg
-    });
-    if (!token) return { ok: false, reason: 'error' };
+    await whenActive(reg);
+    const opts = { vapidKey: VAPID_PUBLIC_KEY, serviceWorkerRegistration: reg };
+    let token;
+    try {
+      token = await getToken(getMessaging(app), opts);
+    } catch (first) {
+      // One retry after the worker settles; the push service can lag activation.
+      console.warn('[push] getToken failed once, retrying', first);
+      await whenActive(reg);
+      await new Promise((r) => setTimeout(r, 800));
+      token = await getToken(getMessaging(app), opts);
+    }
+    if (!token) return { ok: false, reason: 'error', message: 'no token returned' };
     await setDoc(doc(db, 'users', uid), { fcmTokens: arrayUnion(token) }, { merge: true });
     return { ok: true };
   } catch (e) {
     console.warn('[push] enable failed', e);
-    return { ok: false, reason: 'error' };
+    return { ok: false, reason: 'error', message: String((e && e.message) || e) };
   }
 }
