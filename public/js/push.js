@@ -12,7 +12,7 @@
 import { app, db, firebaseReady } from './firebase.js';
 import { doc, setDoc, arrayUnion } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
-const VAPID_PUBLIC_KEY = ''; // <-- paste your Web Push public key here
+const VAPID_PUBLIC_KEY = 'BF4PAT5i-T4_ozQ3-k1ekN4jT8I5KDBnj1pYkyoH6khh3mAizYJQny_4KQpkKP1BKG4BWGZQot6FXugy06DqphU'; // <-- paste your Web Push public key here
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 
 /** iOS only delivers web push to sites added to the Home Screen. */
