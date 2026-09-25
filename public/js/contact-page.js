@@ -213,15 +213,19 @@ function renderBetaToggle() {
 // The contact card has no course list of its own, so it asks for one. A
 // dedicated callable rather than listBetaTesters: a company admin looking at
 // one contact has no business pulling the whole cohort.
+// It also returns this contact's saved courses, so the boxes open ticked.
 let betaCourses = null;
+let betaTester = null;
 async function loadBetaCourses() {
-  if (betaCourses) return betaCourses;
   try {
-    const res = await httpsCallable(functions, 'listBetaCourses')({});
-    betaCourses = ((res && res.data) || {}).courses || [];
+    const email = (state.contact && state.contact.email) || '';
+    const res = await httpsCallable(functions, 'listBetaCourses')({ email });
+    const d = (res && res.data) || {};
+    betaCourses = d.courses || [];
+    betaTester = d.tester || null;
   } catch (e) {
     console.warn('[contact] beta course list failed', e);
-    betaCourses = [];
+    betaCourses = betaCourses || [];
   }
   return betaCourses;
 }
@@ -230,13 +234,15 @@ async function renderBetaCoursePicker() {
   const host = $('ct-beta-picker');
   if (!host) return;
   const courses = await loadBetaCourses();
+  const saved = (betaTester && betaTester.courseSlugs) || [];
   if (!courses.length) {
     host.innerHTML = '<span style="font-size:12px; color:var(--gray-mid);">No courses found.</span>';
     return;
   }
   host.innerHTML = '<div class="camp-recipient-detail" data-beta-picker>' + courses.map((c) => {
     const label = c.status === 'live' ? c.title : `${c.title} (${c.status})`;
-    return `<label class="camp-recipient-checkbox"><input type="checkbox" data-slug="${escapeHtml(c.slug)}" /> ${escapeHtml(label)}</label>`;
+    const on = saved.includes(c.slug);
+    return `<label class="camp-recipient-checkbox${on ? ' checked' : ''}"><input type="checkbox" data-slug="${escapeHtml(c.slug)}"${on ? ' checked' : ''} /> ${escapeHtml(label)}</label>`;
   }).join('') + '</div>';
   host.querySelectorAll('.camp-recipient-checkbox input').forEach((cb) => {
     cb.addEventListener('change', () => {
@@ -1299,15 +1305,26 @@ function wire() {
     const c = state.contact;
     const slugs = pickedBetaCourses();
     if (!slugs.length) { setStatus('Pick at least one course.', 'err'); return; }
+    const titles = slugs.map((sl) => {
+      const course = (betaCourses || []).find((x) => x.slug === sl);
+      return course ? course.title : sl;
+    });
+    if (!confirm(`Enroll ${c.name || c.email} in:\n\n${titles.join('\n')}\n\nThey get beta access now and an invite email for each new course. Unticked beta courses are removed.`)) return;
     const btn = $('btn-beta-courses');
     btn.disabled = true;
     try {
-      await httpsCallable(functions, 'setBetaTesterStatus')({
-        action: 'eligible', eligible: true,
-        email: c.email, name: c.name || '', phone: c.phone || '',
-        slugs, crmContactId: state.contactId
-      });
-      setStatus('Beta courses saved. Grant access in the beta console.', 'ok');
+      const call = httpsCallable(functions, 'setBetaTesterStatus');
+      const base = { email: c.email, name: c.name || '', phone: c.phone || '', slugs, crmContactId: state.contactId };
+      // Make sure the record exists (and is not declined) before granting.
+      await call({ ...base, action: 'eligible', eligible: true });
+      const res = await call({ ...base, action: 'approve' });
+      const d = (res && res.data) || {};
+      await loadBetaCourses();
+      await refreshTimeline();
+      const blocked = (d.blocked || []).length ? ` ${d.blocked.length} kept (paid or still unlocked).` : '';
+      setStatus(d.applied
+        ? `Enrolled. They can open the course now.${blocked}`
+        : `Access saved. No account yet: it unlocks when they sign up with ${c.email}.${blocked}`, 'ok');
     } catch (err) {
       setStatus('Could not save: ' + (err.message || err), 'err');
     } finally {
