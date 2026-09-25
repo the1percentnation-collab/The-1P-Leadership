@@ -9,7 +9,10 @@
 import { loadCourses, getCourses, getCourseBySlug, priceInfo } from './courses-data.js';
 import { launchDateMs, fmtLaunchDate, launchCountdown } from './launch-date.js';
 import { onAuthReady, currentUser } from './auth.js';
-import { firebaseReady, functions } from './firebase.js';
+import { firebaseReady, functions, db } from './firebase.js';
+import {
+  collection, query, where, orderBy, limit, getDocs
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { escapeHtml, getUserProfile } from './community.js';
 import { renderTopbar } from './topbar.js';
@@ -65,7 +68,7 @@ function heroHtml(course) {
       ${isNew
         ? `<div class="cl-strip-cell"><span class="cl-badge-new">New</span><span class="cl-strip-label">recently added</span></div>`
         : `<div class="cl-strip-cell"><span class="cl-strip-big">${Number(course.ratingAvg).toFixed(1)}</span>
-             <span class="cl-stars" aria-label="${Number(course.ratingAvg).toFixed(1)} out of 5">★★★★★</span>
+             <span class="cl-stars" aria-label="${Number(course.ratingAvg).toFixed(1)} out of 5">${starString(course.ratingAvg)}</span>
              <span class="cl-strip-label">${escapeHtml(String(course.ratingCount))} ratings</span></div>`}
       ${typeof course.learners === 'number'
         ? `<div class="cl-strip-cell"><span class="cl-strip-big">${course.learners.toLocaleString()}</span><span class="cl-strip-label">learners</span></div>`
@@ -219,6 +222,48 @@ function methodHtml() {
           <h3>Measure</h3><p>Finish with a 4-week 1% Challenge, retake your assessment, and see the change in numbers.</p></div>
       </div>
     </section>`;
+}
+
+/** Five stars, filled to the nearest whole star of `avg`. */
+function starString(avg) {
+  const n = Math.max(0, Math.min(5, Math.round(Number(avg) || 0)));
+  return '★'.repeat(n) + '☆'.repeat(5 - n);
+}
+
+// Approved reviews only: submitCourseReview holds every review as pending
+// until the owner approves it in the beta console, and the rules refuse to
+// return anything else to a public reader.
+async function renderReviews(course) {
+  const el = document.getElementById('cl-reviews');
+  if (!el || !firebaseReady) return;
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'courseReviews'),
+      where('courseSlug', '==', course.slug),
+      where('status', '==', 'approved'),
+      orderBy('createdAt', 'desc'),
+      limit(12)
+    ));
+    if (snap.empty) return;
+    const cards = snap.docs.map((d) => {
+      const r = d.data();
+      return `
+        <div class="cl-review">
+          <div class="cl-review-top">
+            <span class="cl-stars" aria-label="${Number(r.rating)} out of 5">${starString(r.rating)}</span>
+            <span class="cl-review-name">${escapeHtml(r.name || 'Academy member')}</span>
+          </div>
+          ${r.text ? `<p class="cl-review-text">${escapeHtml(r.text)}</p>` : ''}
+        </div>`;
+    }).join('');
+    el.innerHTML = `
+      <section class="cl-block">
+        <h2 class="cl-h2">What students are saying</h2>
+        <div class="cl-reviews">${cards}</div>
+      </section>`;
+  } catch (e) {
+    console.warn('[course-landing] reviews failed to load', e);
+  }
 }
 
 function instructorHtml() {
@@ -579,6 +624,7 @@ async function main() {
           ${curriculumHtml(course)}
           ${requirementsHtml(course)}
           ${descriptionHtml(course)}
+          <div id="cl-reviews"></div>
           ${instructorHtml()}
           ${moreCoursesHtml(course)}
         </div>
@@ -592,6 +638,7 @@ async function main() {
   bindEnroll(course);
   bindPromo(course);
   bindNotify(course);
+  renderReviews(course);
 
   // Shell + chip. Navigation and sign-out live in the sidebar, so the chip
   // keeps only search, the bell and the avatar.

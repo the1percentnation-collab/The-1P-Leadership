@@ -59,6 +59,36 @@
     .ready-text { flex: 1; font-size: 13.5px; }
     .ready-num { font-family: 'Space Mono', monospace; font-size: 13px; color: var(--gray-light); }
 
+    .pg-tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 18px; }
+    @media (max-width: 1100px) { .pg-tiles { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 560px) { .pg-tiles { grid-template-columns: repeat(2, 1fr); } }
+    .pg-tile {
+      text-align: left; cursor: pointer; font: inherit; color: inherit;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+    }
+    .pg-tile.is-active { border-color: var(--red); box-shadow: inset 0 0 0 1px var(--red); }
+    .pg-tile-num { font-family: 'Bebas Neue', sans-serif; font-size: 34px; line-height: 1; }
+    .pg-tile-label { font-size: 11px; font-family: 'Space Mono', monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--gray-light); margin-top: 4px; }
+    .pg-row { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; background: var(--surface); }
+    .pg-row.is-attention { border-left: 3px solid var(--red); }
+    .pg-course { margin-top: 12px; display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, .8fr); gap: 16px; align-items: center; }
+    @media (max-width: 860px) { .pg-course { grid-template-columns: 1fr; gap: 8px; } }
+    .pg-course-name { font-size: 12px; color: var(--gray-light); margin-bottom: 6px; }
+    .pg-bar { height: 8px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
+    .pg-bar-fill { height: 100%; background: var(--red); border-radius: 99px; }
+    .pg-bar-fill.is-done { background: #E4C65B; }
+    .pg-lesson { font-size: 12.5px; margin-top: 6px; }
+    .pg-lesson em { color: var(--gray-light); font-style: normal; }
+    .pg-k { font-size: 10px; font-family: 'Space Mono', monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--gray-mid); }
+    .pg-v { font-size: 13px; margin-top: 2px; }
+    .pg-stars { color: #E59819; letter-spacing: 1px; }
+    .bstatus-behind  { background: rgba(230,3,6,.15);  color: #FF7070; }
+    .bstatus-onpace  { background: rgba(74,222,128,.1); color: #4ade80; }
+    .bstatus-waiting { background: rgba(160,160,160,.15); color: #c9c9c9; }
+    .rv-row { border-bottom: 1px solid var(--border); padding: 12px 0; }
+    .rv-row:last-child { border-bottom: 0; }
+    .rv-text-admin { font-size: 13.5px; line-height: 1.6; margin-top: 6px; white-space: pre-line; word-break: break-word; }
+
     .empty-note { padding: 28px 0; text-align: center; color: var(--gray-light); font-size: 13px; }
   </style>
 </head>
@@ -80,6 +110,7 @@
 
         <nav class="console-tabs" aria-label="Beta sections">
           <button class="console-tab is-active" type="button" data-view="applicants">Applicants</button>
+          <button class="console-tab" type="button" data-view="progress">Progress</button>
           <button class="console-tab" type="button" data-view="cohort">Cohort</button>
           <button class="console-tab" type="button" data-view="feedback">Feedback</button>
           <button class="console-tab" type="button" data-view="readiness">Readiness</button>
@@ -142,6 +173,32 @@
               Kept on record so nobody is re-invited by accident. Approving one still works.
             </p>
             <div id="declined-list"></div>
+          </div>
+        </div>
+
+        <!-- Progress -->
+        <div id="view-progress" style="display:none;">
+          <div class="card" id="reviews-card" style="display:none;">
+            <h2>Reviews waiting on you</h2>
+            <p style="font-size:13px; color:var(--gray-light); margin-bottom:10px;">
+              Testers who finished and left a review. Approving puts it on the course page
+              and updates the course's star rating. Every review is already on their CRM card.
+            </p>
+            <div id="reviews-pending"></div>
+          </div>
+
+          <div class="card">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
+              <h2 style="margin:0;">Tester progress</h2>
+              <button class="btn btn-ghost" type="button" id="btn-refresh-progress" style="padding:5px 12px; font-size:12px;">Refresh</button>
+            </div>
+            <p style="font-size:13px; color:var(--gray-light); margin-bottom:16px;">
+              Everyone approved, where they are in each course, and whether they will make the
+              finish date they committed to. People who need a nudge are listed first.
+              Tap a tile to filter.
+            </p>
+            <div class="pg-tiles" id="progress-tiles"></div>
+            <div id="progress-list"></div>
           </div>
         </div>
 

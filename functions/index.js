@@ -6080,29 +6080,55 @@ async function noteBetaFeedback(db, email) {
   return true;
 }
 
-/** Completed modules for `slug`, counted the way course-renderer writes them. */
 /**
- * Completed modules per course, counted the way course-renderer writes them.
+ * Completed modules per course, read the way course-renderer writes them
+ * (`{slug}__m{id}`).
  *
  * One read of the progress subcollection covers every course, so a tester
- * testing three courses costs what testing one used to. Counting per slug
- * separately would have made an existing per-tester read into three.
+ * testing three courses costs what testing one used to. Besides the count it
+ * returns which module ids are done and when the latest one landed, which is
+ * what the Progress tab needs to say where somebody is and whether they have
+ * gone quiet.
  */
-async function countProgressBySlug(db, uid, slugs) {
-  const out = {};
-  (slugs || []).forEach((s) => { out[s] = 0; });
-  if (!uid || !(slugs || []).length) return out;
+async function progressDetailBySlug(db, uid, slugs) {
+  const counts = {};
+  const doneIds = {};
+  const lastAt = {};
+  (slugs || []).forEach((s) => { counts[s] = 0; doneIds[s] = []; lastAt[s] = null; });
+  if (!uid || !(slugs || []).length) return { counts, doneIds, lastAt };
   try {
     const snap = await db.collection('users').doc(uid).collection('progress').get();
     snap.docs.forEach((d) => {
-      if (d.data().completed !== true) return;
+      const p = d.data();
+      if (p.completed !== true) return;
       const slug = slugs.find((s) => d.id.startsWith(`${s}__m`));
-      if (slug) out[slug] += 1;
+      if (!slug) return;
+      counts[slug] += 1;
+      const raw = d.id.slice(`${slug}__m`.length);
+      doneIds[slug].push(/^\d+$/.test(raw) ? Number(raw) : raw);
+      const at = p.completedAt && typeof p.completedAt.toMillis === 'function' ? p.completedAt.toMillis() : null;
+      if (at && (!lastAt[slug] || at > lastAt[slug])) lastAt[slug] = at;
     });
   } catch (e) {
-    console.warn('[beta] progress count failed for', uid, e && e.message);
+    console.warn('[beta] progress read failed for', uid, e && e.message);
   }
-  return out;
+  return { counts, doneIds, lastAt };
+}
+
+/** Completed module counts per course; see progressDetailBySlug. */
+async function countProgressBySlug(db, uid, slugs) {
+  return (await progressDetailBySlug(db, uid, slugs)).counts;
+}
+
+/**
+ * The public rating for a course from its approved reviews — pure.
+ * `ratingAvg` is rounded to one decimal, which is all the landing page shows.
+ */
+function ratingSummary(ratings) {
+  const valid = (ratings || []).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 5);
+  if (!valid.length) return { ratingAvg: null, ratingCount: 0 };
+  const avg = valid.reduce((a, b) => a + b, 0) / valid.length;
+  return { ratingAvg: Math.round(avg * 10) / 10, ratingCount: valid.length };
 }
 
 function tsMillis(v) {
@@ -6147,6 +6173,109 @@ exports.listBetaCourses = onCall(async (request) => {
   return { ok: true, courses: await betaCourseOptions(db), defaultSlug: BETA_DEFAULT_SLUG };
 });
 
+/**
+ * One tester, joined: account, per-course enrollment, progress, the goal date
+ * they committed to and their review. Shared by listBetaTesters and the CRM
+ * card's getBetaTesterSummary so both read the same numbers.
+ */
+async function buildBetaRow(db, email, t) {
+  const slugs = testerSlugs(t);
+  if (!slugs.length) slugs.push(BETA_DEFAULT_SLUG);
+  // The account may have been created before the record existed (or without
+  // triggering the signup hook), so resolve it on read rather than trusting
+  // the stored uid alone.
+  let accountUid = t.uid || null;
+  let lastActiveAt = null;
+  if (!accountUid) {
+    const userDoc = await findUserByEmail(db, email);
+    if (userDoc) accountUid = userDoc.id;
+  }
+  // Enrollment is per course now: somebody can be testing two and have only
+  // one of them actually applied, which is exactly the state worth seeing.
+  const enrolledBySlug = {};
+  slugs.forEach((sl) => { enrolledBySlug[sl] = false; });
+  const commitmentBySlug = {};
+  const reviewBySlug = {};
+  const completionBySlug = {};
+  if (accountUid) {
+    const userRef = db.collection('users').doc(accountUid);
+    // One batched read for the user, each course's commitment, completion
+    // and review, instead of a round trip per course.
+    const refs = [userRef];
+    slugs.forEach((sl) => {
+      refs.push(userRef.collection('courseCommitments').doc(sl));
+      refs.push(userRef.collection('courseCompletions').doc(sl));
+      refs.push(db.collection('courseReviews').doc(`${sl}__${accountUid}`));
+    });
+    const snaps = await db.getAll(...refs);
+    const userSnap = snaps[0];
+    if (userSnap.exists) {
+      const u = userSnap.data();
+      lastActiveAt = tsMillis(u.lastActiveAt);
+      const owned = Array.isArray(u.enrolledCourseSlugs) ? u.enrolledCourseSlugs : [];
+      slugs.forEach((sl) => { enrolledBySlug[sl] = owned.includes(sl); });
+    }
+    slugs.forEach((sl, i) => {
+      const c = snaps[1 + i * 3];
+      const done = snaps[2 + i * 3];
+      const rv = snaps[3 + i * 3];
+      if (c.exists && c.data().active !== false) {
+        const cd = c.data();
+        commitmentBySlug[sl] = {
+          goalDate: cd.goalDate || null,
+          startDate: cd.startDate || null,
+          weeklyMinutes: cd.weeklyMinutes || null
+        };
+      }
+      if (done.exists) completionBySlug[sl] = tsMillis(done.data().completedAt);
+      if (rv.exists) {
+        const r = rv.data();
+        reviewBySlug[sl] = {
+          id: rv.id,
+          rating: r.rating || null,
+          text: r.text || '',
+          status: r.status || 'pending',
+          createdAt: tsMillis(r.createdAt)
+        };
+      }
+    });
+  }
+  const progress = await progressDetailBySlug(db, accountUid, slugs);
+  const lessonsBySlug = progress.counts;
+  return {
+    email,
+    name: t.name || '',
+    phone: t.phone || null,
+    status: t.status || 'applied',
+    courseSlugs: slugs,
+    courseSlug: slugs[0],
+    betaGrantedSlugs: Array.isArray(t.betaGrantedSlugs) ? t.betaGrantedSlugs : [],
+    courseName: t.courseName || null,
+    cohort: t.cohort || null,
+    why: t.why || null,
+    note: t.note || null,
+    crmContactId: t.crmContactId || null,
+    grantPending: t.grantPending === true,
+    hasAccount: !!accountUid,
+    enrolledBySlug,
+    enrolled: slugs.every((sl) => enrolledBySlug[sl]),
+    lessonsBySlug,
+    lessonsCompleted: Object.values(lessonsBySlug).reduce((a, b) => a + b, 0),
+    doneIdsBySlug: progress.doneIds,
+    lastLessonAtBySlug: progress.lastAt,
+    commitmentBySlug,
+    completionBySlug,
+    reviewBySlug,
+    feedbackCount: t.feedbackCount || 0,
+    appliedAt: tsMillis(t.appliedAt),
+    grantedAt: tsMillis(t.grantedAt),
+    activatedAt: tsMillis(t.activatedAt),
+    completedAt: tsMillis(t.completedAt),
+    lastFeedbackAt: tsMillis(t.lastFeedbackAt),
+    lastActiveAt
+  };
+}
+
 exports.listBetaTesters = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -6157,59 +6286,7 @@ exports.listBetaTesters = onCall(async (request) => {
 
   const rows = [];
   for (const d of snap.docs) {
-    const t = d.data();
-    const slugs = testerSlugs(t);
-    if (!slugs.length) slugs.push(BETA_DEFAULT_SLUG);
-    // The account may have been created before the record existed (or without
-    // triggering the signup hook), so resolve it on read rather than trusting
-    // the stored uid alone.
-    let accountUid = t.uid || null;
-    let lastActiveAt = null;
-    if (!accountUid) {
-      const userDoc = await findUserByEmail(db, d.id);
-      if (userDoc) accountUid = userDoc.id;
-    }
-    // Enrollment is per course now: somebody can be testing two and have only
-    // one of them actually applied, which is exactly the state worth seeing.
-    const enrolledBySlug = {};
-    slugs.forEach((sl) => { enrolledBySlug[sl] = false; });
-    if (accountUid) {
-      const userSnap = await db.collection('users').doc(accountUid).get();
-      if (userSnap.exists) {
-        const u = userSnap.data();
-        lastActiveAt = tsMillis(u.lastActiveAt);
-        const owned = Array.isArray(u.enrolledCourseSlugs) ? u.enrolledCourseSlugs : [];
-        slugs.forEach((sl) => { enrolledBySlug[sl] = owned.includes(sl); });
-      }
-    }
-    const lessonsBySlug = await countProgressBySlug(db, accountUid, slugs);
-    rows.push({
-      email: d.id,
-      name: t.name || '',
-      phone: t.phone || null,
-      status: t.status || 'applied',
-      courseSlugs: slugs,
-      courseSlug: slugs[0],
-      betaGrantedSlugs: Array.isArray(t.betaGrantedSlugs) ? t.betaGrantedSlugs : [],
-      courseName: t.courseName || null,
-      cohort: t.cohort || null,
-      why: t.why || null,
-      note: t.note || null,
-      crmContactId: t.crmContactId || null,
-      grantPending: t.grantPending === true,
-      hasAccount: !!accountUid,
-      enrolledBySlug,
-      enrolled: slugs.every((sl) => enrolledBySlug[sl]),
-      lessonsBySlug,
-      lessonsCompleted: Object.values(lessonsBySlug).reduce((a, b) => a + b, 0),
-      feedbackCount: t.feedbackCount || 0,
-      appliedAt: tsMillis(t.appliedAt),
-      grantedAt: tsMillis(t.grantedAt),
-      activatedAt: tsMillis(t.activatedAt),
-      completedAt: tsMillis(t.completedAt),
-      lastFeedbackAt: tsMillis(t.lastFeedbackAt),
-      lastActiveAt
-    });
+    rows.push(await buildBetaRow(db, d.id, d.data()));
   }
 
   // Feedback from testers, so beta signal reads separately from general site
@@ -6251,7 +6328,10 @@ exports.listBetaTesters = onCall(async (request) => {
       // Everyone past a decision, which is the number the launch call rests on.
       inCohort: rows.filter((r) => r.status !== 'applied' && r.status !== 'declined').length,
       withFeedback: rows.filter((r) => r.feedbackCount > 0).length,
-      started: rows.filter((r) => r.lessonsCompleted > 0).length
+      started: rows.filter((r) => r.lessonsCompleted > 0).length,
+      reviewed: rows.filter((r) => Object.keys(r.reviewBySlug || {}).length > 0).length,
+      pendingReviews: rows.reduce((n, r) => n + Object.values(r.reviewBySlug || {})
+        .filter((v) => v.status === 'pending').length, 0)
     }
   };
 });
@@ -6587,6 +6667,350 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
     blocked,
     emailed
   };
+});
+
+// ── Course completion and reviews ────────────────────────────────────────
+//
+// Finishing a course used to leave no trace on the server: progress sat in
+// the member's own docs (or, for I Can't, only in their browser), the beta
+// record moved to `completed` only when Anthony clicked "Mark done", and the
+// only ask at the finish line was an Amazon link. This is the other half:
+//
+//   recordCourseCompletion — the course player calls it when every module is
+//     done. It checks the progress for itself, stamps
+//     users/{uid}/courseCompletions/{slug}, moves a beta tester to
+//     `completed`, puts the finish on their CRM card and emails the review ask.
+//   submitCourseReview — the /review page. Held as `pending` until approved.
+//   moderateCourseReview — the owner approves or rejects from the beta
+//     console; approval republishes the course's rating.
+//
+// courseReviews/{slug}__{uid} is the review; reviewRequests/{slug}__{uid}
+// drives the one follow-up nudge the automation tick sends if nobody reviewed.
+
+// Module counts for courses whose lessons live in JS rather than
+// courses/{slug}/modules. Keep in step with MODULES in public/js/icant-course.js.
+const CODE_COURSE_MODULE_COUNTS = { icant: 11 };
+const REVIEW_NUDGE_DAYS = 3;
+
+async function courseModuleTotal(db, slug, course) {
+  const codeCount = CODE_COURSE_MODULE_COUNTS[slug];
+  if (codeCount && (!course || course.contentSource !== 'firestore')) return codeCount;
+  const snap = await db.collection('courses').doc(slug).collection('modules').get();
+  return snap.docs.filter((d) => d.data().published !== false).length;
+}
+
+function reviewPageUrl(slug) {
+  return `${APP_BASE_URL}/review.html?course=${encodeURIComponent(slug)}`;
+}
+
+/**
+ * Writes a course event onto the member's CRM card: tags plus one timeline
+ * activity. Best-effort — a CRM hiccup must never fail the member's action.
+ * Returns the contact's ids so a following email can land on the same card.
+ */
+async function logCourseEventToCrm(db, { uid, user, email, tags, activity }) {
+  try {
+    const u = user || {};
+    const companyId = u.crmCompanyId || await resolveAcademyCompanyId(db);
+    if (!companyId) return {};
+    let hint = u.crmContactId || null;
+    if (!hint) {
+      const t = await betaTesterRef(db, email).get();
+      if (t.exists) hint = t.data().crmContactId || null;
+    }
+    const ref = await upsertCrmContact(db, companyId, {
+      name: u.displayName || null,
+      email,
+      phone: u.phone || null,
+      source: 'Academy',
+      tags: (tags || []).map((t) => String(t).slice(0, 40)),
+      contactId: hint,
+      memberUid: uid
+    });
+    if (activity) {
+      await ref.collection('activities').add({
+        actorUid: 'system',
+        actorName: 'Academy',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...activity
+      });
+    }
+    return { companyId, contactId: ref.id };
+  } catch (e) {
+    console.warn('[course-crm] CRM write failed:', e && e.message);
+    return {};
+  }
+}
+
+function reviewRequestEmailContent({ firstName, courseTitle, slug, nudge }) {
+  const name = firstName || 'there';
+  const titleHtml = textToHtml(courseTitle);
+  const url = reviewPageUrl(slug);
+  const subject = nudge
+    ? `Two minutes on ${courseTitle}?`
+    : `You finished ${courseTitle}. How did it land?`;
+  const lead = nudge
+    ? `A few days ago you finished ${courseTitle}. If you have two minutes, your rating and a few honest lines would mean a lot.`
+    : `You finished ${courseTitle}. That puts you in a very small group.`;
+  const ask = `Would you rate the course and say what it changed for you? Honest beats polite. Your review helps the next person decide to start.`;
+  const text =
+    `Hi ${name},\n\n${lead}\n\n${ask}\n\nLeave your review: ${url}\n\n` +
+    `Anthony Brown Sr.\nFounder, The One Percent Nation`;
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:560px;margin:0 auto;line-height:1.55;">
+      <h2 style="color:#000;margin:0 0 12px;font-size:22px;">${nudge ? 'Quick favor' : 'You did it'}, ${textToHtml(name)}.</h2>
+      <p style="margin:0 0 14px;">${textToHtml(lead).replace(textToHtml(courseTitle), `<strong>${titleHtml}</strong>`)}</p>
+      <p style="margin:0 0 22px;">${textToHtml(ask)}</p>
+      <p style="margin:0 0 22px;"><a href="${url}" style="display:inline-block;background:#e60306;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">★★★★★ Rate the course</a></p>
+      <p style="margin:0;">Anthony Brown Sr.<br/>Founder, The One Percent Nation</p>
+    </div>`;
+  return { subject, text, html };
+}
+
+// Never throws; the caller must declare `secrets: [sendgridKey]`.
+async function sendReviewRequestEmail({ email, firstName, courseTitle, slug, nudge, crmArgs }) {
+  if (!EMAIL_RE.test(email || '')) return false;
+  const { subject, text, html } = reviewRequestEmailContent({ firstName, courseTitle, slug, nudge });
+  try {
+    await sendEmail({
+      to: email,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      subject,
+      text,
+      html,
+      customArgs: Object.assign({ type: nudge ? 'review_nudge' : 'review_request', slug }, crmArgs || {})
+    });
+    return true;
+  } catch (err) {
+    console.error('[review-email] send failed:', String((err && err.message) || err).slice(0, 300));
+    return false;
+  }
+}
+
+exports.recordCourseCompletion = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const slug = String((request.data && request.data.slug) || '').trim();
+  if (!slug || slug.length > 120 || slug.includes('/')) throw new HttpsError('invalid-argument', 'slug is required.');
+
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+  const doneRef = userRef.collection('courseCompletions').doc(slug);
+  const [userSnap, courseSnap, doneSnap] = await db.getAll(userRef, db.collection('courses').doc(slug), doneRef);
+  // Already recorded: nothing to do, and no second email.
+  if (doneSnap.exists) return { ok: true, already: true };
+
+  const u = userSnap.exists ? userSnap.data() : {};
+  const enrolled = Array.isArray(u.enrolledCourseSlugs) && u.enrolledCourseSlugs.includes(slug);
+  if (!enrolled) throw new HttpsError('permission-denied', 'Not enrolled in this course.');
+
+  const course = courseSnap.exists ? courseSnap.data() : null;
+  const total = await courseModuleTotal(db, slug, course);
+  const done = (await countProgressBySlug(db, uid, [slug]))[slug] || 0;
+  if (!total || done < total) {
+    return { ok: false, reason: 'incomplete', done, total };
+  }
+
+  const FV = admin.firestore.FieldValue;
+  const courseTitle = (course && (course.title || course.short)) || String((request.data && request.data.title) || slug).slice(0, 160);
+  const email = normalizeEmail(u.email || (request.auth.token && request.auth.token.email));
+
+  // create() fails if a parallel call got there first, which is what keeps
+  // the email to one.
+  try {
+    await doneRef.create({ courseSlug: slug, courseTitle, completedAt: FV.serverTimestamp() });
+  } catch (e) {
+    return { ok: true, already: true };
+  }
+
+  await advanceBetaStatus(db, email, 'completed', { completedAt: FV.serverTimestamp() });
+
+  const crm = await logCourseEventToCrm(db, {
+    uid, user: u, email,
+    tags: [`Completed: ${courseTitle}`],
+    activity: {
+      type: 'course_completed',
+      description: `Completed "${courseTitle}"`,
+      meta: { courseSlug: slug, courseTitle, modules: total }
+    }
+  });
+
+  await db.collection('reviewRequests').doc(`${slug}__${uid}`).set({
+    uid, email, courseSlug: slug, courseTitle,
+    createdAt: FV.serverTimestamp(),
+    nudgeAt: admin.firestore.Timestamp.fromMillis(Date.now() + REVIEW_NUDGE_DAYS * 86400000)
+  }, { merge: true });
+
+  const emailed = await sendReviewRequestEmail({
+    email,
+    firstName: String(u.displayName || '').trim().split(/\s+/)[0] || '',
+    courseTitle, slug, nudge: false,
+    crmArgs: crm.contactId ? { companyId: crm.companyId, contactId: crm.contactId } : null
+  });
+
+  return { ok: true, emailed };
+});
+
+/** "Maria D." — enough to be real on a public page, not a full name. */
+function reviewerDisplayName(displayName) {
+  const parts = String(displayName || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return 'Academy member';
+  return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.` : parts[0];
+}
+
+async function publishCourseRating(db, slug) {
+  const snap = await db.collection('courseReviews')
+    .where('courseSlug', '==', slug).where('status', '==', 'approved').get();
+  const summary = ratingSummary(snap.docs.map((d) => d.data().rating));
+  await db.collection('courses').doc(slug).set(summary, { merge: true });
+  return summary;
+}
+
+exports.submitCourseReview = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const data = request.data || {};
+  const slug = String(data.slug || '').trim();
+  if (!slug || slug.length > 120 || slug.includes('/')) throw new HttpsError('invalid-argument', 'slug is required.');
+  const rating = Number(data.rating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new HttpsError('invalid-argument', 'Pick a rating from 1 to 5 stars.');
+  const text = String(data.text || '').trim().slice(0, 2000);
+
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'submitCourseReview', max: 10, windowSec: 600 });
+  const userRef = db.collection('users').doc(uid);
+  const reviewRef = db.collection('courseReviews').doc(`${slug}__${uid}`);
+  const [userSnap, doneSnap, prevSnap] = await db.getAll(
+    userRef, userRef.collection('courseCompletions').doc(slug), reviewRef);
+  if (!doneSnap.exists) throw new HttpsError('failed-precondition', 'Finish the course first, then leave your review.');
+
+  const u = userSnap.exists ? userSnap.data() : {};
+  const email = normalizeEmail(u.email || (request.auth.token && request.auth.token.email));
+  const courseTitle = doneSnap.data().courseTitle || slug;
+  const wasApproved = prevSnap.exists && prevSnap.data().status === 'approved';
+  const FV = admin.firestore.FieldValue;
+
+  const crm = await logCourseEventToCrm(db, {
+    uid, user: u, email,
+    tags: [`Reviewed: ${courseTitle}`],
+    activity: {
+      type: 'course_review',
+      description: `Left a ${rating}★ review of "${courseTitle}"`,
+      meta: { courseSlug: slug, courseTitle, rating, text: text.slice(0, 500) }
+    }
+  });
+
+  // An edit goes back through approval, so what is public is always
+  // something Anthony has read.
+  await reviewRef.set({
+    courseSlug: slug,
+    courseTitle,
+    uid,
+    email,
+    name: reviewerDisplayName(u.displayName),
+    rating,
+    text,
+    status: 'pending',
+    crmCompanyId: crm.companyId || null,
+    crmContactId: crm.contactId || null,
+    updatedAt: FV.serverTimestamp(),
+    ...(prevSnap.exists ? {} : { createdAt: FV.serverTimestamp() })
+  }, { merge: true });
+
+  await db.collection('reviewRequests').doc(`${slug}__${uid}`)
+    .set({ nudgeAt: null, reviewedAt: FV.serverTimestamp() }, { merge: true });
+  if (wasApproved) await publishCourseRating(db, slug);
+
+  return { ok: true, status: 'pending' };
+});
+
+exports.moderateCourseReview = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admins only.');
+  const id = String((request.data && request.data.id) || '').trim();
+  const decision = String((request.data && request.data.decision) || '');
+  if (!id || id.includes('/')) throw new HttpsError('invalid-argument', 'Review id is required.');
+  if (!['approve', 'reject'].includes(decision)) throw new HttpsError('invalid-argument', 'decision must be approve or reject.');
+
+  const ref = db.collection('courseReviews').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Review not found.');
+  const r = snap.data();
+  const FV = admin.firestore.FieldValue;
+  await ref.set({
+    status: decision === 'approve' ? 'approved' : 'rejected',
+    decidedAt: FV.serverTimestamp(),
+    decidedBy: uid
+  }, { merge: true });
+  const summary = await publishCourseRating(db, r.courseSlug);
+
+  if (r.crmCompanyId && r.crmContactId) {
+    try {
+      await db.collection('companies').doc(r.crmCompanyId).collection('contacts').doc(r.crmContactId)
+        .collection('activities').add({
+          type: decision === 'approve' ? 'review_approved' : 'review_rejected',
+          description: decision === 'approve'
+            ? `${r.rating}★ review of "${r.courseTitle}" published on the website`
+            : `${r.rating}★ review of "${r.courseTitle}" kept private`,
+          actorUid: 'system',
+          actorName: 'Academy',
+          createdAt: FV.serverTimestamp(),
+          meta: { courseSlug: r.courseSlug, rating: r.rating, reviewId: id }
+        });
+    } catch (e) {
+      console.warn('[moderateCourseReview] CRM log failed:', e && e.message);
+    }
+  }
+  return { ok: true, ...summary };
+});
+
+/**
+ * Automation-tick step: one follow-up email to anybody who finished a course
+ * REVIEW_NUDGE_DAYS ago and has not reviewed it. `nudgeAt` is cleared the
+ * moment a nudge goes out or a review lands, so each person gets at most one.
+ */
+async function sendReviewNudges(db) {
+  const snap = await db.collection('reviewRequests')
+    .where('nudgeAt', '<=', admin.firestore.Timestamp.now()).limit(50).get();
+  let sent = 0;
+  for (const d of snap.docs) {
+    const r = d.data();
+    const FV = admin.firestore.FieldValue;
+    const reviewed = (await db.collection('courseReviews').doc(d.id).get()).exists;
+    let ok = false;
+    if (!reviewed) {
+      const u = (await db.collection('users').doc(r.uid).get()).data() || {};
+      ok = await sendReviewRequestEmail({
+        email: r.email,
+        firstName: String(u.displayName || '').trim().split(/\s+/)[0] || '',
+        courseTitle: r.courseTitle || r.courseSlug,
+        slug: r.courseSlug,
+        nudge: true,
+        crmArgs: u.crmCompanyId && u.crmContactId ? { companyId: u.crmCompanyId, contactId: u.crmContactId } : null
+      });
+      if (ok) sent += 1;
+    }
+    await d.ref.set({ nudgeAt: null, ...(ok ? { nudgedAt: FV.serverTimestamp() } : {}) }, { merge: true });
+  }
+  return { checked: snap.size, sent };
+}
+
+// getBetaTesterSummary — the CRM card's one-line view of a tester's progress,
+// from the same row builder the beta console uses.
+exports.getBetaTesterSummary = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = admin.firestore();
+  if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admins only.');
+  const ref = betaTesterRef(db, request.data && request.data.email);
+  if (!ref) return { ok: true, row: null };
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: true, row: null };
+  const row = await buildBetaRow(db, snap.id, snap.data());
+  return { ok: true, row, courses: await betaCourseOptions(db) };
 });
 
 // validateCoupon — pre-checkout preview so the buyer sees the discounted
@@ -10142,7 +10566,7 @@ async function runTick(db, { dryRun = false } = {}) {
     return { error: (e && e.message) || String(e) };
   });
 
-  const [sequences, watches, reminders, courseReminders, launches, announcements] = await Promise.all([
+  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges] = await Promise.all([
     step('sequences', processDueEnrollments(db, { dryRun })),
     // These only ever renew or send; there is nothing to preview, so a dry
     // run skips them rather than pretending to measure something.
@@ -10150,10 +10574,11 @@ async function runTick(db, { dryRun = false } = {}) {
     step('reminders', dryRun ? { skipped: 'dryRun' } : sendReminders(db)),
     step('courseReminders', dryRun ? { skipped: 'dryRun' } : sendCourseWorkReminders(db)),
     step('launches', promoteLaunchedItems(db, { dryRun })),
-    step('announcements', fanOutDueAnnouncements(db, { dryRun }))
+    step('announcements', fanOutDueAnnouncements(db, { dryRun })),
+    step('reviewNudges', dryRun ? { skipped: 'dryRun' } : sendReviewNudges(db))
   ]);
 
-  const steps = { sequences, watches, reminders, courseReminders, launches, announcements };
+  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges };
   const failedSteps = Object.keys(steps).filter((k) => steps[k] && steps[k].error);
   const summary = { ok: failedSteps.length === 0, dryRun, ms: Date.now() - startedAt, ...steps };
   if (failedSteps.length) summary.failedSteps = failedSteps;

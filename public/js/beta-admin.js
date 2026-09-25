@@ -15,10 +15,14 @@ import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { renderTopbar } from './topbar.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
+import { loadCourses, getCourseBySlug, loadModulesMeta } from './courses-data.js';
+import {
+  testerProgress, paceBucket, attentionRank, bucketCounts, PACE_LABELS
+} from './beta-progress.js';
 
 const $ = (id) => document.getElementById(id);
 
-const VIEWS = ['applicants', 'cohort', 'feedback', 'readiness'];
+const VIEWS = ['applicants', 'progress', 'cohort', 'feedback', 'readiness'];
 const STATUS_LABELS = {
   applied: 'Applied',
   declined: 'Declined',
@@ -331,6 +335,208 @@ async function addTester(ev) {
   }
 }
 
+// ─── Progress ────────────────────────────────────────────────────────────
+// Who is in, who is working, who is slipping. Built from the same
+// listBetaTesters rows as the Cohort table; the judgement calls (pace, stall,
+// projection) live in beta-progress.js so they are tested.
+
+const modulesBySlug = new Map();   // slug -> [{ id, title }] once loaded
+let coursesLoaded = null;
+let progressFilter = 'all';
+
+/** Module lists for every course in the cohort, loaded once per slug. */
+async function ensureModules(slugs) {
+  if (!coursesLoaded) coursesLoaded = loadCourses().catch(() => null);
+  await coursesLoaded;
+  const missing = slugs.filter((sl) => !modulesBySlug.has(sl));
+  if (!missing.length) return false;
+  await Promise.all(missing.map(async (sl) => {
+    const course = getCourseBySlug(sl, { includeInactive: true }) || { slug: sl };
+    try {
+      const mods = await loadModulesMeta(course);
+      modulesBySlug.set(sl, mods.map((m) => ({ id: m.id, title: m.title })));
+    } catch (e) {
+      modulesBySlug.set(sl, []);
+    }
+  }));
+  return true;
+}
+
+function stars(n) {
+  const k = Math.max(0, Math.min(5, Number(n) || 0));
+  return `<span class="pg-stars" aria-label="${k} out of 5">${'★'.repeat(k)}${'☆'.repeat(5 - k)}</span>`;
+}
+
+function fmtIso(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function pacePill(p) {
+  const cls = p.paceState === 'finished' ? 'completed'
+    : p.paceState === 'on-pace' ? 'onpace'
+    : p.paceState === 'no-plan' ? 'active'
+    : p.paceState === 'not-started' ? 'waiting'
+    : 'behind';
+  let label = PACE_LABELS[p.paceState] || p.paceState;
+  if (p.paceState === 'stalled' && p.idleDays != null) label = `Stalled ${p.idleDays}d`;
+  if (p.paceState === 'not-started' && p.waitingDays != null) label = `Not started · ${p.waitingDays}d`;
+  return `<span class="bstatus bstatus-${cls}">${esc(label)}</span>`;
+}
+
+/** One entry per tester-course pair, since pace is per course. */
+function progressEntries() {
+  const inCohort = state.rows.filter((r) => r.status !== 'applied' && r.status !== 'declined');
+  const out = [];
+  inCohort.forEach((t) => {
+    t.courseSlugs.forEach((sl) => {
+      const mods = modulesBySlug.get(sl) || [];
+      const progress = testerProgress({
+        doneIds: (t.doneIdsBySlug && t.doneIdsBySlug[sl]) || [],
+        modules: mods,
+        commitment: (t.commitmentBySlug && t.commitmentBySlug[sl]) || null,
+        lastLessonAt: t.lastLessonAtBySlug && t.lastLessonAtBySlug[sl],
+        startedAt: t.activatedAt || t.grantedAt,
+        completedAt: t.completionBySlug && t.completionBySlug[sl]
+      });
+      out.push({ tester: t, slug: sl, progress, review: (t.reviewBySlug && t.reviewBySlug[sl]) || null });
+    });
+  });
+  return out;
+}
+
+const TILES = [
+  ['all', 'enrolled', 'Enrolled'],
+  ['notStarted', 'notStarted', 'Not started'],
+  ['working', 'working', 'Working'],
+  ['slipping', 'slipping', 'Behind / stalled'],
+  ['finished', 'finished', 'Finished'],
+  ['reviewed', 'reviewed', 'Reviewed']
+];
+
+function courseBlock(e) {
+  const p = e.progress;
+  const t = e.tester;
+  const lesson = p.paceState === 'finished'
+    ? 'Finished every lesson'
+    : p.currentLesson
+      ? `Lesson ${p.currentLesson.number} of ${p.total}: <em>${esc(p.currentLesson.title)}</em>`
+      : `${p.done} of ${p.total || '?'} lessons done`;
+  const noAccount = !t.hasAccount ? ' · <span style="color:var(--red);">no account yet</span>' : '';
+  const goal = p.goalDate
+    ? `${fmtIso(p.goalDate)}${p.daysLeft != null && p.paceState !== 'finished' ? ` <span style="color:var(--gray-mid);">(${p.daysLeft >= 0 ? `${p.daysLeft}d left` : `${-p.daysLeft}d over`})</span>` : ''}`
+    : '<span style="color:var(--gray-mid);">No goal set</span>';
+  const projected = p.projectedFinish && p.paceState !== 'finished'
+    ? `<div class="pg-v" style="font-size:12px; color:var(--gray-light);">On this pace: ${fmtIso(p.projectedFinish)}</div>` : '';
+  const review = e.review
+    ? `${stars(e.review.rating)} <span style="font-size:11px; color:var(--gray-mid);">${esc(e.review.status)}</span>`
+    : (p.paceState === 'finished' ? '<span style="color:var(--gray-mid);">Asked, not yet</span>' : '<span style="color:var(--gray-mid);">—</span>');
+  return `
+    <div class="pg-course">
+      <div>
+        <div class="pg-course-name">${esc(courseTitle(e.slug))}${noAccount}</div>
+        <div class="pg-bar"><div class="pg-bar-fill${p.paceState === 'finished' ? ' is-done' : ''}" style="width:${p.paceState === 'finished' ? 100 : p.pct}%"></div></div>
+        <div class="pg-lesson">${p.paceState === 'finished' ? '' : `<strong>${p.pct}%</strong> · `}${lesson}</div>
+      </div>
+      <div>
+        <div class="pg-k">Goal date</div>
+        <div class="pg-v">${goal}</div>
+        ${projected}
+      </div>
+      <div>
+        <div class="pg-k">Pace · last lesson</div>
+        <div class="pg-v">${pacePill(p)} <span style="font-size:12px; color:var(--gray-light);">${fmtAgo(e.tester.lastLessonAtBySlug && e.tester.lastLessonAtBySlug[e.slug])}</span></div>
+        <div class="pg-k" style="margin-top:8px;">Review</div>
+        <div class="pg-v">${review}</div>
+      </div>
+    </div>`;
+}
+
+function renderProgressView() {
+  const entries = progressEntries();
+  const counts = bucketCounts(entries);
+
+  $('progress-tiles').innerHTML = TILES.map(([key, countKey, label]) => `
+    <button type="button" class="pg-tile${progressFilter === key ? ' is-active' : ''}" data-filter="${key}">
+      <div class="pg-tile-num">${counts[countKey] || 0}</div>
+      <div class="pg-tile-label">${label}</div>
+    </button>`).join('');
+  $('progress-tiles').querySelectorAll('[data-filter]').forEach((b) => {
+    b.addEventListener('click', () => {
+      progressFilter = progressFilter === b.dataset.filter ? 'all' : b.dataset.filter;
+      renderProgressView();
+    });
+  });
+
+  const keep = entries.filter((e) => progressFilter === 'all'
+    || (progressFilter === 'reviewed' ? !!e.review : paceBucket(e.progress) === progressFilter));
+
+  // Group back to one card per tester, most urgent course deciding the order.
+  const byTester = new Map();
+  keep.forEach((e) => {
+    if (!byTester.has(e.tester.email)) byTester.set(e.tester.email, []);
+    byTester.get(e.tester.email).push(e);
+  });
+  const groups = Array.from(byTester.values())
+    .map((list) => ({ list, rank: Math.min(...list.map((e) => attentionRank(e.progress))) }))
+    .sort((a, b) => a.rank - b.rank
+      || (a.list[0].tester.name || a.list[0].tester.email).localeCompare(b.list[0].tester.name || b.list[0].tester.email));
+
+  $('progress-list').innerHTML = groups.length ? groups.map(({ list, rank }) => {
+    const t = list[0].tester;
+    return `
+      <div class="pg-row${rank <= 3 ? ' is-attention' : ''}">
+        <div class="tester-top">
+          <div class="tester-id">
+            <div class="tester-name">${esc(t.name || t.email)}</div>
+            <div class="tester-email">${esc(t.email)}</div>
+          </div>
+          <div class="tester-meta" style="margin-top:0;">
+            ${t.phone ? `<span>${esc(t.phone)}</span>` : ''}
+            <span>Last active ${fmtAgo(t.lastActiveAt)}</span>
+            ${t.crmContactId ? `<a href="/contact.html?id=${encodeURIComponent(t.crmContactId)}" style="color:var(--red);">CRM record →</a>` : ''}
+          </div>
+        </div>
+        ${list.map(courseBlock).join('')}
+      </div>`;
+  }).join('') : `<div class="empty-note">${entries.length ? 'Nobody matches this filter.' : 'Nobody approved yet. Approve testers on the Applicants tab.'}</div>`;
+
+  renderPendingReviews(entries);
+}
+
+function renderPendingReviews(entries) {
+  const pending = entries.filter((e) => e.review && e.review.status === 'pending');
+  $('reviews-card').style.display = pending.length ? '' : 'none';
+  $('reviews-pending').innerHTML = pending.map((e) => `
+    <div class="rv-row" data-review="${esc(e.review.id)}">
+      <div class="fb-top">
+        ${stars(e.review.rating)}
+        <span class="fb-who">${esc(e.tester.name || e.tester.email)}</span>
+        <span style="font-size:11px; color:var(--gray-mid);">${esc(courseTitle(e.slug))} · ${fmtDate(e.review.createdAt)}</span>
+      </div>
+      <div class="rv-text-admin">${e.review.text ? esc(e.review.text) : '<span style="color:var(--gray-mid);">Rating only, no written review.</span>'}</div>
+      <div class="tester-actions">
+        <button class="btn btn-primary" data-decide="approve">Approve &amp; publish</button>
+        <button class="btn btn-ghost" data-decide="reject">Keep private</button>
+      </div>
+    </div>`).join('');
+  $('reviews-pending').querySelectorAll('[data-decide]').forEach((btn) => {
+    const id = btn.closest('[data-review]').dataset.review;
+    wireAction(btn, async () => {
+      await httpsCallable(functions, 'moderateCourseReview')({ id, decision: btn.dataset.decide });
+      await load();
+    });
+  });
+}
+
+function renderProgress() {
+  renderProgressView();
+  // Titles arrive after the first paint; percentages already use the counts.
+  const slugs = Array.from(new Set(state.rows.flatMap((r) => r.courseSlugs || [])));
+  ensureModules(slugs).then((changed) => { if (changed) renderProgressView(); });
+}
+
 // ─── Cohort ──────────────────────────────────────────────────────────────
 
 function renderCohort() {
@@ -498,6 +704,7 @@ function renderAll() {
     addCourse.innerHTML = coursePicker(keep);
   }
   renderApplicants();
+  renderProgress();
   renderCohort();
   renderFeedback();
   renderReadiness();
@@ -531,6 +738,7 @@ async function main() {
     if (cb) cb.closest('.camp-recipient-checkbox').classList.toggle('checked', cb.checked);
   });
   $('btn-refresh').addEventListener('click', load);
+  $('btn-refresh-progress').addEventListener('click', load);
 
   const wanted = new URLSearchParams(location.search).get('view');
   showView(VIEWS.includes(wanted) ? wanted : 'applicants');

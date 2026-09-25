@@ -20,7 +20,7 @@
     "e2e:purchase": "bash run-e2e.sh purchase",
     "e2e:reader": "bash run-e2e.sh reader",
     "e2e:notify": "bash run-e2e.sh notify",
-    "test:beta": "node beta-cohort.test.cjs",
+    "test:beta": "node beta-cohort.test.cjs && node beta-progress.test.mjs",
     "test:commitment": "node commitment.test.mjs"
   },
   "devDependencies": {

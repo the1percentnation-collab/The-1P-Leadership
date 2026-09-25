@@ -205,8 +205,44 @@ function renderBetaToggle() {
     host.hidden = !on;
     if (on && !host.dataset.rendered) {
       renderBetaCoursePicker();
+      renderBetaProgress();
       host.dataset.rendered = '1';
     }
+  }
+}
+
+// One line per course from the beta console's own row builder: how far in,
+// the goal date they set, and their review. Owner and admins only; anyone
+// else simply sees nothing here.
+async function renderBetaProgress() {
+  const host = $('ct-beta-progress');
+  const email = state.contact && state.contact.email;
+  if (!host || !email) return;
+  try {
+    const res = await httpsCallable(functions, 'getBetaTesterSummary')({ email });
+    const d = (res && res.data) || {};
+    const row = d.row;
+    if (!row) { host.innerHTML = ''; return; }
+    const titles = new Map((d.courses || []).map((c) => [c.slug, c.title]));
+    const fmt = (iso) => {
+      if (!iso) return null;
+      const [y, m, dd] = iso.split('-').map(Number);
+      return new Date(y, m - 1, dd).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    };
+    host.innerHTML = row.courseSlugs.map((sl) => {
+      const done = (row.lessonsBySlug && row.lessonsBySlug[sl]) || 0;
+      const finished = row.completionBySlug && row.completionBySlug[sl];
+      const c = row.commitmentBySlug && row.commitmentBySlug[sl];
+      const rv = row.reviewBySlug && row.reviewBySlug[sl];
+      const bits = [
+        finished ? 'Finished' : `${done} lesson${done === 1 ? '' : 's'} done`,
+        c && c.goalDate ? `goal ${fmt(c.goalDate)}` : 'no goal set',
+        rv ? `${'★'.repeat(Number(rv.rating) || 0)} ${rv.status}` : null
+      ].filter(Boolean);
+      return `<div><strong>${escapeHtml(titles.get(sl) || sl)}</strong> · ${escapeHtml(bits.join(' · '))}</div>`;
+    }).join('') + `<a href="/beta-admin.html?view=progress" style="color:var(--red);">Open beta progress →</a>`;
+  } catch (e) {
+    host.innerHTML = '';
   }
 }
 
@@ -510,7 +546,9 @@ function buildTimeline() {
       kind,
       at: ms(a.createdAt),
       title: kind === 'system' ? '' : titleForActivity(a),
-      body: a.description || a.type || '',
+      body: a.type === 'course_review' && a.meta && a.meta.text
+        ? `${a.description || ''}\n“${a.meta.text}”`
+        : (a.description || a.type || ''),
       meta: escapeHtml(a.actorName || 'System'),
       icon: iconForActivity(a.type)
     });
@@ -556,6 +594,10 @@ function iconForActivity(type) {
     case 'voicemail_received': return '📨';
     case 'campaign': return '❏';
     case 'email_event': return '👁';
+    case 'course_completed': return '🎓';
+    case 'course_review': return '★';
+    case 'review_approved': return '★';
+    case 'review_rejected': return '☆';
     default: return null;
   }
 }

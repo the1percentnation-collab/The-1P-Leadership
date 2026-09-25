@@ -13,6 +13,7 @@ import {
 import { loadModuleDocs } from './courses-data.js';
 import { mountCoursePlayer, escPlayer } from './course-player.js';
 import { lessonVideoHtml } from './video-embed.js';
+import { reportCourseComplete, reviewHref } from './course-completion.js';
 
 let _purify = null;
 async function getPurify() {
@@ -68,6 +69,29 @@ async function markComplete(slug, moduleId, completedSet) {
     } catch (e) {
       console.warn('[course-renderer] markComplete remote write failed', e);
     }
+  }
+}
+
+/**
+ * Records one finished module in Firestore, in the shape markComplete writes.
+ *
+ * For code-rendered courses (I Can't) that keep their own local state: the
+ * server reads these docs to show progress in the beta console and to verify a
+ * course was really finished before it records the completion.
+ */
+export async function recordModuleComplete(slug, moduleId) {
+  if (!firebaseReady || !auth || !auth.currentUser) return false;
+  try {
+    await setDoc(doc(db, 'users', auth.currentUser.uid, 'progress', progressDocId(slug, moduleId)), {
+      completed: true,
+      completedAt: serverTimestamp(),
+      courseSlug: slug,
+      moduleId
+    }, { merge: true });
+    return true;
+  } catch (e) {
+    console.warn('[course-renderer] recordModuleComplete failed', e);
+    return false;
   }
 }
 
@@ -280,6 +304,11 @@ export async function mountFirestoreCourse(course, { startAt, includeDrafts = fa
     // draft-padded module list isn't the same course members will complete, so
     // preview never offers the certificate.
     certificateHref: includeDrafts ? null : certificateHref,
+    // Preview is never a real finish, so it never records one.
+    ...(includeDrafts ? {} : {
+      onAllComplete: () => reportCourseComplete(course.slug, course.title),
+      reviewHref: reviewHref(course.slug)
+    }),
     ...(extras && extras.moduleHeaderHtml ? { moduleHeaderHtml: extras.moduleHeaderHtml } : {}),
     ...(extras && extras.sidebarFooterHtml ? { sidebarFooterHtml: extras.sidebarFooterHtml } : {}),
     startAt
