@@ -5606,10 +5606,19 @@ async function applyGrant(db, uid, slug, course, { note, grantedBy }) {
     status: 'granted',
     createdAt: admin.firestore.FieldValue.serverTimestamp()
   });
-  // The in-app welcome: the bell row, and the popup the topbar opens the next
-  // time they load any page. One id per course, so a re-grant re-raises the
-  // same notification instead of stacking a second one. Best-effort: the
-  // grant has already landed and must not fail over a notification.
+  return notifyCourseGranted(db, uid, slug, course);
+}
+
+/**
+ * The in-app welcome for a course: the bell row, and the popup the topbar
+ * opens the next time they load any page. One id per course, so a re-grant
+ * re-raises the same notification instead of stacking a second one.
+ *
+ * Best-effort: the grant has already landed and must not fail over this, so
+ * it returns true or the error message instead of throwing, and the caller
+ * reports it rather than losing it in a log.
+ */
+async function notifyCourseGranted(db, uid, slug, course) {
   try {
     const title = (course && course.title) || slug;
     // Comps run through here too, so the beta line is only for real testers.
@@ -5626,8 +5635,10 @@ async function applyGrant(db, uid, slug, course, { note, grantedBy }) {
       image: (course && (course.coverImage || course.image)) || null,
       link: `/courses.html?course=${encodeURIComponent(slug)}`
     });
+    return true;
   } catch (e) {
-    console.warn('[applyGrant] welcome notification failed for', uid, slug, e && e.message);
+    console.warn('[notifyCourseGranted] failed for', uid, slug, e && e.message);
+    return String((e && e.message) || e || 'unknown error');
   }
 }
 
@@ -5976,6 +5987,30 @@ function normalizeSlugList(input, fallback) {
     if (slug && !out.includes(slug)) out.push(slug);
   });
   return out.length ? out : (fallback || []).slice();
+}
+
+/**
+ * What an approval does for a tester who has an account — pure, no Firestore.
+ *
+ * Decided from what the account actually holds, not from the beta record:
+ * records approved before multi-course could say a course was granted when
+ * the enrollment never landed, and trusting them left those testers stuck
+ * with no course and no notification however often they were re-approved.
+ *
+ *   grant      — ticked and not enrolled: enroll it (applyGrant notifies).
+ *   notifyOnly — newly on their beta list but already held (bought, or
+ *                unlocked by a bundle): tell them, grant nothing.
+ */
+function planBetaGrant({ wanted, previous, enrolled }) {
+  const have = new Set((enrolled || []).map(String));
+  const before = new Set((previous || []).map(String));
+  const grant = [];
+  const notifyOnly = [];
+  (wanted || []).map(String).forEach((slug) => {
+    if (!have.has(slug)) grant.push(slug);
+    else if (!before.has(slug)) notifyOnly.push(slug);
+  });
+  return { grant, notifyOnly };
 }
 
 /**
@@ -6707,10 +6742,23 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
   let applied = false;
 
   // ── Grant the additions ───────────────────────────────────────────────
+  // With an account, what to grant comes from their real enrollment (see
+  // planBetaGrant); `additions` becomes what was actually granted, which is
+  // what betaGrantedSlugs and the invite emails below key off.
+  const notified = {};
+  let newlyTold = additions;
   if (userDoc) {
-    for (const sl of additions) {
-      await applyGrant(db, userDoc.id, sl, courseDocs[sl], { note: grantNote, grantedBy: actor });
+    const enrolled = Array.isArray(userDoc.data().enrolledCourseSlugs) ? userDoc.data().enrolledCourseSlugs : [];
+    const plan = planBetaGrant({ wanted, previous, enrolled });
+    for (const sl of plan.grant) {
+      notified[sl] = await applyGrant(db, userDoc.id, sl, courseDocs[sl], { note: grantNote, grantedBy: actor });
     }
+    for (const sl of plan.notifyOnly) {
+      notified[sl] = await notifyCourseGranted(db, userDoc.id, sl, courseDocs[sl]);
+    }
+    additions.length = 0;
+    additions.push(...plan.grant);
+    newlyTold = plan.grant.concat(plan.notifyOnly);
     applied = true;
   } else if (additions.length) {
     await db.collection('pendingGrants').doc(email).set({
@@ -6763,7 +6811,7 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
   // failure never fails the approval — the console reports it instead.
   const emailed = {};
   if (notify) {
-    for (const sl of additions) {
+    for (const sl of newlyTold) {
       emailed[sl] = await sendGrantEmail(db, {
         email,
         uid: userDoc ? userDoc.id : null,
@@ -6788,6 +6836,7 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
     pending: !applied,
     slugs: finalSlugs,
     granted: additions,
+    notified,
     revoked,
     blocked,
     emailed

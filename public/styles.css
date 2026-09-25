@@ -6978,21 +6978,49 @@ body.academy-course .ak-topbar { position: static; }
 .c-bell-icon { font-size: 14px; line-height: 1; }
 .c-bell-badge {
   position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
   border-radius: 999px;
   background: var(--red);
   color: #fff;
   font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.04em;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #1a1a1a;
+  border: 2px solid var(--black);
+  box-shadow: 0 0 0 1px rgba(230,3,6,0.35);
+}
+.c-bell-badge[hidden] { display: none; }
+/* Something unread: red ring and a slow glow so it reads from across the page. */
+.c-bell.has-unread {
+  color: var(--white);
+  border-color: var(--red);
+  background: rgba(230,3,6,0.12);
+  animation: c-bell-glow 2s ease-in-out infinite;
+}
+@keyframes c-bell-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(230,3,6,0.55); }
+  50%      { box-shadow: 0 0 0 6px rgba(230,3,6,0); }
+}
+/* A new one arrived while they were on the page. */
+.c-bell.ring .c-bell-icon { display: inline-block; transform-origin: 50% 0; animation: c-bell-swing .9s ease-in-out; }
+@keyframes c-bell-swing {
+  0%, 100% { transform: rotate(0); }
+  15% { transform: rotate(18deg); }
+  30% { transform: rotate(-16deg); }
+  45% { transform: rotate(12deg); }
+  60% { transform: rotate(-8deg); }
+  75% { transform: rotate(4deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .c-bell.has-unread { animation: none; box-shadow: 0 0 0 2px rgba(230,3,6,0.4); }
+  .c-bell.ring .c-bell-icon { animation: none; }
 }
 
 .c-notif-popover {

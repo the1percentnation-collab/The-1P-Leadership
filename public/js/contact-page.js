@@ -1403,10 +1403,19 @@ function wire() {
         added.length ? `Added: ${added.join(', ')}` : '',
         removed.length ? `Removed: ${removed.join(', ')}` : ''
       ].filter(Boolean).join('. ');
-      if (!added.length && !removed.length) {
+      // What the popup did, per course, so a missing popup is never a mystery.
+      const notified = d.notified || {};
+      const queued = Object.keys(notified).filter((sl) => notified[sl] === true).map(nameOf);
+      const failed = Object.keys(notified).filter((sl) => notified[sl] !== true)
+        .map((sl) => `${nameOf(sl)} (${notified[sl]})`);
+      const popup = [
+        queued.length ? `Popup queued for ${queued.join(', ')}` : '',
+        failed.length ? `Popup failed: ${failed.join(', ')}` : ''
+      ].filter(Boolean).join('. ');
+      if (d.applied && (added.length || removed.length || popup)) {
+        setStatus([changes, popup].filter(Boolean).join('. ') + `.${blocked}`, failed.length ? 'err' : 'ok');
+      } else if (d.applied || (!added.length && !removed.length)) {
         setStatus(`No change: they already have ${titles.join(', ')}. No popup or email is sent for a course they already hold.${blocked}`, 'ok');
-      } else if (d.applied) {
-        setStatus(`${changes}. They'll see it next time they open the portal.${blocked}`, 'ok');
       } else {
         setStatus(`${changes}. No account found for ${c.email}, so it unlocks when they sign in or sign up with that email.${blocked}`, 'ok');
       }
