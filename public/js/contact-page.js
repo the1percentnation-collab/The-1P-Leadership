@@ -195,11 +195,10 @@ function renderBetaToggle() {
   const why = !c.email ? 'Add an email address first' : null;
   box.disabled = !!why;
   const wrap = $('ct-beta-wrap');
-  if (wrap) wrap.title = why || 'Put this lead in the beta program';
+  if (wrap) wrap.title = why || 'Approve into the beta: grants course access and emails the invite';
 
-  // The course picker only exists once they are in the programme; it says
-  // which courses they are down to test, and the beta console is still where
-  // access is actually granted.
+  // The course picker only exists once they are in the programme. Ticking the
+  // box already approved them into their courses; Save & enroll changes them.
   const host = $('ct-beta-courses');
   if (host) {
     host.hidden = !on;
@@ -252,6 +251,7 @@ async function renderBetaProgress() {
 // It also returns this contact's saved courses, so the boxes open ticked.
 let betaCourses = null;
 let betaTester = null;
+let betaDefaultSlug = null;
 async function loadBetaCourses() {
   try {
     const email = (state.contact && state.contact.email) || '';
@@ -259,6 +259,7 @@ async function loadBetaCourses() {
     const d = (res && res.data) || {};
     betaCourses = d.courses || [];
     betaTester = d.tester || null;
+    betaDefaultSlug = d.defaultSlug || null;
   } catch (e) {
     console.warn('[contact] beta course list failed', e);
     betaCourses = betaCourses || [];
@@ -302,6 +303,60 @@ function pickedBetaCourses() {
   return Array.from(host.querySelectorAll('[data-slug]'))
     .filter((x) => x.checked)
     .map((x) => x.getAttribute('data-slug'));
+}
+
+function betaTitles(slugs) {
+  return slugs.map((sl) => {
+    const course = (betaCourses || []).find((x) => x.slug === sl);
+    return course ? course.title : sl;
+  });
+}
+
+/**
+ * Approve this contact into the beta for `slugs`: the same approve call the
+ * beta console makes, so access is granted (or parked until they sign up)
+ * and the invite email and in-app popup go out for each new course.
+ */
+async function enrollBetaTester(slugs) {
+  const c = state.contact;
+  const titles = betaTitles(slugs);
+  const call = httpsCallable(functions, 'setBetaTesterStatus');
+  const base = { email: c.email, name: c.name || '', phone: c.phone || '', slugs, crmContactId: state.contactId };
+  // Make sure the record exists (and is not declined) before granting.
+  await call({ ...base, action: 'eligible', eligible: true });
+  const res = await call({ ...base, action: 'approve' });
+  const d = (res && res.data) || {};
+  await loadBetaCourses();
+  await refreshTimeline();
+  const blocked = (d.blocked || []).length ? ` ${d.blocked.length} kept (paid or still unlocked).` : '';
+  const nameOf = (sl) => { const x = (betaCourses || []).find((k) => k.slug === sl); return x ? x.title : sl; };
+  const added = (d.granted || []).map(nameOf);
+  const removed = (d.revoked || []).map(nameOf);
+  const changes = [
+    added.length ? `Added: ${added.join(', ')}` : '',
+    removed.length ? `Removed: ${removed.join(', ')}` : ''
+  ].filter(Boolean).join('. ');
+  // What the popup did, per course, so a missing popup is never a mystery.
+  const notified = d.notified || {};
+  const queued = Object.keys(notified).filter((sl) => notified[sl] === true).map(nameOf);
+  const failed = Object.keys(notified).filter((sl) => notified[sl] !== true)
+    .map((sl) => `${nameOf(sl)} (${notified[sl]})`);
+  const popup = [
+    queued.length ? `Popup queued for ${queued.join(', ')}` : '',
+    failed.length ? `Popup failed: ${failed.join(', ')}` : ''
+  ].filter(Boolean).join('. ');
+  const mailFailed = Object.keys(d.emailed || {}).filter((sl) => d.emailed[sl] === false).map(nameOf);
+  const mailSent = Object.keys(d.emailed || {}).filter((sl) => d.emailed[sl] === true).map(nameOf);
+  const mail = (mailSent.length ? ` Invite emailed for ${mailSent.join(', ')}.` : '')
+    + (mailFailed.length ? ` Invite email failed for ${mailFailed.join(', ')}, send that link yourself.` : '');
+  if (d.applied && (added.length || removed.length || popup)) {
+    setStatus([changes, popup].filter(Boolean).join('. ') + `.${blocked}${mail}`, failed.length || mailFailed.length ? 'err' : 'ok');
+  } else if (d.applied || (!added.length && !removed.length)) {
+    setStatus(`No change: they already have ${titles.join(', ')}. No popup or email is sent for a course they already hold.${blocked}`, 'ok');
+  } else {
+    setStatus(`${changes}. No account found for ${c.email}, so it unlocks when they sign in or sign up with that email.${blocked}${mail}`, mailFailed.length ? 'err' : 'ok');
+  }
+  return d;
 }
 
 function renderTags() {
@@ -1320,9 +1375,22 @@ function wire() {
   $('ct-beta').addEventListener('change', async (e) => {
     const on = e.target.checked;
     const c = state.contact;
-    if (on && !confirm(`Put ${c.email} in the beta program? Then tick their courses and hit Save & enroll.`)) {
-      e.target.checked = false;
-      return;
+    // Ticking the box is an approval, the same as the beta console: access now
+    // and the invite email. Their existing beta courses, or the default one.
+    let enrollSlugs = [];
+    if (on) {
+      if (!betaCourses) await loadBetaCourses();
+      const saved = (betaTester && betaTester.courseSlugs) || [];
+      enrollSlugs = saved.length ? saved : (betaDefaultSlug ? [betaDefaultSlug] : []);
+      if (!enrollSlugs.length) {
+        e.target.checked = false;
+        setStatus('No beta course found to enroll them in.', 'err');
+        return;
+      }
+      if (!confirm(`Add ${c.name || c.email} to the beta and enroll them in:\n\n${betaTitles(enrollSlugs).join('\n')}\n\nThey get access now and the invite email, the same as approving them in the beta console. You can change their courses below afterwards.`)) {
+        e.target.checked = false;
+        return;
+      }
     }
     // Turning off someone already approved takes their beta courses back, so
     // it gets its own confirm and an explicit revoke flag.
@@ -1333,6 +1401,12 @@ function wire() {
     }
     e.target.disabled = true;
     try {
+      if (on) {
+        await enrollBetaTester(enrollSlugs);
+        await addTag(state.companyId, state.contactId, BETA_TAG);
+        await refreshContact();
+        return;
+      }
       const payload = {
         action: 'eligible',
         eligible: on,
@@ -1363,7 +1437,7 @@ function wire() {
       await Promise.all([refreshContact(), refreshTimeline()]);
       const d = (res && res.data) || {};
       setStatus(on
-        ? (d.restored ? 'Back in the beta program' : 'Added to the beta program as an applicant')
+        ? 'Back in the beta program'
         : removedLine(d), 'ok');
       await loadBetaCourses();
     } catch (err) {
@@ -1379,46 +1453,11 @@ function wire() {
     const c = state.contact;
     const slugs = pickedBetaCourses();
     if (!slugs.length) { setStatus('Pick at least one course.', 'err'); return; }
-    const titles = slugs.map((sl) => {
-      const course = (betaCourses || []).find((x) => x.slug === sl);
-      return course ? course.title : sl;
-    });
-    if (!confirm(`Enroll ${c.name || c.email} in:\n\n${titles.join('\n')}\n\nThey get beta access now and an invite email for each new course. Unticked beta courses are removed.`)) return;
+    if (!confirm(`Enroll ${c.name || c.email} in:\n\n${betaTitles(slugs).join('\n')}\n\nThey get beta access now and an invite email for each new course. Unticked beta courses are removed.`)) return;
     const btn = $('btn-beta-courses');
     btn.disabled = true;
     try {
-      const call = httpsCallable(functions, 'setBetaTesterStatus');
-      const base = { email: c.email, name: c.name || '', phone: c.phone || '', slugs, crmContactId: state.contactId };
-      // Make sure the record exists (and is not declined) before granting.
-      await call({ ...base, action: 'eligible', eligible: true });
-      const res = await call({ ...base, action: 'approve' });
-      const d = (res && res.data) || {};
-      await loadBetaCourses();
-      await refreshTimeline();
-      const blocked = (d.blocked || []).length ? ` ${d.blocked.length} kept (paid or still unlocked).` : '';
-      const nameOf = (sl) => { const x = (betaCourses || []).find((k) => k.slug === sl); return x ? x.title : sl; };
-      const added = (d.granted || []).map(nameOf);
-      const removed = (d.revoked || []).map(nameOf);
-      const changes = [
-        added.length ? `Added: ${added.join(', ')}` : '',
-        removed.length ? `Removed: ${removed.join(', ')}` : ''
-      ].filter(Boolean).join('. ');
-      // What the popup did, per course, so a missing popup is never a mystery.
-      const notified = d.notified || {};
-      const queued = Object.keys(notified).filter((sl) => notified[sl] === true).map(nameOf);
-      const failed = Object.keys(notified).filter((sl) => notified[sl] !== true)
-        .map((sl) => `${nameOf(sl)} (${notified[sl]})`);
-      const popup = [
-        queued.length ? `Popup queued for ${queued.join(', ')}` : '',
-        failed.length ? `Popup failed: ${failed.join(', ')}` : ''
-      ].filter(Boolean).join('. ');
-      if (d.applied && (added.length || removed.length || popup)) {
-        setStatus([changes, popup].filter(Boolean).join('. ') + `.${blocked}`, failed.length ? 'err' : 'ok');
-      } else if (d.applied || (!added.length && !removed.length)) {
-        setStatus(`No change: they already have ${titles.join(', ')}. No popup or email is sent for a course they already hold.${blocked}`, 'ok');
-      } else {
-        setStatus(`${changes}. No account found for ${c.email}, so it unlocks when they sign in or sign up with that email.${blocked}`, 'ok');
-      }
+      await enrollBetaTester(slugs);
     } catch (err) {
       setStatus('Could not save: ' + (err.message || err), 'err');
     } finally {
