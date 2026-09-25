@@ -7010,6 +7010,57 @@ body.academy-course .ak-topbar { position: static; }
   padding: 10px;
 }
 .c-notif-popover[hidden] { display: none; }
+
+/* New-course popup (topbar.js maybeShowCourseWelcome). */
+.c-welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0,0,0,0.72);
+  backdrop-filter: blur(4px);
+  animation: c-welcome-fade .2s ease-out;
+}
+.c-welcome-card {
+  width: min(440px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-red);
+  border-top: 3px solid var(--red);
+  border-radius: 12px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px var(--red-glow);
+  animation: c-welcome-rise .25s ease-out;
+}
+.c-welcome-art { background: var(--black); display: flex; justify-content: center; }
+.c-welcome-art img { display: block; max-width: 100%; max-height: 220px; object-fit: contain; }
+.c-welcome-body { padding: 22px 24px 24px; }
+.c-welcome-kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--red);
+  margin-bottom: 8px;
+}
+.c-welcome-title {
+  font-family: var(--font-display);
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: .01em;
+  color: var(--white);
+  margin: 0 0 12px;
+}
+.c-welcome-text { font-size: 15px; line-height: 1.5; color: var(--white-dim); margin: 0 0 20px; }
+.c-welcome-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+@keyframes c-welcome-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes c-welcome-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .c-welcome-overlay, .c-welcome-card { animation: none; }
+}
 .c-notif-head {
   display: flex;
   align-items: center;

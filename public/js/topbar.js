@@ -155,6 +155,7 @@ function notifIcon(type) {
   if (type === 'course_reminder') return '⏱';
   if (type === 'course_deadline') return '🏁';
   if (type === 'announcement') return '📣';
+  if (type === 'course_granted') return '🎓';
   return '🔔';
 }
 
@@ -165,6 +166,7 @@ function channelLabel(n) {
 function notifLine(n) {
   const who = escapeHtml(n.fromName || 'Someone');
   if (n.type === 'announcement') return escapeHtml(n.title || 'New announcement');
+  if (n.type === 'course_granted') return `You've been added to ${escapeHtml(n.title || 'a new course')}`;
   if (n.type === 'like') return `${who} liked your post`;
   if (n.type === 'comment') return `${who} commented on your post`;
   if (n.type === 'mention') return `${who} mentioned you`;
@@ -317,6 +319,63 @@ async function markNotifReadById(notifId) {
   }
 }
 
+// ────────────────────────────────────────────────────────────────
+// New-course popup. A course grant (beta approval, comp) writes an unread
+// `course_granted` notification; the first page they load after that shows
+// it as a modal. Rides the bell listener above, so it costs no extra reads,
+// and it appears live if the grant lands while they are signed in. Either
+// button marks it read, which is what keeps it from showing twice.
+// ────────────────────────────────────────────────────────────────
+
+let courseWelcomeOpen = false;
+
+function maybeShowCourseWelcome() {
+  if (courseWelcomeOpen) return;
+  const n = bellState.unread.find((x) => x.type === 'course_granted');
+  if (!n) return;
+  courseWelcomeOpen = true;
+
+  const href = notifHref(n);
+  const img = typeof n.image === 'string' && /^(https:\/\/|\/)/.test(n.image) ? n.image : null;
+  const overlay = document.createElement('div');
+  overlay.className = 'c-welcome-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-labelledby', 'c-welcome-title');
+  overlay.innerHTML = `
+    <div class="c-welcome-card">
+      ${img ? `<div class="c-welcome-art"><img src="${escapeHtml(img)}" alt="" onerror="this.parentNode.remove()"></div>` : ''}
+      <div class="c-welcome-body">
+        <div class="c-welcome-kicker">New course unlocked</div>
+        <h2 class="c-welcome-title" id="c-welcome-title">${escapeHtml(n.title || 'A new course')}</h2>
+        <p class="c-welcome-text">${escapeHtml(n.preview || "You've been added to this course. It's in your library now and ready when you are.")}</p>
+        <div class="c-welcome-actions">
+          <button type="button" class="btn btn-ghost btn-sm" data-welcome="later">Later</button>
+          <a class="btn btn-primary btn-sm" data-welcome="go" href="${escapeHtml(href)}">Start the course →</a>
+        </div>
+      </div>
+    </div>`;
+
+  const close = async () => {
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+    await markNotifReadById(n.id);
+    courseWelcomeOpen = false;
+  };
+  function onKey(e) { if (e.key === 'Escape') close(); }
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay || e.target.closest('[data-welcome="later"]')) close();
+  });
+  overlay.querySelector('[data-welcome="go"]').addEventListener('click', (e) => {
+    e.preventDefault();
+    close().finally(() => { location.href = href; });
+  });
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(overlay);
+  overlay.querySelector('[data-welcome="go"]').focus();
+}
+
 function bindBellHandlers() {
   const root = document.getElementById(bellState.mountId);
   if (!root) return;
@@ -363,6 +422,7 @@ function startBellListener(uid) {
     bellState.unread = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderBellBadge();
     if (bellState.showing) renderNotifPopover();
+    maybeShowCourseWelcome();
   }, (err) => {
     console.warn('[topbar] notifications listener error', err);
     bellState.unread = [];

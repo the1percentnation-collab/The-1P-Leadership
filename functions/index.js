@@ -4188,6 +4188,8 @@ async function notifyUser(db, recipientUid, notif, { typePrefKey } = {}) {
       // Where the bell row should go, for notifications that aren't about a
       // post or channel (course work reminders, announcements). Site-relative.
       link: notif.link || null,
+      // Cover art for notifications that open as a popup (course_granted).
+      image: notif.image || null,
       read: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
@@ -5573,6 +5575,29 @@ async function applyGrant(db, uid, slug, course, { note, grantedBy }) {
     status: 'granted',
     createdAt: admin.firestore.FieldValue.serverTimestamp()
   });
+  // The in-app welcome: the bell row, and the popup the topbar opens the next
+  // time they load any page. One id per course, so a re-grant re-raises the
+  // same notification instead of stacking a second one. Best-effort: the
+  // grant has already landed and must not fail over a notification.
+  try {
+    const title = (course && course.title) || slug;
+    // Comps run through here too, so the beta line is only for real testers.
+    const userSnap = await db.collection('users').doc(uid).get();
+    const email = normalizeEmail(userSnap.exists ? userSnap.data().email : '');
+    const isBeta = !!email && (await db.collection('betaTesters').doc(email).get()).exists;
+    await notifyUser(db, uid, {
+      id: `course-granted-${slug}`,
+      type: 'course_granted',
+      title,
+      preview: isBeta
+        ? "You've been added to this course as a beta tester. It's in your library now, and your feedback shapes the final version."
+        : "You've been added to this course. It's in your library now and ready when you are.",
+      image: (course && (course.coverImage || course.image)) || null,
+      link: `/courses.html?course=${encodeURIComponent(slug)}`
+    });
+  } catch (e) {
+    console.warn('[applyGrant] welcome notification failed for', uid, slug, e && e.message);
+  }
 }
 
 // ── The invite email that makes a grant real ─────────────────────────────
@@ -6165,12 +6190,28 @@ async function betaCourseOptions(db) {
 // The CRM contact card needs the same list, and pulling it from
 // listBetaTesters would hand a company admin the whole cohort (every
 // applicant's name, note and progress) to render one row of checkboxes.
+//
+// Given an email it also returns that one tester's courses, so the card can
+// show what is already saved instead of an empty picker every time.
 exports.listBetaCourses = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
   const db = admin.firestore();
   if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admins only.');
-  return { ok: true, courses: await betaCourseOptions(db), defaultSlug: BETA_DEFAULT_SLUG };
+  let tester = null;
+  const email = normalizeEmail((request.data || {}).email);
+  if (EMAIL_RE.test(email)) {
+    const snap = await betaTesterRef(db, email).get();
+    if (snap.exists) {
+      const t = snap.data();
+      tester = {
+        status: t.status || 'applied',
+        courseSlugs: testerSlugs(t),
+        betaGrantedSlugs: Array.isArray(t.betaGrantedSlugs) ? t.betaGrantedSlugs : []
+      };
+    }
+  }
+  return { ok: true, courses: await betaCourseOptions(db), defaultSlug: BETA_DEFAULT_SLUG, tester };
 });
 
 /**
@@ -6428,6 +6469,14 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
       crmContactId: String(data.crmContactId || '').trim() || null
     }, { source: 'crm', addedBy: actor, courseSlugs: normalizeSlugList(data.slugs || data.slug, []) });
 
+    // recordBetaApplication only sets courses on a new record, so an explicit
+    // pick for somebody already applied would otherwise be dropped silently.
+    // Past a decision the courses are the approve branch's to change.
+    const picked = normalizeSlugList(data.slugs || data.slug, []);
+    if (snap.exists && picked.length && !['granted', 'active', 'completed'].includes(current)) {
+      await ref.set({ courseSlugs: picked, courseSlug: picked[0], updatedAt: FV.serverTimestamp() }, { merge: true });
+    }
+
     // Switching the toggle back on is an explicit re-inclusion, so it undoes a
     // previous decline. Anyone further along keeps the status they earned.
     if (current === 'declined') {
@@ -6486,7 +6535,11 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
     courseDocs[sl] = cs.data();
   }
 
-  const previous = testerSlugs(tester);
+  // Only courses the beta actually handed over count as held. An applicant's
+  // courseSlugs are what they are down to test, not what they have, so
+  // treating them as held would make approving an applicant grant nothing.
+  const wasGranted = ['granted', 'active', 'completed'].includes(tester.status);
+  const previous = wasGranted ? testerSlugs(tester) : [];
   // Records granted before multi-course have no betaGrantedSlugs, so this is
   // empty for them and nothing is revocable until the next approval writes the
   // field. That is deliberate: inferring "the beta must have granted their one
