@@ -219,7 +219,7 @@
   </script>
 
   <script type="module">
-    import { loginEmail, loginGoogle, resetPassword, onAuthReady, signOut } from './js/auth.js';
+    import { loginEmail, loginGoogle, resetPassword, onAuthReady, signOut, authErrorMessage } from './js/auth.js';
     import { firebaseReady } from './js/firebase.js';
     import { expiredReason } from './js/session.js';
 
@@ -280,7 +280,7 @@
         await loginEmail(email, password);
         location.replace(nextUrl());
       } catch (err) {
-        showErr(err.message || 'Sign-in failed.');
+        showErr(authErrorMessage(err, 'Sign-in failed.'));
       } finally {
         $('btn-submit').disabled = false;
       }
@@ -292,7 +292,7 @@
         await loginGoogle();
         location.replace(nextUrl());
       } catch (err) {
-        showErr(err.message || 'Google sign-in failed.');
+        showErr(authErrorMessage(err, 'Google sign-in failed.'));
       }
     });
 
@@ -303,9 +303,9 @@
       if (!email) return showErr('Enter your email first, then click Forgot password.');
       try {
         await resetPassword(email);
-        showOk('Password reset email sent. Check your inbox.');
+        showOk('If an account exists for that email, a link to set a new password is on its way. Check your inbox and spam folder. This also works if you originally joined with Google.');
       } catch (err) {
-        showErr(err.message || 'Could not send reset email.');
+        showErr(authErrorMessage(err, 'Could not send reset email.'));
       }
     });
   </script>

@@ -57,7 +57,7 @@
   </div>
 
   <script type="module">
-    import { signupEmail, loginGoogle, acceptInvite, acceptCommunityInvite, onAuthReady } from './js/auth.js';
+    import { signupEmail, loginGoogle, acceptInvite, acceptCommunityInvite, onAuthReady, authErrorMessage } from './js/auth.js';
     import { firebaseReady } from './js/firebase.js';
 
     const $ = (id) => document.getElementById(id);
@@ -106,7 +106,7 @@
         }
         location.replace('/onboarding');
       } catch (err) {
-        showErr(err.message || 'Sign-up failed.');
+        showErr(authErrorMessage(err, 'Sign-up failed.'));
       } finally {
         $('btn-submit').disabled = false;
       }
@@ -125,7 +125,7 @@
         }
         location.replace('/onboarding');
       } catch (err) {
-        showErr(err.message || 'Google sign-in failed.');
+        showErr(authErrorMessage(err, 'Google sign-in failed.'));
       }
     });
   </script>

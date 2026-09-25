@@ -123,6 +123,33 @@ export async function loginGoogle() {
   return cred.user;
 }
 
+// Firebase's raw messages ("Firebase: Error (auth/invalid-credential).") tell a
+// member nothing. With email-enumeration protection on, a wrong password, an
+// unknown email, and an account that was created with Google (so has no
+// password at all) all come back as invalid-credential, so the message has to
+// cover every case and point at the ways out.
+const AUTH_ERROR_TEXT = {
+  'auth/invalid-credential': 'That email and password don\'t match. If you originally joined with Google, use Continue with Google, or click Forgot password to set a password for this email.',
+  'auth/wrong-password': 'That email and password don\'t match. If you originally joined with Google, use Continue with Google, or click Forgot password to set a password for this email.',
+  'auth/user-not-found': 'That email and password don\'t match. If you originally joined with Google, use Continue with Google, or click Forgot password to set a password for this email.',
+  'auth/invalid-email': 'That email address doesn\'t look right. Check it and try again.',
+  'auth/user-disabled': 'This account has been disabled. Contact support for help.',
+  'auth/too-many-requests': 'Too many attempts. Wait a few minutes, or click Forgot password to reset it.',
+  'auth/network-request-failed': 'Network error. Check your connection and try again.',
+  'auth/email-already-in-use': 'An account with this email already exists. Sign in instead, or use Continue with Google if you joined that way.',
+  'auth/weak-password': 'Password must be at least 6 characters.',
+  'auth/popup-closed-by-user': 'The Google sign-in window was closed before finishing.',
+  'auth/cancelled-popup-request': 'The Google sign-in window was closed before finishing.',
+  'auth/popup-blocked': 'Your browser blocked the Google sign-in window. Allow pop-ups for this site and try again.',
+  'auth/account-exists-with-different-credential': 'This email is already registered with a different sign-in method. Sign in with email and password, or use Forgot password.'
+};
+
+export function authErrorMessage(err, fallback = 'Something went wrong. Please try again.') {
+  const code = err && err.code;
+  if (code && AUTH_ERROR_TEXT[code]) return AUTH_ERROR_TEXT[code];
+  return (err && err.message) || fallback;
+}
+
 export async function resetPassword(email) {
   return sendPasswordResetEmail(auth, email);
 }
