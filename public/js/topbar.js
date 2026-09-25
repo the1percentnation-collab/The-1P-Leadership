@@ -206,10 +206,34 @@ function getPopoverEl() {
   return root ? root.querySelector('#notif-popover') : null;
 }
 
+// The bell has to be hard to miss when something is waiting: it glows red
+// while anything is unread, swings once when a new one arrives mid-session,
+// and the tab title carries the count so it shows from other tabs too.
+let lastBellCount = null;
+let baseTitle = null;
+
 function renderBellBadge() {
   const badge = getBadgeEl();
   if (!badge) return;
   const count = bellState.unread.length;
+  const bell = badge.closest('.c-bell');
+
+  if (baseTitle == null) baseTitle = document.title.replace(/^\(\d+\+?\)\s*/, '');
+  document.title = count > 0 ? `(${count >= 20 ? '20+' : count}) ${baseTitle}` : baseTitle;
+
+  if (bell) {
+    bell.classList.toggle('has-unread', count > 0);
+    bell.setAttribute('aria-label', count > 0 ? `Notifications, ${count} unread` : 'Notifications');
+    // Not on first paint: only something that arrives while they are here.
+    if (lastBellCount != null && count > lastBellCount) {
+      bell.classList.remove('ring');
+      void bell.offsetWidth;
+      bell.classList.add('ring');
+      bell.addEventListener('animationend', () => bell.classList.remove('ring'), { once: true });
+    }
+  }
+  lastBellCount = count;
+
   if (count <= 0) {
     badge.hidden = true;
     badge.textContent = '0';

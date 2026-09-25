@@ -90,7 +90,7 @@ const sandbox = new Function('admin', 'console', `
   return { advanceBetaStatus, recordBetaApplication, markBetaGranted,
            markBetaActivated, noteBetaFeedback, countProgressBySlug,
            progressDetailBySlug, ratingSummary,
-           testerSlugs, normalizeSlugList, revocableSlugs,
+           testerSlugs, normalizeSlugList, revocableSlugs, planBetaGrant,
            BETA_STATUS_RANK, BETA_DEFAULT_SLUG };
 `);
 const B = sandbox(admin, console);
@@ -515,6 +515,26 @@ console.log('beta cohort — the record behind the beta console');
     assert.deepStrictEqual(B.ratingSummary([5, 4, 5]), { ratingAvg: 4.7, ratingCount: 3 });
     assert.deepStrictEqual(B.ratingSummary([5, 0, 9, 'x', null]), { ratingAvg: 5, ratingCount: 1 });
     assert.deepStrictEqual(B.ratingSummary([]), { ratingAvg: null, ratingCount: 0 });
+  });
+
+  await ok('a stale record (listed as granted, never enrolled) still grants', async () => {
+    const r = B.planBetaGrant({ wanted: ['icant'], previous: ['icant'], enrolled: [] });
+    assert.deepStrictEqual(r, { grant: ['icant'], notifyOnly: [] });
+  });
+
+  await ok('a course already held but new to the beta list notifies without granting', async () => {
+    const r = B.planBetaGrant({ wanted: ['icant', 'bundle'], previous: ['icant'], enrolled: ['icant', 'bundle'] });
+    assert.deepStrictEqual(r, { grant: [], notifyOnly: ['bundle'] });
+  });
+
+  await ok('re-saving courses they already have does nothing', async () => {
+    const r = B.planBetaGrant({ wanted: ['icant'], previous: ['icant'], enrolled: ['icant'] });
+    assert.deepStrictEqual(r, { grant: [], notifyOnly: [] });
+  });
+
+  await ok('an applicant with an account is granted everything ticked', async () => {
+    const r = B.planBetaGrant({ wanted: ['icant', '1p-clc'], previous: [], enrolled: [] });
+    assert.deepStrictEqual(r, { grant: ['icant', '1p-clc'], notifyOnly: [] });
   });
 
   console.log(`\n${passed} checks passed.`);
