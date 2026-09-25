@@ -3878,6 +3878,23 @@ exports.touchDailyStreak = onCall(async (request) => {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
 
   const db = admin.firestore();
+  // Grants parked for this address are normally claimed at signup, but a
+  // grant can be parked after the account already exists (the email lookup
+  // missed it). Every dashboard load calls this, so claim them here too:
+  // one doc read when there is nothing waiting. Auth holds one account per
+  // address, so this is the same claim signup makes.
+  const authEmail = request.auth.token && request.auth.token.email;
+  if (authEmail) {
+    try {
+      const n = await applyPendingGrants(db, uid, authEmail);
+      if (n) {
+        console.log(`[touchDailyStreak] claimed ${n} parked grant(s) for ${authEmail}`);
+        await markBetaActivated(db, authEmail, uid);
+      }
+    } catch (e) {
+      console.warn('[touchDailyStreak] pending grants failed:', e && e.message);
+    }
+  }
   const userRef = db.collection('users').doc(uid);
   const statRef = userRef.collection('stats').doc('aggregate');
   const today = utcDayKey();
@@ -5557,7 +5574,21 @@ async function findUserByEmail(db, email) {
   if (snap.empty && lower !== String(email).trim()) {
     snap = await db.collection('users').where('email', '==', String(email).trim()).limit(1).get();
   }
-  return snap.empty ? null : snap.docs[0];
+  if (!snap.empty) return snap.docs[0];
+  // The profile field can miss an account that exists: stored with capitals
+  // (callers pass the lowercased address) or never written at all. Auth
+  // matches regardless of case, and a miss here is what parks a grant in
+  // pendingGrants for a signup that already happened.
+  try {
+    const authUser = await admin.auth().getUserByEmail(lower);
+    const doc = await db.collection('users').doc(authUser.uid).get();
+    if (doc.exists) return doc;
+  } catch (e) {
+    if (!(e && e.code === 'auth/user-not-found')) {
+      console.warn('[findUserByEmail] auth lookup failed for', lower, e && e.message);
+    }
+  }
+  return null;
 }
 
 // Enrolls uid in slug (plus whatever the slug unlocks) and records why.
@@ -6377,6 +6408,100 @@ exports.listBetaTesters = onCall(async (request) => {
   };
 });
 
+/**
+ * Take back beta-granted courses: the removal half of an approval, shared with
+ * turning a tester off from the CRM card. `wanted` is what they keep. Only
+ * courses the beta itself granted can go (revocableSlugs), never a purchase
+ * or a course a kept bundle unlocks. Returns { revoked, blocked }.
+ */
+async function revokeBetaSlugs(db, { email, accountUid, betaGranted, wanted, removing, courseDocs, actor }) {
+  const FV = admin.firestore.FieldValue;
+  let revoked = [];
+  let blocked = [];
+  if (removing.length) {
+    // Courses held by a real purchase or a comped coupon, which a beta
+    // decision must never undo.
+    const paidSlugs = [];
+    if (accountUid) {
+      const purchases = await db.collection('users').doc(accountUid).collection('purchases').get();
+      purchases.docs.forEach((pd) => {
+        const pdata = pd.data();
+        const bought = String(pdata.courseSlug || '').trim();
+        if (!bought) return;
+        // `grant` is the beta's own receipt, so it protects nothing. A refunded
+        // or cancelled purchase no longer holds access up either — but a
+        // past_due one does: they still have the course, the payment is late.
+        if (!['payment', 'subscription', 'comp'].includes(pdata.mode)) return;
+        if (['refunded', 'canceled', 'failed', 'revoked'].includes(String(pdata.status || ''))) return;
+        paidSlugs.push(bought);
+        // Buying a bundle protects what the bundle unlocks, the same way
+        // granting one enrolls it.
+        const bcs = courseDocs[bought];
+        courseFulfillment(bought, bcs || {}).enrollsAlso.forEach((x) => paidSlugs.push(String(x)));
+      });
+    }
+    // What each KEPT course unlocks on its own, so a bundle that is staying
+    // keeps the course it implies.
+    const enrollsAlsoBy = {};
+    for (const sl of wanted) {
+      enrollsAlsoBy[sl] = courseFulfillment(sl, courseDocs[sl] || {}).enrollsAlso;
+    }
+
+    // Removing a bundle puts what it unlocked on the table too: the operator
+    // unticked the thing that put that course in their hands. revocableSlugs
+    // still decides — it survives if it was granted in its own right and is
+    // still ticked, if it was bought, or if a kept course unlocks it.
+    const removingWithFanout = removing.slice();
+    for (const sl of removing) {
+      const rcs = await db.collection('courses').doc(sl).get();
+      courseFulfillment(sl, rcs.exists ? rcs.data() : {}).enrollsAlso.forEach((x) => {
+        const implied = String(x);
+        if (!removingWithFanout.includes(implied) && !wanted.includes(implied)) {
+          removingWithFanout.push(implied);
+        }
+      });
+    }
+
+    const verdict = revocableSlugs({
+      betaGranted, keeping: wanted, removing: removingWithFanout, paidSlugs, enrollsAlsoBy
+    });
+    revoked = verdict.revoke;
+    blocked = verdict.blocked;
+
+    if (revoked.length) {
+      if (accountUid) {
+        await db.collection('users').doc(accountUid).set({
+          enrolledCourseSlugs: FV.arrayRemove(...revoked)
+        }, { merge: true });
+        // The grant receipt stays as history; this is the matching row saying
+        // it was taken back, so the purchase trail reads in both directions.
+        for (const sl of revoked) {
+          await db.collection('users').doc(accountUid).collection('purchases')
+            .doc(`revoke-${sl}-${Date.now()}`).set({
+              courseSlug: sl,
+              amount: 0,
+              mode: 'revoke',
+              revokedBy: actor,
+              status: 'revoked',
+              createdAt: FV.serverTimestamp()
+            });
+        }
+      } else {
+        // No account yet: the grant is parked, so revoking means unparking it.
+        const pgRef = db.collection('pendingGrants').doc(email);
+        const pg = await pgRef.get();
+        if (pg.exists) {
+          const kept = (Array.isArray(pg.data().slugs) ? pg.data().slugs : [])
+            .filter((sl) => !revoked.includes(sl));
+          if (kept.length) await pgRef.set({ slugs: kept, updatedAt: FV.serverTimestamp() }, { merge: true });
+          else await pgRef.delete();
+        }
+      }
+    }
+  }
+  return { revoked, blocked };
+}
+
 // setBetaTesterStatus — the console's write path. Approving issues the course
 // grant in the same call, which is what removes the hand-typed prompt chain in
 // manage-courses from the workflow.
@@ -6449,8 +6574,35 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
     if (!on) {
       if (!snap.exists) return { ok: true, status: null, eligible: false };
       if (['granted', 'active', 'completed'].includes(current)) {
-        throw new HttpsError('failed-precondition',
-          'They already have beta access. Remove them from the beta console, not from here.');
+        // Taking back live access has to be asked for by name, so no caller
+        // that only means "untick the lead" can revoke a course by accident.
+        // The card sends it after its own confirm.
+        if (data.revoke !== true) {
+          throw new HttpsError('failed-precondition',
+            'They already have beta access. Confirm removing it to turn them off.');
+        }
+        const tester = snap.data();
+        const removing = testerSlugs(tester);
+        const betaGranted = Array.isArray(tester.betaGrantedSlugs) ? tester.betaGrantedSlugs : [];
+        const userDoc = await findUserByEmail(db, email);
+        const accountUid = userDoc ? userDoc.id : tester.uid || null;
+        const courseDocs = {};
+        for (const sl of removing) {
+          const cs = await db.collection('courses').doc(sl).get();
+          if (cs.exists) courseDocs[sl] = cs.data();
+        }
+        const { revoked, blocked } = await revokeBetaSlugs(db, {
+          email, accountUid, betaGranted, wanted: [], removing, courseDocs, actor
+        });
+        await ref.set({
+          status: 'declined',
+          betaGrantedSlugs: betaGranted.filter((sl) => !revoked.includes(sl)),
+          removedFromBetaAt: FV.serverTimestamp(),
+          decidedBy: actor,
+          decidedAt: FV.serverTimestamp(),
+          updatedAt: FV.serverTimestamp()
+        }, { merge: true });
+        return { ok: true, status: 'declined', eligible: false, revoked, blocked };
       }
       await ref.set({
         status: 'declined',
@@ -6574,89 +6726,9 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
   // Everything here is refusable, and a refusal is reported rather than
   // thrown: the operator unticked something, and they are owed the reason it
   // stayed rather than a failed approval.
-  let revoked = [];
-  let blocked = [];
-  if (removing.length) {
-    // Courses held by a real purchase or a comped coupon, which a beta
-    // decision must never undo.
-    const paidSlugs = [];
-    if (accountUid) {
-      const purchases = await db.collection('users').doc(accountUid).collection('purchases').get();
-      purchases.docs.forEach((pd) => {
-        const pdata = pd.data();
-        const bought = String(pdata.courseSlug || '').trim();
-        if (!bought) return;
-        // `grant` is the beta's own receipt, so it protects nothing. A refunded
-        // or cancelled purchase no longer holds access up either — but a
-        // past_due one does: they still have the course, the payment is late.
-        if (!['payment', 'subscription', 'comp'].includes(pdata.mode)) return;
-        if (['refunded', 'canceled', 'failed', 'revoked'].includes(String(pdata.status || ''))) return;
-        paidSlugs.push(bought);
-        // Buying a bundle protects what the bundle unlocks, the same way
-        // granting one enrolls it.
-        const bcs = courseDocs[bought];
-        courseFulfillment(bought, bcs || {}).enrollsAlso.forEach((x) => paidSlugs.push(String(x)));
-      });
-    }
-    // What each KEPT course unlocks on its own, so a bundle that is staying
-    // keeps the course it implies.
-    const enrollsAlsoBy = {};
-    for (const sl of wanted) {
-      enrollsAlsoBy[sl] = courseFulfillment(sl, courseDocs[sl] || {}).enrollsAlso;
-    }
-
-    // Removing a bundle puts what it unlocked on the table too: the operator
-    // unticked the thing that put that course in their hands. revocableSlugs
-    // still decides — it survives if it was granted in its own right and is
-    // still ticked, if it was bought, or if a kept course unlocks it.
-    const removingWithFanout = removing.slice();
-    for (const sl of removing) {
-      const rcs = await db.collection('courses').doc(sl).get();
-      courseFulfillment(sl, rcs.exists ? rcs.data() : {}).enrollsAlso.forEach((x) => {
-        const implied = String(x);
-        if (!removingWithFanout.includes(implied) && !wanted.includes(implied)) {
-          removingWithFanout.push(implied);
-        }
-      });
-    }
-
-    const verdict = revocableSlugs({
-      betaGranted, keeping: wanted, removing: removingWithFanout, paidSlugs, enrollsAlsoBy
-    });
-    revoked = verdict.revoke;
-    blocked = verdict.blocked;
-
-    if (revoked.length) {
-      if (accountUid) {
-        await db.collection('users').doc(accountUid).set({
-          enrolledCourseSlugs: FV.arrayRemove(...revoked)
-        }, { merge: true });
-        // The grant receipt stays as history; this is the matching row saying
-        // it was taken back, so the purchase trail reads in both directions.
-        for (const sl of revoked) {
-          await db.collection('users').doc(accountUid).collection('purchases')
-            .doc(`revoke-${sl}-${Date.now()}`).set({
-              courseSlug: sl,
-              amount: 0,
-              mode: 'revoke',
-              revokedBy: actor,
-              status: 'revoked',
-              createdAt: FV.serverTimestamp()
-            });
-        }
-      } else {
-        // No account yet: the grant is parked, so revoking means unparking it.
-        const pgRef = db.collection('pendingGrants').doc(email);
-        const pg = await pgRef.get();
-        if (pg.exists) {
-          const kept = (Array.isArray(pg.data().slugs) ? pg.data().slugs : [])
-            .filter((sl) => !revoked.includes(sl));
-          if (kept.length) await pgRef.set({ slugs: kept, updatedAt: FV.serverTimestamp() }, { merge: true });
-          else await pgRef.delete();
-        }
-      }
-    }
-  }
+  const { revoked, blocked } = await revokeBetaSlugs(db, {
+    email, accountUid, betaGranted, wanted, removing, courseDocs, actor
+  });
 
   // Blocked removals are still the tester's courses — they kept access, so the
   // record has to say so or the console and reality drift apart.

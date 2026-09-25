@@ -287,6 +287,15 @@ async function renderBetaCoursePicker() {
   });
 }
 
+function removedLine(d) {
+  const revoked = (d.revoked || []).length;
+  const kept = (d.blocked || []).length;
+  let line = 'Removed from the beta program';
+  if (revoked) line += `. Took back ${revoked} course${revoked === 1 ? '' : 's'}`;
+  if (kept) line += `. ${kept} kept (paid or not from the beta)`;
+  return line + '.';
+}
+
 function pickedBetaCourses() {
   const host = $('ct-beta-picker');
   if (!host) return [];
@@ -1311,21 +1320,43 @@ function wire() {
   $('ct-beta').addEventListener('change', async (e) => {
     const on = e.target.checked;
     const c = state.contact;
-    if (on && !confirm(`Put ${c.email} in the beta program? They appear in the beta console as an applicant; access is granted there, not here.`)) {
+    if (on && !confirm(`Put ${c.email} in the beta program? Then tick their courses and hit Save & enroll.`)) {
       e.target.checked = false;
+      return;
+    }
+    // Turning off someone already approved takes their beta courses back, so
+    // it gets its own confirm and an explicit revoke flag.
+    const approved = !on && betaTester && ['granted', 'active', 'completed'].includes(betaTester.status);
+    if (approved && !confirm(`Remove ${c.name || c.email} from the beta?\n\nThis takes away the courses the beta gave them. Anything they paid for stays.`)) {
+      e.target.checked = true;
       return;
     }
     e.target.disabled = true;
     try {
-      const res = await httpsCallable(functions, 'setBetaTesterStatus')({
+      const payload = {
         action: 'eligible',
         eligible: on,
+        revoke: approved || undefined,
         email: c.email,
         name: c.name || '',
         phone: c.phone || '',
         slugs: on ? pickedBetaCourses() : undefined,
         crmContactId: state.contactId
-      });
+      };
+      const call = httpsCallable(functions, 'setBetaTesterStatus');
+      let res;
+      try {
+        res = await call(payload);
+      } catch (err) {
+        // The card did not know they were approved (status still loading);
+        // the server did. Ask now, then retry with the revoke flag.
+        if (on || approved || !/failed-precondition/.test(err.code || '')) throw err;
+        if (!confirm(`${c.name || c.email} already has beta access.\n\nRemove them? This takes away the courses the beta gave them. Anything they paid for stays.`)) {
+          e.target.checked = true;
+          return;
+        }
+        res = await call({ ...payload, revoke: true });
+      }
       // The tag is what the card renders from, so it moves with the record.
       if (on) await addTag(state.companyId, state.contactId, BETA_TAG);
       else await removeTag(state.companyId, state.contactId, BETA_TAG);
@@ -1333,7 +1364,8 @@ function wire() {
       const d = (res && res.data) || {};
       setStatus(on
         ? (d.restored ? 'Back in the beta program' : 'Added to the beta program as an applicant')
-        : 'Removed from the beta program', 'ok');
+        : removedLine(d), 'ok');
+      await loadBetaCourses();
     } catch (err) {
       e.target.checked = !on;
       setStatus('Could not save: ' + (err.message || err), 'err');
@@ -1364,9 +1396,20 @@ function wire() {
       await loadBetaCourses();
       await refreshTimeline();
       const blocked = (d.blocked || []).length ? ` ${d.blocked.length} kept (paid or still unlocked).` : '';
-      setStatus(d.applied
-        ? `Enrolled. They can open the course now.${blocked}`
-        : `Access saved. No account yet: it unlocks when they sign up with ${c.email}.${blocked}`, 'ok');
+      const nameOf = (sl) => { const x = (betaCourses || []).find((k) => k.slug === sl); return x ? x.title : sl; };
+      const added = (d.granted || []).map(nameOf);
+      const removed = (d.revoked || []).map(nameOf);
+      const changes = [
+        added.length ? `Added: ${added.join(', ')}` : '',
+        removed.length ? `Removed: ${removed.join(', ')}` : ''
+      ].filter(Boolean).join('. ');
+      if (!added.length && !removed.length) {
+        setStatus(`No change: they already have ${titles.join(', ')}. No popup or email is sent for a course they already hold.${blocked}`, 'ok');
+      } else if (d.applied) {
+        setStatus(`${changes}. They'll see it next time they open the portal.${blocked}`, 'ok');
+      } else {
+        setStatus(`${changes}. No account found for ${c.email}, so it unlocks when they sign in or sign up with that email.${blocked}`, 'ok');
+      }
     } catch (err) {
       setStatus('Could not save: ' + (err.message || err), 'err');
     } finally {
