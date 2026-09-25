@@ -276,6 +276,50 @@ await t('member CANNOT promote themselves in the cohort',
 await t('even the owner CANNOT write a beta tester record from the client',
   () => assertFails(updateDoc(doc(owner, 'betaTesters/tester@x.com'), { status: 'completed' })));
 
+// ── Course reviews: approved ones are public, everything else is private ──
+// submitCourseReview holds every review as pending until the owner approves
+// it, so the course page may only ever see approved ones. No client writes.
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'courseReviews/icant__solo'), { courseSlug: 'icant', uid: 'solo', rating: 5, status: 'approved' });
+  await setDoc(doc(db, 'courseReviews/icant__emp'), { courseSlug: 'icant', uid: 'emp', rating: 2, status: 'pending' });
+  await setDoc(doc(db, 'users/solo/courseCompletions/icant'), { courseSlug: 'icant' });
+});
+
+await t('signed-out visitor CAN read an approved review',
+  () => assertSucceeds(getDoc(doc(anon, 'courseReviews/icant__solo'))));
+
+await t('signed-out visitor CAN list approved reviews for a course',
+  () => assertSucceeds(getDocs(query(collection(anon, 'courseReviews'),
+    where('courseSlug', '==', 'icant'), where('status', '==', 'approved')))));
+
+await t('signed-out visitor CANNOT read a pending review',
+  () => assertFails(getDoc(doc(anon, 'courseReviews/icant__emp'))));
+
+await t('another member CANNOT read a pending review',
+  () => assertFails(getDoc(doc(solo, 'courseReviews/icant__emp'))));
+
+await t('the author CAN read their own pending review',
+  () => assertSucceeds(getDoc(doc(emp, 'courseReviews/icant__emp'))));
+
+await t('owner CAN read a pending review',
+  () => assertSucceeds(getDoc(doc(owner, 'courseReviews/icant__emp'))));
+
+await t('member CANNOT write a review directly',
+  () => assertFails(setDoc(doc(solo, 'courseReviews/icant__solo'), { courseSlug: 'icant', uid: 'solo', rating: 5, status: 'approved' })));
+
+await t('member CANNOT approve their own review',
+  () => assertFails(updateDoc(doc(emp, 'courseReviews/icant__emp'), { status: 'approved' })));
+
+await t('member CAN read their own course completion',
+  () => assertSucceeds(getDoc(doc(solo, 'users/solo/courseCompletions/icant'))));
+
+await t('member CANNOT stamp a course completion themselves',
+  () => assertFails(setDoc(doc(emp, 'users/emp/courseCompletions/icant'), { courseSlug: 'icant' })));
+
+await t('nobody reads the review nudge queue from the client',
+  () => assertFails(getDoc(doc(owner, 'reviewRequests/icant__solo'))));
+
 // ── Digital library ──────────────────────────────────────────────────────
 // storage.rules hands out a book's EPUB on users/{uid}.ownedBookIds alone, so
 // that field must be as frozen against self-writes as enrolledCourseSlugs.

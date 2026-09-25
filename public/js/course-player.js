@@ -17,6 +17,9 @@
 //     labels?,              // { complete, completeLast, completed, completedLast }
 //     certificateHref?,     // when every module is done, the last module shows a
 //                           // completion panel and the footer CTA links here
+//     onAllComplete?,       // () → called once every module is done (on mount too),
+//                           // so the server can record the finish
+//     reviewHref?,          // when set, the completion panel asks for a review here
 //     startAt               // module id to open first
 //   })
 
@@ -124,6 +127,16 @@ export function mountCoursePlayer(config) {
     const allDone = modules.length > 0 && completedCount() === modules.length;
     const showCert = allDone && isLast && !!config.certificateHref;
     const certPanel = showCert ? courseCompleteHtml({ href: config.certificateHref }) : '';
+    const reviewPanel = allDone && isLast && config.reviewHref ? `
+      <div class="course-done is-compact">
+        <div class="course-done-mark">★</div>
+        <div class="course-done-text">
+          <div class="course-done-eyebrow">One last thing</div>
+          <h3 class="course-done-title">How did this course land for you?</h3>
+          <p class="course-done-sub">Rate it and say what it changed. It takes two minutes and helps the next person decide to start.</p>
+        </div>
+        <a class="course-done-btn" href="${esc(config.reviewHref)}">★ Rate the course →</a>
+      </div>` : '';
     // Reaching the end with the course finished: the dead "✓ Course Complete"
     // button becomes the way to the certificate.
     const footCta = showCert
@@ -146,6 +159,7 @@ export function mountCoursePlayer(config) {
         </div>
         <div class="cp-tab-content" id="cp-tab-content">${content}</div>
         ${certPanel}
+        ${reviewPanel}
         <div class="cp-footbar">
           <button class="cp-btn cp-btn-ghost" id="cp-prev" ${i === 0 ? 'disabled' : ''}>← Previous</button>
           <div class="cp-footbar-pos">Module ${i + 1} of ${modules.length}</div>
@@ -189,8 +203,24 @@ export function mountCoursePlayer(config) {
     render();
   }
 
+  // Tells the owner of this player the course is finished. Fired whenever the
+  // set is complete after a render, so a member who finished before this
+  // existed is recorded the next time they open the course; the callback is
+  // responsible for doing its work only once.
+  let reportedDone = false;
+  function maybeReportDone() {
+    if (reportedDone || !config.onAllComplete) return;
+    if (!modules.length || completedCount() !== modules.length) return;
+    reportedDone = true;
+    Promise.resolve()
+      .then(() => config.onAllComplete())
+      .then((r) => { if (r && r.ok === false) reportedDone = false; })
+      .catch(() => { reportedDone = false; });
+  }
+
   function render() {
     container.innerHTML = fullHtml();
+    maybeReportDone();
     bind();
     const pane = container.querySelector('#cp-tab-content');
     if (pane) pane.scrollTop = 0;

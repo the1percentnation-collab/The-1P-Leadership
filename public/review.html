@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rate the course | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .rv-card { max-width: 560px; }
+    .rv-stars { display: flex; gap: 6px; margin: 18px 0 6px; }
+    .rv-star {
+      background: none; border: 0; cursor: pointer; padding: 2px;
+      font-size: 40px; line-height: 1; color: #3a3a3a; transition: color .12s, transform .12s;
+    }
+    .rv-star.is-on { color: #E59819; }
+    .rv-star:hover { transform: scale(1.08); }
+    .rv-star:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; border-radius: 4px; }
+    .rv-label { font-size: 13px; color: var(--gray-light); min-height: 18px; }
+    .rv-text {
+      width: 100%; min-height: 140px; margin-top: 16px; resize: vertical;
+      background: var(--surface); color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px; font: inherit; font-size: 15px; line-height: 1.55;
+    }
+    .rv-note { font-size: 12px; color: var(--gray-mid); margin-top: 8px; }
+    .rv-actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .rv-links { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+    .rv-links a { color: var(--red); }
+  </style>
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+  <!-- Course review. Reached from the finish-line panel in the course player
+       and from the review-request email. Logic in js/review-page.js. -->
+  <div class="auth-shell">
+    <div class="auth-card rv-card" id="rv-root">
+      <div class="cm-eyebrow" id="rv-course"></div>
+      <p class="cm-lead" id="rv-loading" style="margin-top:14px;">Loading…</p>
+    </div>
+  </div>
+  <script type="module" src="js/review-page.js"></script>
+</body>
+</html>

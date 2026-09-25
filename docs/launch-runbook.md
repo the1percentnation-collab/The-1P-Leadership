@@ -221,6 +221,38 @@ and it now sends the same invite, stamps the same record and asks before
 emailing. Cancelling at that prompt grants silently, which is what you want
 for access you plan to mention in person.
 
+### Tracking testers and collecting reviews
+
+The **Progress** tab in `/beta-admin.html` shows every approved tester, where
+they are in each course and whether they are on track:
+
+- Tiles count *Enrolled · Not started · Working · Behind / stalled · Finished ·
+  Reviewed*. Tap one to filter the list.
+- Each tester shows a progress bar with the lesson they are on, the goal date
+  they set on `/commit.html`, the finish date their pace projects, when their
+  last lesson landed and their review.
+- The people who need a message today are listed first, with a red edge:
+  past their goal date, behind, stalled (no lesson in 7 days), or not started
+  3 days after getting access.
+
+When a tester finishes every module, the course records it without anyone
+clicking **Mark done**. That completion:
+
+- moves the beta record to *completed*;
+- adds the tag `Completed: <course>` and a 🎓 timeline entry to their CRM card;
+- emails them a link to `/review.html?course=<slug>`, with one follow-up three
+  days later from the automation tick if they have not reviewed.
+
+A review lands on their CRM card straight away, tagged `Reviewed: <course>`,
+and waits under **Reviews waiting on you** at the top of the Progress tab.
+**Approve & publish** puts it on the course page (`/course.html?course=<slug>`)
+and updates the course's star rating. **Keep private** leaves it in the CRM
+only.
+
+I Can't progress used to live only in the tester's browser. It now syncs to
+their account, and anything done before the change uploads the next time they
+open the course.
+
 To email the group at once (a reminder, a deadline, a thank you), use
 Campaigns with recipients **By tag → Beta Tester**: applications are also
 written to the CRM under that tag.

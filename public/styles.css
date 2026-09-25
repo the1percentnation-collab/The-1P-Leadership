@@ -9577,6 +9577,11 @@ a.profile-view-link-val:hover { color: var(--white); text-decoration: underline;
 .cl-desc.is-clamped .cl-desc-fade { display: block; }
 
 /* Instructor */
+.cl-reviews { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.cl-review { border: 1px solid var(--border); border-radius: 10px; padding: 16px; background: var(--surface); }
+.cl-review-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cl-review-name { font-size: 13px; font-weight: 600; }
+.cl-review-text { font-size: 14px; line-height: 1.65; color: var(--white-dim); margin: 10px 0 0; white-space: pre-line; word-break: break-word; }
 .cl-instructor { display: flex; gap: 20px; align-items: flex-start; }
 .cl-instructor-avatar {
   width: 72px; height: 72px; border-radius: 50%; flex-shrink: 0;

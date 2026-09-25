@@ -292,6 +292,15 @@ service cloud.firestore {
         allow read, write: if isOwner() || isSelf(uid);
       }
 
+      // users/{uid}/courseCompletions/{courseSlug} — stamped by the
+      // recordCourseCompletion callable after it checks the progress itself.
+      // It unlocks the review form and moves a beta tester to completed, so
+      // only the server may write it.
+      match /courseCompletions/{courseSlug} {
+        allow read: if isOwner() || isSelf(uid);
+        allow write: if false;
+      }
+
       // users/{uid}/stats/{statId} (Phase 2 leaderboard) — server-only writes.
       // Reads are permitted to any signed-in user so client-side leaderboard
       // panels can hydrate level badges via the getLeaderboard callable's
@@ -1249,6 +1258,23 @@ service cloud.firestore {
     match /betaTesters/{testerEmail} {
       allow read: if isOwner();
       allow write: if false;
+    }
+
+    // courseReviews/{slug}__{uid} — a member's rating of a course they
+    // finished. Written only by submitCourseReview / moderateCourseReview.
+    // Approved reviews are public (the course page shows them); pending and
+    // rejected ones are visible only to their author and the owner.
+    match /courseReviews/{reviewId} {
+      allow read: if resource.data.status == 'approved'
+        || isOwner()
+        || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow write: if false;
+    }
+
+    // reviewRequests/{slug}__{uid} — the follow-up nudge queue for the
+    // automation tick. Server-only.
+    match /reviewRequests/{requestId} {
+      allow read, write: if false;
     }
 
     // ────────────────────────────────────────────────────────────────

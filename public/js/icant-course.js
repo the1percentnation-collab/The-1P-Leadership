@@ -16,6 +16,8 @@
 
 import { mountCoursePlayer } from './course-player.js';
 import { getCourseBySlug } from './courses-data.js';
+import { loadCourseProgress, recordModuleComplete } from './course-renderer.js';
+import { reportCourseComplete, reviewHref } from './course-completion.js';
 
 export const BOOK_URL = 'https://a.co/d/0fSUaomu';
 export const BOOK_TITLE = 'I Can\'t: Is Not A Strategy';
@@ -485,6 +487,7 @@ const LAST_ID = MODULES[MODULES.length - 1].id;
 const CHAPTER_COUNT = MODULES.filter((m) => m.id > 0).length;
 
 const STORAGE_KEY = 'icant-course-v1';
+const COURSE_SLUG = 'icant';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -510,6 +513,27 @@ function persistState() {
       answers:   state.answers,
     }));
   } catch {}
+}
+
+/**
+ * Progress used to live only in this browser, so the beta console could not
+ * see it and a second device started from zero. Merge the account's progress
+ * in, and upload anything done here that the account has not seen yet, which
+ * also backfills members who were partway through before this existed.
+ */
+async function syncRemoteProgress() {
+  try {
+    const remote = await loadCourseProgress(COURSE_SLUG);
+    remote.forEach((id) => { state.completed[id] = true; });
+    persistState();
+    const missing = Object.keys(state.completed)
+      .filter((k) => state.completed[k])
+      .map(Number)
+      .filter((id) => !remote.has(id));
+    await Promise.all(missing.map((id) => recordModuleComplete(COURSE_SLUG, id)));
+  } catch (e) {
+    console.warn('[icant-course] progress sync failed', e);
+  }
 }
 
 // ── HTML helpers ──────────────────────────────────────────────────────────────
@@ -641,14 +665,20 @@ function summaryTabHtml(mod) {
       ${mod.id === LAST_ID && isCompleted ? `
       <div style="background:#0A0A00;border:1px solid #555500;border-radius:12px;padding:20px;text-align:center;">
         <div style="font-size:10px;letter-spacing:2px;color:#CCCC00;font-weight:600;margin-bottom:10px;">ONE LAST THING</div>
-        <p style="color:#E0E0D0;line-height:1.7;font-size:14px;margin-bottom:16px;">You finished the course. That puts you in a very small group. If this work moved you, help someone else find the book. An honest Amazon review takes two minutes and can change someone's trajectory.</p>
-        <a href="${BOOK_URL}" target="_blank" rel="noopener"
+        <p style="color:#E0E0D0;line-height:1.7;font-size:14px;margin-bottom:16px;">You finished the course. That puts you in a very small group. How did it land? Rate it and say what it changed. Your review goes on the course page and helps the next person decide to start.</p>
+        <a href="${reviewHref(COURSE_SLUG)}"
           style="display:inline-flex;align-items:center;gap:8px;padding:13px 24px;
             background:#E60306;color:#fff;border-radius:8px;font-size:14px;font-weight:600;
             letter-spacing:0.5px;text-decoration:none;transition:opacity 0.2s;"
           onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
-          ★ Leave an Amazon Review →
+          ★ Rate the course →
         </a>
+        <div style="margin-top:12px;">
+          <a href="${BOOK_URL}" target="_blank" rel="noopener"
+            style="font-size:12px;color:#AAAAAA;text-decoration:underline;text-underline-offset:3px;">
+            Loved the book too? Leave an Amazon review →
+          </a>
+        </div>
         <div style="margin-top:12px;">
           <a href="/bundle.html"
             style="font-size:12px;color:#AAAAAA;text-decoration:underline;text-underline-offset:3px;">
@@ -668,6 +698,7 @@ let _loaded = false;
 export async function mount({ startAt, certificateHref = null } = {}) {
   if (!_loaded) {
     loadState();
+    await syncRemoteProgress();
     _loaded = true;
   }
 
@@ -704,8 +735,10 @@ export async function mount({ startAt, certificateHref = null } = {}) {
       markComplete: async (id) => {
         state.completed[id] = true;
         persistState();
+        await recordModuleComplete(COURSE_SLUG, id);
       }
     },
+    onAllComplete: () => reportCourseComplete(COURSE_SLUG, "I Can't: The Course"),
     certificateHref,
     startAt: typeof startAt === 'number' ? startAt : undefined
   });

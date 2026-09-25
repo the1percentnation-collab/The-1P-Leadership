@@ -89,6 +89,7 @@ const sandbox = new Function('admin', 'console', `
   ${code}
   return { advanceBetaStatus, recordBetaApplication, markBetaGranted,
            markBetaActivated, noteBetaFeedback, countProgressBySlug,
+           progressDetailBySlug, ratingSummary,
            testerSlugs, normalizeSlugList, revocableSlugs,
            BETA_STATUS_RANK, BETA_DEFAULT_SLUG };
 `);
@@ -492,6 +493,28 @@ console.log('beta cohort — the record behind the beta console');
 
   await ok('progress for a tester with no account is zero, not an error', async () => {
     assert.deepStrictEqual(await B.countProgressBySlug(makeDb({}), null, ['icant']), { icant: 0 });
+  });
+
+  await ok('progress detail says which modules are done and when the last one landed', async () => {
+    const db = makeDb({});
+    const ts = (ms) => ({ toMillis: () => ms });
+    db._progress.set('users/uid1', [
+      { id: 'icant__m0', completed: true, completedAt: ts(1000) },
+      { id: 'icant__m3', completed: true, completedAt: ts(5000) },
+      { id: 'icant__m4', completed: false, completedAt: ts(9000) },
+      { id: '1p-clc__m1', completed: true }
+    ]);
+    const d = await B.progressDetailBySlug(db, 'uid1', ['icant', '1p-clc']);
+    assert.deepStrictEqual(d.counts, { icant: 2, '1p-clc': 1 });
+    assert.deepStrictEqual(d.doneIds.icant.sort(), [0, 3]);
+    assert.strictEqual(d.lastAt.icant, 5000, 'an unfinished module never counts as the latest lesson');
+    assert.strictEqual(d.lastAt['1p-clc'], null);
+  });
+
+  await ok('the public rating averages only valid 1-5 star ratings', async () => {
+    assert.deepStrictEqual(B.ratingSummary([5, 4, 5]), { ratingAvg: 4.7, ratingCount: 3 });
+    assert.deepStrictEqual(B.ratingSummary([5, 0, 9, 'x', null]), { ratingAvg: 5, ratingCount: 1 });
+    assert.deepStrictEqual(B.ratingSummary([]), { ratingAvg: null, ratingCount: 0 });
   });
 
   console.log(`\n${passed} checks passed.`);
