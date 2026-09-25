@@ -4188,6 +4188,8 @@ async function notifyUser(db, recipientUid, notif, { typePrefKey } = {}) {
       // Where the bell row should go, for notifications that aren't about a
       // post or channel (course work reminders, announcements). Site-relative.
       link: notif.link || null,
+      // Cover art for notifications that open as a popup (course_granted).
+      image: notif.image || null,
       read: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
@@ -5573,6 +5575,29 @@ async function applyGrant(db, uid, slug, course, { note, grantedBy }) {
     status: 'granted',
     createdAt: admin.firestore.FieldValue.serverTimestamp()
   });
+  // The in-app welcome: the bell row, and the popup the topbar opens the next
+  // time they load any page. One id per course, so a re-grant re-raises the
+  // same notification instead of stacking a second one. Best-effort: the
+  // grant has already landed and must not fail over a notification.
+  try {
+    const title = (course && course.title) || slug;
+    // Comps run through here too, so the beta line is only for real testers.
+    const userSnap = await db.collection('users').doc(uid).get();
+    const email = normalizeEmail(userSnap.exists ? userSnap.data().email : '');
+    const isBeta = !!email && (await db.collection('betaTesters').doc(email).get()).exists;
+    await notifyUser(db, uid, {
+      id: `course-granted-${slug}`,
+      type: 'course_granted',
+      title,
+      preview: isBeta
+        ? "You've been added to this course as a beta tester. It's in your library now, and your feedback shapes the final version."
+        : "You've been added to this course. It's in your library now and ready when you are.",
+      image: (course && (course.coverImage || course.image)) || null,
+      link: `/courses.html?course=${encodeURIComponent(slug)}`
+    });
+  } catch (e) {
+    console.warn('[applyGrant] welcome notification failed for', uid, slug, e && e.message);
+  }
 }
 
 // ── The invite email that makes a grant real ─────────────────────────────
