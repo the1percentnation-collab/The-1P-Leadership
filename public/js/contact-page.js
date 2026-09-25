@@ -1396,9 +1396,20 @@ function wire() {
       await loadBetaCourses();
       await refreshTimeline();
       const blocked = (d.blocked || []).length ? ` ${d.blocked.length} kept (paid or still unlocked).` : '';
-      setStatus(d.applied
-        ? `Enrolled. They can open the course now.${blocked}`
-        : `Access saved. No account yet: it unlocks when they sign up with ${c.email}.${blocked}`, 'ok');
+      const nameOf = (sl) => { const x = (betaCourses || []).find((k) => k.slug === sl); return x ? x.title : sl; };
+      const added = (d.granted || []).map(nameOf);
+      const removed = (d.revoked || []).map(nameOf);
+      const changes = [
+        added.length ? `Added: ${added.join(', ')}` : '',
+        removed.length ? `Removed: ${removed.join(', ')}` : ''
+      ].filter(Boolean).join('. ');
+      if (!added.length && !removed.length) {
+        setStatus(`No change: they already have ${titles.join(', ')}. No popup or email is sent for a course they already hold.${blocked}`, 'ok');
+      } else if (d.applied) {
+        setStatus(`${changes}. They'll see it next time they open the portal.${blocked}`, 'ok');
+      } else {
+        setStatus(`${changes}. No account found for ${c.email}, so it unlocks when they sign in or sign up with that email.${blocked}`, 'ok');
+      }
     } catch (err) {
       setStatus('Could not save: ' + (err.message || err), 'err');
     } finally {

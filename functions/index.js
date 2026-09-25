@@ -3878,6 +3878,23 @@ exports.touchDailyStreak = onCall(async (request) => {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
 
   const db = admin.firestore();
+  // Grants parked for this address are normally claimed at signup, but a
+  // grant can be parked after the account already exists (the email lookup
+  // missed it). Every dashboard load calls this, so claim them here too:
+  // one doc read when there is nothing waiting. Auth holds one account per
+  // address, so this is the same claim signup makes.
+  const authEmail = request.auth.token && request.auth.token.email;
+  if (authEmail) {
+    try {
+      const n = await applyPendingGrants(db, uid, authEmail);
+      if (n) {
+        console.log(`[touchDailyStreak] claimed ${n} parked grant(s) for ${authEmail}`);
+        await markBetaActivated(db, authEmail, uid);
+      }
+    } catch (e) {
+      console.warn('[touchDailyStreak] pending grants failed:', e && e.message);
+    }
+  }
   const userRef = db.collection('users').doc(uid);
   const statRef = userRef.collection('stats').doc('aggregate');
   const today = utcDayKey();
@@ -5557,7 +5574,21 @@ async function findUserByEmail(db, email) {
   if (snap.empty && lower !== String(email).trim()) {
     snap = await db.collection('users').where('email', '==', String(email).trim()).limit(1).get();
   }
-  return snap.empty ? null : snap.docs[0];
+  if (!snap.empty) return snap.docs[0];
+  // The profile field can miss an account that exists: stored with capitals
+  // (callers pass the lowercased address) or never written at all. Auth
+  // matches regardless of case, and a miss here is what parks a grant in
+  // pendingGrants for a signup that already happened.
+  try {
+    const authUser = await admin.auth().getUserByEmail(lower);
+    const doc = await db.collection('users').doc(authUser.uid).get();
+    if (doc.exists) return doc;
+  } catch (e) {
+    if (!(e && e.code === 'auth/user-not-found')) {
+      console.warn('[findUserByEmail] auth lookup failed for', lower, e && e.message);
+    }
+  }
+  return null;
 }
 
 // Enrolls uid in slug (plus whatever the slug unlocks) and records why.
