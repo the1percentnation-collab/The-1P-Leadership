@@ -25,6 +25,7 @@ import { auth, db, functions, firebaseReady } from './firebase.js';
 import { signOut } from './auth.js';
 import { cachedRoleInfo } from './roles.js';
 import { mountConsoleShell } from './academy-shell.js';
+import { mountMobileNav } from './mobile-nav.js';
 import {
   collection, doc, query, where, orderBy, limit, onSnapshot, updateDoc
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -632,6 +633,8 @@ export function renderTopbar({
   // Owner / Admin tool lives. No-op for members and on pages that already
   // have a rail (the shell pages draw their own; the CRM has its own).
   mountConsoleShell(role);
+  // Phones get a bottom tab bar instead of the rail and chip links.
+  mountMobileNav({ role });
 
   const displayName = (profile && profile.displayName) || user.displayName || user.email || '';
   const avatarObj = {
