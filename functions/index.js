@@ -14326,6 +14326,599 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
 });
 
 // ────────────────────────────────────────────────────────────────
+// Instagram giveaways — one entry for commenting, bonus entries for each
+// friend tagged.
+//
+// Why comments and tags, not shares: Meta's APIs report how many times a post
+// was shared but never who shared it, so a share-based tally cannot be built
+// on the official API at all. Comments come back with the commenter's handle,
+// and a tag is just an @handle inside the comment text, so both are exact.
+//
+// Facebook is deliberately not wired in. Facebook's Page terms forbid "tag
+// your friends to enter", so the tag half of these rules would put the Page at
+// risk there. Instagram permits it.
+//
+// Connection: an admin pastes a long-lived Instagram User access token
+// (Meta app → Instagram API with Instagram Login → Generate token) on
+// /giveaways.html. It is stored under companies/{cid}/private/instagram, which
+// no client can read, and refreshed in place once it is a week old, so it
+// does not quietly expire after 60 days. Reading your own account's comments
+// only needs Standard Access, so no Meta app review is required.
+//
+// Storage: companies/{cid}/giveaways/{gid} holds the rules and totals, and
+// .../entrants/{u_handle} the tally, rebuilt on every sync. Everything goes
+// through the giveawayAdmin callable on the Admin SDK; there are no client
+// rules for either path, so both are default-deny to browsers.
+// ────────────────────────────────────────────────────────────────
+
+// ── Giveaway: pure helpers (tests/giveaway-tally.test.cjs) ──────
+// clampInt is the shared one defined further down this file.
+
+const GIVEAWAY_DEFAULT_RULES = Object.freeze({
+  baseEntries: 1,        // entries for commenting at all, once per person
+  entriesPerTag: 1,      // bonus entries per unique friend tagged
+  maxTaggedFriends: 5,   // cap on friends that earn bonus entries; 0 = no cap
+  requireTag: false,     // true: a commenter who tagged nobody valid earns nothing
+  countReplies: true,    // replies under other comments count as comments
+  startsAt: null,        // ISO string; comments before this are ignored
+  endsAt: null,          // ISO string; comments after this are ignored
+  excludeHandles: []     // staff, family, the brand's other accounts
+});
+
+function isoOrNull(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/** Lowercase an Instagram handle and drop a leading @ and stray dots. */
+function normalizeHandle(h) {
+  return String(h == null ? '' : h).trim().replace(/^@+/, '').replace(/^\.+|\.+$/g, '').toLowerCase();
+}
+
+/** Coerce whatever the page sent into a complete, bounded rules object. */
+function normalizeGiveawayRules(input) {
+  const r = input || {};
+  const d = GIVEAWAY_DEFAULT_RULES;
+  const exclude = Array.isArray(r.excludeHandles)
+    ? r.excludeHandles
+    : String(r.excludeHandles || '').split(/[\s,]+/);
+  let startsAt = isoOrNull(r.startsAt);
+  let endsAt = isoOrNull(r.endsAt);
+  if (startsAt && endsAt && startsAt > endsAt) [startsAt, endsAt] = [endsAt, startsAt];
+  return {
+    baseEntries: clampInt(r.baseEntries, 0, 100, d.baseEntries),
+    entriesPerTag: clampInt(r.entriesPerTag, 0, 100, d.entriesPerTag),
+    maxTaggedFriends: clampInt(r.maxTaggedFriends, 0, 100, d.maxTaggedFriends),
+    requireTag: r.requireTag === undefined ? d.requireTag : !!r.requireTag,
+    countReplies: r.countReplies === undefined ? d.countReplies : !!r.countReplies,
+    startsAt,
+    endsAt,
+    excludeHandles: [...new Set(exclude.map(normalizeHandle).filter(Boolean))].slice(0, 500)
+  };
+}
+
+/**
+ * Every @handle in a comment, lowercased, de-duplicated, in order.
+ *
+ * Instagram handles are letters, digits, periods and underscores, up to 30
+ * characters, and cannot end in a period, so "thanks @anna." is @anna. The @
+ * must not follow a handle character, which keeps "me@gmail.com" from reading
+ * as a tag of @gmail.com.
+ */
+function extractInstagramTags(text) {
+  const out = [];
+  const re = /(^|[^A-Za-z0-9._@])@([A-Za-z0-9._]{1,30})/g;
+  let m;
+  while ((m = re.exec(String(text || '')))) {
+    const h = normalizeHandle(m[2]);
+    if (h && !out.includes(h)) out.push(h);
+  }
+  return out;
+}
+
+/**
+ * Turn raw comments into a ranked entrant list.
+ *
+ * comments: [{ id, username, userId, text, timestamp, parentId }]
+ * opts.hostHandle: the account running the giveaway. It can never enter, and
+ * tagging it earns nothing, or every "@yourbrand" would be a free entry.
+ *
+ * Rules applied, per person:
+ *   - baseEntries once, however many times they comment.
+ *   - entriesPerTag for each distinct friend across all their comments, up to
+ *     maxTaggedFriends, counted in the order they were first tagged.
+ *   - Tagging yourself, the host, or an excluded handle earns nothing.
+ */
+function tallyGiveawayEntries(comments, rulesInput, opts = {}) {
+  const rules = normalizeGiveawayRules(rulesInput);
+  const host = normalizeHandle(opts.hostHandle);
+  const excluded = new Set(rules.excludeHandles);
+  const startMs = rules.startsAt ? Date.parse(rules.startsAt) : null;
+  const endMs = rules.endsAt ? Date.parse(rules.endsAt) : null;
+
+  const skipped = { host: 0, excluded: 0, outsideWindow: 0, replies: 0, noUsername: 0 };
+  const byHandle = new Map();
+
+  // Oldest first, so "the first five friends tagged" means the same five on
+  // every sync, whatever order the API happened to page them in.
+  const sorted = (Array.isArray(comments) ? comments : []).slice().sort((a, b) => {
+    const ta = Date.parse(a && a.timestamp) || 0;
+    const tb = Date.parse(b && b.timestamp) || 0;
+    return ta - tb || String(a && a.id).localeCompare(String(b && b.id));
+  });
+
+  for (const c of sorted) {
+    if (!c) continue;
+    const handle = normalizeHandle(c.username);
+    if (!handle) { skipped.noUsername++; continue; }
+    if (host && handle === host) { skipped.host++; continue; }
+    if (excluded.has(handle)) { skipped.excluded++; continue; }
+    if (c.parentId && !rules.countReplies) { skipped.replies++; continue; }
+    const t = Date.parse(c.timestamp);
+    if ((startMs != null && !(t >= startMs)) || (endMs != null && !(t <= endMs))) {
+      skipped.outsideWindow++; continue;
+    }
+
+    let e = byHandle.get(handle);
+    if (!e) {
+      e = { handle, userId: c.userId || null, commentCount: 0, firstCommentAt: c.timestamp || null, tags: [], ignoredTags: [] };
+      byHandle.set(handle, e);
+    }
+    e.commentCount++;
+    for (const tag of extractInstagramTags(c.text)) {
+      if (tag === handle || tag === host || excluded.has(tag)) {
+        if (!e.ignoredTags.includes(tag)) e.ignoredTags.push(tag);
+        continue;
+      }
+      if (!e.tags.includes(tag)) e.tags.push(tag);
+    }
+  }
+
+  const cap = rules.maxTaggedFriends;
+  const entrants = [...byHandle.values()].map((e) => {
+    const counted = cap > 0 ? e.tags.slice(0, cap) : e.tags.slice();
+    const eligible = !(rules.requireTag && counted.length === 0);
+    const baseEntries = eligible ? rules.baseEntries : 0;
+    const tagEntries = eligible ? counted.length * rules.entriesPerTag : 0;
+    return {
+      handle: e.handle,
+      userId: e.userId,
+      commentCount: e.commentCount,
+      firstCommentAt: e.firstCommentAt,
+      tags: e.tags,
+      countedTags: counted,
+      ignoredTags: e.ignoredTags,
+      baseEntries,
+      tagEntries,
+      entries: baseEntries + tagEntries,
+      ineligibleReason: eligible ? null : 'no_tag'
+    };
+  });
+
+  entrants.sort((a, b) =>
+    b.entries - a.entries
+    || (Date.parse(a.firstCommentAt) || 0) - (Date.parse(b.firstCommentAt) || 0)
+    || a.handle.localeCompare(b.handle));
+
+  const counted = sorted.length - Object.values(skipped).reduce((s, n) => s + n, 0);
+  return {
+    rules,
+    entrants,
+    totals: {
+      comments: sorted.length,
+      countedComments: counted,
+      entrants: entrants.length,
+      eligibleEntrants: entrants.filter((e) => e.entries > 0).length,
+      entries: entrants.reduce((s, e) => s + e.entries, 0),
+      friendsTagged: new Set(entrants.flatMap((e) => e.countedTags)).size
+    },
+    skipped
+  };
+}
+
+/**
+ * Weighted draw without replacement: someone with 6 entries is six times as
+ * likely as someone with 1, and nobody wins twice.
+ *
+ * randInt(n) must return a uniform integer in [0, n). Production passes
+ * crypto.randomInt; the tests pass a scripted one.
+ */
+function drawGiveawayWinners(entrants, count, randInt, excludeHandles = []) {
+  const skip = new Set((excludeHandles || []).map(normalizeHandle));
+  const pool = (entrants || [])
+    .filter((e) => e && e.entries > 0 && !skip.has(normalizeHandle(e.handle)))
+    .map((e) => ({ handle: e.handle, entries: e.entries }));
+  const winners = [];
+  const want = Math.max(0, Math.floor(Number(count) || 0));
+  while (winners.length < want && pool.length) {
+    const total = pool.reduce((s, e) => s + e.entries, 0);
+    const ticket = randInt(total);
+    let acc = 0;
+    let idx = 0;
+    for (; idx < pool.length; idx++) {
+      acc += pool[idx].entries;
+      if (ticket < acc) break;
+    }
+    const poolSize = pool.length;
+    const [w] = pool.splice(Math.min(idx, pool.length - 1), 1);
+    winners.push({ ...w, ticket, poolEntries: total, poolSize });
+  }
+  return winners;
+}
+
+// ── Giveaway: Instagram Graph API ───────────────────────────────
+
+// Overridable so a newer Graph version can be adopted without a code change,
+// and so tests can point at a stub.
+const INSTAGRAM_GRAPH = (process.env.INSTAGRAM_GRAPH_BASE || '').trim() || 'https://graph.instagram.com/v23.0';
+const INSTAGRAM_REFRESH_URL = 'https://graph.instagram.com/refresh_access_token';
+const INSTAGRAM_REFRESH_AFTER_MS = 7 * 86400000;
+// 400 pages of 50 is 20,000 comments, comfortably inside the timeout. A post
+// bigger than that syncs partially and says so rather than timing out.
+const INSTAGRAM_MAX_PAGES = 400;
+
+/**
+ * GET against the Graph API. The access token rides in the query string, as
+ * Meta requires, so error text is built from the API's message only — never
+ * from the URL, which would put the token in logs and in the browser.
+ */
+async function instagramFetch(urlOrPath, token, params = {}) {
+  let url;
+  if (/^https?:\/\//.test(urlOrPath)) {
+    url = new URL(urlOrPath); // paging.next already carries the token
+  } else {
+    url = new URL(INSTAGRAM_GRAPH + urlOrPath);
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
+    url.searchParams.set('access_token', token);
+  }
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  let json = null;
+  try { json = await res.json(); } catch (e) { /* non-JSON error page */ }
+  if (!res.ok || (json && json.error)) {
+    const err = (json && json.error) || {};
+    const e = new Error(`Instagram ${res.status}: ${err.message || 'request failed'}`);
+    e.igCode = err.code;
+    throw e;
+  }
+  return json || {};
+}
+
+function igErrorToHttps(e) {
+  // 190 is Meta's "access token invalid or expired".
+  if (e && e.igCode === 190) {
+    return new HttpsError('failed-precondition', 'The Instagram connection has expired. Paste a fresh token under Connect Instagram.');
+  }
+  return new HttpsError('unavailable', (e && e.message) || 'Instagram request failed.');
+}
+
+function instagramPrivateRef(db, companyId) {
+  return db.collection('companies').doc(companyId).collection('private').doc('instagram');
+}
+
+/**
+ * The stored connection, refreshed if it is more than a week old. A failed
+ * refresh is logged and the existing token used: it may well have weeks left,
+ * and the call that needs it should not fail over housekeeping.
+ */
+async function instagramConnection(db, companyId) {
+  const ref = instagramPrivateRef(db, companyId);
+  const snap = await ref.get();
+  const data = snap.exists ? snap.data() : null;
+  if (!data || !data.token) {
+    throw new HttpsError('failed-precondition', 'Instagram is not connected yet.');
+  }
+  const refreshedMs = msOf(data.refreshedAt) || 0;
+  if (Date.now() - refreshedMs > INSTAGRAM_REFRESH_AFTER_MS) {
+    try {
+      const url = new URL(INSTAGRAM_REFRESH_URL);
+      url.searchParams.set('grant_type', 'ig_refresh_token');
+      url.searchParams.set('access_token', data.token);
+      const r = await instagramFetch(url.toString(), data.token);
+      if (r.access_token) {
+        const update = {
+          token: r.access_token,
+          refreshedAt: admin.firestore.FieldValue.serverTimestamp(),
+          expiresAt: r.expires_in ? admin.firestore.Timestamp.fromMillis(Date.now() + r.expires_in * 1000) : null
+        };
+        await ref.set(update, { merge: true });
+        return { ...data, token: r.access_token };
+      }
+    } catch (e) {
+      console.warn('[giveaway] token refresh failed', companyId, e && e.message);
+    }
+  }
+  return data;
+}
+
+function normalizeIgComment(c, parentId) {
+  const from = c.from || {};
+  return {
+    id: String(c.id || ''),
+    username: c.username || from.username || '',
+    userId: from.id || null,
+    text: String(c.text || ''),
+    timestamp: c.timestamp || null,
+    parentId: parentId || null
+  };
+}
+
+/** Every comment and reply on one post, following all pagination. */
+async function fetchInstagramComments(token, mediaId) {
+  const FIELDS = 'id,text,timestamp,username,from,replies.limit(50){id,text,timestamp,username,from}';
+  const out = [];
+  let pages = 0;
+  let truncated = false;
+  let next = null;
+  let page = await instagramFetch(`/${encodeURIComponent(mediaId)}/comments`, token, { fields: FIELDS, limit: 50 });
+
+  for (;;) {
+    pages++;
+    for (const c of page.data || []) {
+      out.push(normalizeIgComment(c, null));
+      const replies = c.replies || {};
+      for (const r of replies.data || []) out.push(normalizeIgComment(r, c.id));
+      let rNext = replies.paging && replies.paging.next;
+      while (rNext && pages < INSTAGRAM_MAX_PAGES) {
+        pages++;
+        const rp = await instagramFetch(rNext, token);
+        for (const r of rp.data || []) out.push(normalizeIgComment(r, c.id));
+        rNext = rp.paging && rp.paging.next;
+      }
+    }
+    next = page.paging && page.paging.next;
+    if (!next) break;
+    if (pages >= INSTAGRAM_MAX_PAGES) { truncated = true; break; }
+    page = await instagramFetch(next, token);
+  }
+
+  // Replies can arrive twice when a nested page overlaps the inline one.
+  const seen = new Set();
+  const comments = out.filter((c) => c.id && !seen.has(c.id) && seen.add(c.id));
+  return { comments, truncated };
+}
+
+function giveawayIso(ts) {
+  const ms = msOf(ts);
+  return ms ? new Date(ms).toISOString() : null;
+}
+
+function giveawaySummary(id, g) {
+  return {
+    id,
+    name: g.name || 'Untitled giveaway',
+    mediaId: g.mediaId || null,
+    permalink: g.permalink || null,
+    caption: g.caption || '',
+    thumbnailUrl: g.thumbnailUrl || null,
+    rules: normalizeGiveawayRules(g.rules),
+    totals: g.totals || null,
+    skipped: g.skipped || null,
+    truncated: !!g.truncated,
+    hostHandle: g.hostHandle || null,
+    winners: (g.winners || []).map((w) => ({ ...w, drawnAt: giveawayIso(w.drawnAt) || w.drawnAt || null })),
+    createdAt: giveawayIso(g.createdAt),
+    lastSyncedAt: giveawayIso(g.lastSyncedAt)
+  };
+}
+
+/**
+ * giveawayAdmin({ companyId, action, ... })
+ *
+ * One callable for the whole feature rather than one per action: each
+ * exported function is a separate Cloud Run service to deploy, and this page
+ * is small enough not to need that.
+ *
+ *   status                              → { connected, username }
+ *   connect     { token }               → validates against /me, stores it
+ *   disconnect
+ *   posts                               → the account's 25 most recent posts
+ *   list                                → giveaways, newest first
+ *   save        { giveawayId?, name, mediaId, permalink, caption, thumbnailUrl, rules }
+ *   sync        { giveawayId }          → re-reads every comment, rebuilds the tally
+ *   get         { giveawayId }          → giveaway + ranked entrants
+ *   draw        { giveawayId, count }   → weighted winners, recorded on the giveaway
+ */
+exports.giveawayAdmin = onCall({ timeoutSeconds: 300, memory: '512MiB' }, async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  const companyId = String(data.companyId || '').trim();
+  const action = String(data.action || '').trim();
+  if (!companyId || !action) throw new HttpsError('invalid-argument', 'companyId and action are required.');
+  const { uid } = await assertCompanyAdmin(db, companyId, request);
+
+  const FV = admin.firestore.FieldValue;
+  const scope = db.collection('companies').doc(companyId);
+  const giveaways = scope.collection('giveaways');
+  const giveawayRef = () => {
+    const id = String(data.giveawayId || '').trim();
+    if (!id || id.includes('/')) throw new HttpsError('invalid-argument', 'giveawayId is required.');
+    return giveaways.doc(id);
+  };
+  const loadGiveaway = async () => {
+    const ref = giveawayRef();
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'That giveaway no longer exists.');
+    return { ref, g: snap.data() };
+  };
+
+  switch (action) {
+    case 'status': {
+      const snap = await instagramPrivateRef(db, companyId).get();
+      const d = snap.exists ? snap.data() : null;
+      return {
+        connected: !!(d && d.token),
+        username: (d && d.username) || null,
+        expiresAt: d ? giveawayIso(d.expiresAt) : null
+      };
+    }
+
+    case 'connect': {
+      await rateLimitCaller(db, request, { action: 'giveawayConnect', max: 10, windowSec: 600 });
+      const token = String(data.token || '').trim();
+      if (!token || token.length > 1000 || /\s/.test(token)) {
+        throw new HttpsError('invalid-argument', 'Paste the access token exactly as Meta shows it.');
+      }
+      let me;
+      try {
+        me = await instagramFetch('/me', token, { fields: 'user_id,username' });
+      } catch (e) {
+        throw new HttpsError('invalid-argument', 'Instagram rejected that token. ' + ((e && e.message) || ''));
+      }
+      await instagramPrivateRef(db, companyId).set({
+        token,
+        userId: String(me.user_id || me.id || ''),
+        username: me.username || null,
+        // Treated as fresh: a token generated in the Meta dashboard is already
+        // long-lived, and Meta refuses to refresh one under a day old.
+        refreshedAt: FV.serverTimestamp(),
+        expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 60 * 86400000),
+        connectedByUid: uid,
+        connectedAt: FV.serverTimestamp()
+      });
+      return { connected: true, username: me.username || null };
+    }
+
+    case 'disconnect': {
+      await instagramPrivateRef(db, companyId).delete();
+      return { connected: false };
+    }
+
+    case 'posts': {
+      const conn = await instagramConnection(db, companyId);
+      try {
+        const r = await instagramFetch('/me/media', conn.token, {
+          fields: 'id,caption,permalink,timestamp,comments_count,like_count,media_type,media_url,thumbnail_url',
+          limit: 25
+        });
+        return {
+          username: conn.username || null,
+          posts: (r.data || []).map((p) => ({
+            id: p.id,
+            caption: String(p.caption || '').slice(0, 300),
+            permalink: p.permalink || null,
+            timestamp: p.timestamp || null,
+            commentsCount: p.comments_count ?? null,
+            likeCount: p.like_count ?? null,
+            thumbnailUrl: p.media_type === 'VIDEO' ? (p.thumbnail_url || null) : (p.media_url || p.thumbnail_url || null)
+          }))
+        };
+      } catch (e) { throw igErrorToHttps(e); }
+    }
+
+    case 'list': {
+      const snap = await giveaways.orderBy('createdAt', 'desc').limit(50).get();
+      return { giveaways: snap.docs.map((d) => giveawaySummary(d.id, d.data())) };
+    }
+
+    case 'save': {
+      const mediaId = String(data.mediaId || '').trim();
+      if (!/^[0-9A-Za-z_]{1,64}$/.test(mediaId)) throw new HttpsError('invalid-argument', 'Pick the Instagram post this giveaway runs on.');
+      const fields = {
+        name: String(data.name || '').trim().slice(0, 120) || 'Untitled giveaway',
+        mediaId,
+        permalink: String(data.permalink || '').slice(0, 500) || null,
+        caption: String(data.caption || '').slice(0, 300),
+        thumbnailUrl: String(data.thumbnailUrl || '').slice(0, 2000) || null,
+        rules: normalizeGiveawayRules(data.rules),
+        updatedAt: FV.serverTimestamp()
+      };
+      if (data.giveawayId) {
+        const { ref, g } = await loadGiveaway();
+        // Changing the post under a finished draw would detach the winners
+        // from the comments they won on.
+        if ((g.winners || []).length && g.mediaId !== mediaId) {
+          throw new HttpsError('failed-precondition', 'Winners were already drawn on the original post. Start a new giveaway instead.');
+        }
+        await ref.set(fields, { merge: true });
+        return { id: ref.id };
+      }
+      const ref = await giveaways.add({ ...fields, winners: [], createdByUid: uid, createdAt: FV.serverTimestamp() });
+      return { id: ref.id };
+    }
+
+    case 'sync': {
+      await rateLimitCaller(db, request, { action: 'giveawaySync', max: 30, windowSec: 600 });
+      const { ref, g } = await loadGiveaway();
+      const conn = await instagramConnection(db, companyId);
+      let fetched;
+      try { fetched = await fetchInstagramComments(conn.token, g.mediaId); }
+      catch (e) { throw igErrorToHttps(e); }
+
+      const tally = tallyGiveawayEntries(fetched.comments, g.rules, { hostHandle: conn.username });
+
+      // Rebuild the entrant set: write the new tally, then remove anyone who
+      // no longer qualifies (deleted their comment, or a rule changed).
+      const entrantsCol = ref.collection('entrants');
+      const keep = new Set(tally.entrants.map((e) => 'u_' + e.handle));
+      const existing = await entrantsCol.select().get();
+      const writes = [];
+      for (const e of tally.entrants) {
+        writes.push((b) => b.set(entrantsCol.doc('u_' + e.handle), e));
+      }
+      for (const d of existing.docs) {
+        if (!keep.has(d.id)) writes.push((b) => b.delete(d.ref));
+      }
+      for (let i = 0; i < writes.length; i += 450) {
+        const batch = db.batch();
+        writes.slice(i, i + 450).forEach((w) => w(batch));
+        await batch.commit();
+      }
+
+      await ref.set({
+        totals: tally.totals,
+        skipped: tally.skipped,
+        truncated: fetched.truncated,
+        hostHandle: conn.username || null,
+        lastSyncedAt: FV.serverTimestamp(),
+        lastSyncedByUid: uid
+      }, { merge: true });
+      return { totals: tally.totals, skipped: tally.skipped, truncated: fetched.truncated };
+    }
+
+    case 'get': {
+      const { ref, g } = await loadGiveaway();
+      const snap = await ref.collection('entrants').orderBy('entries', 'desc').limit(5000).get();
+      const entrants = snap.docs.map((d) => d.data()).sort((a, b) =>
+        b.entries - a.entries
+        || (Date.parse(a.firstCommentAt) || 0) - (Date.parse(b.firstCommentAt) || 0)
+        || String(a.handle).localeCompare(String(b.handle)));
+      return { giveaway: giveawaySummary(ref.id, g), entrants };
+    }
+
+    case 'draw': {
+      await rateLimitCaller(db, request, { action: 'giveawayDraw', max: 20, windowSec: 600 });
+      const count = clampInt(data.count, 1, 20, 1);
+      const { ref, g } = await loadGiveaway();
+      if (!g.lastSyncedAt) throw new HttpsError('failed-precondition', 'Sync the comments before drawing.');
+      const snap = await ref.collection('entrants').where('entries', '>', 0).get();
+      const entrants = snap.docs.map((d) => d.data());
+      const prior = (g.winners || []).map((w) => w.handle);
+      const picked = drawGiveawayWinners(entrants, count, (n) => crypto.randomInt(n), prior);
+      if (!picked.length) throw new HttpsError('failed-precondition', 'Nobody eligible is left to draw.');
+
+      // The draw is recorded with the pool it was drawn from, so the result
+      // can be explained later even after more syncs change the tally.
+      const drawnAt = admin.firestore.Timestamp.now();
+      const record = picked.map((w, i) => ({
+        handle: w.handle,
+        entries: w.entries,
+        poolEntries: w.poolEntries,
+        poolEntrants: w.poolSize,
+        alternate: prior.length + i > 0,
+        drawnAt,
+        drawnByUid: uid
+      }));
+      await ref.set({ winners: FV.arrayUnion(...record) }, { merge: true });
+      return { winners: record.map((w) => ({ ...w, drawnAt: drawnAt.toDate().toISOString() })) };
+    }
+
+    default:
+      throw new HttpsError('invalid-argument', `Unknown action: ${action}`);
+  }
+});
+
+// ────────────────────────────────────────────────────────────────
 // Exposed for the emulator test (tests/launch-tick.test.mjs). A plain
 // function is not a trigger: the Functions loader registers only exports
 // that carry an endpoint definition, so this deploys nothing.

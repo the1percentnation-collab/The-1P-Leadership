@@ -10,7 +10,8 @@
     "test:indexes": "node firestore-indexes.test.cjs",
     "test:deploy": "node no-scheduled-functions.test.cjs",
     "test:crm": "node crm-freshness.test.cjs && node crm-assistant.test.cjs && node crm-ai-log.test.cjs",
-    "test": "npm run test:deploy && npm run test:indexes && npm run test:hub && npm run test:commitment && npm run test:launch && npm run test:points && npm run test:catalog && npm run test:books && npm run test:beta && npm run test:notify && npm run test:telnyx && npm run test:email && npm run test:crm && npm run emulator",
+    "test:giveaway": "node giveaway-tally.test.cjs",
+    "test": "npm run test:deploy && npm run test:indexes && npm run test:hub && npm run test:commitment && npm run test:launch && npm run test:points && npm run test:catalog && npm run test:books && npm run test:beta && npm run test:notify && npm run test:telnyx && npm run test:email && npm run test:crm && npm run test:giveaway && npm run emulator",
     "test:notify": "node announcement-fanout.test.cjs",
     "test:hub": "node hub-nextup.test.mjs && node hub-welcome.test.mjs",
     "test:launch": "node launch-date.test.mjs",
@@ -20,6 +21,7 @@
     "e2e:purchase": "bash run-e2e.sh purchase",
     "e2e:reader": "bash run-e2e.sh reader",
     "e2e:notify": "bash run-e2e.sh notify",
+    "e2e:giveaway": "bash run-e2e.sh giveaway",
     "test:beta": "node beta-cohort.test.cjs && node beta-progress.test.mjs",
     "test:commitment": "node commitment.test.mjs"
   },
