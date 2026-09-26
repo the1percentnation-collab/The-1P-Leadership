@@ -77,9 +77,9 @@ const MAIN_NAV = [
 // and makes it obvious at a glance what an owner can reach.
 const ADMIN_NAV = [
   { key: 'crm',                  href: '/crm.html',                 label: 'CRM',           icon: 'crm',       requires: 'admin' },
-  { key: 'store-admin',          href: '/manage-store.html',        label: 'Store',         icon: 'store',     requires: 'admin' },
-  { key: 'courses-admin',        href: '/manage-courses.html',      label: 'Courses',       icon: 'courses',   requires: 'admin' },
-  { key: 'library-admin',        href: '/manage-library.html',      label: 'Library',       icon: 'library',   requires: 'admin' },
+  { key: 'store-admin',          href: '/manage-store.html',        label: 'Manage Store',   icon: 'store',     requires: 'admin' },
+  { key: 'courses-admin',        href: '/manage-courses.html',      label: 'Manage Courses', icon: 'courses',   requires: 'admin' },
+  { key: 'library-admin',        href: '/manage-library.html',      label: 'Manage Library', icon: 'library',   requires: 'admin' },
   { key: 'products-admin',       href: '/manage-products.html',     label: 'Products',      icon: 'store',     requires: 'admin' },
   { key: 'announcements-admin',  href: '/manage-announcements.html', label: 'Announcements', icon: 'megaphone', requires: 'admin' },
   { key: 'affiliates-admin',     href: '/manage-affiliates.html',   label: 'Affiliates',    icon: 'community', requires: 'admin' },
