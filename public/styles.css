@@ -13216,6 +13216,9 @@ body.tour-open { overflow: hidden; }
 .cm-roadmap-card .cm-rc-stat strong.is-behind { color: var(--red); }
 .cm-roadmap-card .cm-rc-edit { margin-left: auto; font-size: 13px; color: var(--gray-light); }
 .cm-roadmap-card .cm-rc-edit:hover { color: var(--white); }
+.cm-roadmap-card .cm-rc-btn { background: none; border: 1px solid rgba(255,255,255,.25); border-radius: 6px; padding: 8px 12px; cursor: pointer; font-family: inherit; }
+.cm-roadmap-card .cm-rc-btn:disabled { opacity: .6; cursor: default; }
+.cm-roadmap-card .cm-rc-note { flex-basis: 100%; font-size: 13px; color: var(--gray-light); }
 
 /* ════════════════════════════════════════════════════════════════
    Console pages inside the Academy shell (staff only — see

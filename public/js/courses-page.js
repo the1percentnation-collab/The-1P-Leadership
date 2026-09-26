@@ -28,7 +28,7 @@ import { ensureOnboarded } from './onboarding-guard.js';
 import { ensureCommitted } from './commitment-guard.js';
 import { isoDay, daysBetween, fmtDate } from './commitment-state.js';
 import { db } from './firebase.js';
-import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -463,6 +463,93 @@ async function renderRoadmap(course, { preview = false, commitment = null } = {}
     certHref: preview || course.certificate === false ? null : certificateHref(course.slug)
   });
   renderCommitmentCard(slot, course, commitment, { total: modules.length, done: modules.filter((m) => completedSet.has(m.id)).length });
+  if (!preview) await renderMembershipCard(slot, course);
+}
+
+// ─── Membership card ────────────────────────────────────────────────────────
+// For subscription courses (The One Percent Brief): shows the plan and lets
+// the member end it, or undo ending it, themselves. Ending keeps access to the
+// end of the period already paid for; manageSubscription does the Stripe side.
+
+function tsMs(v) {
+  if (!v) return null;
+  if (typeof v.toMillis === 'function') return v.toMillis();
+  const t = typeof v === 'number' ? v : Date.parse(v);
+  return Number.isFinite(t) ? t : null;
+}
+
+function fmtLongDate(ms) {
+  return new Date(ms).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+async function loadMembership(course) {
+  const user = currentUser();
+  if (!firebaseReady || !user) return null;
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'users', user.uid, 'purchases'),
+      where('courseSlug', '==', course.slug)
+    ));
+    const subs = snap.docs
+      .map((d) => d.data() || {})
+      .filter((p) => p.mode === 'subscription' && p.subscriptionId
+        && ['active', 'canceling', 'past_due'].includes(p.status))
+      .sort((a, b) => (tsMs(b.createdAt) || 0) - (tsMs(a.createdAt) || 0));
+    return subs[0] || null;
+  } catch (e) {
+    console.warn('[courses-page] membership load failed', e);
+    return null;
+  }
+}
+
+async function renderMembershipCard(slot, course) {
+  if (!(course.pricing && course.pricing.mode === 'subscription')) return;
+  const m = await loadMembership(course);
+  if (!m) return; // Granted or comped access: nothing to manage.
+
+  const annual = m.billing === 'year';
+  const endsMs = tsMs(m.cancelAt);
+  const ending = m.status === 'canceling';
+  const statusLabel = ending ? (endsMs ? `Ends ${fmtLongDate(endsMs)}` : 'Ending')
+    : m.status === 'past_due' ? 'Payment due' : 'Active';
+
+  const card = document.createElement('div');
+  card.className = 'cm-roadmap-card';
+  card.id = 'membership-card';
+  card.innerHTML = `
+    <div class="cm-rc-label">Your membership</div>
+    <div class="cm-rc-stat"><span>Plan</span><strong>${annual ? 'Annual' : 'Monthly'}</strong></div>
+    <div class="cm-rc-stat"><span>Status</span><strong class="${ending || m.status === 'past_due' ? 'is-behind' : ''}">${escapeHtml(statusLabel)}</strong></div>
+    <button type="button" class="cm-rc-edit cm-rc-btn" id="membership-action">${ending ? 'Keep my membership' : 'End membership'}</button>
+    <div class="cm-rc-note" id="membership-note">${ending
+      ? `You keep full access${endsMs ? ` until ${escapeHtml(fmtLongDate(endsMs))}` : ' until the end of your paid period'}. You will not be charged again.`
+      : `Renews ${annual ? 'yearly' : 'monthly'}. If you end it, you keep access until the end of the period you have paid for.`}</div>`;
+
+  const hero = slot.querySelector('.roadmap-hero');
+  const commit = slot.querySelector('.cm-roadmap-card');
+  const anchor = commit || hero;
+  if (anchor) anchor.after(card); else slot.prepend(card);
+
+  const btn = card.querySelector('#membership-action');
+  const note = card.querySelector('#membership-note');
+  btn.addEventListener('click', async () => {
+    if (!ending && !confirm('End your membership? You keep access until the end of the period you have paid for, and you will not be charged again.')) return;
+    btn.disabled = true;
+    btn.textContent = ending ? 'Restoring…' : 'Ending…';
+    try {
+      await httpsCallable(functions, 'manageSubscription')({
+        courseSlug: course.slug,
+        action: ending ? 'resume' : 'cancel'
+      });
+      card.remove();
+      await renderMembershipCard(slot, course);
+    } catch (e) {
+      console.warn('[courses-page] manageSubscription failed', e);
+      btn.disabled = false;
+      btn.textContent = ending ? 'Keep my membership' : 'End membership';
+      note.textContent = (e && e.message) || 'That did not go through. Please try again.';
+    }
+  });
 }
 
 /**
@@ -604,9 +691,12 @@ async function main() {
   // Parkinson's Law gate: before the first session in a course the member
   // sets a deadline and a weekly rhythm (commit.html). Sits here, after the
   // enrollment check, so free enrolls, Stripe returns, admin grants and deep
-  // links all pass through it. Owner preview is exempt.
+  // links all pass through it. Owner preview is exempt, and so is a course
+  // with `commitment: false` (The One Percent Brief releases one read a
+  // month, so there is no finish line to commit to).
   let commitment = null;
   if (course && firebaseReady && currentUser() && !preview && isEnrolled(course.slug)
+      && course.commitment !== false
       && (course.status === 'live' || course.status === 'beta')) {
     commitment = await ensureCommitted(currentUser(), course.slug);
     if (!commitment) return;

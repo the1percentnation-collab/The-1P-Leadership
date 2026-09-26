@@ -89,12 +89,15 @@ npx firebase-tools functions:secrets:set STRIPE_WEBHOOK_SECRET --project the-1p-
 
 Start with test keys (`sk_test_...`). Both are declared in `functions/index.js`
 as `stripeSecretKey` / `stripeWebhookSecret` and listed in the `secrets:`
-option of the four functions that touch Stripe: `createCheckoutSession`,
-`stripeWebhook`, `syncCoupon`, `createRenewalCheckout`.
+option of the five functions that touch Stripe: `createCheckoutSession`,
+`stripeWebhook`, `syncCoupon`, `createRenewalCheckout`, `manageSubscription`.
 
 Then in the Stripe dashboard add a webhook endpoint pointing at the deployed
 `stripeWebhook` URL, subscribed to `checkout.session.completed`,
-`customer.subscription.deleted`, `invoice.paid` and `invoice.payment_failed`.
+`customer.subscription.deleted`, `customer.subscription.updated`, `invoice.paid`
+and `invoice.payment_failed`. If the endpoint already exists, add
+`customer.subscription.updated` to it: it keeps a membership's "ends on" date
+right when a subscription is cancelled or resumed from the Stripe dashboard.
 The signing secret it gives you is `STRIPE_WEBHOOK_SECRET`.
 
 Deploying happens automatically on merge to `main`

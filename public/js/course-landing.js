@@ -360,6 +360,24 @@ function purchaseCardHtml(course, { enrolled }) {
       </label>
     </div>` : '';
 
+  // A monthly membership can also offer a yearly price (pricing.annualPrice).
+  // Monthly is the default; createCheckoutSession reads the price from the
+  // course doc and only takes the choice from here.
+  const annual = annualOption(course);
+  const billingHtml = (!enrolled && live && annual) ? `
+    <div class="cl-plan" id="cl-billing" style="display:flex;flex-direction:column;gap:6px;margin:10px 0 4px;font-size:13px;">
+      <label style="display:flex;gap:8px;align-items:center;cursor:pointer;">
+        <input type="radio" name="cl-billing" value="month" checked> Monthly · ${escapeHtml(p.label)}
+      </label>
+      <label style="display:flex;gap:8px;align-items:center;cursor:pointer;">
+        <input type="radio" name="cl-billing" value="year"> Annual · ${escapeHtml(fmtMoney(annual.price))}/yr${annual.saves > 0 ? ` (save ${escapeHtml(fmtMoney(annual.saves))})` : ''}
+      </label>
+    </div>` : '';
+
+  const perks = p.isSubscription
+    ? ['A new release every month', 'Everything released so far, while you are a member', 'End your membership anytime from the course page']
+    : ['Learn → Rewire → Measure method', 'Self-paced · lifetime access', 'Works on desktop and mobile'];
+
   return `
     <aside class="cl-buy" id="cl-buy">
       <div class="cl-buy-media">
@@ -369,14 +387,13 @@ function purchaseCardHtml(course, { enrolled }) {
       <div class="cl-buy-body">
         ${priceHtml}
         ${planHtml}
+        ${billingHtml}
         ${cta}
         <div id="cl-cta-msg" class="cl-cta-msg"></div>
         <ul class="cl-buy-perks">
-          <li>Learn → Rewire → Measure method</li>
-          <li>Self-paced · lifetime access</li>
-          <li>Works on desktop and mobile</li>
+          ${perks.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}
         </ul>
-        ${live && !priceInfo(course).isFree ? `
+        ${live && !p.isFree && !p.isSubscription ? `
         <div class="cl-promo" id="cl-promo">
           <button type="button" class="cl-promo-toggle" id="cl-promo-toggle">Have a promo code?</button>
           <div class="cl-promo-row" id="cl-promo-row" hidden>
@@ -391,6 +408,20 @@ function purchaseCardHtml(course, { enrolled }) {
         </div>
       </div>
     </aside>`;
+}
+
+/**
+ * The yearly price a monthly membership offers, or null. `saves` is what a
+ * year of monthly payments would cost beyond it.
+ */
+function annualOption(course) {
+  const pr = course.pricing || {};
+  if (pr.mode !== 'subscription' || (pr.interval || 'month') !== 'month') return null;
+  const price = Number(pr.annualPrice);
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const monthly = priceInfo(course).amount;
+  const saves = typeof monthly === 'number' ? Math.round((monthly * 12 - price) * 100) / 100 : 0;
+  return { price, saves };
 }
 
 // ─── Behavior ─────────────────────────────────────────────────────────────
@@ -529,9 +560,12 @@ function bindEnroll(course) {
       } else {
         const planInput = document.querySelector('input[name="cl-plan"]:checked');
         const plan = planInput && planInput.value ? planInput.value : undefined;
+        const billingInput = document.querySelector('input[name="cl-billing"]:checked');
+        const billing = billingInput ? billingInput.value : undefined;
         const res = await httpsCallable(functions, 'createCheckoutSession')({
           slug: course.slug,
           plan,
+          billing,
           refCode: getRefCode() || undefined,
           couponCode: plan ? undefined : (appliedPromo || undefined)
         });

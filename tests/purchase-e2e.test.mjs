@@ -199,6 +199,60 @@ await t('print bundle: the email says the paperback ships to their city', async 
   assert(/the1pnation\.com\/library/.test(body), 'library link missing');
 });
 
+// ── 3. Membership: annual Brief, ended by the member, then expired ────────
+const MEMBER = 'e2e-member';
+const briefSession = checkoutEvent({
+  id: 'cs_brief_1', uid: MEMBER, email: 'member@e2e.test', slug: 'one-percent-brief', amount: 9900,
+  metadata: { billing: 'year' }
+});
+briefSession.data.object.mode = 'subscription';
+briefSession.data.object.subscription = 'sub_brief_1';
+function subEvent(type, sub) {
+  return {
+    id: `evt_${type}_${sub.cancel_at_period_end ? 'cancel' : 'keep'}_${Date.now()}`, object: 'event', type,
+    api_version: '2024-06-20', created: Math.floor(Date.now() / 1000), livemode: false,
+    data: { object: { id: 'sub_brief_1', object: 'subscription', metadata: { uid: MEMBER, courseSlug: 'one-percent-brief' }, ...sub } }
+  };
+}
+const PERIOD_END = Math.floor(Date.UTC(2027, 8, 26) / 1000);
+
+await t('membership: annual checkout enrolls and records the billing period', async () => {
+  const r = await post(briefSession);
+  assert(r.status === 200, `status ${r.status}: ${r.text}`);
+  const u = await read(`users/${MEMBER}`);
+  assert(u.enrolledCourseSlugs.includes('one-percent-brief'), JSON.stringify(u.enrolledCourseSlugs));
+  const p = await read(`users/${MEMBER}/purchases/cs_brief_1`);
+  assert(p.status === 'active' && p.billing === 'year' && p.subscriptionId === 'sub_brief_1', JSON.stringify(p));
+});
+
+await t('membership: ending it keeps access and records the end date', async () => {
+  const r = await post(subEvent('customer.subscription.updated',
+    { status: 'active', cancel_at_period_end: true, cancel_at: PERIOD_END, current_period_end: PERIOD_END }));
+  assert(r.status === 200, `status ${r.status}: ${r.text}`);
+  const p = await read(`users/${MEMBER}/purchases/cs_brief_1`);
+  assert(p.status === 'canceling', JSON.stringify(p));
+  assert(p.cancelAt && p.cancelAt.toMillis() === PERIOD_END * 1000, 'cancelAt ' + JSON.stringify(p.cancelAt));
+  const u = await read(`users/${MEMBER}`);
+  assert(u.enrolledCourseSlugs.includes('one-percent-brief'), 'access removed too early');
+});
+
+await t('membership: undoing it goes back to active', async () => {
+  const r = await post(subEvent('customer.subscription.updated',
+    { status: 'active', cancel_at_period_end: false, cancel_at: null, current_period_end: PERIOD_END }));
+  assert(r.status === 200, `status ${r.status}: ${r.text}`);
+  const p = await read(`users/${MEMBER}/purchases/cs_brief_1`);
+  assert(p.status === 'active' && p.cancelAt === null, JSON.stringify(p));
+});
+
+await t('membership: when the subscription ends, access is removed', async () => {
+  const r = await post(subEvent('customer.subscription.deleted', { status: 'canceled', cancel_at_period_end: false }));
+  assert(r.status === 200, `status ${r.status}: ${r.text}`);
+  const u = await read(`users/${MEMBER}`);
+  assert(!u.enrolledCourseSlugs.includes('one-percent-brief'), JSON.stringify(u.enrolledCourseSlugs));
+  const p = await read(`users/${MEMBER}/purchases/cs_brief_1`);
+  assert(p.status === 'canceled', JSON.stringify(p));
+});
+
 capture.close();
 await env.cleanup();
 const failed = results.filter((r) => r[0] === 'FAIL');

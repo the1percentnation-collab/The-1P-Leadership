@@ -956,9 +956,16 @@ function fillPricingForm(c) {
   $('p-mode').value = mode;
   $('p-interval').disabled = mode !== 'subscription';
   $('p-interval').value = (c && c.pricing && c.pricing.interval) || 'month';
+  $('p-annual').value = c && c.pricing && typeof c.pricing.annualPrice === 'number' ? c.pricing.annualPrice : '';
+  syncAnnualField();
   $('p-pricenote').value = c ? (c.priceNote || '') : '';
   $('pricing-result').innerHTML = '';
   S.suppress = false;
+}
+
+// The annual option field is live only for a monthly subscription.
+function syncAnnualField() {
+  $('p-annual').disabled = !($('p-mode').value === 'subscription' && $('p-interval').value === 'month');
 }
 
 async function savePricing() {
@@ -972,6 +979,12 @@ async function savePricing() {
       throw new Error('Sale price must be lower than the regular price.');
     }
     const mode = $('p-mode').value;
+    const interval = mode === 'subscription' ? $('p-interval').value : null;
+    // A yearly option only makes sense on a monthly membership.
+    const annualPrice = interval === 'month' && $('p-annual').value !== '' ? Number($('p-annual').value) : null;
+    if (annualPrice != null && (!Number.isFinite(annualPrice) || annualPrice <= 0)) {
+      throw new Error('Enter a valid annual price, or leave it blank.');
+    }
     // A sale with no end never ends; an end in the past means "not on sale",
     // and the pricing rule already treats it that way, so store it as given.
     const saleEndsAt = salePrice == null ? null : localInputToDate($('p-saleends').value);
@@ -982,7 +995,7 @@ async function savePricing() {
       // Clear the seeded display label so it always derives from `price`.
       priceLabel: null,
       priceNote: $('p-pricenote').value.trim() || null,
-      pricing: { mode, interval: mode === 'subscription' ? $('p-interval').value : null },
+      pricing: { mode, interval, annualPrice },
       updatedAt: serverTimestamp(),
       updatedBy: _userEmail
     }, { merge: true });
@@ -1313,7 +1326,9 @@ export function initBuilder(options = {}) {
   // Pricing tab
   $('p-mode').addEventListener('change', () => {
     $('p-interval').disabled = $('p-mode').value !== 'subscription';
+    syncAnnualField();
   });
+  $('p-interval').addEventListener('change', syncAnnualField);
   $('btn-save-pricing').addEventListener('click', savePricing);
 
   // Settings tab
