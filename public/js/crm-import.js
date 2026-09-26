@@ -212,11 +212,44 @@ function uploadError(msg) {
   if (el) el.innerHTML = `<div class="auth-error" style="margin-top:12px;">${escapeHtml(msg)}</div>`;
 }
 
+// Spreadsheet apps save in their own binary formats, and the file picker's
+// `accept` filter is only a hint: a .numbers or .xlsx file still gets through
+// a drag-and-drop or an "All files" pick. Read as text, those bytes parse as
+// ~1,500 rows of symbols that map onto every column, and a stray "@" in
+// them passes as an email. So check the first bytes and the extension, and
+// say how to export a real CSV, instead of previewing garbage.
+const SPREADSHEET_HELP =
+  'Export it as CSV first. In Numbers: File → Export To → CSV. ' +
+  'In Excel: File → Save As → CSV UTF-8. In Google Sheets: File → Download → Comma-separated values.';
+
+function binaryKind(bytes, name) {
+  const ext = (String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || '';
+  const starts = (...sig) => sig.every((b, i) => bytes[i] === b);
+  if (ext === 'numbers') return 'an Apple Numbers file';
+  if (ext === 'xlsx' || ext === 'xlsm' || ext === 'xls') return 'an Excel file';
+  if (ext === 'ods') return 'an OpenDocument spreadsheet';
+  if (starts(0x50, 0x4b, 0x03, 0x04)) return 'a spreadsheet or zip file';   // PK: xlsx, numbers, ods, zip
+  if (starts(0xd0, 0xcf, 0x11, 0xe0)) return 'an old-format Excel file';    // OLE2: .xls
+  if (starts(0x25, 0x50, 0x44, 0x46)) return 'a PDF';                       // %PDF
+  // Plain text never carries NUL bytes; any binary format almost always does.
+  // (UTF-16 text does too, which is also not something the parser reads.)
+  for (let i = 0; i < bytes.length; i++) if (bytes[i] === 0) return 'a binary file';
+  return null;
+}
+
 function readFile(file) {
   const reader = new FileReader();
   reader.onerror = () => uploadError('That file could not be read.');
-  reader.onload = () => loadCsv(String(reader.result || ''), file.name);
-  reader.readAsText(file);
+  reader.onload = () => {
+    const bytes = new Uint8Array(reader.result || new ArrayBuffer(0));
+    const kind = binaryKind(bytes.subarray(0, 4096), file.name);
+    if (kind) {
+      uploadError(`“${file.name}” is ${kind}, not a CSV. ${SPREADSHEET_HELP}`);
+      return;
+    }
+    loadCsv(new TextDecoder('utf-8').decode(bytes), file.name);
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 function loadCsv(text, fileName) {
