@@ -11,6 +11,7 @@
 // by the appbar hamburger.
 
 import { renderTopbar } from './topbar.js';
+import { privilegedNav } from './academy-shell.js';
 
 function esc(s) {
   return String(s == null ? '' : s)
@@ -33,6 +34,24 @@ const NAV = [
   { key: 'ai-log',        href: '/crm-ai-log.html',    label: 'AI Activity',   icon: '◎' },
   { key: 'settings',      href: '/crm-settings.html',  label: 'Settings',      icon: '⚙' }
 ];
+
+// The Owner / Admin tools, listed under the CRM's own nav. The CRM keeps its
+// sidebar rather than taking the Academy one, so the privileged set is pulled
+// from academy-shell.js and drawn here in the CRM's style. The CRM entry is
+// skipped: every item above it is already the CRM.
+function privilegedHtml(role) {
+  const { manage, owner } = privilegedNav(role);
+  const section = (label, items) => {
+    const rows = items.filter((i) => i.key !== 'crm');
+    if (!rows.length) return '';
+    return `<div class="crm-nav-heading">${esc(label)}</div>` + rows.map((i) =>
+      `<a class="crm-nav-item" href="${esc(i.href)}">
+        <span class="crm-nav-icon">›</span>
+        <span class="crm-nav-label">${esc(i.label)}</span>
+      </a>`).join('');
+  };
+  return section('Manage', manage) + section('Owner', owner);
+}
 
 function navItemHtml(item, active) {
   const isActive = item.key === active;
@@ -67,6 +86,7 @@ export function renderCrmShell({ active = 'contacts', title = 'CRM', user = null
         </a>
         <nav class="crm-nav">
           ${NAV.map((i) => navItemHtml(i, active)).join('')}
+          ${privilegedHtml(role)}
         </nav>
         <div class="crm-sidebar-foot">
           <a class="crm-nav-item crm-nav-muted" href="https://the1pnation.com">
@@ -87,7 +107,7 @@ export function renderCrmShell({ active = 'contacts', title = 'CRM', user = null
   `;
 
   // User chip (avatar / search / bell / signout). Suppress the regular nav
-  // chips — navigation lives in the sidebar — but keep admin/owner quick buttons.
+  // chips — navigation, the Owner / Admin tools included, lives in the sidebar.
   if (user) {
     renderTopbar({ user, role, mountId: 'user-chip', links: [] });
   }
