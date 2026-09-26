@@ -35,6 +35,13 @@
         <div class="crm-contact-header">
           <a href="/crm.html" class="crm-back-link">&larr; Back to CRM</a>
           <span id="ct-save-status" class="crm-save-status"></span>
+          <!-- Prev / Next through the list the CRM board last showed. Filled by
+               contact-page.js; stays hidden when there is nowhere to go. -->
+          <nav class="ct-nav" id="ct-nav" aria-label="Move between contacts" hidden>
+            <button class="ct-nav-btn" id="ct-prev" type="button" title="Previous contact (←)">&lsaquo; Prev</button>
+            <span class="ct-nav-pos" id="ct-nav-pos"></span>
+            <button class="ct-nav-btn ct-nav-next" id="ct-next" type="button" title="Next contact (→)">Next &rsaquo;</button>
+          </nav>
         </div>
 
         <div class="ct-layout">

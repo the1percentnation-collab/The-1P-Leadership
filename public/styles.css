@@ -10712,6 +10712,25 @@ body.has-call-dock .crm-content { padding-bottom: 190px; }
    the right. Nothing leaves the screen while a call is live.
    ════════════════════════════════════════════════════════════════ */
 .crm-contact-header { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+
+/* Prev / Next through the CRM list. Pushed to the right edge of the header
+   row so it sits where the eye lands after finishing a card. */
+.ct-nav { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+.ct-nav[hidden] { display: none; }
+.ct-nav-pos {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em;
+  color: var(--gray-light); padding: 0 6px; white-space: nowrap;
+}
+.ct-nav-btn {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  background: var(--surface); color: var(--white); border: 1px solid var(--border);
+  transition: border-color .15s, background .15s;
+}
+.ct-nav-btn:hover:not(:disabled) { border-color: var(--border-red); }
+.ct-nav-next { background: var(--red); border-color: var(--red); }
+.ct-nav-next:hover:not(:disabled) { background: var(--red-dark); border-color: var(--red-dark); }
+.ct-nav-btn:disabled { opacity: .35; cursor: default; }
 .ct-layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px; align-items: start; }
 .ct-left { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 12px; }
 .ct-left .card { margin: 0; padding: 16px; }

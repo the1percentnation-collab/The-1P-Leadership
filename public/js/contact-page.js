@@ -33,8 +33,9 @@ import {
   contactFreshness,
   listCalls, setDoNotCall, recordSmsConsent, smsConsentSummary, dispositionMeta, callBlockReason,
   getGoogleCalendarStatus, listSequences, listEnrollments, enrollContact, stopEnrollment,
-  escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate
+  escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate, listContacts
 } from './crm.js';
+import { storedContactOrder, neighbours } from './crm-nav.js';
 import { dialer, onDialerEvent } from './dialer-core.js';
 import { mountTemplatePicker } from './merge-fields.js';
 
@@ -1545,6 +1546,7 @@ async function main() {
   renderContactHeader();
   renderComposer();
   wire();
+  mountContactNav().catch(() => {});
 
   await Promise.all([refreshTimeline(), refreshSide()]);
 
@@ -1553,6 +1555,68 @@ async function main() {
     state.pipeline = await ensureDefaultPipeline(companyId);
     await refreshDeals();
   } catch (e) { console.warn('[contact] pipeline load failed', e); }
+}
+
+// ────────────────────────────────────────────────────────────────
+// Prev / Next
+// ────────────────────────────────────────────────────────────────
+
+// Anything but idle means a call is ringing, live, or waiting on its outcome.
+// Leaving the page then drops the call or loses the disposition, so the
+// buttons refuse rather than ask.
+const CALL_BUSY = ['connecting', 'ringing', 'live', 'bridged', 'manual', 'incoming', 'disposition'];
+
+/** True when the profile fields differ from what is saved. */
+function hasUnsavedEdits() {
+  const c = state.contact || {};
+  const same = (id, saved) => ($(id).value || '').trim() === String(saved || '').trim();
+  return !(same('ct-name', c.name) && same('ct-email', c.email) && same('ct-phone', c.phone)
+    && same('ct-company', c.companyName));
+}
+
+function goToContact(id) {
+  if (!id) return;
+  if (CALL_BUSY.includes(dialer.status)) {
+    setStatus('Finish the call and log the outcome first.', 'err');
+    return;
+  }
+  if (hasUnsavedEdits() && !confirm('You have unsaved changes to this contact. Leave without saving?')) return;
+  location.href = '/contact.html?id=' + encodeURIComponent(id);
+}
+
+/**
+ * Wire Prev / Next. The order is the one the CRM board last drew (filters and
+ * sort included). Opened from anywhere else (a link, search, the dialer) there
+ * is no stored order, so fall back to the board's default: most recent
+ * activity first, the same order as listContacts.
+ */
+async function mountContactNav() {
+  let ids = storedContactOrder(state.companyId);
+  let pos = neighbours(ids, state.contactId);
+  if (!pos) {
+    try {
+      ids = (await listContacts(state.companyId)).map((c) => c.id);
+      pos = neighbours(ids, state.contactId);
+    } catch (e) { return; }
+  }
+  if (!pos || pos.total < 2) return;
+
+  $('ct-nav-pos').textContent = `${pos.position.toLocaleString()} of ${pos.total.toLocaleString()}`;
+  $('ct-prev').disabled = !pos.prev;
+  $('ct-next').disabled = !pos.next;
+  $('ct-prev').addEventListener('click', () => goToContact(pos.prev));
+  $('ct-next').addEventListener('click', () => goToContact(pos.next));
+  $('ct-nav').hidden = false;
+
+  // ← / → move too, but never while typing: those keys move the caret there.
+  document.addEventListener('keydown', (e) => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (document.querySelector('.crm-modal')) return;
+    if (e.key === 'ArrowRight' && pos.next) { e.preventDefault(); goToContact(pos.next); }
+    if (e.key === 'ArrowLeft' && pos.prev) { e.preventDefault(); goToContact(pos.prev); }
+  });
 }
 
 main();
