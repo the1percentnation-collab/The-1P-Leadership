@@ -11,6 +11,7 @@
 // by the appbar hamburger.
 
 import { renderTopbar } from './topbar.js';
+import { signOut } from './auth.js';
 import { privilegedNav } from './academy-shell.js';
 
 function esc(s) {
@@ -90,6 +91,11 @@ export function renderCrmShell({ active = 'contacts', title = 'CRM', user = null
           <a class="crm-nav-item crm-nav-muted" href="https://the1pnation.com">
             <span class="crm-nav-icon">←</span><span class="crm-nav-label">Main Site</span>
           </a>
+          <!-- Phones only: the appbar has no room for Sign out beside search,
+               the bell and the avatar, so it lives in the drawer there. -->
+          <button type="button" class="crm-nav-item crm-nav-muted crm-drawer-signout" id="crm-drawer-signout">
+            <span class="crm-nav-icon">⏻</span><span class="crm-nav-label">Sign out</span>
+          </button>
         </div>
       </aside>
       <div class="crm-main">
@@ -109,6 +115,12 @@ export function renderCrmShell({ active = 'contacts', title = 'CRM', user = null
   if (user) {
     renderTopbar({ user, role, mountId: 'user-chip', links: [] });
   }
+
+  const drawerOut = document.getElementById('crm-drawer-signout');
+  if (drawerOut) drawerOut.addEventListener('click', async () => {
+    try { await signOut(); } catch (e) { /* sign out locally regardless */ }
+    location.replace('/login.html');
+  });
 
   // Mobile drawer toggle.
   const sidebar = document.getElementById('crm-sidebar');
