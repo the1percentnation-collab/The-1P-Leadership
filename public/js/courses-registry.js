@@ -430,6 +430,69 @@ export const COURSES = [
     }
   },
   {
+    // ─── The One Percent Brief (monthly membership) ──────────────────────
+    // One course, one module per brief. A new brief is released each month
+    // by publishing its module in /manage-courses.html; drafts stay hidden
+    // from members. Content and the Firestore doc are written by
+    // scripts/seed-brief.js, and checkout reads price + pricing from that doc.
+    slug: 'one-percent-brief',
+    title: 'The One Percent Brief',
+    short: 'The Brief',
+    subtitle: 'One focused read a month on one real-life challenge, with tools you can use the day you finish.',
+    status: 'coming-soon',
+    eyebrow: 'Membership · New Brief Monthly',
+    category: 'Mindset & Personal Growth',
+    price: 12,
+    pricing: { mode: 'subscription', interval: 'month' },
+    priceNote: 'Billed monthly. Every past brief stays open while you are a member.',
+    contentSource: 'firestore',
+    certificate: false,
+    commitment: false,
+    whatYoullLearn: [
+      'Stop people pleasing and replace automatic yeses with clear, calm decisions.',
+      'Protect your growth and your confidence when your leader is holding you back.',
+      'Build focus systems that fit how an ADHD brain actually works.',
+      'Break the overthinking loop and decide without waiting to feel ready.',
+      'Find what is draining you and rebuild your energy without quitting everything.',
+      'Have the conversation you have been avoiding, with calm, clarity and respect.'
+    ],
+    requirements: [
+      'No prerequisites. Every brief stands on its own.',
+      'Thirty to forty-five minutes a month to read, plus the toolkit exercises.',
+      'A willingness to put one idea into practice the same week you read it.'
+    ],
+    includes: [
+      'A new in-depth brief every month',
+      'A toolkit with every brief: scripts, worksheets and checklists',
+      'A saved workbook and key takeaways for each brief',
+      'Access to every past brief while you are a member',
+      'Read on desktop and mobile'
+    ],
+    description: [
+      'You show up. You deliver. You take care of everyone. And still you say yes when you mean no, ' +
+      'carry leadership that is not yours to carry, overthink, and run on empty. It is not a ' +
+      'motivation problem. It is an alignment problem.',
+      'The One Percent Brief is one focused read each month on one everyday challenge. No 300-page ' +
+      'books and no fluff. Each brief teaches one named framework in depth and ends with a toolkit ' +
+      'you can put to work the day you finish.',
+      'Everyone leads something: a team, a family, a household, their own life. These briefs are for ' +
+      'anyone ready to grow with intention, one percent at a time.'
+    ],
+    curriculum: [
+      {
+        title: 'The first six briefs',
+        lessons: [
+          { t: 'Brief 1: The Yes Trap. Stop people pleasing without losing who you are', d: 'Month 1' },
+          { t: 'Brief 2: Led Badly. Protect your growth when your leader is holding you back', d: 'Month 2' },
+          { t: 'Brief 3: Focus on Your Terms. Working with an ADHD brain, not against it', d: 'Month 3' },
+          { t: 'Brief 4: Quiet the Noise. Break the overthinking loop and move', d: 'Month 4' },
+          { t: 'Brief 5: Running on Empty. Recover from burnout without burning your life down', d: 'Month 5' },
+          { t: 'Brief 6: Say It Clearly. Have the conversation you have been avoiding', d: 'Month 6' }
+        ]
+      }
+    ]
+  },
+  {
     slug: 'mindset-foundations',
     title: 'Mindset Foundations',
     short: 'Mindset',

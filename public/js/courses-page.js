@@ -604,9 +604,12 @@ async function main() {
   // Parkinson's Law gate: before the first session in a course the member
   // sets a deadline and a weekly rhythm (commit.html). Sits here, after the
   // enrollment check, so free enrolls, Stripe returns, admin grants and deep
-  // links all pass through it. Owner preview is exempt.
+  // links all pass through it. Owner preview is exempt, and so is a course
+  // with `commitment: false` (The One Percent Brief releases one read a
+  // month, so there is no finish line to commit to).
   let commitment = null;
   if (course && firebaseReady && currentUser() && !preview && isEnrolled(course.slug)
+      && course.commitment !== false
       && (course.status === 'live' || course.status === 'beta')) {
     commitment = await ensureCommitted(currentUser(), course.slug);
     if (!commitment) return;
