@@ -35,22 +35,20 @@ const NAV = [
   { key: 'settings',      href: '/crm-settings.html',  label: 'Settings',      icon: '⚙' }
 ];
 
-// The Owner / Admin tools, listed under the CRM's own nav. The CRM keeps its
-// sidebar rather than taking the Academy one, so the privileged set is pulled
-// from academy-shell.js and drawn here in the CRM's style. The CRM entry is
-// skipped: every item above it is already the CRM.
+// The staff tools, listed under the CRM's own nav in the same groups as the
+// Academy sidebar. The CRM keeps its own rail rather than taking the Academy
+// one, so the set comes from academy-shell.js and is drawn here in the CRM's
+// style. The CRM entry is skipped: every item above it is already the CRM.
 function privilegedHtml(role) {
-  const { manage, owner } = privilegedNav(role);
-  const section = (label, items) => {
-    const rows = items.filter((i) => i.key !== 'crm');
+  return privilegedNav(role).map((g) => {
+    const rows = g.items.filter((i) => i.key !== 'crm');
     if (!rows.length) return '';
-    return `<div class="crm-nav-heading">${esc(label)}</div>` + rows.map((i) =>
+    return `<div class="crm-nav-heading">${esc(g.label)}</div>` + rows.map((i) =>
       `<a class="crm-nav-item" href="${esc(i.href)}">
         <span class="crm-nav-icon">›</span>
         <span class="crm-nav-label">${esc(i.label)}</span>
       </a>`).join('');
-  };
-  return section('Manage', manage) + section('Owner', owner);
+  }).join('');
 }
 
 function navItemHtml(item, active) {
