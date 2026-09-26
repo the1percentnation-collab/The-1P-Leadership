@@ -960,6 +960,7 @@ function renderComposer() {
   if (cancelReply) cancelReply.addEventListener('click', () => { state.emailReply = null; renderComposer(); });
   mountTemplatePicker({
     host: $('cp-em-tpl'), input: $('cp-em-body'), channel: 'email', replace: true,
+    subjectInput: $('cp-em-subject'),
     companyId: state.companyId, context: mergeContext,
     onInsert: (tpl, rendered) => {
       if (rendered.subject && !$('cp-em-subject').value.trim()) $('cp-em-subject').value = rendered.subject;

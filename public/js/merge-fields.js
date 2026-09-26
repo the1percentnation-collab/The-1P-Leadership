@@ -6,14 +6,18 @@
 //   mountTemplatePicker({
 //     host: buttonContainerEl, input: textareaEl, channel: 'sms',
 //     companyId, context: () => ({ contact, owner, companyName }),
-//     onInsert: (tpl, rendered) => {}   // optional; email uses it for subject
+//     onInsert: (tpl, rendered) => {},  // optional; email uses it for subject
+//     subjectInput: subjectEl           // optional; email prefills a new template's subject
 //   });
+//
+// The picker's "+ New" button saves a template without leaving the composer,
+// prefilled with whatever is already typed.
 //
 // Unresolved tokens are left visibly in place rather than blanked. A text
 // that says "Hi {{firstName}}" is an obvious mistake to fix before sending;
 // a text that says "Hi ," is a sent mistake.
 
-import { listTemplates, bumpTemplateUse, getCompanyName, escapeHtml } from './crm.js';
+import { listTemplates, createTemplate, bumpTemplateUse, getCompanyName, escapeHtml } from './crm.js';
 
 export const MERGE_FIELDS = [
   { token: 'firstName',       label: 'First name',       get: (c) => firstName(c.contact) },
@@ -72,7 +76,9 @@ function closeOpenPicker() {
   if (openPicker) { openPicker.remove(); openPicker = null; }
 }
 document.addEventListener('click', (e) => {
-  if (openPicker && !openPicker.contains(e.target) && !e.target.closest('.tpl-trigger')) closeOpenPicker();
+  // isConnected: a click that re-rendered the picker leaves a detached target,
+  // which is not "outside" even though the picker no longer contains it.
+  if (openPicker && e.target.isConnected && !openPicker.contains(e.target) && !e.target.closest('.tpl-trigger')) closeOpenPicker();
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeOpenPicker(); });
 
@@ -97,7 +103,7 @@ function insertAtCaret(input, text) {
  * into `input`. `context()` is called at insert time so it always sees the
  * current contact. Returns a small controller with refresh().
  */
-export function mountTemplatePicker({ host, input, channel = 'sms', companyId, context, onInsert, replace = false } = {}) {
+export function mountTemplatePicker({ host, input, channel = 'sms', companyId, context, onInsert, replace = false, subjectInput = null } = {}) {
   if (!host || !input || !companyId) return null;
 
   let templates = null;
@@ -105,7 +111,7 @@ export function mountTemplatePicker({ host, input, channel = 'sms', companyId, c
   trigger.type = 'button';
   trigger.className = 'crm-chip tpl-trigger';
   trigger.textContent = 'Templates';
-  trigger.title = 'Insert a saved message';
+  trigger.title = 'Insert or save a message template';
   host.appendChild(trigger);
 
   async function load(force) {
@@ -120,6 +126,18 @@ export function mountTemplatePicker({ host, input, channel = 'sms', companyId, c
     return base;
   }
 
+  // Anchor below the trigger, clamped to the viewport. Re-run when the view
+  // changes height (list ↔ new-template form).
+  function place(pop) {
+    const r = trigger.getBoundingClientRect();
+    const w = Math.min(channel === 'email' ? 420 : 380, window.innerWidth - 24);
+    pop.style.width = w + 'px';
+    pop.style.left = Math.max(12, Math.min(r.left, window.innerWidth - w - 12)) + 'px';
+    const h = pop.offsetHeight;
+    if (window.innerHeight - r.bottom > Math.min(h, 320) + 12) pop.style.top = (r.bottom + 6 + window.scrollY) + 'px';
+    else pop.style.top = Math.max(12, r.top - 6 - h) + window.scrollY + 'px';
+  }
+
   async function open() {
     closeOpenPicker();
     const list = await load(false);
@@ -127,67 +145,139 @@ export function mountTemplatePicker({ host, input, channel = 'sms', companyId, c
 
     const pop = document.createElement('div');
     pop.className = 'tpl-picker';
-    pop.innerHTML = `
-      <div class="tpl-picker-head">
-        <input class="c-input tpl-search" placeholder="Search templates…" autocomplete="off" />
-      </div>
-      <div class="tpl-picker-list"></div>
+    document.body.appendChild(pop);
+    openPicker = pop;
+
+    const foot = `
       <div class="tpl-picker-foot">
         <a href="/crm-settings.html?companyId=${encodeURIComponent(companyId)}#templates">Manage templates</a>
         <span class="tpl-fields-hint" title="${MERGE_FIELDS.map((f) => '{{' + f.token + '}} — ' + f.label).join('\n')}">merge fields</span>
       </div>`;
 
-    const listEl = pop.querySelector('.tpl-picker-list');
-    const renderList = (q) => {
-      const needle = (q || '').trim().toLowerCase();
-      const rows = list.filter((t) => !needle
-        || String(t.name || '').toLowerCase().includes(needle)
-        || String(t.body || '').toLowerCase().includes(needle)
-        || String(t.category || '').toLowerCase().includes(needle));
-      if (!rows.length) {
-        listEl.innerHTML = `<div class="tpl-picker-empty">${list.length ? 'No matches.' : 'No templates yet. Add some in CRM Settings.'}</div>`;
-        return;
-      }
-      listEl.innerHTML = rows.map((t) => {
-        const preview = renderTemplate(t.body, ctx);
-        return `
-          <button type="button" class="tpl-picker-item" data-tpl="${escapeHtml(t.id)}">
-            <div class="tpl-picker-name">${escapeHtml(t.name)}${t.category ? `<span class="tpl-chip">${escapeHtml(t.category)}</span>` : ''}</div>
-            <div class="tpl-picker-preview">${escapeHtml(preview.slice(0, 140))}${preview.length > 140 ? '…' : ''}</div>
-          </button>`;
-      }).join('');
-      listEl.querySelectorAll('[data-tpl]').forEach((b) => b.addEventListener('click', () => {
-        const t = list.find((x) => x.id === b.getAttribute('data-tpl'));
-        if (!t) return;
-        const rendered = renderTemplate(t.body, ctx);
-        if (replace || !input.value.trim()) {
-          input.value = rendered;
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          input.focus();
-        } else {
-          insertAtCaret(input, rendered);
-        }
-        if (typeof onInsert === 'function') {
-          onInsert(t, { body: rendered, subject: renderTemplate(t.subject || '', ctx) });
-        }
-        bumpTemplateUse(companyId, t.id);
-        closeOpenPicker();
-      }));
-    };
-    renderList('');
-    pop.querySelector('.tpl-search').addEventListener('input', (e) => renderList(e.target.value));
+    function showList(list, { q = '', flash = null } = {}) {
+      pop.classList.remove('is-form');
+      pop.innerHTML = `
+        <div class="tpl-picker-head">
+          <input class="c-input tpl-search" placeholder="Search templates…" autocomplete="off" />
+          <button type="button" class="crm-chip tpl-new">+ New</button>
+        </div>
+        ${flash ? `<div class="tpl-picker-flash">${escapeHtml(flash)}</div>` : ''}
+        <div class="tpl-picker-list"></div>
+        ${foot}`;
 
-    // Anchor below the trigger, clamped to the viewport.
-    document.body.appendChild(pop);
-    openPicker = pop;
-    const r = trigger.getBoundingClientRect();
-    const w = Math.min(380, window.innerWidth - 24);
-    pop.style.width = w + 'px';
-    pop.style.left = Math.max(12, Math.min(r.left, window.innerWidth - w - 12)) + 'px';
-    const belowSpace = window.innerHeight - r.bottom;
-    if (belowSpace > 320) pop.style.top = (r.bottom + 6 + window.scrollY) + 'px';
-    else pop.style.top = Math.max(12, r.top - 6 - Math.min(360, pop.offsetHeight)) + window.scrollY + 'px';
-    pop.querySelector('.tpl-search').focus();
+      const listEl = pop.querySelector('.tpl-picker-list');
+      const renderList = (query) => {
+        const needle = (query || '').trim().toLowerCase();
+        const rows = list.filter((t) => !needle
+          || String(t.name || '').toLowerCase().includes(needle)
+          || String(t.body || '').toLowerCase().includes(needle)
+          || String(t.category || '').toLowerCase().includes(needle));
+        if (!rows.length) {
+          listEl.innerHTML = `<div class="tpl-picker-empty">${list.length ? 'No matches.' : 'No templates yet. Click <strong>+ New</strong> to save your first one.'}</div>`;
+          return;
+        }
+        listEl.innerHTML = rows.map((t) => {
+          const preview = renderTemplate(t.body, ctx);
+          return `
+            <button type="button" class="tpl-picker-item" data-tpl="${escapeHtml(t.id)}">
+              <div class="tpl-picker-name">${escapeHtml(t.name)}${t.category ? `<span class="tpl-chip">${escapeHtml(t.category)}</span>` : ''}</div>
+              <div class="tpl-picker-preview">${escapeHtml(preview.slice(0, 140))}${preview.length > 140 ? '…' : ''}</div>
+            </button>`;
+        }).join('');
+        listEl.querySelectorAll('[data-tpl]').forEach((b) => b.addEventListener('click', () => {
+          const t = list.find((x) => x.id === b.getAttribute('data-tpl'));
+          if (!t) return;
+          const rendered = renderTemplate(t.body, ctx);
+          if (replace || !input.value.trim()) {
+            input.value = rendered;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.focus();
+          } else {
+            insertAtCaret(input, rendered);
+          }
+          if (typeof onInsert === 'function') {
+            onInsert(t, { body: rendered, subject: renderTemplate(t.subject || '', ctx) });
+          }
+          bumpTemplateUse(companyId, t.id);
+          closeOpenPicker();
+        }));
+      };
+      const search = pop.querySelector('.tpl-search');
+      search.value = q;
+      renderList(q);
+      search.addEventListener('input', (e) => renderList(e.target.value));
+      pop.querySelector('.tpl-new').addEventListener('click', () => showForm(list));
+      place(pop);
+      search.focus();
+    }
+
+    function showForm(list) {
+      const draft = input.value.trim();
+      const draftSubject = subjectInput ? subjectInput.value.trim() : '';
+      pop.classList.add('is-form');
+      pop.innerHTML = `
+        <div class="tpl-picker-head tpl-form-head">
+          <span class="tpl-form-title">${draft ? 'Save this message as a template' : `New ${channel === 'email' ? 'email' : 'text'} template`}</span>
+        </div>
+        <div class="tpl-form">
+          <div class="tpl-form-grid">
+            <input class="c-input tpl-f-name" placeholder="Name, e.g. First touch" maxlength="80" autocomplete="off" />
+            <input class="c-input tpl-f-category" placeholder="Category (optional)" maxlength="40" autocomplete="off" />
+          </div>
+          ${channel === 'email' ? `<input class="c-input tpl-f-subject" placeholder="Subject, e.g. Quick question, {{firstName}}" autocomplete="off" />` : ''}
+          <textarea class="c-textarea tpl-f-body" rows="5" placeholder="Hi {{firstName}}, this is {{ownerFirstName}} from {{companyName}}…"></textarea>
+          <div class="tpl-f-fields">
+            ${MERGE_FIELDS.map((f) => `<button type="button" class="crm-chip" data-merge="${f.token}" title="${escapeHtml(f.label)}">{{${f.token}}}</button>`).join('')}
+          </div>
+          ${draft ? '<div class="tpl-f-hint">Swap any names or details for merge fields so it fits every contact.</div>' : ''}
+          <div class="tpl-f-err" style="display:none;"></div>
+        </div>
+        <div class="tpl-picker-foot tpl-form-foot">
+          <button type="button" class="btn btn-ghost tpl-f-back">Back</button>
+          <button type="button" class="btn btn-primary tpl-f-save">Save template</button>
+        </div>`;
+
+      const body = pop.querySelector('.tpl-f-body');
+      const subject = pop.querySelector('.tpl-f-subject');
+      const err = pop.querySelector('.tpl-f-err');
+      body.value = draft;
+      if (subject) subject.value = draftSubject;
+
+      // Merge chips drop into whichever field was last focused.
+      let target = body;
+      [body, subject].forEach((el) => el && el.addEventListener('focus', () => { target = el; }));
+      pop.querySelectorAll('[data-merge]').forEach((b) => b.addEventListener('click', () => {
+        insertAtCaret(target, '{{' + b.getAttribute('data-merge') + '}}');
+      }));
+
+      pop.querySelector('.tpl-f-back').addEventListener('click', () => showList(list));
+      const save = pop.querySelector('.tpl-f-save');
+      save.addEventListener('click', async () => {
+        const name = pop.querySelector('.tpl-f-name').value.trim();
+        err.style.display = 'none';
+        if (!name) { err.textContent = 'Give the template a name.'; err.style.display = 'block'; return; }
+        if (!body.value.trim()) { err.textContent = 'Write the message first.'; err.style.display = 'block'; return; }
+        save.disabled = true; save.textContent = 'Saving…';
+        try {
+          await createTemplate(companyId, {
+            channel, name,
+            category: pop.querySelector('.tpl-f-category').value,
+            subject: subject ? subject.value : '',
+            body: body.value
+          });
+          const fresh = await load(true);
+          if (openPicker === pop) showList(fresh, { q: name, flash: `Saved "${name}". Click it to use it.` });
+        } catch (e) {
+          err.textContent = 'Could not save: ' + (e.message || e);
+          err.style.display = 'block';
+          save.disabled = false; save.textContent = 'Save template';
+        }
+      });
+      place(pop);
+      pop.querySelector('.tpl-f-name').focus();
+    }
+
+    showList(list);
   }
 
   trigger.addEventListener('click', (e) => {
