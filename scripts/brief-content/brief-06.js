@@ -14,7 +14,7 @@ module.exports = {
   "html": `
 <p>You have rehearsed it in the car. You have rehearsed it in the shower. You have a version where you say it calmly and they understand, and a version where it goes badly and you both say things you can't take back. You have picked a day to bring it up, and then the day came and something felt off, so you picked another day. That was three weeks ago. Maybe three months.</p>
 <p>It might be your partner, and the way chores and money and attention have quietly become uneven. It might be a coworker who keeps taking credit, or a manager who keeps moving the target. It might be a friend who only calls when they need something, or a parent who still comments on your choices as if you were fifteen. The details change. The pattern is the same. There is something true that needs to be said, and you have not said it.</p>
-<p>This brief is not about becoming a confrontational person. It is about becoming a clear one. Clarity is not the same as harshness, and calm is not the same as silence. Most people who avoid hard conversations are not weak. They are thoughtful. They care about the relationship, they don't want to hurt anyone, and they have seen conversations go wrong. That care is a strength. It just needs a structure so it stops turning into avoidance.</p>
+<p>This brief is not about becoming a confrontational person. It is about becoming a clear one. Clarity is not the same as harshness, and calm is not the same as silence. Most people who avoid hard conversations are not weak. They care about the relationship and don't want to hurt anyone. That care is a strength. It just needs a structure so it stops turning into avoidance.</p>
 <p>By the end of this brief you will know what your silence is actually costing, how to get clear on what you want before you open your mouth, how to open without starting a fight, how to stay steady when emotions rise, and how to follow through so the conversation leads to real change. You will also have a framework you can use for the rest of your life, The Clear Conversation Model, and a toolkit you can use this week.</p>
 <p>One note before we begin. If a relationship involves fear for your safety, this model is not the tool. Reach out to a professional or a local support service first. Your safety comes before any conversation.</p>
 
@@ -40,7 +40,7 @@ module.exports = {
 <li><strong>"I don't want to be that person."</strong> You are picturing someone aggressive, dramatic, or demanding. Clear is not any of those things. You can be kind and direct in the same sentence.</li>
 </ul>
 <h3>Silence is also a message</h3>
-<p>Here is the part most people miss. When you avoid a conversation, you are not saying nothing. You are saying, "This is acceptable." Your coworker keeps missing handoffs because, as far as he can tell, it's fine. Your partner keeps leaving the planning to you because you keep doing it without comment. Your silence has been teaching them how the relationship works.</p>
+<p>When you avoid a conversation, you are not saying nothing. You are saying, "This is acceptable." Your silence has been teaching people how the relationship works.</p>
 <p>That is not a reason to feel guilty. It is a reason to feel hopeful. If silence has been shaping the pattern, then a clear sentence can reshape it. You have more influence than you think. You just haven't used it yet.</p>
 <h3>What is in your control</h3>
 <p>You do not need the other person to agree with everything you say for the conversation to be worth it. You need to have said it clearly and respectfully. That part is fully in your control. What they do with it is theirs.</p>
@@ -61,10 +61,10 @@ module.exports = {
 <p>Notice that each goal is something the other person can actually respond to. That is the point. A feeling asks to be understood. A goal asks to be acted on. Good conversations include both, but they are anchored by the goal.</p>
 <h3>Want an outcome, not a verdict</h3>
 <p>Be honest about a quieter want that often hides underneath. Many of us, when we finally speak up, secretly want the other person to admit they were wrong. We want a verdict. We want an apology shaped exactly the way we imagined it.</p>
-<p>That want is human. It is also a trap. If your goal is to win, the other person will feel the pressure and defend themselves, and the conversation becomes a trial. If your goal is a better outcome going forward, there is room for both of you to move.</p>
+<p>That want is human. It is also a trap. If your goal is to win, the other person will defend themselves and the conversation becomes a trial. If your goal is a better outcome, there is room for both of you to move.</p>
 <p>Ask yourself: <strong>would I rather be right, or would I rather have this change?</strong> You can sometimes have both. But when you have to choose, choose the change.</p>
 <h3>Check your part</h3>
-<p>Before you walk into any hard conversation, spend two minutes looking at your own role in the pattern. Not to blame yourself. To see clearly. Ownership is not about taking all the fault. It is about taking your share.</p>
+<p>Before you walk into any hard conversation, spend two minutes looking at your own role in the pattern. Ownership is not about taking all the fault. It is about taking your share.</p>
 <ul>
 <li>Did I ever say this clearly before, or did I hint and hope?</li>
 <li>Have I been doing something that made the pattern easier to continue, like always stepping in or always saying "it's fine"?</li>
@@ -119,7 +119,7 @@ module.exports = {
 <p>Notice what is missing. No insults. No history lesson going back years. No "you always." No apologizing for bringing it up. Just a clear intention, a fact, an honest impact, and a real request. That is what calm, clear, and respectful sounds like.</p>
 
 <h2>Chapter 3: Opening the conversation without starting a fight</h2>
-<p>The opening of a hard conversation matters more than any other part. People decide within the first few sentences whether they are being attacked or invited. If they feel attacked, they defend. If they feel invited, they listen. Your job in the opening is to make listening easier than defending.</p>
+<p>The opening of a hard conversation matters more than any other part. People decide within the first few sentences whether they are being attacked or invited. Your job in the opening is to make listening easier than defending.</p>
 <h3>Choose the time and place on purpose</h3>
 <p>You will not find a perfect moment. You can find a good one. A good moment usually has four things.</p>
 <ul>
@@ -135,7 +135,7 @@ module.exports = {
 <p>Both are honest. Only one invites a real conversation. The second one names the topic, names your feeling, and signals partnership, all in one sentence.</p>
 <h3>Skip the long buildup</h3>
 <p>Many people, especially kind people, open with so much cushioning that the point gets lost. "So, I've been meaning to say something, and it's not a big deal, and honestly it might just be me, and I know you've been busy, and I don't want you to take this the wrong way, but..."</p>
-<p>By the time you get to the point, the other person is anxious and confused. The buildup meant to soften the message ends up raising the tension. Say the intention, then get to the observation. And skip "I'm sorry to bring this up." Try "Thanks for making time for this" instead. It is warm, and it doesn't shrink you. Respect them, and yourself, enough to be direct.</p>
+<p>By the time you get to the point, the other person is anxious and confused. Say the intention, then get to the observation. And skip "I'm sorry to bring this up." Try "Thanks for making time for this" instead. It is warm, and it doesn't shrink you. Respect them, and yourself, enough to be direct.</p>
 <h3>One issue at a time</h3>
 <p>When you finally open the door, it's tempting to bring everything through it. Every frustration from the last two years comes rushing in. This is called kitchen-sinking, and it almost always backfires. The other person feels buried and stops listening.</p>
 <p>Pick one issue. The most important one, or the one most likely to lead to real change. If it goes well, you will have built trust for the next one. You can say, if needed, "There are a couple of other things I'd like to talk about at some point, but today I just want to focus on this."</p>
@@ -149,10 +149,10 @@ module.exports = {
 
 <h2>Chapter 4: Staying calm when it gets emotional</h2>
 <p>Even with a strong opening, many hard conversations get emotional. The other person gets defensive. They get quiet. They cry. They bring up something you did. Your heart starts pounding and you feel the pull to either escalate or retreat.</p>
-<p>This is normal. It doesn't mean the conversation has failed. It means it is real. The goal is not to prevent emotion. The goal is to stay steady enough that emotion doesn't take over.</p>
+<p>This is normal. It means the conversation is real. The goal is not to prevent emotion. It is to stay steady enough that emotion doesn't take over.</p>
 <h3>Know your own signals</h3>
 <p>You can't manage what you don't notice. Most people have clear physical signs when they are getting flooded: heat in the face, a tight chest, a faster heartbeat, a clenched jaw, a voice that gets louder or higher. Some people go the other way and feel numb, blank, or suddenly desperate to leave.</p>
-<p>Learn your signals ahead of time. Think back to the last time a conversation got tense. What did you feel in your body first? That is your early warning system. When you notice it, you have a choice. Before you notice it, you don't.</p>
+<p>Think back to the last time a conversation got tense. What did you feel in your body first? That is your early warning system. When you notice it, you have a choice.</p>
 <h3>Slow your body first</h3>
 <p>When emotion rises, the fastest way to calm your thinking is to calm your body. Three simple moves help.</p>
 <ul>
@@ -172,10 +172,10 @@ module.exports = {
 <blockquote>"That's fair. I was late on the budget, and I'm glad to talk about that too. Can we finish this one first and then come back to it?"</blockquote>
 <p>This is ownership in action. You are not pretending to be perfect. You are also not letting the conversation get pulled off course.</p>
 <h3>Listen more than feels natural</h3>
-<p>When you've been holding something in for a long time, it's tempting to deliver it and then wait for agreement. But the conversation only moves forward when both people feel heard. After you have made your request, listen. Really listen.</p>
+<p>The conversation only moves forward when both people feel heard. After you make your request, listen. Really listen.</p>
 <p>A simple way to show you're listening is to reflect back what you heard before responding.</p>
 <blockquote>"So it sounds like you've been feeling overloaded at work, and the weekends are the only time you get to rest. Is that right?"</blockquote>
-<p>Reflecting does not mean agreeing. It means understanding. And people who feel understood become far more willing to understand you in return. You may also learn something that changes your view. That's not losing. That's clarity.</p>
+<p>Reflecting does not mean agreeing. It means understanding. People who feel understood become far more willing to understand you. You may also learn something that changes your view. That's not losing. That's clarity.</p>
 <h3>Know when to pause</h3>
 <p>Sometimes a conversation gets too heated to be useful. Voices rise. Old wounds open. You both start saying things that are about winning, not understanding. When that happens, the wisest move is to pause, not to push through.</p>
 <blockquote>"I want to keep talking about this, but I don't think either of us is at our best right now. Can we take a break and come back to it tonight after dinner?"</blockquote>
@@ -186,10 +186,10 @@ module.exports = {
 <p>That sentence is calm, respectful, and firm. It leaves room for the other person while protecting what matters to you. If you've practiced saying no well, you'll recognize it. It's the same skill in a different setting.</p>
 
 <h2>Chapter 5: Following through after the talk</h2>
-<p>Many people treat the hard conversation as the finish line. They finally say it, the other person agrees, everyone feels relieved, and then nothing changes. Two weeks later, the old pattern is back, and now it feels worse, because you were brave and it didn't work.</p>
+<p>Many people treat the hard conversation as the finish line. They finally say it, everyone feels relieved, and two weeks later the old pattern is back.</p>
 <p>The conversation is not the finish line. It's the starting line. Real change happens in the days and weeks after.</p>
 <h3>Close with a clear agreement</h3>
-<p>Before the conversation ends, make sure you both know what was decided. Many conversations end with a vague "Okay, yeah, I'll work on it." That feels like agreement, but it gives no one anything specific to do.</p>
+<p>Before the conversation ends, make sure you both know what was decided. A vague "Okay, I'll work on it" feels like agreement but gives no one anything specific to do.</p>
 <p>Summarize out loud.</p>
 <blockquote>"So just to make sure we're on the same page: you'll send the report by Thursday at noon, and if something comes up, you'll let me know by Wednesday. Does that sound right?"</blockquote>
 <blockquote>"Okay, so you'll take meal planning and the grocery order every other week, starting this Sunday. And I'll stop jumping in when it's your week, even if it's done differently than I would do it. Deal?"</blockquote>
@@ -200,13 +200,13 @@ module.exports = {
 <blockquote>"Thanks for handling the grocery order this week. I noticed, and it helped."</blockquote>
 <p>This is not flattery. It's feedback. It tells the other person the change mattered, which makes them far more likely to keep it going.</p>
 <h3>Check in on a set date</h3>
-<p>Agree on a time to revisit how it's going. One or two weeks later is often right. "Can we check in next Friday and see how the new system is working?" This takes the pressure off both of you. You don't have to monitor every moment, and they don't have to be perfect right away. There is a planned moment to adjust.</p>
+<p>Agree on a time to revisit how it's going. One or two weeks later is often right. "Can we check in next Friday and see how the new system is working?" You don't have to monitor every moment, and they don't have to be perfect right away.</p>
 <h3>When things slip</h3>
 <p>They will slip at least once. Old patterns are strong. When it happens, don't treat it as proof the conversation failed. Treat it as part of the process. Name it early and lightly.</p>
 <blockquote>"Hey, I noticed the report came in Friday this week. Is everything okay? Are we still good with the Thursday plan?"</blockquote>
 <p>Early, light, and specific is far better than waiting until you are frustrated again. If you wait, you are back to avoidance, and you know where that leads.</p>
 <h3>When nothing changes</h3>
-<p>Sometimes you do everything right and the other person still doesn't change. That is painful, and it's also information. You have been clear. You have been respectful. You have given them a fair chance. Now you get to decide what you will do.</p>
+<p>Sometimes you do everything right and the other person still doesn't change. That is painful, and it's also information. You have been clear and fair. Now you decide what you will do.</p>
 <p>This is where the line you set in Chapter 2 matters. It might mean involving your manager, accepting that a friendship will look different, setting firmer boundaries with family, or seeking outside support together as a couple.</p>
 <p>You can't control another person's choices. You can always control your own. Saying it clearly was never about controlling them. It was about taking ownership of your part and no longer carrying the weight alone.</p>
 <h3>Reflect, then let it go</h3>
@@ -216,7 +216,7 @@ module.exports = {
 <h2>Your Toolkit</h2>
 <p>Here are three tools to use before, during, and after your hard conversation. Copy them into a notebook or your phone. Use them this week.</p>
 <h3>Tool 1: The Conversation Prep Sheet</h3>
-<p>Fill this out before any hard conversation. Most people can complete it in fifteen to twenty minutes. If you get stuck on a question, that is where more clarity is needed.</p>
+<p>Fill this out before any hard conversation. If you get stuck on a question, that is where more clarity is needed.</p>
 <ol>
 <li><strong>Who is this conversation with?</strong> Name the person and the relationship.</li>
 <li><strong>What is the one issue?</strong> Write it in a single sentence. If you have more than one, pick the most important for now.</li>
@@ -234,7 +234,7 @@ module.exports = {
 <li><strong>My pause line:</strong> The exact words I'll use if we need a break, and when we'll come back.</li>
 <li><strong>My closing question:</strong> The question I'll ask after my request, such as "What do you think?"</li>
 </ol>
-<p>Once you've filled it out, read your Intention, Observation, Impact, and Request out loud once or twice. Not to memorize a script, but to hear yourself say it. The words will come more easily when it matters.</p>
+<p>Once you've filled it out, read your Intention, Observation, Impact, and Request out loud once or twice. Not to memorize a script, but so the words come more easily when it matters.</p>
 <h3>Tool 2: 12 Opening Lines for Different Situations</h3>
 <p>Use these as starting points. Adjust the words until they sound like you.</p>
 <p><strong>At work</strong></p>
@@ -262,7 +262,7 @@ module.exports = {
 <li>"Something from last weekend has stayed with me, and I'd rather talk about it than let it sit. Is now a good time, or would later be better?"</li>
 </ul>
 <h3>Tool 3: The Post-Conversation Reflection Guide</h3>
-<p>Complete this within a day of your conversation, while it's still fresh. It takes about ten minutes. The goal is not to judge how it went. The goal is to learn from it.</p>
+<p>Complete this within a day of your conversation, while it's still fresh. The goal is not to judge how it went. It is to learn from it.</p>
 <p><strong>Part one: What happened</strong></p>
 <ul>
 <li>What did I actually say? Did I cover my Intention, Observation, Impact, and Request?</li>
@@ -289,7 +289,7 @@ module.exports = {
 <li>What will I say if things slip? Write the sentence now.</li>
 <li>If nothing changes by the check-in, what is my next step?</li>
 </ul>
-<p>Keep your reflections in one place. Over time, you'll see your patterns clearly: where you tend to hold back, where you tend to push, and how much steadier you've become.</p>
+<p>Keep your reflections in one place. Over time, you'll see your patterns clearly.</p>
 
 <h2>Your Next One Percent</h2>
 <p>This is the sixth brief, and in many ways it pulls the earlier ones together. Saying no, managing up, protecting your focus, quieting overthinking, and managing your energy all depend at some point on being able to say what's true, clearly and kindly. You don't need those briefs to use this one. But if you've worked through them, you'll notice how much of this you already know how to do.</p>
