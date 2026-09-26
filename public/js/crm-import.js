@@ -16,7 +16,7 @@ import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { renderCrmShell } from './crm-shell.js';
 import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.js';
-import { escapeHtml, STAGES, SOURCES } from './crm.js';
+import { escapeHtml, STAGES, SOURCES, listSources, sourceOptionsHtml, wireSourcePicker } from './crm.js';
 import { parseCsv, toCsv, downloadCsv } from './csv.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
@@ -62,6 +62,7 @@ const state = {
   duplicateMode: 'update',
   importTag: '',
   defaultSource: 'Import',
+  sources: SOURCES.slice(),  // built-ins plus the company's own, loaded in main()
   defaultStage: 'new',
   result: null           // { created, updated, skipped, errors[] }
 };
@@ -335,7 +336,7 @@ function renderMap() {
         <div class="crm-field">
           <label>Source</label>
           <select class="c-input" id="def-source">
-            ${['Import'].concat(SOURCES).map((s) => `<option value="${escapeHtml(s)}" ${s === state.defaultSource ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
+            ${sourceOptionsHtml(['Import'].concat(state.sources), state.defaultSource)}
           </select>
         </div>
         <div class="crm-field">
@@ -400,7 +401,10 @@ function renderMap() {
   });
   $('dup-mode').addEventListener('change', (e) => { state.duplicateMode = e.target.value; });
   $('import-tag').addEventListener('input', (e) => { state.importTag = e.target.value.trim(); });
-  $('def-source').addEventListener('change', (e) => { state.defaultSource = e.target.value; renderMap(); });
+  wireSourcePicker($('def-source'), state.companyId, {
+    getSources: async () => ['Import'].concat(state.sources = await listSources(state.companyId)),
+    onPicked: (value) => { state.defaultSource = value; renderMap(); }
+  });
   $('def-stage').addEventListener('change', (e) => { state.defaultStage = e.target.value; renderMap(); });
   $('run-import').addEventListener('click', runImport);
 }
@@ -578,6 +582,7 @@ async function main() {
     return;
   }
   state.companyId = companyId;
+  state.sources = await listSources(companyId);
   render();
 }
 

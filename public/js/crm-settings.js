@@ -17,7 +17,7 @@ import {
   DEFAULT_EMAIL_SETTINGS, getEmailSettings, updateEmailSettings,
   listTemplates, createTemplate, updateTemplate, deleteTemplate,
   listVoicemailDrops, registerVoicemailDrop, setDefaultVoicemailDrop, deleteVoicemailDrop,
-  fmtDateTime
+  fmtDateTime, SOURCES, SOURCE_MAX, listCustomSources, addSource, removeSource
 } from './crm.js';
 import { MERGE_FIELDS, renderTemplate } from './merge-fields.js';
 
@@ -33,6 +33,7 @@ const state = {
   templates: [],
   editingTemplate: null,  // null = new, else a template id
   drops: [],
+  customSources: [],
   rec: { recorder: null, chunks: [], blob: null, mime: null, startedMs: 0, timerId: null }
 };
 
@@ -72,6 +73,7 @@ function render() {
       </div>
     </div>
 
+    ${sourcesCardHtml()}
     ${callingCardHtml()}
     ${emailCardHtml()}
     ${googleCardHtml()}
@@ -79,6 +81,59 @@ function render() {
     ${voicemailCardHtml()}
   `;
   wire();
+}
+
+// ── Lead sources ─────────────────────────────────────────────────────────
+// The four built-ins are fixed; the company adds its own here, or on the fly
+// from any Source picker's "+ Add a new source…" entry. Removing one only
+// takes it off the pickers: contacts already tagged with it keep it.
+function sourcesCardHtml() {
+  const chip = (name, removable) => removable
+    ? `<span class="crm-tag crm-tag-removable">${escapeHtml(name)}<button type="button" class="crm-src-del" data-src-del="${escapeHtml(name)}" title="Remove ${escapeHtml(name)}" aria-label="Remove ${escapeHtml(name)}">&times;</button></span>`
+    : `<span class="crm-tag" title="Built-in">${escapeHtml(name)}</span>`;
+  return `
+    <div class="card" style="max-width:760px;" id="sources">
+      <label class="crm-field-label" style="display:block;margin-bottom:4px;">Lead sources</label>
+      <div class="crm-import-note" style="margin-top:0;">
+        Where your leads come from. These appear in every Source picker. Removing one hides it
+        from the pickers; contacts that already have it keep it. Use each contact's
+        Source details box for specifics, like who referred them.
+      </div>
+      <div class="crm-src-list" style="display:flex;flex-wrap:wrap;gap:6px;margin:14px 0;">
+        ${SOURCES.map((x) => chip(x, false)).join('')}
+        ${state.customSources.map((x) => chip(x, true)).join('')}
+      </div>
+      <form id="src-add-form" class="crm-save-row" style="gap:8px;">
+        <input class="c-input" id="src-add" maxlength="${SOURCE_MAX}" placeholder="e.g. Facebook ad, Chamber mixer, Podcast" style="flex:1;">
+        <button class="btn btn-ghost" type="submit">+ Add source</button>
+      </form>
+      <div id="src-status" class="crm-save-status" style="margin-top:8px;"></div>
+    </div>`;
+}
+
+function wireSources() {
+  const status = (msg, cls) => { const el = $('src-status'); if (el) { el.textContent = msg; el.className = 'crm-save-status ' + (cls || ''); } };
+  const form = $('src-add-form');
+  if (form) form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('src-add').value;
+    try {
+      const saved = await addSource(state.companyId, name);
+      state.customSources = await listCustomSources(state.companyId);
+      render();
+      const el = $('src-status');
+      if (el) { el.textContent = `“${saved}” is in the list.`; el.className = 'crm-save-status ok'; }
+    } catch (err) { status(err.message || String(err), 'err'); }
+  });
+  document.querySelectorAll('[data-src-del]').forEach((b) => b.addEventListener('click', async () => {
+    const name = b.getAttribute('data-src-del');
+    if (!confirm(`Remove “${name}” from the source list?\n\nContacts that already have it keep it.`)) return;
+    try {
+      await removeSource(state.companyId, name);
+      state.customSources = await listCustomSources(state.companyId);
+      render();
+    } catch (err) { status('Could not remove: ' + (err.message || err), 'err'); }
+  }));
 }
 
 // ── Voicemail drops ──────────────────────────────────────────────────────
@@ -641,6 +696,7 @@ function syncFromInputs() {
 }
 
 function wire() {
+  wireSources();
   $('add-stage').addEventListener('click', () => {
     syncFromInputs();
     const maxOrder = state.stages.reduce((m, s) => Math.max(m, s.order || 0), 0);
@@ -797,6 +853,7 @@ async function main() {
     listVoicemailDrops(companyId),
     getEmailSettings(companyId)
   ]);
+  state.customSources = await listCustomSources(companyId);
   state.email = email;
   state.templates = templates;
   state.drops = drops;

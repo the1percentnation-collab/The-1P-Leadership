@@ -8,7 +8,7 @@ import { renderCrmShell, setCrmUnreadCount } from './crm-shell.js';
 import { collection, getDocs, query, where, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.js';
 import {
-  STAGES, STAGE_IDS, SOURCES, stageMeta,
+  STAGES, STAGE_IDS, SOURCES, stageMeta, listSources, sourceOptionsHtml, wireSourcePicker,
   listContacts, createContact, changeStage, listCompanyAdmins,
   callBlockReason, contactFreshness,
   escapeHtml, fmtDate, toDate
@@ -160,7 +160,7 @@ function exportVisibleContacts() {
     return a ? (a.displayName || a.email || '') : '';
   };
   const csv = toCsv(
-    ['Name', 'Email', 'Phone', 'Company', 'Tags', 'Stage', 'Source', 'Owner', 'Created', 'Last activity', 'Last contacted'],
+    ['Name', 'Email', 'Phone', 'Company', 'Tags', 'Stage', 'Source', 'Source details', 'Owner', 'Created', 'Last activity', 'Last contacted'],
     rows.map((c) => [
       c.name || '',
       c.email || '',
@@ -169,6 +169,7 @@ function exportVisibleContacts() {
       Array.isArray(c.tags) ? c.tags.join('; ') : '',
       stageLabel(c.stage),
       c.source || '',
+      c.sourceDetail || '',
       ownerName(c.ownerUid),
       iso(c.createdAt),
       iso(c.lastActivityAt),
@@ -726,9 +727,13 @@ function openNewContactModal() {
             <div class="crm-form-row">
               <label>Source</label>
               <select class="c-input crm-select" id="nc-source">
-                ${SOURCES.map((s) => `<option value="${s}">${escapeHtml(s)}</option>`).join('')}
+                ${sourceOptionsHtml(state.sources || SOURCES, 'Referral')}
               </select>
             </div>
+          </div>
+          <div class="crm-form-row">
+            <label>Source details</label>
+            <textarea class="c-input" id="nc-source-detail" rows="2" maxlength="500" placeholder="Who referred them, which event, what they asked about…"></textarea>
           </div>
           <div class="crm-form-row">
             <label>Owner</label>
@@ -755,6 +760,10 @@ function openNewContactModal() {
   ];
   ownerSel.innerHTML = opts.join('');
 
+  wireSourcePicker($('nc-source'), state.companyId, {
+    getSources: async () => (state.sources = await listSources(state.companyId))
+  });
+
   const close = () => { root.innerHTML = ''; };
   $('nc-cancel').addEventListener('click', close);
   $('modal-bd').addEventListener('click', (e) => {
@@ -775,6 +784,7 @@ function openNewContactModal() {
         companyName: $('nc-company').value || null,
         stage: $('nc-stage').value,
         source: $('nc-source').value,
+        sourceDetail: $('nc-source-detail').value,
         ownerUid: $('nc-owner').value,
         tags
       });
@@ -904,6 +914,7 @@ async function main() {
   // Load data
   try {
     state.admins = await listCompanyAdmins(companyId);
+    state.sources = await listSources(companyId);
   } catch (e) { state.admins = []; }
 
   // The softphone is shared with the contact page and the dialer queue; the

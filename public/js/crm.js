@@ -9,7 +9,7 @@ import { auth, db, functions, firebaseReady } from './firebase.js';
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
   collection, query, where, orderBy, limit, getDocs,
-  serverTimestamp
+  serverTimestamp, arrayUnion, arrayRemove
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
@@ -23,6 +23,115 @@ export const STAGES = [
 ];
 export const STAGE_IDS = STAGES.map((s) => s.id);
 export const SOURCES = ['Referral', 'Website', 'Event', 'Other'];
+
+// Lead sources beyond the four built-ins. The company keeps its own list in
+// `crmSources` on the company doc (admins may update it; the rules only guard
+// adminUids). Server-side flows also write sources of their own ("Import",
+// "Contact Form", "Early Access"), so a contact's source is free text, capped
+// at the same 40 characters importContacts enforces.
+export const SOURCE_MAX = 40;
+
+export function cleanSource(s) {
+  return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, SOURCE_MAX);
+}
+
+/**
+ * The free-text story behind a lead's source: who referred them, which
+ * event, what they asked about. Kept per contact, beside `source`, so the
+ * source list stays short enough to filter on. Null when blank.
+ */
+export const SOURCE_DETAIL_MAX = 500;
+export function cleanSourceDetail(s) {
+  const t = String(s == null ? '' : s).trim().slice(0, SOURCE_DETAIL_MAX);
+  return t || null;
+}
+
+/** Built-ins first, then the company's own, de-duplicated ignoring case. */
+export async function listSources(companyId) {
+  const out = SOURCES.slice();
+  if (!firebaseReady || !companyId) return out;
+  try {
+    const snap = await getDoc(doc(db, 'companies', companyId));
+    const custom = snap.exists() ? (snap.data().crmSources || []) : [];
+    custom.map(cleanSource).filter(Boolean).forEach((c) => {
+      if (!out.some((x) => x.toLowerCase() === c.toLowerCase())) out.push(c);
+    });
+  } catch (e) { /* the built-ins still work */ }
+  return out;
+}
+
+/** The company's custom sources only, as stored. */
+export async function listCustomSources(companyId) {
+  if (!firebaseReady || !companyId) return [];
+  try {
+    const snap = await getDoc(doc(db, 'companies', companyId));
+    return snap.exists() ? (snap.data().crmSources || []).map(cleanSource).filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+
+/**
+ * Add a source to the company list. Returns the name to use, which is the
+ * existing spelling when it matches a built-in or saved source ignoring case,
+ * so "referral" never becomes a second Referral.
+ */
+export async function addSource(companyId, name) {
+  const clean = cleanSource(name);
+  if (!clean) throw new Error('Enter a source name.');
+  const existing = (await listSources(companyId)).find((x) => x.toLowerCase() === clean.toLowerCase());
+  if (existing) return existing;
+  await updateDoc(doc(db, 'companies', companyId), { crmSources: arrayUnion(clean) });
+  return clean;
+}
+
+/** Remove a custom source from the list. Contacts already tagged keep it. */
+export async function removeSource(companyId, name) {
+  await updateDoc(doc(db, 'companies', companyId), { crmSources: arrayRemove(name) });
+}
+
+/**
+ * <option> list for a source <select>: every known source, plus `current`
+ * when it is not one of them (a source written by an import or a lead form),
+ * so opening the record never silently swaps it for the first option. Ends
+ * with the "Add a new source" entry the pickers handle.
+ */
+export const ADD_SOURCE = '__add_source__';
+export function sourceOptionsHtml(sources, current, { withAdd = true } = {}) {
+  const list = sources.slice();
+  const cur = cleanSource(current);
+  if (cur && !list.some((x) => x === cur)) list.push(cur);
+  return list.map((x) =>
+    `<option value="${escapeHtml(x)}" ${x === cur ? 'selected' : ''}>${escapeHtml(x)}</option>`).join('')
+    + (withAdd ? `<option value="${ADD_SOURCE}">+ Add a new source…</option>` : '');
+}
+
+/**
+ * Wire a source <select> built by sourceOptionsHtml: picking "Add a new
+ * source" prompts for a name, saves it to the company list, and selects it.
+ * `onPicked(value)` fires for every real choice, new or existing.
+ */
+export function wireSourcePicker(select, companyId, { getSources, onPicked } = {}) {
+  let last = select.value;
+  select.addEventListener('change', async () => {
+    if (select.value !== ADD_SOURCE) {
+      last = select.value;
+      if (onPicked) await onPicked(last);
+      return;
+    }
+    const name = prompt(`New lead source (up to ${SOURCE_MAX} characters):`, '');
+    if (!cleanSource(name)) { select.value = last; return; }
+    try {
+      const saved = await addSource(companyId, name);
+      const sources = getSources ? await getSources() : await listSources(companyId);
+      select.innerHTML = sourceOptionsHtml(sources, saved);
+      select.value = saved;
+      last = saved;
+      if (onPicked) await onPicked(saved);
+    } catch (err) {
+      select.value = last;
+      alert('Could not add that source: ' + (err.message || err));
+    }
+  });
+}
 
 export function stageMeta(id) {
   return STAGES.find((s) => s.id === id) || STAGES[0];
@@ -119,7 +228,8 @@ export async function createContact(companyId, data = {}) {
     email: data.email ? data.email.trim().toLowerCase() : null,
     phone: data.phone ? data.phone.trim() : null,
     companyName: data.companyName ? data.companyName.trim() : null,
-    source: SOURCES.includes(data.source) ? data.source : 'Other',
+    source: cleanSource(data.source) || 'Other',
+    sourceDetail: cleanSourceDetail(data.sourceDetail),
     stage,
     tags: Array.isArray(data.tags) ? data.tags.filter(Boolean).slice(0, 20) : [],
     ownerUid: data.ownerUid || user.uid,
@@ -152,7 +262,7 @@ export async function updateContact(companyId, contactId, patch = {}) {
   if (!firebaseReady) throw new Error('Offline');
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
-  const allowed = ['name', 'email', 'phone', 'companyName', 'source', 'ownerUid'];
+  const allowed = ['name', 'email', 'phone', 'companyName', 'source', 'sourceDetail', 'ownerUid'];
   // doNotCall is deliberately NOT here — it goes through setDoNotCall so the
   // consent change always lands in the activity trail.
   const clean = {};
@@ -162,6 +272,8 @@ export async function updateContact(companyId, contactId, patch = {}) {
   // Same normalization as createContact — an edit must not reintroduce the
   // mixed-case address that breaks email matching.
   if (typeof clean.email === 'string') clean.email = clean.email.trim().toLowerCase();
+  if (clean.source !== undefined) clean.source = cleanSource(clean.source) || 'Other';
+  if (clean.sourceDetail !== undefined) clean.sourceDetail = cleanSourceDetail(clean.sourceDetail);
   clean.updatedAt = serverTimestamp();
   clean.lastActivityAt = serverTimestamp();
   await updateDoc(contactRef(companyId, contactId), clean);
