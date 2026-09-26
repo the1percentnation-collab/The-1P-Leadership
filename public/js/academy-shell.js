@@ -84,8 +84,15 @@ const ADMIN_NAV = [
   { key: 'announcements-admin',  href: '/manage-announcements.html', label: 'Announcements', icon: 'megaphone', requires: 'admin' },
   { key: 'affiliates-admin',     href: '/manage-affiliates.html',   label: 'Affiliates',    icon: 'community', requires: 'admin' },
   { key: 'certification-admin',  href: '/certification-admin.html', label: 'Certification', icon: 'badge',     requires: 'admin' },
-  { key: 'admin',                href: '/admin.html',               label: 'Admin',         icon: 'admin',     requires: 'admin' },
-  { key: 'owner',                href: '/owner.html',               label: 'Owner',         icon: 'admin',     requires: 'owner' }
+  { key: 'admin',                href: '/admin.html',               label: 'Admin',         icon: 'admin',     requires: 'admin' }
+];
+
+// Owner-only controls, grouped on their own so they read as the owner's tools
+// rather than trailing the admin list. This is the full set the topbar's
+// "Owner ▾" dropdown used to carry; on shell pages the dropdown is gone.
+const OWNER_NAV = [
+  { key: 'beta-admin', href: '/beta-admin.html', label: 'Beta',          icon: 'badge', requires: 'owner' },
+  { key: 'owner',      href: '/owner.html',      label: 'Owner Console', icon: 'admin', requires: 'owner' }
 ];
 
 const ACCOUNT_NAV = [
@@ -123,6 +130,7 @@ function group(label, items, current) {
 
 function sidebarHtml({ current, role }) {
   const admin = ADMIN_NAV.filter((i) => roleAllows(i.requires, role));
+  const owner = OWNER_NAV.filter((i) => roleAllows(i.requires, role));
   return `
     <a class="ak-brand" href="/dashboard.html" aria-label="The One Percent Academy">
       <img class="ak-brand-mark" src="/assets/academy-logo.png" alt="">
@@ -135,6 +143,7 @@ function sidebarHtml({ current, role }) {
     <nav class="ak-nav" aria-label="Academy sections">
       ${group('Overview', MAIN_NAV, current)}
       ${group('Manage', admin, current)}
+      ${group('Owner', owner, current)}
       ${group('Account', ACCOUNT_NAV, current)}
       <div class="ak-nav-group ak-nav-foot">
         <button class="ak-nav-item ak-signout" type="button" id="ak-signout" title="Sign out">

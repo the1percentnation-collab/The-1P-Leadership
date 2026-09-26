@@ -646,7 +646,12 @@ export function renderTopbar({
     `<a class="user-chip-link" href="${escapeHtml(l.href)}">${escapeHtml(l.label)}</a>`
   ).join('');
 
-  const adminBtns = adminButtons({ role, currentPage });
+  // Pages inside the Academy shell carry every privileged destination in the
+  // sidebar's Manage / Owner groups, so the dropdown would only duplicate it.
+  // Pages without the shell (CRM, the manage-* consoles) keep the dropdown:
+  // it is their only route to the other tools.
+  const inShell = !!document.getElementById('ak-sidebar');
+  const adminBtns = inShell ? [] : adminButtons({ role, currentPage });
   const dropLabel = role === 'owner' ? 'Owner&nbsp;&#9660;' : 'Admin&nbsp;&#9660;';
   const adminHtml = adminBtns.length === 0 ? '' : `
     <div class="c-admin-dropdown" id="c-admin-dropdown">
