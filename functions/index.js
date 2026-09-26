@@ -7466,9 +7466,27 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   }
 
   const isSubscription = !!(course.pricing && course.pricing.mode === 'subscription');
-  const interval = isSubscription
+  let interval = isSubscription
     ? (course.pricing.interval === 'year' ? 'year' : 'month')
     : null;
+
+  // ── Annual billing (The One Percent Brief) ──────────────────────────
+  // A monthly subscription can also offer a yearly price in
+  // pricing.annualPrice. The buyer picks it with billing: 'year'; the price
+  // always comes from the course doc, never from the client.
+  const billing = String((request.data && request.data.billing) || '').trim();
+  if (billing && billing !== 'month' && billing !== 'year') {
+    throw new HttpsError('invalid-argument', 'Unknown billing option.');
+  }
+  const annualDollars = isSubscription ? Number(course.pricing.annualPrice) : NaN;
+  const annual = billing === 'year' && interval === 'month';
+  if (annual && !(Number.isFinite(annualDollars) && annualDollars > 0)) {
+    throw new HttpsError('failed-precondition', 'This course doesn\'t offer annual billing.');
+  }
+  if (billing && !isSubscription) {
+    throw new HttpsError('failed-precondition', 'Billing options only apply to memberships.');
+  }
+  if (annual) interval = 'year';
 
   // ── Payment plans (1P Certified Life Coach) ─────────────────────────
   // Fixed-count installments modeled as a monthly subscription that the
@@ -7494,7 +7512,7 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   // Validated in Firestore and baked into the session's unit_amount. A code
   // at 100% never reaches Stripe: it enrolls directly, the same writes the
   // webhook would have made.
-  let chargeDollars = dollars;
+  let chargeDollars = annual ? annualDollars : dollars;
   let appliedCoupon = null;
   if (couponCode) {
     if (isSubscription || plan) {
@@ -7578,11 +7596,16 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
     metadata.installments = String(plan.installments);
     metadata.plan = planKey;
   }
+  if (isSubscription) metadata.billing = interval;
 
   const priceData = {
     currency: 'usd',
     unit_amount: plan ? plan.monthlyCents : Math.max(50, Math.round(chargeDollars * 100)),
-    product_data: { name: plan ? `${course.title || slug} (${plan.label})` : (course.title || slug) }
+    product_data: {
+      name: plan ? `${course.title || slug} (${plan.label})`
+        : annual ? `${course.title || slug} (Annual)`
+        : (course.title || slug)
+    }
   };
   if (isSubscription) priceData.recurring = { interval };
   if (plan) priceData.recurring = { interval: 'month' };
@@ -7607,6 +7630,80 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   });
 
   return { ok: true, url: session.url };
+});
+
+// manageSubscription — lets a member end (or undo ending) their own
+// membership, e.g. The One Percent Brief. Ending never cuts access early: the
+// subscription is set to cancel at the end of the period already paid for,
+// and the existing customer.subscription.deleted webhook removes access then.
+// Installment plans are excluded, since those are a debt, not a membership.
+//
+// data: { courseSlug, action: 'cancel' | 'resume' }
+// returns: { ok, status: 'canceling' | 'active', accessUntil: ms | null }
+function subscriptionPeriodEndMs(sub) {
+  // Stripe moved current_period_end onto subscription items in newer API
+  // versions; read whichever this account's version returns.
+  const sec = sub.cancel_at
+    || sub.current_period_end
+    || (sub.items && sub.items.data && sub.items.data[0] && sub.items.data[0].current_period_end)
+    || null;
+  return sec ? sec * 1000 : null;
+}
+
+exports.manageSubscription = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
+  const uid = request.auth.uid;
+  const courseSlug = String((request.data && request.data.courseSlug) || '').trim();
+  const action = String((request.data && request.data.action) || '').trim();
+  if (!courseSlug) throw new HttpsError('invalid-argument', 'courseSlug is required.');
+  if (action !== 'cancel' && action !== 'resume') {
+    throw new HttpsError('invalid-argument', 'action must be cancel or resume.');
+  }
+  const stripe = getStripe();
+  if (!stripe) throw new HttpsError('failed-precondition', 'Payments are not configured yet.');
+
+  const db = admin.firestore();
+  const snap = await db.collection('stripeSubscriptions').where('uid', '==', uid).get();
+  const mine = snap.docs.filter((d) => {
+    const m = d.data() || {};
+    return m.courseSlug === courseSlug && !m.installments;
+  });
+  if (!mine.length) {
+    throw new HttpsError('not-found', 'No membership subscription was found for this course.');
+  }
+
+  let status = null;
+  let accessUntil = null;
+  for (const d of mine) {
+    let sub;
+    try {
+      sub = await stripe.subscriptions.retrieve(d.id);
+    } catch (e) {
+      console.warn('[manageSubscription] retrieve failed', d.id, e && e.message);
+      continue;
+    }
+    // Already over in Stripe: nothing to change, and the deleted webhook
+    // handles access.
+    if (!sub || sub.status === 'canceled' || sub.status === 'incomplete_expired') continue;
+
+    sub = await stripe.subscriptions.update(d.id, { cancel_at_period_end: action === 'cancel' });
+    status = sub.cancel_at_period_end ? 'canceling' : 'active';
+    accessUntil = sub.cancel_at_period_end ? subscriptionPeriodEndMs(sub) : null;
+
+    const meta = d.data() || {};
+    if (meta.sessionId) {
+      await db.collection('users').doc(uid).collection('purchases').doc(meta.sessionId).set({
+        status,
+        cancelAt: accessUntil ? admin.firestore.Timestamp.fromMillis(accessUntil) : null,
+        statusUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+  }
+
+  if (!status) {
+    throw new HttpsError('failed-precondition', 'This membership has already ended.');
+  }
+  return { ok: true, status, accessUntil };
 });
 
 // bookFile — serves a digital book's EPUB to its owner from the site's own
@@ -7700,7 +7797,7 @@ exports.syncBookGrants = onCall(async (request) => {
 // stripeWebhook — enrolls buyers after checkout and revokes subscription
 // access on cancellation. Configure the endpoint in the Stripe dashboard to
 // send: checkout.session.completed, customer.subscription.deleted,
-// invoice.paid, invoice.payment_failed.
+// customer.subscription.updated, invoice.paid, invoice.payment_failed.
 exports.stripeWebhook = onRequest(
   // sendgridKey: the purchase confirmation goes out from here.
   { cors: false, invoker: 'public', secrets: [...STRIPE_SECRETS, sendgridKey] },
@@ -7899,6 +7996,7 @@ exports.stripeWebhook = onRequest(
             couponCode: couponCode || null,
             stripeCustomerId: session.customer || null,
             subscriptionId: session.subscription || null,
+            billing: (session.metadata && session.metadata.billing) || null,
             status: session.mode === 'subscription' ? 'active' : 'paid',
             confirmationEmail: emailed ? 'sent' : 'failed',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -8026,6 +8124,23 @@ exports.stripeWebhook = onRequest(
               }
             }
           }
+        }
+      } else if (event.type === 'customer.subscription.updated') {
+        // Keeps a membership's "ends on" state in step when it is cancelled
+        // or resumed from the Stripe dashboard instead of the member's own
+        // button (manageSubscription). Installment plans manage their own
+        // status in invoice.paid above.
+        const sub = event.data.object;
+        const idx = await db.collection('stripeSubscriptions').doc(String(sub.id)).get();
+        const meta = idx.exists ? idx.data() : null;
+        if (meta && meta.uid && meta.sessionId && !meta.installments
+            && sub.status !== 'canceled' && sub.status !== 'incomplete_expired') {
+          const accessUntil = sub.cancel_at_period_end ? subscriptionPeriodEndMs(sub) : null;
+          await db.collection('users').doc(meta.uid).collection('purchases').doc(meta.sessionId).set({
+            status: sub.cancel_at_period_end ? 'canceling' : (sub.status === 'past_due' ? 'past_due' : 'active'),
+            cancelAt: accessUntil ? admin.firestore.Timestamp.fromMillis(accessUntil) : null,
+            statusUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
         }
       } else if (event.type === 'customer.subscription.deleted') {
         const sub = event.data.object;

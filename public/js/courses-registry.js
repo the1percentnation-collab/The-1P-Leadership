@@ -443,8 +443,8 @@ export const COURSES = [
     eyebrow: 'Membership · New Brief Monthly',
     category: 'Mindset & Personal Growth',
     price: 12,
-    pricing: { mode: 'subscription', interval: 'month' },
-    priceNote: 'Billed monthly. Every past brief stays open while you are a member.',
+    pricing: { mode: 'subscription', interval: 'month', annualPrice: 99 },
+    priceNote: 'Or $99 a year. End your membership anytime; every past brief stays open while you are a member.',
     contentSource: 'firestore',
     certificate: false,
     commitment: false,
@@ -466,6 +466,7 @@ export const COURSES = [
       'A toolkit with every brief: scripts, worksheets and checklists',
       'A saved workbook and key takeaways for each brief',
       'Access to every past brief while you are a member',
+      'Monthly or annual billing, and end it yourself anytime',
       'Read on desktop and mobile'
     ],
     description: [

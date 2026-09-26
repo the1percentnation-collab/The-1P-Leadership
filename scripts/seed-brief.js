@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Seeds The One Percent Brief (slug: one-percent-brief), the $12/month
 // membership that lives in the Courses section as one course:
-//   - the course doc: title, subscription pricing, and the flags that keep it
-//     off the certificate and commitment flows
+//   - the course doc: title, $12/month pricing with a $99/year option, and
+//     the flags that keep it off the certificate and commitment flows
 //   - one module per brief from ./brief-content (brief 1 published, the rest
 //     drafts so each month is released by flipping its toggle)
 //
@@ -52,7 +52,13 @@ async function main() {
   };
   if (blank(live.status)) course.status = 'coming-soon';
   if (typeof live.price !== 'number') course.price = 12;
-  if (!live.pricing) course.pricing = { mode: 'subscription', interval: 'month' };
+  if (!live.pricing) {
+    course.pricing = { mode: 'subscription', interval: 'month', annualPrice: 99 };
+  } else if (live.pricing.annualPrice === undefined) {
+    // Seeded before the annual plan existed. An explicit null (turned off in
+    // the course builder) is left alone.
+    course.pricing = { annualPrice: 99 };
+  }
 
   const kept = ['status', 'price', 'pricing'].filter((k) => !(k in course));
   if (kept.length) console.log(`Course: keeping your existing ${kept.join(', ')}`);
@@ -82,8 +88,9 @@ async function main() {
   console.log('\nSeeded. To open The One Percent Brief to members:');
   console.log('  1. Preview it: /courses.html?course=one-percent-brief&preview=1');
   console.log('  2. Set the course status to live in /manage-courses.html.');
-  console.log('     Checkout charges $12/month as a Stripe subscription. When a');
-  console.log('     subscription ends in Stripe, the member loses access.');
+  console.log('     Members choose $12/month or $99/year at checkout, and can end');
+  console.log('     their membership from the course page. Access runs to the');
+  console.log('     end of the period they paid for.');
   console.log('  3. Release one brief a month by publishing its module in');
   console.log('     /manage-courses.html. There is no automatic drip.');
 }
