@@ -89,7 +89,7 @@ const ADMIN_NAV = [
 
 // Owner-only controls, grouped on their own so they read as the owner's tools
 // rather than trailing the admin list. This is the full set the topbar's
-// "Owner ▾" dropdown used to carry; on shell pages the dropdown is gone.
+// "Owner ▾" dropdown used to carry; that dropdown no longer exists.
 const OWNER_NAV = [
   { key: 'beta-admin', href: '/beta-admin.html', label: 'Beta',          icon: 'badge', requires: 'owner' },
   { key: 'owner',      href: '/owner.html',      label: 'Owner Console', icon: 'admin', requires: 'owner' }
@@ -200,6 +200,60 @@ export function renderShell({ current = null, role = null, compact = null } = {}
   });
 
   wireSearch();
+}
+
+/**
+ * Every privileged destination the role may reach, Manage group first and
+ * Owner group second. Exported so the CRM shell, which keeps its own sidebar,
+ * lists exactly the same set instead of a copy that drifts.
+ */
+export function privilegedNav(role) {
+  return {
+    manage: ADMIN_NAV.filter((i) => roleAllows(i.requires, role)),
+    owner: OWNER_NAV.filter((i) => roleAllows(i.requires, role))
+  };
+}
+
+// Which rail item a console page is, from its URL. Console pages never passed
+// a `current` of their own, and the path is already the one true answer.
+function currentFromPath() {
+  const path = location.pathname.replace(/\/+$/, '');
+  const all = [...MAIN_NAV, ...ADMIN_NAV, ...OWNER_NAV, ...ACCOUNT_NAV];
+  const hit = all.find((i) => {
+    const href = i.href.replace(/\.html$/, '');
+    return path === i.href || path === href;
+  });
+  return hit ? hit.key : null;
+}
+
+/**
+ * Put a `.console-shell` page (admin, owner, the manage-* consoles, community,
+ * profile…) inside the Academy shell so staff get the same sidebar there as on
+ * the dashboard. That sidebar is where the Owner / Admin tools live now; the
+ * topbar dropdown that used to carry them is gone.
+ *
+ * Staff only. Members' console pages keep the layout they have: their nav is
+ * the topbar links, and a rail of member sections on top of a page's own
+ * sidebar (community's channel list) is more chrome than it earns.
+ *
+ * Idempotent: the first call wraps the page, later calls (once the
+ * authoritative role lands) just redraw the rail.
+ */
+export function mountConsoleShell(role) {
+  if (role !== 'admin' && role !== 'owner') return;
+  if (!document.getElementById('ak-sidebar')) {
+    const consoleEl = document.querySelector('.console-shell');
+    if (!consoleEl) return;
+    const shell = document.createElement('div');
+    shell.className = 'ak-shell ak-shell-console';
+    const side = document.createElement('aside');
+    side.className = 'ak-sidebar';
+    side.id = 'ak-sidebar';
+    consoleEl.parentNode.insertBefore(shell, consoleEl);
+    shell.appendChild(side);
+    shell.appendChild(consoleEl);
+  }
+  renderShell({ current: currentFromPath(), role });
 }
 
 // The top bar's search reads as a field but is a button: it opens the same

@@ -24,6 +24,7 @@
 import { auth, db, functions, firebaseReady } from './firebase.js';
 import { signOut } from './auth.js';
 import { cachedRoleInfo } from './roles.js';
+import { mountConsoleShell } from './academy-shell.js';
 import {
   collection, doc, query, where, orderBy, limit, onSnapshot, updateDoc
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -51,22 +52,13 @@ function roleAllows(roleRequired, role) {
   return true;
 }
 
-// Privileged destinations consolidated into a single dropdown so the topbar
-// stays uncluttered — one button instead of five separate red chips.
-const ADMIN_BUTTONS = [
-  { key: 'crm', href: '/crm.html', label: 'CRM', requires: 'admin' },
-  { key: 'store-admin', href: '/manage-store.html', label: 'Store', requires: 'admin' },
-  { key: 'courses-admin', href: '/manage-courses.html', label: 'Manage Courses', requires: 'admin' },
-  { key: 'library-admin', href: '/manage-library.html', label: 'Library', requires: 'admin' },
-  { key: 'products-admin', href: '/manage-products.html', label: 'Products', requires: 'admin' },
-  { key: 'announcements-admin', href: '/manage-announcements.html', label: 'Announcements', requires: 'admin' },
-  { key: 'affiliates-admin', href: '/manage-affiliates.html', label: 'Affiliates', requires: 'admin' },
-  { key: 'certification-admin', href: '/certification-admin.html', label: 'Certification', requires: 'admin' },
-  { key: 'admin', href: '/admin.html', label: 'Admin', requires: 'admin' },
-  // Beta runs on its own clock during a launch, so it earns a place here
-  // rather than only on the owner console it hangs off.
-  { key: 'beta-admin', href: '/beta-admin.html', label: 'Beta', requires: 'owner' },
-  { key: 'owner', href: '/owner.html', label: 'Owner', requires: 'owner' }
+// Privileged destinations live in the sidebar (academy-shell.js, and the CRM
+// shell's own rail), not the topbar. Their hrefs are still dropped from the
+// chip links so no page's topbar grows a second route to them.
+const PRIVILEGED_HREFS = [
+  '/crm.html', '/manage-store.html', '/manage-courses.html', '/manage-library.html',
+  '/manage-products.html', '/manage-announcements.html', '/manage-affiliates.html',
+  '/certification-admin.html', '/admin.html', '/beta-admin.html', '/owner.html'
 ];
 
 /**
@@ -78,13 +70,6 @@ export function defaultTopbarLinks({ role = null, currentPage = null } = {}) {
     .filter((l) => roleAllows(l.requires, role))
     .filter((l) => l.key !== currentPage)
     .map(({ href, label }) => ({ href, label }));
-}
-
-/** Privileged buttons (Admin/Owner) the current role may see, minus the active page. */
-function adminButtons({ role = null, currentPage = null } = {}) {
-  return ADMIN_BUTTONS
-    .filter((b) => roleAllows(b.requires, role))
-    .filter((b) => b.key !== currentPage);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -637,27 +622,16 @@ export function renderTopbar({
   const chip = document.getElementById(mountId);
   if (!chip || !user) return;
 
-  // Privileged destinations render as dedicated buttons, so drop them from the
-  // regular chip list to avoid a duplicate when the default link set is in use.
-  const adminButtonHrefs = ADMIN_BUTTONS.map((b) => b.href);
   const linkSet = (links || defaultTopbarLinks({ role, currentPage }))
-    .filter((l) => !adminButtonHrefs.includes(l.href));
+    .filter((l) => !PRIVILEGED_HREFS.includes(l.href));
   const linksHtml = linkSet.map((l) =>
     `<a class="user-chip-link" href="${escapeHtml(l.href)}">${escapeHtml(l.label)}</a>`
   ).join('');
 
-  // Pages inside the Academy shell carry every privileged destination in the
-  // sidebar's Manage / Owner groups, so the dropdown would only duplicate it.
-  // Pages without the shell (CRM, the manage-* consoles) keep the dropdown:
-  // it is their only route to the other tools.
-  const inShell = !!document.getElementById('ak-sidebar');
-  const adminBtns = inShell ? [] : adminButtons({ role, currentPage });
-  const dropLabel = role === 'owner' ? 'Owner&nbsp;&#9660;' : 'Admin&nbsp;&#9660;';
-  const adminHtml = adminBtns.length === 0 ? '' : `
-    <div class="c-admin-dropdown" id="c-admin-dropdown">
-      <button class="user-chip-admin c-admin-dropdown-toggle" id="c-admin-dropdown-btn" type="button">${dropLabel}</button>
-    </div>
-  `;
+  // Staff on a console page get the Academy sidebar, which is where every
+  // Owner / Admin tool lives. No-op for members and on pages that already
+  // have a rail (the shell pages draw their own; the CRM has its own).
+  mountConsoleShell(role);
 
   const displayName = (profile && profile.displayName) || user.displayName || user.email || '';
   const avatarObj = {
@@ -685,7 +659,6 @@ export function renderTopbar({
     : '';
 
   chip.innerHTML = `
-    ${adminHtml}
     ${linksHtml}
     ${searchHtml}
     ${bellHtml}
@@ -693,83 +666,6 @@ export function renderTopbar({
     <span class="user-chip-email">${escapeHtml(displayName)}</span>
     ${signOutHtml}
   `;
-
-  // Admin dropdown — menu lives on <body> so it's never clipped by overflow.
-  const ddBtn = chip.querySelector('#c-admin-dropdown-btn');
-  if (ddBtn && adminBtns.length) {
-    const MENU_ID = 'c-admin-dropdown-menu';
-
-    // Dismissal is bound/unbound explicitly rather than with `{ once: true }`.
-    // The old version removed the menu on the first document `touchend`
-    // ANYWHERE, including a tap that landed on a menu item. On touch devices
-    // `touchend` fires before `click`, so the <a> was torn out of the DOM
-    // before the browser dispatched its click — the menu closed and no
-    // navigation happened. That is why tapping CRM (and every other item) did
-    // nothing on mobile while working fine with a mouse.
-    const onDocDismiss = (e) => {
-      const m = document.getElementById(MENU_ID);
-      if (!m) { unbindDismiss(); return; }
-      // Taps inside the menu or on the toggle are handled by their own
-      // handlers — never treat them as an outside click.
-      if (m.contains(e.target) || ddBtn.contains(e.target)) return;
-      closeMenu();
-    };
-
-    const bindDismiss = () => {
-      document.addEventListener('click', onDocDismiss);
-      document.addEventListener('touchend', onDocDismiss, { passive: true });
-    };
-
-    const unbindDismiss = () => {
-      document.removeEventListener('click', onDocDismiss);
-      document.removeEventListener('touchend', onDocDismiss);
-    };
-
-    const closeMenu = () => {
-      unbindDismiss();
-      const m = document.getElementById(MENU_ID);
-      if (m) m.remove();
-    };
-
-    const openMenu = () => {
-      const rect = ddBtn.getBoundingClientRect();
-      const menu = document.createElement('div');
-      menu.className = 'c-admin-dropdown-menu';
-      menu.id = MENU_ID;
-      menu.style.top = (rect.bottom + 6) + 'px';
-      menu.style.right = Math.max(8, window.innerWidth - rect.right) + 'px';
-      // Keep the menu inside the viewport on short phone screens.
-      menu.style.maxHeight = Math.max(180, window.innerHeight - rect.bottom - 20) + 'px';
-      menu.style.overflowY = 'auto';
-      menu.innerHTML = adminBtns.map((b) =>
-        `<a class="c-admin-dropdown-item" href="${escapeHtml(b.href)}">${escapeHtml(b.label)}</a>`
-      ).join('');
-      document.body.appendChild(menu);
-
-      // Navigate explicitly on tap. Relying on the anchor's default click is
-      // fragile on mobile, where a scroll-cancelled or re-targeted click can
-      // be swallowed between touchend and click.
-      menu.querySelectorAll('.c-admin-dropdown-item').forEach((a) => {
-        a.addEventListener('click', (e) => {
-          const href = a.getAttribute('href');
-          if (!href) return;
-          e.preventDefault();
-          e.stopPropagation();
-          closeMenu();
-          window.location.assign(href);
-        });
-      });
-
-      // Bind dismissal after this tick so the opening tap doesn't immediately
-      // trigger it.
-      setTimeout(bindDismiss, 0);
-    };
-
-    ddBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (document.getElementById(MENU_ID)) { closeMenu(); } else { openMenu(); }
-    });
-  }
 
   if (withSignOut) {
     const out = chip.querySelector('#btn-signout');
@@ -813,13 +709,13 @@ export function renderTopbar({
 
 /**
  * First-paint topbar. Call this as soon as auth resolves, BEFORE any page data
- * loads — the topbar carries the Admin/Owner menu, which on most pages is the
- * only route into the consoles. Painting it last meant one slow or failed
- * Firestore read left the header empty and the admin area unreachable.
+ * loads — on console pages it mounts the staff sidebar, which is the only
+ * route into the other consoles. Painting it last meant one slow or failed
+ * Firestore read left the page without navigation.
  *
  * Role comes from the synchronous localStorage cache, so a returning admin gets
- * the menu immediately. Pass `role: null` (the default for a first-ever load) and
- * the menu simply appears when the page's own `renderTopbar` call lands with the
+ * the sidebar immediately. Pass `role: null` (the default for a first-ever load)
+ * and it simply appears when the page's own `renderTopbar` call lands with the
  * authoritative role. Safe to call twice — `renderTopbar` is idempotent.
  */
 export function renderTopbarEarly(opts = {}) {
