@@ -138,8 +138,13 @@ function renderContactHeader() {
   $('ct-stage').innerHTML = STAGES.map((s) =>
     `<option value="${s.id}" ${s.id === c.stage ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('');
   const opts = state.admins.length ? state.admins.map((a) =>
-    `<option value="${a.uid}" ${a.uid === c.ownerUid ? 'selected' : ''}>${escapeHtml(a.displayName || a.email || a.uid)}</option>`)
+    `<option value="${a.uid}" ${a.uid === c.ownerUid ? 'selected' : ''}>${escapeHtml(a.displayName || a.email || 'Unnamed admin')}</option>`)
     : [`<option value="${c.ownerUid || state.uid}">Me</option>`];
+  // An owner who is no longer an admin would otherwise show as whichever
+  // admin happens to be first, which reads as a real assignment.
+  if (state.admins.length && c.ownerUid && !state.admins.some((a) => a.uid === c.ownerUid)) {
+    opts.unshift(`<option value="${escapeHtml(c.ownerUid)}" selected>Former admin</option>`);
+  }
   $('ct-owner').innerHTML = opts.join('');
   $('ct-source').innerHTML = SOURCES.map((s) =>
     `<option value="${s}" ${c.source === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');

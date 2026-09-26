@@ -448,11 +448,34 @@ export async function listCompanyAdmins(companyId) {
     const members = await getDocs(collection(db, 'companies', companyId, 'members'));
     const byUid = {};
     members.docs.forEach((d) => { byUid[d.id] = d.data(); });
-    return adminUids.map((uid) => ({
+    const admins = adminUids.map((uid) => ({
       uid,
       displayName: (byUid[uid] && byUid[uid].displayName) || null,
       email: (byUid[uid] && byUid[uid].email) || null
     }));
+    // An admin can be on the company's adminUids with no members doc: the
+    // owner, and anyone made admin directly rather than through an invite.
+    // Without a fallback the Owner field shows their raw uid. Fill the gap
+    // from the signed-in user, then from users/{uid}, which the rules let an
+    // owner, the user themself, or a same-company admin read.
+    const me = auth && auth.currentUser;
+    await Promise.all(admins.map(async (a) => {
+      if (a.displayName || a.email) return;
+      if (me && me.uid === a.uid) {
+        a.displayName = me.displayName || null;
+        a.email = me.email || null;
+        if (a.displayName || a.email) return;
+      }
+      try {
+        const u = await getDoc(doc(db, 'users', a.uid));
+        if (u.exists()) {
+          const d = u.data() || {};
+          a.displayName = d.displayName || d.name || null;
+          a.email = d.email || null;
+        }
+      } catch (err) { /* not readable by this caller; the label falls back */ }
+    }));
+    return admins;
   } catch (e) {
     console.warn('[crm] listCompanyAdmins failed', e);
     return [];
