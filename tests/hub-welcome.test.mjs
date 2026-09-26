@@ -126,12 +126,20 @@ ok('every stop has a destination and a reason to open it', () => {
 
 ok('the tour covers the whole member rail', () => {
   const shell = fs.readFileSync(new URL('../public/js/academy-shell.js', import.meta.url), 'utf8');
-  const mainNav = shell.slice(shell.indexOf('const MAIN_NAV'), shell.indexOf('const ADMIN_NAV'));
+  // MAIN_NAV runs until the next top-level declaration, whatever it is named,
+  // so renaming the staff list below it cannot widen the slice.
+  const start = shell.indexOf('const MAIN_NAV');
+  assert.ok(start !== -1, 'MAIN_NAV not found');
+  const end = shell.indexOf('\n];', start);
+  const mainNav = shell.slice(start, end);
   const keys = [...mainNav.matchAll(/key: '([a-z-]+)'/g)].map((m) => m[1]);
-  assert.ok(keys.length > 0, 'MAIN_NAV not found');
+  assert.ok(keys.length > 0, 'MAIN_NAV has no items');
   for (const key of keys) {
     assert.ok(TOUR_STOPS.some((s) => s.key === key), `tour is missing the ${key} tab`);
   }
+  // Same order as the rail, so the tour walks down it rather than hopping.
+  const tourOrder = TOUR_STOPS.map((s) => s.key).filter((k) => keys.includes(k));
+  assert.deepEqual(tourOrder, keys, 'tour order does not match the rail');
 });
 
 ok('step indexes are clamped to a real stop', () => {

@@ -129,20 +129,20 @@ export const TOUR_STOPS = [
     blurb: 'The books that come with your courses. Read on any device, and it opens to the exact page you left off on.'
   },
   {
-    key: 'community', icon: 'community', label: 'Community', href: '/community.html',
-    blurb: 'Where the work gets discussed. Post a win, ask a question, answer one. Posting is also how you earn points and climb the leaderboard.'
-  },
-  {
     key: 'resources', icon: 'resources', label: 'Resources', href: '/resources.html',
     blurb: 'Templates, worksheets and downloads that go with the courses. Grab what you need, when you need it.'
   },
   {
-    key: 'store', icon: 'store', label: 'Store', href: '/store.html',
-    blurb: 'Books, programs and tools from The One Percent, including anything open for pre-order.'
+    key: 'community', icon: 'community', label: 'Community', href: '/community.html',
+    blurb: 'Where the work gets discussed. Post a win, ask a question, answer one. Posting is also how you earn points and climb the leaderboard.'
   },
   {
     key: 'events', icon: 'events', label: 'Events', href: '/events',
     blurb: 'Live calls, workshops and sessions. Register here and the ones you are booked on show up on your dashboard.'
+  },
+  {
+    key: 'store', icon: 'store', label: 'Store', href: '/store.html',
+    blurb: 'Books, programs and tools from The One Percent, including anything open for pre-order.'
   },
   {
     key: 'profile', icon: 'profile', label: 'Profile', href: '/profile.html',
