@@ -50,7 +50,11 @@ const ICONS = {
   site: '<circle cx="12" cy="12" r="8.2"/><path d="M3.8 12h16.4"/><path d="M12 3.8a13 13 0 0 1 0 16.4"/><path d="M12 3.8a13 13 0 0 0 0 16.4"/>',
   logout: '<path d="M14.5 8V5.5a1.5 1.5 0 0 0-1.5-1.5H6.5A1.5 1.5 0 0 0 5 5.5v13A1.5 1.5 0 0 0 6.5 20H13a1.5 1.5 0 0 0 1.5-1.5V16"/><path d="M10 12h10"/><path d="m17 9 3 3-3 3"/>',
   collapse: '<path d="M14.5 6.5 9 12l5.5 5.5"/>',
-  search: '<circle cx="11" cy="11" r="6.2"/><path d="m15.6 15.6 4 4"/>'
+  search: '<circle cx="11" cy="11" r="6.2"/><path d="m15.6 15.6 4 4"/>',
+  tag: '<path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0Z"/><circle cx="8" cy="8" r="1.4"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3.1-3.1a4 4 0 0 0-5.7-5.7l-1.2 1.2"/><path d="M14 10a4 4 0 0 0-5.7 0l-3.1 3.1a4 4 0 0 0 5.7 5.7l1.2-1.2"/>',
+  flask: '<path d="M9.5 3.5h5"/><path d="M10.5 3.5v5.2L5 18.4a1.4 1.4 0 0 0 1.2 2.1h11.6a1.4 1.4 0 0 0 1.2-2.1l-5.5-9.7V3.5"/><path d="M7.4 14.5h9.2"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="m10.9 12.1 8.6-8.6"/><path d="m16.5 6.5 2.5 2.5"/><path d="m14 9 2 2"/>'
 };
 
 // Exported so the first-login tour can label each tab with the exact icon the
@@ -62,37 +66,41 @@ export function navIcon(name) {
 }
 
 // The member's own sections. `key` matches the `current` a page passes in.
+// Ordered by what a member does: learn, then connect, then buy.
 const MAIN_NAV = [
   { key: 'dashboard', href: '/dashboard.html', label: 'Dashboard', icon: 'dashboard' },
   { key: 'courses',   href: '/courses.html',   label: 'Courses',   icon: 'courses' },
   { key: 'library',   href: '/library',        label: 'Library',   icon: 'library' },
-  { key: 'community', href: '/community.html', label: 'Community', icon: 'community' },
   { key: 'resources', href: '/resources.html', label: 'Resources', icon: 'resources' },
-  { key: 'store',     href: '/store.html',     label: 'Store',     icon: 'store' },
-  { key: 'events',    href: '/events',         label: 'Events',    icon: 'events' }
+  { key: 'community', href: '/community.html', label: 'Community', icon: 'community' },
+  { key: 'events',    href: '/events',         label: 'Events',    icon: 'events' },
+  { key: 'store',     href: '/store.html',     label: 'Store',     icon: 'store' }
 ];
 
-// Privileged destinations. These used to live behind an "Admin ▾" dropdown in
-// the old header; the rail has room to just show them, which is one click less
-// and makes it obvious at a glance what an owner can reach.
-const ADMIN_NAV = [
-  { key: 'crm',                  href: '/crm.html',                 label: 'CRM',           icon: 'crm',       requires: 'admin' },
-  { key: 'store-admin',          href: '/manage-store.html',        label: 'Manage Store',   icon: 'store',     requires: 'admin' },
-  { key: 'courses-admin',        href: '/manage-courses.html',      label: 'Manage Courses', icon: 'courses',   requires: 'admin' },
-  { key: 'library-admin',        href: '/manage-library.html',      label: 'Manage Library', icon: 'library',   requires: 'admin' },
-  { key: 'products-admin',       href: '/manage-products.html',     label: 'Products',      icon: 'store',     requires: 'admin' },
-  { key: 'announcements-admin',  href: '/manage-announcements.html', label: 'Announcements', icon: 'megaphone', requires: 'admin' },
-  { key: 'affiliates-admin',     href: '/manage-affiliates.html',   label: 'Affiliates',    icon: 'community', requires: 'admin' },
-  { key: 'certification-admin',  href: '/certification-admin.html', label: 'Certification', icon: 'badge',     requires: 'admin' },
-  { key: 'admin',                href: '/admin.html',               label: 'Admin',         icon: 'admin',     requires: 'admin' }
-];
-
-// Owner-only controls, grouped on their own so they read as the owner's tools
-// rather than trailing the admin list. This is the full set the topbar's
-// "Owner ▾" dropdown used to carry; that dropdown no longer exists.
-const OWNER_NAV = [
-  { key: 'beta-admin', href: '/beta-admin.html', label: 'Beta',          icon: 'badge', requires: 'owner' },
-  { key: 'owner',      href: '/owner.html',      label: 'Owner Console', icon: 'admin', requires: 'owner' }
+// Staff tools, grouped by the job they serve rather than listed in the order
+// they were built. One flat list of nine read as a wall; four short groups can
+// be scanned. Each item carries its own `requires`, so an admin sees every
+// group but the owner-only rows, and an empty group is not drawn at all.
+const STAFF_GROUPS = [
+  { label: 'Growth', items: [
+    { key: 'crm',                 href: '/crm.html',                  label: 'CRM',            icon: 'crm',       requires: 'admin' },
+    { key: 'affiliates-admin',    href: '/manage-affiliates.html',    label: 'Affiliates',     icon: 'link',      requires: 'admin' },
+    { key: 'announcements-admin', href: '/manage-announcements.html', label: 'Announcements',  icon: 'megaphone', requires: 'admin' }
+  ] },
+  { label: 'Content', items: [
+    { key: 'courses-admin',       href: '/manage-courses.html',       label: 'Manage Courses', icon: 'courses',   requires: 'admin' },
+    { key: 'library-admin',       href: '/manage-library.html',       label: 'Manage Library', icon: 'library',   requires: 'admin' },
+    { key: 'certification-admin', href: '/certification-admin.html',  label: 'Certification',  icon: 'badge',     requires: 'admin' }
+  ] },
+  { label: 'Commerce', items: [
+    { key: 'store-admin',         href: '/manage-store.html',         label: 'Manage Store',   icon: 'store',     requires: 'admin' },
+    { key: 'products-admin',      href: '/manage-products.html',      label: 'Products',       icon: 'tag',       requires: 'admin' }
+  ] },
+  { label: 'Admin', items: [
+    { key: 'admin',               href: '/admin.html',                label: 'Admin Console',  icon: 'admin',     requires: 'admin' },
+    { key: 'beta-admin',          href: '/beta-admin.html',           label: 'Beta',           icon: 'flask',     requires: 'owner' },
+    { key: 'owner',               href: '/owner.html',                label: 'Owner Console',  icon: 'key',       requires: 'owner' }
+  ] }
 ];
 
 const ACCOUNT_NAV = [
@@ -129,8 +137,7 @@ function group(label, items, current) {
 }
 
 function sidebarHtml({ current, role }) {
-  const admin = ADMIN_NAV.filter((i) => roleAllows(i.requires, role));
-  const owner = OWNER_NAV.filter((i) => roleAllows(i.requires, role));
+  const staff = privilegedNav(role);
   return `
     <a class="ak-brand" href="/dashboard.html" aria-label="The One Percent Academy">
       <img class="ak-brand-mark" src="/assets/academy-logo.png" alt="">
@@ -141,9 +148,8 @@ function sidebarHtml({ current, role }) {
     </a>
 
     <nav class="ak-nav" aria-label="Academy sections">
-      ${group('Overview', MAIN_NAV, current)}
-      ${group('Manage', admin, current)}
-      ${group('Owner', owner, current)}
+      ${group('Academy', MAIN_NAV, current)}
+      ${staff.map((g) => group(g.label, g.items, current)).join('')}
       ${group('Account', ACCOUNT_NAV, current)}
       <div class="ak-nav-group ak-nav-foot">
         <button class="ak-nav-item ak-signout" type="button" id="ak-signout" title="Sign out">
@@ -203,22 +209,21 @@ export function renderShell({ current = null, role = null, compact = null } = {}
 }
 
 /**
- * Every privileged destination the role may reach, Manage group first and
- * Owner group second. Exported so the CRM shell, which keeps its own sidebar,
- * lists exactly the same set instead of a copy that drifts.
+ * The staff groups this role may see, each filtered to its allowed rows and
+ * empty groups dropped. Exported so the CRM shell, which keeps its own
+ * sidebar, lists exactly the same set in the same order.
  */
 export function privilegedNav(role) {
-  return {
-    manage: ADMIN_NAV.filter((i) => roleAllows(i.requires, role)),
-    owner: OWNER_NAV.filter((i) => roleAllows(i.requires, role))
-  };
+  return STAFF_GROUPS
+    .map((g) => ({ label: g.label, items: g.items.filter((i) => roleAllows(i.requires, role)) }))
+    .filter((g) => g.items.length);
 }
 
 // Which rail item a console page is, from its URL. Console pages never passed
 // a `current` of their own, and the path is already the one true answer.
 function currentFromPath() {
   const path = location.pathname.replace(/\/+$/, '');
-  const all = [...MAIN_NAV, ...ADMIN_NAV, ...OWNER_NAV, ...ACCOUNT_NAV];
+  const all = [...MAIN_NAV, ...STAFF_GROUPS.flatMap((g) => g.items), ...ACCOUNT_NAV];
   const hit = all.find((i) => {
     const href = i.href.replace(/\.html$/, '');
     return path === i.href || path === href;

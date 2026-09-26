@@ -11701,9 +11701,16 @@ a.cp-crumb:hover { color: var(--white); }
   line-height: 1;
 }
 
-.ak-nav { display: flex; flex-direction: column; gap: 18px; flex: 1; }
+.ak-nav { display: flex; flex-direction: column; gap: 14px; flex: 1; }
 
 .ak-nav-group { display: flex; flex-direction: column; gap: 2px; }
+
+/* A hairline between categories, so the rail reads as sections rather than
+   one long list. The foot group draws its own heavier rule below. */
+.ak-nav-group + .ak-nav-group:not(.ak-nav-foot) {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
 
 /* Pins the sign-out group to the bottom of the rail, whatever the nav
    above it adds up to — an owner sees nine more items than a member. */
@@ -11711,11 +11718,13 @@ a.cp-crumb:hover { color: var(--white); }
 
 .ak-nav-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 10px;
+  line-height: 14px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--gray-mid);
-  padding: 0 10px 8px;
+  color: var(--gray-light);
+  padding: 0 10px 6px;
+  white-space: nowrap;
 }
 
 .ak-nav-item {
@@ -11820,11 +11829,10 @@ a.cp-crumb:hover { color: var(--white); }
 .ak-shell.is-compact .ak-nav-item { justify-content: flex-start; padding: 11px 17px; gap: 12px; }
 .ak-shell.is-compact .ak-collapse { align-self: flex-start; margin: 6px 0 0 11.5px; transform: rotate(180deg); }
 
-/* The group headings stay collapsed in both states. Each is ~20px tall, so
-   revealing all three would shove every icon down ~60px as the rail opens —
-   a vertical lurch on every hover. The 18px gap between groups already reads
-   as a division. */
-.ak-shell.is-compact .ak-nav-label { display: none; }
+/* The group headings keep their height in both states and only fade, the
+   same way the item labels do. Hiding them outright would shove every icon
+   down ~20px per group as the rail opens, a vertical lurch on every hover;
+   collapsed, the hairline between groups still marks each category. */
 
 /* display cannot transition, so the labels are laid out and merely transparent,
    clipped by the sidebar's own overflow-x. `visibility` earns its place beside
@@ -11836,6 +11844,7 @@ a.cp-crumb:hover { color: var(--white); }
    These are the EXIT transitions — fast and undelayed, so the text is gone
    before the rail narrows past it. The hover rule supplies the delayed enter. */
 .ak-shell.is-compact .ak-nav-text,
+.ak-shell.is-compact .ak-nav-label,
 .ak-shell.is-compact .ak-brand-text {
   opacity: 0;
   visibility: hidden;
@@ -11860,6 +11869,7 @@ a.cp-crumb:hover { color: var(--white); }
 }
 
 .ak-shell.is-compact .ak-sidebar:focus-within .ak-nav-text,
+.ak-shell.is-compact .ak-sidebar:focus-within .ak-nav-label,
 .ak-shell.is-compact .ak-sidebar:focus-within .ak-brand-text {
   opacity: 1;
   visibility: visible;
@@ -11875,6 +11885,7 @@ a.cp-crumb:hover { color: var(--white); }
   }
 
   .ak-shell.is-compact .ak-sidebar:hover .ak-nav-text,
+  .ak-shell.is-compact .ak-sidebar:hover .ak-nav-label,
   .ak-shell.is-compact .ak-sidebar:hover .ak-brand-text {
     opacity: 1;
     visibility: visible;
@@ -11887,6 +11898,7 @@ a.cp-crumb:hover { color: var(--white); }
 @media (prefers-reduced-motion: reduce) {
   .ak-shell.is-compact .ak-sidebar,
   .ak-shell.is-compact .ak-nav-text,
+  .ak-shell.is-compact .ak-nav-label,
   .ak-shell.is-compact .ak-brand-text { transition: none; }
 }
 
@@ -11989,7 +12001,15 @@ a.cp-crumb:hover { color: var(--white); }
      and an off-screen one is at least still reachable. */
   .ak-nav-item { flex-shrink: 0; }
   /* Group headings and the collapse toggle have no meaning in a strip. */
-  .ak-nav-label, .ak-collapse { display: none; }
+  .ak-nav-label, .ak-collapse,
+  .ak-shell.is-compact .ak-nav-label { display: none; }
+  /* In the strip a vertical hairline divides the categories instead. */
+  .ak-nav-group + .ak-nav-group:not(.ak-nav-foot) {
+    border-top: 0;
+    padding-top: 0;
+    border-left: 1px solid var(--border);
+    padding-left: 6px;
+  }
   .ak-nav-foot { margin: 0; padding: 0; border: 0; }
   .ak-nav-item { padding: 9px 12px; }
   .ak-nav-item.is-active { box-shadow: inset 0 -2px 0 var(--red); }
