@@ -12,6 +12,9 @@ import {
   serverTimestamp, arrayUnion, arrayRemove
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
+import { normalizePhone } from './phone.js';
+
+export { normalizePhone };
 
 export const STAGES = [
   { id: 'new',         label: 'New',         color: '#A0A0A0' },
@@ -226,7 +229,8 @@ export async function createContact(companyId, data = {}) {
     // Firestore equality is case-sensitive, so a capitalized address typed in
     // here used to be invisible to all of them and collect a duplicate.
     email: data.email ? data.email.trim().toLowerCase() : null,
-    phone: data.phone ? data.phone.trim() : null,
+    // E.164, so an inbound text or call from this number finds this record.
+    phone: normalizePhone(data.phone),
     companyName: data.companyName ? data.companyName.trim() : null,
     source: cleanSource(data.source) || 'Other',
     sourceDetail: cleanSourceDetail(data.sourceDetail),
@@ -272,6 +276,7 @@ export async function updateContact(companyId, contactId, patch = {}) {
   // Same normalization as createContact — an edit must not reintroduce the
   // mixed-case address that breaks email matching.
   if (typeof clean.email === 'string') clean.email = clean.email.trim().toLowerCase();
+  if (clean.phone !== undefined) clean.phone = normalizePhone(clean.phone);
   if (clean.source !== undefined) clean.source = cleanSource(clean.source) || 'Other';
   if (clean.sourceDetail !== undefined) clean.sourceDetail = cleanSourceDetail(clean.sourceDetail);
   clean.updatedAt = serverTimestamp();

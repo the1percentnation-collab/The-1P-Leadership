@@ -1074,7 +1074,7 @@ exports.importContacts = onCall(async (request) => {
       email,
       emailRaw,
       name: (r.name || '').toString().trim().slice(0, 120),
-      phone: (r.phone || '').toString().trim().slice(0, 40),
+      phone: normalizePhone((r.phone || '').toString().slice(0, 40)) || '',
       companyName: (r.companyName || '').toString().trim().slice(0, 120),
       source: (r.source || '').toString().trim().slice(0, 40) || 'Import',
       stage: IMPORT_STAGES.includes(r.stage) ? r.stage : 'new',
@@ -2198,6 +2198,12 @@ exports.unsubscribe = onRequest({ cors: true }, async (req, res) => {
       });
     } catch (e) { /* best-effort */ }
 
+    // An opt-out is also an exit: a sequence mid-flight would otherwise send
+    // its next email step to someone who just asked not to be emailed.
+    try {
+      await stopEnrollmentsForContact(db, companyId, contactId, 'unsubscribed from email');
+    } catch (e) { console.warn('[unsubscribe] stop enrollments failed:', e && e.message); }
+
     return res.status(200).json({ ok: true });
   } catch (err) {
     console.error('[unsubscribe] failed:', err && err.message);
@@ -2649,7 +2655,7 @@ exports.registerForEvent = onCall(async (request) => {
   const eventId = (data.eventId || '').toString().trim();
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 200);
-  const phone = (data.phone || '').toString().trim().slice(0, 40);
+  const phone = normalizePhone((data.phone || '').toString().slice(0, 40)) || '';
   const address = (data.address || '').toString().trim().slice(0, 240);
   const notes = (data.notes || '').toString().trim().slice(0, 800);
 
@@ -2793,6 +2799,10 @@ async function resolveCompanyForSource(db, sourceKey) {
 async function upsertCrmContact(db, companyId, { name, email, phone, address, companyName, source, tags, contactId, memberUid }) {
   const colRef = db.collection('companies').doc(companyId).collection('contacts');
   const FV = admin.firestore.FieldValue;
+  // Stored in E.164, because that is what the inbound SMS and voice
+  // webhooks match on. A raw "(405) 555-0123" here and a "+14055550123"
+  // arriving by text used to be two contacts.
+  phone = normalizePhone(phone);
   let ref = null;
   if (contactId) {
     try {
@@ -2806,10 +2816,23 @@ async function upsertCrmContact(db, companyId, { name, email, phone, address, co
       if (!snap.empty) ref = snap.docs[0].ref;
     } catch (e) {}
   }
+  // A lead who texted or called first exists as a phone-only contact with no
+  // email. When they later fill in a form with that phone, claim that record
+  // rather than opening a second one. Only email-less matches are merged, so
+  // two people sharing a number never collapse into one.
+  let claimedPhoneOnly = false;
+  if (!ref && phone) {
+    try {
+      const snap = await colRef.where('phone', '==', phone).limit(5).get();
+      const orphan = snap.docs.find((d) => !d.data().email);
+      if (orphan) { ref = orphan.ref; claimedPhoneOnly = true; }
+    } catch (e) {}
+  }
 
   if (ref) {
     const patch = { updatedAt: FV.serverTimestamp(), lastActivityAt: FV.serverTimestamp() };
     if (name) patch.name = name;
+    if (claimedPhoneOnly && email) patch.email = email;
     if (phone) patch.phone = phone;
     if (address) patch.address = address;
     if (companyName) patch.companyName = companyName;
@@ -3102,7 +3125,7 @@ exports.submitOnboarding = onCall({ secrets: [sendgridKey] }, async (request) =>
   const data = request.data || {};
   const s = (v, n) => (v || '').toString().trim().slice(0, n);
   const displayName = s(data.displayName, 120);
-  const phone = s(data.phone, 40);
+  const phone = normalizePhone(s(data.phone, 40)) || '';
   const address = s(data.address, 240);
   const company = s(data.company, 120);
   const industry = s(data.industry, 80);
@@ -3399,6 +3422,9 @@ async function applyEmailEvent(db, ev, bump, { source }) {
           tags: FV.arrayUnion('Unsubscribed'),
           updatedAt: FV.serverTimestamp()
         }, { merge: true });
+        // Same exit the unsubscribe link applies: no further sequence email
+        // to someone who opted out in their mail client or reported spam.
+        await stopEnrollmentsForContact(db, companyId, d.id, `email ${type}`).catch(() => {});
       }
     } catch (e) {
       console.warn('[emailEvent] opt-out suppression failed:', e && e.message);
@@ -6580,7 +6606,7 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
     await recordBetaApplication(db, {
       name: addName,
       email,
-      phone: String(data.phone || '').trim().slice(0, 40) || null,
+      phone: normalizePhone(String(data.phone || '').slice(0, 40)),
       fields: note ? { why: note } : {},
       crmContactId: null
     }, { source: 'manual', addedBy: actor, courseSlugs: normalizeSlugList(data.slugs || data.slug, []) });
@@ -6651,7 +6677,7 @@ exports.setBetaTesterStatus = onCall({ secrets: [sendgridKey] }, async (request)
     await recordBetaApplication(db, {
       name: String(data.name || '').trim().slice(0, 120),
       email,
-      phone: String(data.phone || '').trim().slice(0, 40) || null,
+      phone: normalizePhone(String(data.phone || '').slice(0, 40)),
       fields: {},
       crmContactId: String(data.crmContactId || '').trim() || null
     }, { source: 'crm', addedBy: actor, courseSlugs: normalizeSlugList(data.slugs || data.slug, []) });
@@ -10239,24 +10265,103 @@ async function executeSequenceStep(db, companyId, enrollment, step, seq) {
 
   if (step.channel === 'email') {
     if (!contact.email) return 'skipped: no email';
-    if (contact.emailUnsubscribed === true || contact.unsubscribed === true) return 'skipped: unsubscribed';
+    // The same suppression the unsubscribe link, the provider's unsubscribe
+    // event, the 1-on-1 composer and the campaign sender all agree on. This
+    // branch used to test `emailUnsubscribed` / `unsubscribed`, two fields
+    // nothing ever wrote, so a lead who clicked Unsubscribe on a campaign
+    // kept receiving the drip.
+    if (isEmailSuppressed(contact)) return 'skipped: unsubscribed';
     if (!body) return 'skipped: empty body';
     if (!emailConfigured()) return 'skipped: email not configured';
-    const fromName = (ownerDoc && (ownerDoc.displayName || ownerDoc.name)) || FROM_NAME_DEFAULT;
-    await sendEmail({
+
+    // Same identity as the 1-on-1 composer: the company's sending address,
+    // the owner's name so it still reads as personal, the per-contact
+    // reply+ address so a reply lands on this card and stops the sequence,
+    // and the company signature.
+    const identity = await getCompanyEmailIdentity(db, companyId);
+    const fromName = (ownerDoc && (ownerDoc.displayName || ownerDoc.name)) || identity.fromName || FROM_NAME_DEFAULT;
+    const replyAddress = replyAddressFor(companyId, contact.id) || identity.replyTo || REPLY_TO;
+    const finalSubject = subject || `A note from ${fromName}`;
+    let finalText = body;
+    let finalHtml = textToHtml(body);
+    if (identity.signature) {
+      finalText = `${finalText}\n\n--\n${identity.signature}`;
+      finalHtml = `${finalHtml}<br/><br/>--<br/>${textToHtml(identity.signature)}`;
+    }
+
+    // Automated mail is bulk mail. It carries the same working opt-out the
+    // campaign sender does: a per-contact link in the footer plus the
+    // List-Unsubscribe headers mail clients surface as a button.
+    const unsubToken = await ensureUnsubToken(cRef, contact.unsubToken);
+    const unsubLink = unsubscribeUrl(companyId, contact.id, unsubToken);
+    finalHtml = `${finalHtml}
+<hr style="margin:28px 0 14px;border:none;border-top:1px solid #ddd;">
+<p style="font-size:12px;color:#777;line-height:1.6;">
+  You are receiving this because you signed up with The One Percent Nation.<br>
+  <a href="${unsubLink}" style="color:#777;">Unsubscribe from these emails</a>.
+</p>`;
+    finalText = `${finalText}
+
+--
+You are receiving this because you signed up with The One Percent Nation.
+Unsubscribe: ${unsubLink}`;
+
+    // The message lives in contacts/{id}/emails like every other email, so
+    // it shows in the thread with its body, delivery events attribute to it
+    // through emailId, and a reply threads onto it.
+    const emailRef = cRef.collection('emails').doc();
+    const sent = await sendEmail({
       to: contact.email,
-      from: { email: FROM_EMAIL, name: fromName },
-      replyTo: (ownerDoc && ownerDoc.email) || REPLY_TO,
-      subject: subject || `A note from ${fromName}`,
-      text: body,
-      html: textToHtml(body)
+      from: { email: identity.fromEmail || FROM_EMAIL, name: fromName },
+      replyTo: replyAddress,
+      subject: finalSubject,
+      text: finalText,
+      html: finalHtml,
+      headers: {
+        'List-Unsubscribe': `<${unsubLink}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+      },
+      customArgs: { type: 'contact', companyId, contactId: contact.id, emailId: emailRef.id }
     });
-    await cRef.collection('activities').add({
-      type: 'manual_email', description: `Sequence email (${seq.name}): ${subject || body.slice(0, 80)}`,
-      actorUid: 'system', actorName: 'Automation', createdAt: FV.serverTimestamp(),
-      meta: { sequenceId: enrollment.sequenceId, step: step.order }
-    });
-    await cRef.set(lastContactedFields('email', 'out'), { merge: true });
+    // The message is out. Everything below is bookkeeping, and a failure here
+    // must not bubble up: processDueEnrollments treats a throw as "retry this
+    // step in an hour", which would send the same email twice.
+    try {
+      const snippet = finalText.length > 200 ? finalText.slice(0, 200) + '…' : finalText;
+      await emailRef.set({
+        direction: 'out',
+        threadKey: emailRef.id,
+        subject: finalSubject,
+        bodyText: finalText,
+        bodyHtml: finalHtml,
+        snippet,
+        fromEmail: identity.fromEmail || FROM_EMAIL,
+        fromName,
+        toEmail: contact.email,
+        replyTo: replyAddress,
+        messageId: (sent && sent.messageId) || null,
+        inReplyTo: null,
+        status: 'sent',
+        read: true,
+        sentByUid: 'sequence',
+        sentByName: `Automation (${seq.name})`,
+        sequenceId: enrollment.sequenceId,
+        createdAt: FV.serverTimestamp()
+      });
+      await cRef.collection('activities').add({
+        type: 'email_sent', description: `Sequence email (${seq.name}): ${finalSubject.slice(0, 80)}`,
+        actorUid: 'system', actorName: 'Automation', createdAt: FV.serverTimestamp(),
+        meta: { sequenceId: enrollment.sequenceId, step: step.order, subject: finalSubject, emailId: emailRef.id, threadKey: emailRef.id }
+      });
+      await cRef.set({
+        lastEmailAt: FV.serverTimestamp(),
+        lastActivityAt: FV.serverTimestamp(),
+        ...lastContactedFields('email', 'out')
+      }, { merge: true });
+    } catch (e) {
+      console.warn('[tick] sequence email sent but bookkeeping failed', contact.id, e && e.message);
+      return 'email sent (record incomplete)';
+    }
     return 'email sent';
   }
 
@@ -10926,7 +11031,7 @@ exports.registerProductInterest = onCall(async (request) => {
   const productId = (data.productId || '').toString().trim();
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
-  const phone = (data.phone || '').toString().trim().slice(0, 40) || null;
+  const phone = normalizePhone((data.phone || '').toString().slice(0, 40));
   const consent = !!data.consent;
   if (!productId) throw new HttpsError('invalid-argument', 'Missing product.');
   if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
@@ -13992,7 +14097,7 @@ exports.registerServiceInterest = onCall(async (request) => {
 
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
-  const phone = (data.phone || '').toString().trim().slice(0, 40) || null;
+  const phone = normalizePhone((data.phone || '').toString().slice(0, 40));
   const businessName = (data.businessName || '').toString().trim().slice(0, 120) || null;
   const notes = (data.notes || '').toString().trim().slice(0, 500) || null;
   const parsedConsent = parseFormConsent(data);
@@ -14263,7 +14368,7 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
 
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
-  const phone = (data.phone || '').toString().trim().slice(0, 40) || null;
+  const phone = normalizePhone((data.phone || '').toString().slice(0, 40));
   const parsedConsent = parseFormConsent(data);
   const consent = parsedConsent.consent;
   if (!name) throw new HttpsError('invalid-argument', 'Please enter your name.');

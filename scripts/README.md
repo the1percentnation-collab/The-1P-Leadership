@@ -48,6 +48,8 @@ account key. Move them onto `lib/init.js` before running any of them.
 | `upload-book.js` | Uploads an EPUB (and cover) to the digital library and writes `books/{id}`. See `docs/digital-library.md`. | **Yes**, once the final EPUB is ready, and again for each new edition. |
 | `setup-digital-library.js` | Makes the I Can't bundle digital, creates the paperback option, and adds the book to everyone already enrolled. | **Yes, once** after the first upload. Dry run by default; `--apply` writes. |
 | `seed-booking.js` | Writes `config/booking` with the Zoom scheduler URL. | Optional. `/book-a-call.html` already works from a hardcoded fallback. |
+| `backfill-last-contacted.js` | Derives `lastContactedAt` for every existing contact from its real email, text and call history. | **Yes, once.** Server-side "who has gone cold" queries under-report until it has run. Dry run with `--dry-run` first. |
+| `backfill-phone-e164.js` | Rewrites every contact's `phone` in E.164 and lists numbers shared by more than one contact. | **Yes, once.** Until it runs, a text or call from a lead saved as "(405) 555-0123" opens a duplicate contact. Dry run with `--dry-run` first. |
 | `seed-resale-products.js` | Creates the A.L.I.G.N. client workbook, assessment and six-week program as draft products. | Not yet. They have no content or final pricing. |
 | `seed-financial-partner.js` | Creates the financial services partner company and its waitlist products. | Not yet. The partner name is still a placeholder. |
 
