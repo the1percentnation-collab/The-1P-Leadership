@@ -17,7 +17,8 @@ import {
   initializeTestEnvironment, assertSucceeds, assertFails
 } from '@firebase/rules-unit-testing';
 import {
-  doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, getDocs, serverTimestamp
+  doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, getDocs, serverTimestamp,
+  arrayUnion, arrayRemove
 } from 'firebase/firestore';
 
 const env = await initializeTestEnvironment({
@@ -386,6 +387,29 @@ await t('member CANNOT write a commitment directly (callable only)',
 
 await t('member CANNOT read someone else\'s course commitment',
   () => assertFails(getDoc(doc(emp, 'users/solo/courseCommitments/icant'))));
+
+// ── CRM lead sources (crmSources on the company doc) and Source details ──
+// The contact card's "+ Add a new source" and the CRM Settings card write
+// straight to the company doc from the browser, so these pin who may.
+await t('company admin CAN add a custom lead source',
+  () => assertSucceeds(updateDoc(doc(adm, 'companies/co1'), { crmSources: arrayUnion('Podcast') })));
+await t('company admin CAN remove a custom lead source',
+  () => assertSucceeds(updateDoc(doc(adm, 'companies/co1'), { crmSources: arrayRemove('Podcast') })));
+await t('company admin CANNOT slip an adminUids change in with a source',
+  () => assertFails(updateDoc(doc(adm, 'companies/co1'), { crmSources: arrayUnion('X'), adminUids: ['adm', 'emp'] })));
+await t('company member (not admin) CANNOT add a lead source',
+  () => assertFails(updateDoc(doc(emp, 'companies/co1'), { crmSources: arrayUnion('Spam') })));
+await t('admin of another company CANNOT add a lead source here',
+  () => assertFails(updateDoc(doc(env.authenticatedContext('other').firestore(), 'companies/co1'), { crmSources: arrayUnion('Spam') })));
+await t('company admin CAN set a custom source and source details on a contact',
+  () => assertSucceeds(updateDoc(doc(adm, 'companies/co1/contacts/c1'), {
+    source: 'Chamber mixer', sourceDetail: 'Referred by Mike Brandt'
+  })));
+await t('company member (not admin) CANNOT edit a contact source',
+  () => assertFails(updateDoc(doc(emp, 'companies/co1/contacts/c1'), { sourceDetail: 'x' })));
+// The Owner field falls back to users/{uid} when an admin has no members doc.
+await t('admin CAN read their own user doc (owner-name fallback)',
+  () => assertSucceeds(getDoc(doc(adm, 'users/adm'))));
 
 await env.cleanup();
 
