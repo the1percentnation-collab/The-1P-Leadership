@@ -33,7 +33,8 @@ import {
   contactFreshness,
   listCalls, setDoNotCall, recordSmsConsent, smsConsentSummary, dispositionMeta, callBlockReason,
   getGoogleCalendarStatus, listSequences, listEnrollments, enrollContact, stopEnrollment,
-  escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate, listContacts
+  escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate, listContacts,
+  listSources, sourceOptionsHtml, wireSourcePicker
 } from './crm.js';
 import { storedContactOrder, neighbours } from './crm-nav.js';
 import { dialer, onDialerEvent } from './dialer-core.js';
@@ -146,13 +147,15 @@ function renderContactHeader() {
     opts.unshift(`<option value="${escapeHtml(c.ownerUid)}" selected>Former admin</option>`);
   }
   $('ct-owner').innerHTML = opts.join('');
-  $('ct-source').innerHTML = SOURCES.map((s) =>
-    `<option value="${s}" ${c.source === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');
+  // The contact's own source is always an option, so a lead from an import
+  // or a web form is not shown (and then saved) as the first built-in.
+  $('ct-source').innerHTML = sourceOptionsHtml(state.sources || SOURCES, c.source);
 
   $('ct-email').value = c.email || '';
   $('ct-email').title = c.email || '';
   $('ct-phone').value = c.phone || '';
   $('ct-company').value = c.companyName || '';
+  $('ct-source-detail').value = c.sourceDetail || '';
   $('ct-company').title = c.companyName || '';
 
   const dnc = $('ct-dnc');
@@ -1332,6 +1335,18 @@ function wire() {
       setStatus('Stage updated', 'ok');
     } catch (err) { e.target.value = from; setStatus('Error: ' + (err.message || err), 'err'); }
   });
+  // Source saves on pick, like stage and owner, including a brand-new one.
+  wireSourcePicker($('ct-source'), state.companyId, {
+    getSources: async () => (state.sources = await listSources(state.companyId)),
+    onPicked: async (value) => {
+      try {
+        await updateContact(state.companyId, state.contactId, { source: value });
+        await refreshContact();
+        setStatus('Source updated', 'ok');
+      } catch (err) { setStatus('Error: ' + (err.message || err), 'err'); }
+    }
+  });
+
   $('ct-owner').addEventListener('change', async (e) => {
     try {
       await updateContact(state.companyId, state.contactId, { ownerUid: e.target.value });
@@ -1347,6 +1362,7 @@ function wire() {
         email: $('ct-email').value.trim() || null,
         phone: $('ct-phone').value.trim() || null,
         companyName: $('ct-company').value.trim() || null,
+        sourceDetail: $('ct-source-detail').value,
         source: $('ct-source').value
       });
       await refreshContact();
@@ -1529,8 +1545,8 @@ async function main() {
   state.companyId = companyId;
 
   try {
-    [state.admins, state.google] = await Promise.all([
-      listCompanyAdmins(companyId), getGoogleCalendarStatus(companyId)
+    [state.admins, state.google, state.sources] = await Promise.all([
+      listCompanyAdmins(companyId), getGoogleCalendarStatus(companyId), listSources(companyId)
     ]);
   } catch (e) { state.admins = []; }
 
@@ -1576,7 +1592,7 @@ function hasUnsavedEdits() {
   const c = state.contact || {};
   const same = (id, saved) => ($(id).value || '').trim() === String(saved || '').trim();
   return !(same('ct-name', c.name) && same('ct-email', c.email) && same('ct-phone', c.phone)
-    && same('ct-company', c.companyName));
+    && same('ct-company', c.companyName) && same('ct-source-detail', c.sourceDetail));
 }
 
 function goToContact(id) {
