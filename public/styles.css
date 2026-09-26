@@ -13248,7 +13248,7 @@ body.tour-open { overflow: hidden; }
   :root { --mnav-h: 64px; --mnav-safe: env(safe-area-inset-bottom, 0px); }
 
   /* Room for the bar so the last card is never hidden behind it. */
-  body.has-mnav { padding-bottom: calc(var(--mnav-h) + var(--mnav-safe) + 12px) !important; }
+  body.has-mnav-bar { padding-bottom: calc(var(--mnav-h) + var(--mnav-safe) + 12px) !important; }
   body.mnav-locked { overflow: hidden !important; }
 
   /* ── Retire the navigation the tab bar replaces ── */
@@ -13363,8 +13363,8 @@ body.tour-open { overflow: hidden; }
   .mnav-sheet-row .ak-ico { width: 20px; height: 20px; }
 
   /* ── The assistant's button sits above the bar, not on it ── */
-  body.has-mnav #opn-chat-widget { bottom: calc(var(--mnav-h) + var(--mnav-safe) + 14px) !important; }
-  body.has-mnav .opn-fab { bottom: calc(var(--mnav-h) + var(--mnav-safe) + 14px) !important; width: 52px !important; height: 52px !important; }
+  body.has-mnav-bar #opn-chat-widget { bottom: calc(var(--mnav-h) + var(--mnav-safe) + 14px) !important; }
+  body.has-mnav-bar .opn-fab { bottom: calc(var(--mnav-h) + var(--mnav-safe) + 14px) !important; width: 52px !important; height: 52px !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -13399,4 +13399,35 @@ body.tour-open { overflow: hidden; }
 
   /* The assistant's button would float over the open More sheet. */
   body.mnav-locked #opn-chat-widget { display: none !important; }
+}
+
+/* ── CRM app bar on phones ──
+   The shared chip rules below 760px turn the chip into a full-width,
+   sideways-scrolling row. Inside the CRM app bar that row got squeezed
+   beside the hamburger and title, so search and the bell scrolled out of
+   view, the avatar was clipped, and a full Sign out button took the rest.
+   On phones: title, then search / bell / avatar, and Sign out moves into
+   the drawer with the rest of the CRM's navigation. */
+.crm-drawer-signout { display: none; }
+@media (max-width: 900px) {
+  .crm-appbar { gap: 8px; padding: 8px 12px; padding-top: calc(8px + env(safe-area-inset-top, 0px)); }
+  .crm-appbar-title {
+    flex: 1 1 auto; min-width: 0; font-size: 22px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .crm-appbar-spacer { display: none; }
+  .crm-appbar .user-chip {
+    flex: 0 0 auto; flex-basis: auto !important; margin: 0 0 0 auto;
+    gap: 4px; overflow: visible; padding: 0; border: 0;
+  }
+  .crm-appbar .user-chip #btn-signout,
+  .crm-appbar .user-chip .user-chip-link,
+  .crm-appbar .user-chip .user-chip-email { display: none !important; }
+  .crm-appbar .user-chip .c-search-btn,
+  .crm-appbar .user-chip .c-bell { width: 40px; height: 40px; }
+  .crm-hamburger { min-width: 40px; min-height: 40px; }
+  .crm-drawer-signout {
+    display: flex; width: 100%; background: none; border: 0; cursor: pointer;
+    font-family: inherit; text-align: left;
+  }
 }

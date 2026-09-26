@@ -57,6 +57,13 @@ function excluded() {
   return !!document.getElementById('crm-root');
 }
 
+// CRM pages outside the CRM shell (a contact record) keep the slim top bar
+// but not the member tabs: Home / Courses / Library is the wrong set of
+// places when you are working a lead, and "Back to CRM" is already there.
+function tabsHidden() {
+  return /^\/contact(\.html)?$/.test(location.pathname);
+}
+
 function sheetLink(item) {
   const cur = isCurrent(item.href);
   return `<a class="mnav-sheet-link${cur ? ' is-current' : ''}" href="${esc(item.href)}"${cur ? ' aria-current="page"' : ''}>
@@ -135,6 +142,8 @@ export function mountMobileNav({ role = null } = {}) {
   if (excluded()) return;
   document.body.classList.add('has-mnav');
   ensureTopbarBrand();
+  if (tabsHidden()) return;
+  document.body.classList.add('has-mnav-bar');
 
   let bar = document.getElementById('mnav');
   if (!bar) {
