@@ -23,16 +23,16 @@ module.exports = {
 <p>You have heard it your whole life. From teachers, from managers, from partners, and most often from yourself. Just focus. Just sit down and do it. Just stop getting distracted. It sounds reasonable. It is the advice that works for plenty of people, so it seems like it should work for you.</p>
 <p>It does not, and it is not because you are not trying. It is because "just focus" assumes focus is a switch you can flip by deciding to. For many people with ADHD or strong ADHD traits, focus behaves more like weather than like a switch. Some days the conditions are right and attention pours in. Other days the sky is flat and nothing you say to yourself changes it.</p>
 <h3>Importance is not the same as engagement</h3>
-<p>Most productivity advice is built on a simple idea: if something matters, you will do it. Rank your priorities, do the important thing first, and discipline will carry you. For a brain that is moved by importance, that works.</p>
+<p>Most productivity advice assumes that if something matters, you will do it. For a brain moved by importance, that works.</p>
 <p>But if your brain is moved primarily by engagement, importance alone does very little. You can know with total certainty that the tax paperwork matters. You can care about the consequences. You can feel real anxiety about it. And still your hands will not open the folder. Meanwhile, a problem that is interesting, urgent, new, or challenging pulls you in without effort.</p>
-<p>This is why people who know you are often confused. They have seen you perform brilliantly. They have seen you pull off the impossible at the last minute. So when you do not do the simple thing, they conclude you must not care. And after enough years, you start to believe them.</p>
+<p>People who have seen you perform brilliantly conclude that when you skip the simple thing, you must not care. After enough years, you start to believe them.</p>
 <h3>The cost of the wrong explanation</h3>
 <p>When you explain the problem as a character flaw, you reach for character solutions. Try harder. Feel worse. Make bigger promises. Set stricter rules. You wake up on Monday determined that this week will be different, and by Wednesday the determination has drained out and you are back where you started, now with extra guilt.</p>
-<p>Here is what that cycle actually teaches you: that you cannot trust yourself. Not because you are untrustworthy, but because you keep making plans that require a kind of brain you do not have. It is like repeatedly promising to run a marathon in shoes two sizes too small, and then blaming your legs.</p>
+<p>That cycle teaches you that you cannot trust yourself. Not because you are untrustworthy, but because you keep making plans that require a kind of brain you do not have.</p>
 <blockquote>The question is not "Why can't I make myself do this?" The better question is "What would make this easier for my brain to start and stay with?"</blockquote>
-<p>That single shift changes everything downstream. It moves you from judgment to curiosity. From blame to design. From "What is wrong with me?" to "What is missing from this setup?"</p>
+<p>That shift moves you from judgment to curiosity. From "What is wrong with me?" to "What is missing from this setup?"</p>
 <h3>Capable but inconsistent</h3>
-<p>The most painful part is usually not failure. It is inconsistency. You know you can do excellent work, because you have. So every time you do not, it feels like a betrayal of your own potential. People call it wasted talent. You may have called it that yourself.</p>
+<p>The most painful part is usually not failure. It is inconsistency. You know you can do excellent work, because you have. So every time you do not, it feels like a betrayal of your own potential.</p>
 <p>But inconsistency is information. It tells you that your output depends heavily on conditions. When conditions are right, you perform. When they are wrong, you stall. That means the path forward is not to become a different person. It is to get better at creating the right conditions on purpose, instead of waiting for them to show up by accident.</p>
 <p>That is what this brief is about. Not fixing you. Designing around you.</p>
 
@@ -52,7 +52,7 @@ module.exports = {
 <p>Notice what is missing from the second version. There is no verdict on your character. There is just a set of adjustments, each one small and concrete. You try one. If it does not work, you try another. That is the whole method. The chapters that follow teach you how to pull each lever well.</p>
 
 <h2>Interest, urgency, and novelty: using your natural fuel</h2>
-<p>If importance is not what moves your brain, what does? For many people with ADHD traits, the answer comes down to a handful of things. You have probably felt all of them. The four most useful are <strong>interest</strong>, <strong>urgency</strong>, <strong>novelty</strong>, and <strong>challenge</strong>. You can add a fifth that sits under all of them: <strong>connection</strong>, doing something with or for someone.</p>
+<p>If importance is not what moves your brain, what does? For many people with ADHD traits, the answer comes down to a handful of things. The four most useful are <strong>interest</strong>, <strong>urgency</strong>, <strong>novelty</strong>, and <strong>challenge</strong>. You can add a fifth that sits under all of them: <strong>connection</strong>, doing something with or for someone.</p>
 <p>These are not distractions to be managed. They are your fuel. The work is learning to add them to tasks on purpose, instead of waiting for tasks to arrive already full of them.</p>
 <h3>Interest: find the thread that pulls you</h3>
 <p>Interest is the easiest fuel to spot and the hardest to fake. When you are interested, time bends. When you are not, a ten minute task can feel like an afternoon.</p>
@@ -73,21 +73,20 @@ module.exports = {
 <li><strong>Artificial finish lines.</strong> Set your deadline two days before the actual one and put it on the calendar as if it were real.</li>
 <li><strong>Race the clock.</strong> "Can I clear this inbox before the kettle boils?" Silly works. Silly is often exactly what works.</li>
 </ul>
-<p>The goal is not to live in panic. It is to take a small, controlled dose of urgency and use it on purpose, so you are not waiting for a crisis to get you moving.</p>
+<p>The goal is not panic. It is a small, controlled dose of urgency, used on purpose.</p>
 <h3>Novelty: change something, anything</h3>
 <p>Your brain may lose interest in things once they become familiar. That is why a new system feels amazing for a week and then quietly stops working. Many people take that as proof they cannot stick with anything. A better reading: the novelty wore off, and the system needed a refresh.</p>
 <p>So plan for it. Build small changes into your routine:</p>
 <ul>
 <li>Work from a different room, a coffee shop, or the library.</li>
 <li>Switch from typing to writing by hand, or from writing to talking it through into a voice memo.</li>
-<li>Change the tool. A new notebook, a different pen, a fresh color for your planner.</li>
 <li>Change the order. Do the thing you usually do last, first.</li>
 </ul>
 <p>Refreshing your system is not quitting it. Keep the core the same and change the surface. The planner still has the same sections. It just has a new cover this month.</p>
 <h3>Challenge: make it a game</h3>
 <p>Many people with ADHD traits come alive when something is hard in an interesting way. A boring task becomes more engaging when you add a constraint. "Can I write this summary in under two hundred words?" "Can I fold all the laundry in one song?" "Can I get to inbox zero with only three replies?" The constraint turns a task into a challenge, and challenge brings energy.</p>
 <h3>Connection: do it with or for someone</h3>
-<p>Some tasks become much easier the moment another person is involved. Cleaning the kitchen is dull alone and fine while talking to a friend on speaker. Studying is hard alone and doable with a study partner. Knowing someone is counting on the result can make it easier to begin. We will go deeper on this in the chapter on external structure.</p>
+<p>Some tasks become much easier the moment another person is involved. Cleaning the kitchen is dull alone and fine while talking to a friend on speaker. We will go deeper on this in the chapter on external structure.</p>
 <h3>Fuel matching: a practical habit</h3>
 <p>When you look at your task list, try labeling each item with the fuel it is missing. Not the fuel it has. The fuel it needs.</p>
 <blockquote>Renew car registration: needs urgency. Set a 15 minute timer and do it before lunch.</blockquote>
@@ -110,7 +109,7 @@ module.exports = {
 </ul>
 <p>Each of these has a design fix.</p>
 <h3>Make the first step physical and specific</h3>
-<p>Your brain needs a first step it can see. Not "work on the presentation," but "open the slide file and type the title of slide one." Not "clean the kitchen," but "put the three mugs by the sink into the dishwasher." Not "handle the insurance thing," but "find the policy number in my email."</p>
+<p>Your brain needs a first step it can see. Not "work on the presentation," but "open the slide file and type the title of slide one." Not "clean the kitchen," but "put the three mugs by the sink into the dishwasher."</p>
 <p>A good first step passes three tests:</p>
 <ol>
 <li>You could do it in under two minutes.</li>
@@ -140,8 +139,6 @@ module.exports = {
 <li>Start a timer.</li>
 </ul>
 <p>Over time, the ritual itself becomes a cue. Your brain learns that when this sequence happens, work follows. It lowers the edge because you are not starting from nothing. You are starting from a routine.</p>
-<h3>The two-minute entry</h3>
-<p>When you are truly stuck, use this simple agreement with yourself: "I will do this for two minutes. After two minutes, I can stop with no guilt." Set a timer. Begin. When it goes off, check in honestly. Do you want to keep going? Often you will. If not, you stop, and you have still made progress. Either way, you have practiced starting, which is the skill that matters most.</p>
 
 <h2>External structure: timers, body doubling, and visible systems</h2>
 <p>Here is a shift that can change the way you work: stop trying to hold everything in your head. For many people with ADHD traits, working memory feels unreliable. Plans slip away. Time disappears. Tasks that are not in front of you stop existing. That is not a moral failing. It is a reason to build structure outside yourself.</p>
@@ -153,7 +150,7 @@ module.exports = {
 <li><strong>Work sprints.</strong> Set a timer for a focused block, 15, 25, or 45 minutes, whatever fits your attention on that day. Work until it rings. Take a short break. Repeat.</li>
 <li><strong>Transition alarms.</strong> Set an alarm ten minutes before you need to leave, stop, or switch tasks. It gives your brain a heads up instead of a jolt.</li>
 <li><strong>Visual timers.</strong> A timer that shows time shrinking, like a clock face with a colored disk that disappears, can make time feel more real than numbers do.</li>
-<li><strong>Hyperfocus guardrails.</strong> If you tend to disappear into a task and miss meals or pickups, set a timer that forces a check-in. "Is this still the best use of my time?"</li>
+<li><strong>Hyperfocus guardrails.</strong> If you tend to disappear into a task and miss meals or pickups, set a timer that forces a check-in.</li>
 </ul>
 <p>Choose the sprint length based on the day, not on a rule. On a good day you might work in 45 minute blocks. On a scattered day, 10 minutes is a real achievement. The timer is not a test. It is a container.</p>
 <h3>Body doubling: work alongside someone</h3>
@@ -164,7 +161,6 @@ module.exports = {
 <li>Call a friend or family member on video, mute, and work side by side.</li>
 <li>Ask your partner to read in the same room while you tackle the paperwork.</li>
 <li>Join an online coworking session where people work quietly on camera together.</li>
-<li>Work at the library, where everyone around you is focused.</li>
 </ul>
 <p>If asking feels awkward, keep it simple and specific:</p>
 <blockquote>Hey, I've got a task I keep avoiding. Would you be up for sitting with me on a video call for 30 minutes on Thursday at 7? You can do your own thing. I just work better with someone there.</blockquote>
@@ -175,13 +171,12 @@ module.exports = {
 <ul>
 <li><strong>A single paper list on the desk.</strong> Not a hundred items. Three to five, for today only. Everything else lives somewhere else.</li>
 <li><strong>A whiteboard by the door or on the fridge.</strong> Big, visible, impossible to ignore. Good for household tasks, weekly appointments, and reminders.</li>
-<li><strong>Clear bins and open shelves.</strong> If you can see what is inside, you are more likely to remember it exists and put things back.</li>
 <li><strong>A launch pad.</strong> One spot by the door where keys, wallet, bag, and anything you need for tomorrow always live.</li>
 <li><strong>Sticky notes where the task happens.</strong> A note on the bathroom mirror to take your vitamins. A note on the laptop to send the invoice.</li>
 </ul>
 <p>The principle is simple: put the reminder where the action happens, at the moment it needs to happen.</p>
 <h3>One capture spot</h3>
-<p>Ideas, tasks, and reminders will come to you all day long, often at the worst times. If you try to hold them in your head, they either disappear or keep buzzing around and pulling your attention away from what you are doing.</p>
+<p>Ideas and reminders arrive all day, often at the worst times. Held in your head, they either disappear or keep buzzing and pulling your attention away.</p>
 <p>Choose one capture spot. It could be a small notebook in your pocket, a single note on your phone, or a voice memo. Whenever something pops up, put it there immediately and go back to what you were doing. Then, once a day, look at the capture spot and decide what to do with each item. This alone can quiet a lot of mental noise.</p>
 <h3>Accountability without pressure</h3>
 <p>External structure also includes people. Not people who nag or judge, but people who make it easier to follow through. A friend you text when you start and finish something. A colleague you check in with each morning. A weekly planning call with your partner. Keep it light and specific.</p>
@@ -189,7 +184,7 @@ module.exports = {
 <p>That one message adds urgency, connection, and a clear finish line. Three fuels in a single text.</p>
 
 <h2>Handling the shame cycle when you fall off</h2>
-<p>You will fall off. Not because you did something wrong, but because that is part of how this works for everyone, and especially for brains that run on engagement. The new system stops feeling new. Life gets loud. You get sick, a project explodes at work, the kids are off school for a week. The planner sits closed. The timer stops ringing. Then one day you look up and realize you have not used any of it in two weeks.</p>
+<p>You will fall off. Not because you did something wrong, but because that is part of how this works, especially for brains that run on engagement. The new system stops feeling new. You get sick, a project explodes at work, the kids are off school for a week. Then one day you realize you have not opened the planner in two weeks.</p>
 <p>What happens next matters more than the fall itself.</p>
 <h3>How the shame cycle works</h3>
 <p>For many people with ADHD traits, falling off triggers a familiar sequence:</p>
@@ -213,9 +208,9 @@ module.exports = {
 <blockquote>I don't need to catch up on everything. I need to take the next step.</blockquote>
 <blockquote>Falling off is part of the process. Coming back is the skill.</blockquote>
 <blockquote>My system needs an adjustment. I don't need a new personality.</blockquote>
-<p>Say them out loud if you can. Write them on a card. They will feel unnatural at first. That is fine. You are building a new habit of response, and new habits always feel awkward before they feel normal.</p>
+<p>Say them out loud if you can. They will feel unnatural at first. New habits of response always feel awkward before they feel normal.</p>
 <h3>Restart small, not big</h3>
-<p>When you come back, the temptation is to come back with a vengeance. You will redo the whole planner, catch up on every missed task, and prove to yourself that this time it is different. That approach usually burns out in days, because it is built on the same pressure that drove the shame in the first place.</p>
+<p>When you come back, the temptation is to come back with a vengeance: redo the whole planner and catch up on everything. That usually burns out in days, because it runs on the same pressure that drove the shame.</p>
 <p>Instead, restart with the smallest possible version of your system. One task today. One timer. One look at the planner. The goal is not to make up for lost time. The goal is to reconnect with the system, gently, so it feels safe to return to. You will find the reset plan for this in your toolkit below.</p>
 <h3>Expect the cycle, and plan for it</h3>
 <p>The most powerful thing you can do is stop being surprised when you fall off. If you expect it, you can plan for it. That is exactly what a reset plan does. It is a pre-made path back, written on a good day, for use on a hard one. When you know what to do on an off day, the off day loses much of its power.</p>
@@ -255,7 +250,6 @@ module.exports = {
 <li><strong>Plan in one short session.</strong> Sunday evening or Monday morning, fifteen minutes. Set a timer so it does not grow into an hour.</li>
 <li><strong>Keep it visible.</strong> Put the page somewhere you will see it every day: on your desk, on the fridge, clipped to a board.</li>
 <li><strong>Refresh it for novelty.</strong> Change the pen color, the paper, or the layout slightly every few weeks. Keep the sections the same.</li>
-<li><strong>It is okay if it gets messy.</strong> Crossed out tasks, moved items, and scribbles are signs the planner is being used, not signs you are failing at it.</li>
 </ul>
 
 <h3>Tool 3: The Reset Plan for Off Days</h3>
