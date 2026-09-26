@@ -15,6 +15,7 @@ import {
 } from './crm.js';
 import { dialer, onDialerEvent } from './dialer-core.js';
 import { toCsv, downloadCsv } from './csv.js';
+import { rememberContactOrder } from './crm-nav.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -481,6 +482,8 @@ function renderKanban() {
     const s = STAGE_IDS.includes(c.stage) ? c.stage : 'new';
     byStage[s].push(c);
   });
+  // The contact card's Prev / Next walks the board column by column.
+  rememberContactOrder(state.companyId, STAGE_IDS.flatMap((s) => byStage[s].map((c) => c.id)));
   host.innerHTML = `
     <div class="crm-kanban">
       ${STAGES.map((s) => `
@@ -596,6 +599,9 @@ function renderList() {
     if (va > vb) return 1 * mult;
     return 0;
   });
+
+  // The contact card's Prev / Next follows exactly this filtered, sorted list.
+  rememberContactOrder(state.companyId, rows.map((c) => c.id));
 
   const hdr = (k, label) => {
     const active = state.sort.key === k;
