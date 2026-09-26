@@ -553,7 +553,7 @@ function renderKanban() {
 function ownerLabel(uid) {
   const a = state.admins.find((x) => x.uid === uid);
   if (!a) return '—';
-  return a.displayName || a.email || uid.slice(0, 6);
+  return a.displayName || a.email || 'Unnamed admin';
 }
 
 /**
