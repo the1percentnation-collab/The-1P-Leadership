@@ -3198,33 +3198,72 @@ window.__1pAttachTilt = attachTilt;
     hero.addEventListener('touchcancel', releaseTouch, { passive: true });
   }
 
-  // ── 8. HERO TEXT CHARACTER SCRAMBLE on hover ──────────────
+  // ── 8. HERO TEXT CHARACTER SCRAMBLE ───────────────────────
+  // Desktop: plays when the cursor enters the headline.
+  // Phones have no hover, so there it plays once after the intro reveal,
+  // again whenever the headline scrolls back into view, and on a tap.
   function initScramble() {
     const title = document.getElementById('hero-title-el');
     if (!title) return;
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1%!';
+    const spans = [...title.querySelectorAll('.red')];
+    if (!spans.length) return;
+    // Capture the real words once. Reading textContent at trigger time would
+    // pick up scrambled letters if a new run started mid-scramble, leaving
+    // the word stuck on garbage.
+    const originals = spans.map(span => span.textContent);
+    const longest = Math.max(...originals.map(o => o.length));
     let scrambleInterval = null;
 
-    title.addEventListener('mouseenter', () => {
-      const spans = title.querySelectorAll('.red');
-      spans.forEach(span => {
-        let iterations = 0;
-        const original = span.textContent;
-        clearInterval(scrambleInterval);
-        scrambleInterval = setInterval(() => {
+    function scramble() {
+      clearInterval(scrambleInterval);
+      let iterations = 0;
+      scrambleInterval = setInterval(() => {
+        spans.forEach((span, n) => {
+          const original = originals[n];
           span.textContent = original.split('').map((char, i) => {
             if (i < iterations) return original[i];
             if (char === ' ') return ' ';
             return chars[Math.floor(Math.random() * chars.length)];
           }).join('');
-          if (iterations >= original.length) {
-            clearInterval(scrambleInterval);
-            span.textContent = original;
-          }
-          iterations += 0.5;
-        }, 40);
-      });
+        });
+        if (iterations >= longest) {
+          clearInterval(scrambleInterval);
+          spans.forEach((span, n) => { span.textContent = originals[n]; });
+        }
+        iterations += 0.5;
+      }, 40);
+    }
+
+    // Phones fire an emulated mouseenter right after a tap; skip it so the
+    // tap's run isn't restarted a few frames in.
+    let lastTouch = 0;
+    title.addEventListener('mouseenter', () => {
+      if (Date.now() - lastTouch < 800) return;
+      scramble();
     });
+    title.addEventListener('touchstart', () => {
+      lastTouch = Date.now();
+      scramble();
+    }, { passive: true });
+
+    const touchOnly = window.matchMedia('(hover: none)').matches;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!touchOnly || reduceMotion) return;
+
+    // Once the SUCCESS line has slid in and turned red.
+    setTimeout(scramble, 1800);
+
+    // Replay when the headline comes back on screen after being scrolled away.
+    if ('IntersectionObserver' in window) {
+      let wasHidden = false;
+      new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) { wasHidden = true; return; }
+          if (wasHidden) { wasHidden = false; scramble(); }
+        });
+      }, { threshold: 0.6 }).observe(spans[0]);
+    }
   }
 
   // ── 9. STAT COUNTER IN CARD ───────────────────────────────
