@@ -399,6 +399,9 @@
       .hero-actions { flex-direction: column; align-items: stretch; gap: 12px; }
       .hero-actions .btn-primary,
       .hero-actions .btn-outline { width: 100%; justify-content: center; }
+      /* Stacked full-width, the looping red flash on Member Login competes
+         with the primary CTA. Keep it static so Start Your Journey leads. */
+      .hero-actions .btn-login-flash { animation: none; }
     }
 
     /* Hero stat card */
