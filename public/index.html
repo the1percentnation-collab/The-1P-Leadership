@@ -391,6 +391,18 @@
       margin-bottom: 48px;
     }
     .hero-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    /* Phones: the two CTAs no longer fit on one row, and wrapped they leave a
+       ragged edge (wide red button over a narrower outline one). Stack them
+       full-width so both span the same width with centered labels, aligned
+       with the left-aligned headline and copy above. Desktop unchanged. */
+    @media (max-width: 600px) {
+      .hero-actions { flex-direction: column; align-items: stretch; gap: 12px; }
+      .hero-actions .btn-primary,
+      .hero-actions .btn-outline { width: 100%; justify-content: center; }
+      /* Stacked full-width, the looping red flash on Member Login competes
+         with the primary CTA. Keep it static so Start Your Journey leads. */
+      .hero-actions .btn-login-flash { animation: none; }
+    }
 
     /* Hero stat card */
     .hero-card {
@@ -1696,6 +1708,8 @@
       transition: opacity 0.8s ease;
     }
     #hero-spotlight.active { opacity: 1; }
+    /* Touch: snap in fast under the finger, fade out on the slower base timing. */
+    #hero-spotlight.touching { transition: opacity 0.2s ease; }
 
     /* Animated red line under hero title */
     .hero-title-line {
@@ -3120,18 +3134,61 @@ window.__1pAttachTilt = attachTilt;
     if (!hero || !spotlight) return;
 
     let active = false;
+    // Phones fire emulated mouse events right after a tap. Ignore them so they
+    // don't re-light the glow the touch handlers just faded out.
+    let lastTouch = 0;
+    const fromTouch = () => Date.now() - lastTouch < 800;
     hero.addEventListener('mouseenter', () => {
+      if (fromTouch()) return;
       if (!active) { active = true; spotlight.classList.add('active'); }
     });
     hero.addEventListener('mousemove', (e) => {
+      if (fromTouch()) return;
       const rect = hero.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       spotlight.style.background = `radial-gradient(600px circle at ${x}px ${y}px, rgba(255,30,40,0.22) 0%, rgba(230,3,6,0.08) 35%, transparent 65%)`;
     });
     hero.addEventListener('mouseleave', () => {
+      if (fromTouch()) return;
       spotlight.style.background = 'radial-gradient(600px circle at 50% 50%, rgba(255,30,40,0.10) 0%, transparent 70%)';
     });
+
+    // Touch: the glow follows the finger, including while it scrolls the
+    // page, and fades out on release. Listeners are passive so scrolling is
+    // never blocked. Smaller radius than desktop so it reads as a halo
+    // around the thumb instead of washing the whole phone screen red.
+    let tx = 0, ty = 0, raf = 0;
+    const paintTouch = () => {
+      raf = 0;
+      spotlight.style.background = `radial-gradient(260px circle at ${tx}px ${ty}px, rgba(255,30,40,0.28) 0%, rgba(230,3,6,0.10) 40%, transparent 70%)`;
+    };
+    const trackTouch = (e) => {
+      lastTouch = Date.now();
+      const t = e.touches[0];
+      if (!t) return false;
+      const rect = hero.getBoundingClientRect();
+      tx = t.clientX - rect.left;
+      ty = t.clientY - rect.top;
+      return true;
+    };
+    hero.addEventListener('touchstart', (e) => {
+      if (!trackTouch(e)) return;
+      paintTouch(); // paint now so the glow never flashes at its old position
+      active = true;
+      spotlight.classList.add('active', 'touching');
+    }, { passive: true });
+    hero.addEventListener('touchmove', (e) => {
+      if (trackTouch(e) && !raf) raf = requestAnimationFrame(paintTouch);
+    }, { passive: true });
+    const releaseTouch = (e) => {
+      lastTouch = Date.now();
+      if (e.touches && e.touches.length) return; // another finger still down
+      active = false;
+      spotlight.classList.remove('active', 'touching');
+    };
+    hero.addEventListener('touchend', releaseTouch, { passive: true });
+    hero.addEventListener('touchcancel', releaseTouch, { passive: true });
   }
 
   // ── 8. HERO TEXT CHARACTER SCRAMBLE on hover ──────────────
