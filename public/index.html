@@ -399,9 +399,6 @@
       .hero-actions { flex-direction: column; align-items: stretch; gap: 12px; }
       .hero-actions .btn-primary,
       .hero-actions .btn-outline { width: 100%; justify-content: center; }
-      /* Stacked full-width, the looping red flash on Become a Member competes
-         with the primary CTA. Keep it static so Start Your Journey leads. */
-      .hero-actions .btn-login-flash { animation: none; }
     }
 
     /* Hero stat card */
@@ -1457,43 +1454,53 @@
     .btn-outline:hover { border-color: var(--white); transform: translateY(-2px); }
     .btn-lg { padding: 18px 36px; font-size: 16px; }
 
-    /* Hero "Become a Member" — auto-flash + red light-up on hover, matching
-       the MEMBER PORTAL button. */
-    .btn-login-flash {
-      transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s;
-      animation: login-flash 3s ease-in-out infinite;
-      /* Offset half a cycle so it flashes out of sync with MEMBER PORTAL. */
-      animation-delay: -1.5s;
+    /* Hero "Become a Member": a soft red arc of light circulates around the
+       border. Three layers, all driven by one animated angle:
+         ::before  the arc, blurred, so light spills softly outside the edge
+         ::after   an opaque fill with a crisp 1px ring (faint base + arc),
+                   which also hides the blur inside the button
+       The button is its own stacking context, so both layers sit behind the
+       label. Browsers without @property show a still arc instead. */
+    @property --glow-angle {
+      syntax: '<angle>';
+      initial-value: 0deg;
+      inherits: true;
     }
-    .btn-login-flash:hover {
-      background: var(--red);
-      border-color: #ffffff;
-      color: #ffffff;
-      box-shadow: 0 0 18px 3px rgba(230,3,6,0.9), 0 0 0 2px rgba(255,255,255,0.5);
-      animation-play-state: paused;
+    .btn-member-glow {
+      position: relative; isolation: isolate;
+      border-color: transparent;
+      --glow-fill: var(--black);
+      --glow-arc: conic-gradient(from var(--glow-angle),
+        transparent 0deg, transparent 150deg,
+        rgba(230,3,6,0.45) 230deg, #ff5a5c 315deg,
+        rgba(230,3,6,0.6) 345deg, transparent 360deg);
+      animation: member-glow-spin 5s linear infinite;
+      transition: color 0.2s, transform 0.15s;
     }
-    @keyframes login-flash {
-      0%, 70%, 100% {
-        background: transparent;
-        border-color: var(--border);
-        color: var(--white);
-        box-shadow: 0 0 0 rgba(230,3,6,0);
-      }
-      80% {
-        background: var(--red);
-        border-color: #ffffff;
-        color: #ffffff;
-        box-shadow: 0 0 18px 3px rgba(230,3,6,0.9), 0 0 0 2px rgba(255,255,255,0.5);
-      }
-      90% {
-        background: transparent;
-        border-color: var(--border);
-        color: var(--white);
-        box-shadow: 0 0 0 rgba(230,3,6,0);
-      }
+    .btn-member-glow::before,
+    .btn-member-glow::after {
+      content: ''; position: absolute; inset: -1px;
+      border-radius: inherit; pointer-events: none;
     }
+    .btn-member-glow::before {
+      z-index: -2;
+      background: var(--glow-arc);
+      filter: blur(10px);
+      opacity: 1;
+    }
+    .btn-member-glow::after {
+      z-index: -1;
+      border: 1px solid transparent;
+      background:
+        linear-gradient(var(--glow-fill), var(--glow-fill)) padding-box,
+        var(--glow-arc) border-box,
+        linear-gradient(rgba(255,255,255,0.12), rgba(255,255,255,0.12)) border-box;
+      transition: background 0.2s;
+    }
+    .btn-member-glow:hover { --glow-fill: var(--red); color: #ffffff; border-color: transparent; }
+    @keyframes member-glow-spin { to { --glow-angle: 360deg; } }
     @media (prefers-reduced-motion: reduce) {
-      .btn-login-flash { animation: none; }
+      .btn-member-glow { animation: none; --glow-angle: 135deg; }
     }
 
     /* ============================================================
@@ -1981,7 +1988,7 @@
       </p>
       <div class="hero-actions">
         <a href="#courses" class="btn-primary btn-lg">Start Your Journey →</a>
-        <a href="/signup.html" class="btn-outline btn-lg btn-login-flash">Become a Member</a>
+        <a href="/signup.html" class="btn-outline btn-lg btn-member-glow">Become a Member</a>
       </div>
     </div>
 
