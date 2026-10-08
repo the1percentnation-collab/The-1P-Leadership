@@ -113,6 +113,7 @@ ok('the closing page offers the book on the website, the free module and the bun
   assert.ok(readZip(makePreview(full, { buy: 'https://example.com/buy' }).epub).some((e) => e.data.toString().includes('https://example.com/buy')), '--buy not used');
   assert.ok(end.includes('https://the1pnation.com/book-bonus.html') && end.includes('https://the1pnation.com/bundle.html'));
   assert.ok(!/—/.test(end), 'em dash in the closing page');
+  assert.ok(end.includes('The rest of <i>I Can\'t</i> picks up'), 'closing page should name the short title, not the subtitle');
   assert.ok(/<itemref idref="preview-end"\/>\s*<\/spine>/.test(file('OEBPS/content.opf')), 'closing page not last in the spine');
 });
 

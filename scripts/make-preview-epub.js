@@ -163,9 +163,9 @@ function closingPage({ buy, site, bookTitle }) {
   <section epub:type="chapter">
     <h1>You just finished chapter one.</h1>
     <p class="lede">If Fact vs. Verdict showed you something, that is the point. One belief, seen clearly, is where every shift starts.</p>
-    <p>The rest of ${escapeXml(bookTitle)} picks up right here. Here is where to go next.</p>
-    ${option('Get the full book', buy || `${site}/#shop`, 'All ten chapters, every exercise, and the plan to turn "I can\'t" into your next move.')}
-    ${option('Start the course free', `${site}/book-bonus.html`, 'Module 1 of I Can\'t: The Course walks you back through this chapter with Anthony and saves your Fact vs. Verdict work as a workbook.')}
+    <p>The rest of <i>${escapeXml(bookTitle)}</i> picks up right here. Here is where to go next.</p>
+    ${option('Get the full book', buy || `${site}/#shop`, 'All ten chapters, every exercise, and the plan to turn \u201cI can\u2019t\u201d into your next move.')}
+    ${option('Start the course free', `${site}/book-bonus.html`, 'Module 1 of I Can\u2019t: The Course walks you back through this chapter with Anthony and saves your Fact vs. Verdict work as a workbook.')}
     ${option('Go all in', `${site}/bundle.html`, 'The full book and all ten course modules together, one module per chapter.')}
     <p class="sign">Become one percent better every day.<br/>Anthony Brown Sr.</p>
   </section>
@@ -255,7 +255,8 @@ function makePreview(epubBuf, { through = 1, cutAt = null, buy = null, site = 'h
 
   // The closing page, appended to the reading order and the contents.
   const titleM = /<dc:title\b[^>]*>([\s\S]*?)<\/dc:title>/i.exec(opf);
-  const bookTitle = titleM ? textOf(titleM[1]) : 'the book';
+  // The short title ("I CAN'T"), not the subtitle, reads naturally in a sentence.
+  const bookTitle = titleM ? textOf(titleM[1]).split(':')[0].trim() : 'the book';
   const endFile = dirOf(opfPath) + 'preview-end.xhtml';
   const endHref = 'preview-end.xhtml';
   const relFrom = (from) => path.posix.relative(dirOf(from) || '.', endFile);
