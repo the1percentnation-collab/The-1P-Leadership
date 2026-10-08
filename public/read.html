@@ -99,6 +99,22 @@
     }
     #bookmark-btn.on .ico { fill: var(--accent); stroke: var(--accent); }
 
+    /* Free preview: a way to buy the book, always in reach. The pill rides
+       in the header margin while reading; with the bars open it hides and
+       the same link sits in the top bar. */
+    .buy-link {
+      flex: none; display: inline-flex; align-items: center; height: 32px; padding: 0 14px;
+      border-radius: 999px; background: var(--fg); color: var(--bg); text-decoration: none;
+      font-size: 12.5px; font-weight: 600; white-space: nowrap;
+    }
+    .buy-link[hidden] { display: none; }
+    #buy-pill {
+      position: fixed; z-index: 15; top: calc(var(--safe-t) + 8px); right: 10px;
+      transition: opacity .2s var(--ease);
+    }
+    body.chrome #buy-pill { opacity: 0; pointer-events: none; }
+    body.has-buy #run-head { padding: 0 128px; }
+
     #scrub { display: flex; flex-direction: column; gap: 8px; }
     #scrub-meta {
       display: flex; justify-content: space-between; gap: 12px;
@@ -240,6 +256,7 @@
 <div id="stage"></div>
 <div id="run-head"></div>
 <div id="run-foot"></div>
+<a class="buy-link" id="buy-pill" href="/#shop" target="_blank" rel="noopener" hidden>Get the book</a>
 
 <header class="bar" id="top-bar">
   <a class="icon-btn" id="back-btn" href="/library" aria-label="Back to library">
@@ -249,6 +266,7 @@
     <svg class="ico" viewBox="0 0 24 24"><path d="M4 6.5h16M4 12h16M4 17.5h10"/></svg>
   </button>
   <div id="book-title"></div>
+  <a class="buy-link" id="buy-bar" href="/#shop" target="_blank" rel="noopener" hidden>Get the book</a>
   <button class="icon-btn" id="aa-btn" type="button" aria-label="Text and theme">
     <svg class="ico" viewBox="0 0 24 24"><path d="M3 19 8 6l5 13M4.8 14.5h6.4"/><path d="M14.5 19l3.3-8.5L21 19M15.6 16.2h4.4"/></svg>
   </button>

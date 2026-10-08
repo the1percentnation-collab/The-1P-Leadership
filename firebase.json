@@ -9,6 +9,11 @@
               ],
               "redirects": [
                         {
+                                    "regex": "^/[Ii][Cc][Aa][Nn][Tt][Pp][Rr][Ee][Vv][Ii][Ee][Ww]/?$",
+                                    "destination": "/read?book=i-cant-preview",
+                                    "type": 302
+                        },
+                        {
                                     "source": "/studio",
                                     "destination": "https://onepstudio-9a3ef.web.app",
                                     "type": 301

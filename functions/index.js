@@ -7712,28 +7712,37 @@ exports.manageSubscription = onCall({ secrets: STRIPE_SECRETS }, async (request)
 // storage.rules: owners of the book, or admins/owner (who also see hidden
 // books, to proof them). The caller proves who they are with their Firebase
 // ID token in the Authorization header.
+//
+// One exception: a live book marked `openAccess` (a free sample, like the
+// I Can't chapter one preview) is served to anyone, signed in or not, so a
+// shared /read link opens straight into the reader. storage.rules do not
+// open it; this route is the only way in. A hidden open-access book is still
+// admins only. The books the courses sell by default (COURSE_FULFILLMENT)
+// can never be opened this way, whatever their record says.
+const SOLD_BOOK_IDS = new Set(Object.values(COURSE_FULFILLMENT).flatMap((f) => f.grantsBooks || []));
 exports.bookFile = onRequest({ cors: false, invoker: 'public', memory: '512MiB', timeoutSeconds: 120 }, async (req, res) => {
   res.set('Cache-Control', 'private, no-store');
   if (req.method !== 'GET') { res.status(405).send('method not allowed'); return; }
   const bookId = String(req.query.book || '').trim();
   if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(bookId)) { res.status(400).send('bad book id'); return; }
 
-  const m = /^Bearer (.+)$/.exec(String(req.get('Authorization') || ''));
-  if (!m) { res.status(401).send('sign in required'); return; }
-  let token;
-  try { token = await admin.auth().verifyIdToken(m[1]); } catch (e) { res.status(401).send('sign in required'); return; }
-
   const db = admin.firestore();
-  const [userSnap, bookSnap] = await Promise.all([
-    db.collection('users').doc(token.uid).get(),
-    db.collection('books').doc(bookId).get()
-  ]);
-  if (!bookSnap.exists) { res.status(404).send('unknown book'); return; }
-  const u = userSnap.exists ? (userSnap.data() || {}) : {};
-  const isAdmin = token.role === 'owner' || u.role === 'admin' || u.role === 'owner';
-  const owns = Array.isArray(u.ownedBookIds) && u.ownedBookIds.includes(bookId);
-  const book = bookSnap.data() || {};
-  if (!isAdmin && (!owns || book.status === 'hidden')) { res.status(403).send('not in your library'); return; }
+  const bookSnap = await db.collection('books').doc(bookId).get();
+  const book = bookSnap.exists ? (bookSnap.data() || {}) : null;
+  const openToAll = !!book && book.openAccess === true && book.status !== 'hidden' && !SOLD_BOOK_IDS.has(bookId);
+
+  if (!openToAll) {
+    const m = /^Bearer (.+)$/.exec(String(req.get('Authorization') || ''));
+    if (!m) { res.status(401).send('sign in required'); return; }
+    let token;
+    try { token = await admin.auth().verifyIdToken(m[1]); } catch (e) { res.status(401).send('sign in required'); return; }
+    if (!book) { res.status(404).send('unknown book'); return; }
+    const userSnap = await db.collection('users').doc(token.uid).get();
+    const u = userSnap.exists ? (userSnap.data() || {}) : {};
+    const isAdmin = token.role === 'owner' || u.role === 'admin' || u.role === 'owner';
+    const owns = Array.isArray(u.ownedBookIds) && u.ownedBookIds.includes(bookId);
+    if (!isAdmin && (!owns || book.status === 'hidden')) { res.status(403).send('not in your library'); return; }
+  }
 
   const file = admin.storage().bucket().file(book.filePath || `books/${bookId}/book.epub`);
   try {

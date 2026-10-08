@@ -15,6 +15,11 @@
 //     --author="Anthony Brown Sr."
 //
 //   --status=hidden   upload for proofing: only owners/admins see it
+//   --open-access     a free sample (e.g. the chapter one preview): anyone
+//                     with /read?book=<id> can read it, no account needed.
+//                     Never use it on a book a course sells.
+//   --buy=/path       where "Get the book" leads (default /bundle.html, or
+//                     /#shop, the book on the homepage, with --open-access)
 //   --dry-run         check the files and print the plan, write nothing
 //
 // Who can read the file is decided by storage.rules (users/{uid}.ownedBookIds),
@@ -38,6 +43,7 @@ const coverPath = arg('cover');
 const title = arg('title');
 const author = arg('author');
 const status = arg('status') || 'live';
+const OPEN_ACCESS = process.argv.includes('--open-access');
 
 function fail(msg) {
   console.error(msg);
@@ -82,9 +88,16 @@ async function main() {
   const version = String(Date.now());
   console.log(`Project:  ${projectId}`);
   console.log(`Bucket:   ${bucketName}`);
-  console.log(`Book:     books/${id}  (status: ${status})`);
+  console.log(`Book:     books/${id}  (status: ${status}${OPEN_ACCESS ? ', open access' : ''})`);
   console.log(`EPUB:     ${epubPath} (${(epub.length / 1024 / 1024).toFixed(2)} MB) -> ${filePath}`);
   if (coverPath) console.log(`Cover:    ${coverPath} -> books/${id}/cover.${coverExt}`);
+  if (OPEN_ACCESS) {
+    // A book a course sells is the product itself; opening it gives it away.
+    const selling = (await db.collection('courses').where('grantsBooks', 'array-contains', id).get()).docs.map((d) => d.id);
+    if (id === 'i-cant' || selling.length) {
+      fail(`--open-access refused: ${id} comes with ${selling.length ? selling.join(', ') : 'the I Can\'t courses'}. Upload the preview under its own id.`);
+    }
+  }
   if (DRY_RUN) { console.log('\n--dry-run: nothing written.'); return; }
 
   await bucket.file(filePath).save(epub, {
@@ -98,9 +111,11 @@ async function main() {
     filePath,
     version,
     status,
-    buyHref: '/bundle.html',
+    buyHref: arg('buy') || (OPEN_ACCESS ? '/#shop' : '/bundle.html'),
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   };
+  // Only set when asked, so re-uploading a preview keeps it open.
+  if (OPEN_ACCESS) doc.openAccess = true;
   if (title) doc.title = title;
   if (author) doc.author = author;
 
@@ -124,7 +139,9 @@ async function main() {
   await ref.set(doc, { merge: true });
 
   console.log(`\nPublished books/${id} version ${version}.`);
-  console.log(`Open it at /read?book=${id} (owners and admins can always open it).`);
+  console.log(OPEN_ACCESS
+    ? `Anyone can open it at /read?book=${id}${status === 'hidden' ? ' once it is live' : ''}.`
+    : `Open it at /read?book=${id} (owners and admins can always open it).`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

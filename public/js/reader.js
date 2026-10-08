@@ -18,7 +18,7 @@ import * as CFI from '../vendor/foliate-js/epubcfi.js';
 import { onAuthReady } from './auth.js';
 import { firebaseReady } from './firebase.js';
 import {
-  getBook, ownsBook, getBookFile, loadPosition, createPositionSaver
+  getBook, ownsBook, isOpenAccess, getBookFile, loadPosition, createPositionSaver
 } from './books.js';
 
 const $ = (id) => document.getElementById(id);
@@ -423,15 +423,30 @@ async function open() {
 
   let user = null;
   if (firebaseReady) user = await onAuthReady();
-  if (!user) {
-    location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
-    return;
-  }
+  const toLogin = () => location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
 
+  // The record is public, so it can be read before sign-in: an open-access
+  // book (a free sample) opens for anyone with the link.
   try {
     book = await getBook(BOOK_ID);
   } catch (e) {
     book = null;
+  }
+  const free = isOpenAccess(book);
+  if (!user && !free) { toLogin(); return; }
+  if (free) {
+    // A free preview always shows where to buy the full book.
+    for (const id of ['buy-pill', 'buy-bar']) {
+      $(id).href = book.buyHref || '/#shop';
+      $(id).hidden = false;
+    }
+    document.body.classList.add('has-buy');
+  }
+  if (!user) {
+    // No library to go back to: send a guest to the book's sales page.
+    const back = $('back-btn');
+    back.href = book.buyHref || '/';
+    back.setAttribute('aria-label', 'Get the full book');
   }
   if (!book) {
     splash({ msg: '<strong>We couldn\'t find that book.</strong>It may have moved. Your library has everything you own.',
@@ -442,7 +457,7 @@ async function open() {
   $('book-title').textContent = book.title || '';
   splash({ cover: book.coverUrl || '', msg: `<strong>${escapeHtml(book.title || '')}</strong>Opening your book…` });
 
-  if (!(await ownsBook(BOOK_ID))) {
+  if (!free && !(await ownsBook(BOOK_ID))) {
     const buy = book.buyHref ? `<a class="btn primary" href="${escapeHtml(book.buyHref)}">Get this book</a>` : '';
     splash({ msg: `<strong>${escapeHtml(book.title || 'This book')} isn't in your library yet.</strong>It comes with the course bundle it belongs to.`,
       busy: false, actions: `${buy}<a class="btn" href="/library">My library</a>` });

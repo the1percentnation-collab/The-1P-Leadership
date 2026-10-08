@@ -98,6 +98,12 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, `users/${adminUid}`), { email: 'admin@e2e.test', role: 'admin', onboardingComplete: true });
   await setDoc(doc(db, 'courses/bundle-icant'), { title: 'The Complete I Can\'t Experience', status: 'live', kind: 'bundle', price: 197 });
   await uploadBytes(ref(ctx.storage(`gs://${BUCKET}`), 'books/i-cant/book.epub'), epubBytes, { contentType: 'application/epub+zip' });
+  // Free samples: open access, one live and one still being proofed.
+  await setDoc(doc(db, 'books/i-cant-preview'), { title: 'I Can\'t: Chapter One Preview', author: 'Anthony Brown Sr.', status: 'live', openAccess: true, version: '1', filePath: 'books/i-cant-preview/book.epub', buyHref: '/#shop' });
+  await setDoc(doc(db, 'books/draft-preview'), { title: 'Draft Preview', status: 'hidden', openAccess: true, version: '1', filePath: 'books/draft-preview/book.epub' });
+  for (const id of ['i-cant-preview', 'draft-preview']) {
+    await uploadBytes(ref(ctx.storage(`gs://${BUCKET}`), `books/${id}/book.epub`), epubBytes, { contentType: 'application/epub+zip' });
+  }
 });
 async function readProgress(uid) {
   let out = null;
@@ -197,6 +203,7 @@ await t('owner opens the book through the same-origin /api/book-file route', asy
   assert(storageHits.get('A') === 1, `expected 1 EPUB download, saw ${storageHits.get('A')}`);
   assert(bookFileHits.get('A') === 1, 'the download did not go through the same-origin /api/book-file route');
   assert((await A.page.textContent('#run-head')).length > 0, 'no running header');
+  assert(!(await A.page.isVisible('#buy-pill')), 'buy button shown in a book the member owns');
 });
 
 await t('turning pages writes the position to Firestore', async () => {
@@ -283,6 +290,48 @@ await t('storage.rules deny the file to a non-owner even when asked directly', a
   assert(denied, 'non-owner could fetch the EPUB');
 });
 
+// ── 3b. Open access: the free chapter one preview, no account ─────────────
+const G = await makeContext(null, { id: 'G' });
+await t('a signed-out guest opens an open-access preview straight from the link', async () => {
+  await G.page.goto(`${ORIGIN}/read?book=i-cant-preview`);
+  await opened(G.page);
+  assert(/\/read/.test(G.page.url()), 'guest was redirected: ' + G.page.url());
+  assert(storageHits.get('G') === 1 && bookFileHits.get('G') === 1, 'preview not fetched through /api/book-file');
+  assert((await G.page.getAttribute('#back-btn', 'href')) === '/#shop', 'guest back button should lead to the book');
+  assert(await G.page.isVisible('#buy-pill'), '"Get the book" not shown while reading');
+  assert((await G.page.getAttribute('#buy-pill', 'href')) === '/#shop', 'buy pill href');
+  if (process.env.READER_E2E_SHOTS) await G.page.screenshot({ path: path.join(process.env.READER_E2E_SHOTS, 'preview-reading.png') });
+  await G.page.keyboard.press('ArrowRight');
+  await G.page.waitForTimeout(600);
+  assert(await G.page.evaluate(() => !!localStorage.getItem('1p_book_pos_i-cant-preview')), 'guest position not kept on the device');
+});
+
+await t('the same guest is sent to sign in for the paid book, and nothing is fetched', async () => {
+  const before = storageHits.get('G');
+  await G.page.goto(`${ORIGIN}/read?book=i-cant`);
+  await G.page.waitForURL(/\/login/, { timeout: 20000 });
+  assert(storageHits.get('G') === before, 'paid book fetched for a guest');
+});
+
+await t('/api/book-file: preview open to all; hidden preview and paid book are not', async () => {
+  const r = await C.page.evaluate(async () => Promise.all([
+    fetch('/api/book-file?book=i-cant-preview').then((x) => x.status),
+    fetch('/api/book-file?book=draft-preview').then((x) => x.status),
+    fetch('/api/book-file?book=i-cant').then((x) => x.status)
+  ]));
+  assert(r.join() === '200,401,401', 'statuses: ' + r.join());
+});
+
+await t('flagging the paid book open access does not open it', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => { await setDoc(doc(ctx.firestore(), 'books/i-cant'), { openAccess: true }, { merge: true }); });
+  try {
+    const s = await C.page.evaluate(() => fetch('/api/book-file?book=i-cant').then((x) => x.status));
+    assert(s === 401, 'paid book served to a guest: ' + s);
+  } finally {
+    await env.withSecurityRulesDisabled(async (ctx) => { await setDoc(doc(ctx.firestore(), 'books/i-cant'), { openAccess: false }, { merge: true }); });
+  }
+});
+
 // ── 4. Library shelf, real data ──────────────────────────────────────────
 await t('the library shelf shows the owned book with its synced progress', async () => {
   await B.page.goto(`${ORIGIN}/library`);
@@ -362,6 +411,30 @@ await t('re-uploading the EPUB publishes a new edition (version changes)', async
   let after = null;
   await env.withSecurityRulesDisabled(async (ctx) => { after = (await getDoc(doc(ctx.firestore(), 'books/proof-copy'))).data().version; });
   assert(after !== before, 'version did not change');
+});
+
+await t('Manage Library refuses open access on a book a course sells', async () => {
+  await D.page.goto(`${ORIGIN}/manage-library.html`);
+  await D.page.waitForSelector('[data-edit="proof-copy"]', { timeout: 20000 });
+  await D.page.click('[data-edit="proof-copy"]');
+  await D.page.check('#b-open');
+  await D.page.click('#b-save');
+  await D.page.waitForFunction(() => /gives the book away/.test(document.getElementById('b-err').textContent));
+  await D.page.click('#b-cancel');
+});
+
+await t('Manage Library publishes a preview with open access and a copyable link', async () => {
+  await D.page.click('[data-edit="draft-preview"]');
+  await D.page.check('#b-open');
+  await D.page.selectOption('#b-status', 'live');
+  await D.page.click('#b-save');
+  await D.page.waitForFunction(() => !document.getElementById('modal-bd'), null, { timeout: 30000 });
+  let rec = null;
+  await env.withSecurityRulesDisabled(async (ctx) => { rec = (await getDoc(doc(ctx.firestore(), 'books/draft-preview'))).data(); });
+  assert(rec.openAccess === true && rec.status === 'live' && rec.buyHref === '/#shop', 'record: ' + JSON.stringify(rec));
+  assert(await D.page.$('[data-copy="draft-preview"]'), 'no copy-link control');
+  const s = await C.page.evaluate(() => fetch('/api/book-file?book=draft-preview').then((x) => x.status));
+  assert(s === 200, 'published preview not open: ' + s);
 });
 
 await t('a non-admin is turned away from Manage Library', async () => {
