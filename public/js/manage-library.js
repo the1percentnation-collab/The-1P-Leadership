@@ -48,7 +48,8 @@ function render() {
           : '<div style="width:36px;aspect-ratio:2/3;border-radius:3px;background:var(--surface2);"></div>'}</td>
         <td><div style="font-weight:600;">${escapeHtml(b.title || b.id)}</div>
             <div style="font-size:12px;color:var(--gray-light);">${escapeHtml(b.author || '')} · <code>${escapeHtml(b.id)}</code></div></td>
-        <td><span style="color:${live ? '#56D4A8' : '#E8C547'};font-weight:600;">${live ? 'live' : 'hidden (proofing)'}</span></td>
+        <td><span style="color:${live ? '#56D4A8' : '#E8C547'};font-weight:600;">${live ? 'live' : 'hidden (proofing)'}</span>${b.openAccess
+          ? `<div style="font-size:12px;color:var(--gray-light);">open access · <a href="#" data-copy="${escapeHtml(b.id)}">copy link</a></div>` : ''}</td>
         <td>${fmtVersion(b.version)}</td>
         <td style="font-size:12px;">${courses.length
           ? courses.map((c) => escapeHtml(c.title)).join(', ')
@@ -60,6 +61,12 @@ function render() {
       </tr>`;
     }).join('')}
     </tbody></table></div>`;
+  host.querySelectorAll('[data-copy]').forEach((a) => a.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const url = `${location.origin}/read?book=${encodeURIComponent(a.dataset.copy)}`;
+    try { await navigator.clipboard.writeText(url); a.textContent = 'copied ✓'; }
+    catch (_) { window.prompt('Copy this link', url); }
+  }));
   host.querySelectorAll('[data-edit]').forEach((btn) => btn.addEventListener('click', () => {
     openModal(state.books.find((b) => b.id === btn.dataset.edit));
   }));
@@ -88,6 +95,14 @@ function openModal(book) {
                 <option value="hidden" ${b.status === 'hidden' ? 'selected' : ''}>Hidden: only you and admins can open it (proofing)</option>
                 <option value="live" ${b.status !== 'hidden' ? 'selected' : ''}>Live: members who own it can read it</option>
               </select></div>
+          </div>
+
+          <div class="crm-form-row">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-family:var(--font-body);font-size:13px;letter-spacing:0;text-transform:none;color:var(--white);">
+              <input type="checkbox" id="b-open" ${b.openAccess ? 'checked' : ''}>
+              <span>Open access: a free sample anyone with the link can read, no account needed</span>
+            </label>
+            <div class="pre-modal-sub">For a preview like chapter one, never the full book. Only works while the book is Live. Share it as <code>/read?book=${escapeHtml(b.id || 'your-book-id')}</code>.</div>
           </div>
 
           <div class="crm-form-row">
@@ -197,6 +212,14 @@ function openModal(book) {
     if (!ID_RE.test(id)) { err('The book id needs lowercase letters, numbers and dashes, like i-cant.'); return; }
     if (!editing && state.books.some((x) => x.id === id)) { err(`A book with the id "${id}" already exists.`); return; }
     if (!editing && !epubFile) { err('Choose the EPUB file.'); return; }
+    const openAccess = $('b-open').checked;
+    const wanted = [...$('b-courses').querySelectorAll('input[data-slug]')].filter((i) => i.checked).map((i) => i.dataset.slug);
+    // A book that comes with a paid course is the product itself. Opening it
+    // would give it away, so the two never go together.
+    if (openAccess && (wanted.length || id === 'i-cant')) {
+      err('Open access gives the book away free, so it can\'t also come with a paid course. Upload the preview as its own book, or untick the courses.');
+      return;
+    }
 
     const save = $('b-save');
     save.disabled = true;
@@ -214,10 +237,9 @@ function openModal(book) {
       }
       save.textContent = 'Saving…';
       await saveBook(id, {
-        title: $('b-title').value, author: $('b-author').value, status: $('b-status').value, coverUrl
+        title: $('b-title').value, author: $('b-author').value, status: $('b-status').value, coverUrl, openAccess
       }, { isNew: !editing, newFile: !!epubFile });
 
-      const wanted = [...$('b-courses').querySelectorAll('input[data-slug]')].filter((i) => i.checked).map((i) => i.dataset.slug);
       for (const c of state.courses) {
         const has = c.grantsBooks.includes(id);
         const want = wanted.includes(c.slug);

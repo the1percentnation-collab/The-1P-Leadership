@@ -34,6 +34,12 @@ export async function libraryAccess({ fresh = false } = {}) {
   return _ownedCache;
 }
 
+// A free sample anyone can read, signed in or not (functions bookFile serves
+// it without a token). Hidden still means admins only, for proofing.
+export function isOpenAccess(book) {
+  return !!book && book.openAccess === true && book.status !== 'hidden';
+}
+
 export async function ownsBook(bookId) {
   const { ids, admin } = await libraryAccess();
   return admin || ids.includes(bookId);
@@ -194,6 +200,8 @@ export async function getBookFile(book) {
     // Storage directly. That path needs the bucket's CORS configured, and
     // without it the SDK retries silently for minutes, so it is capped.
     if (e && (e.status === 401 || e.status === 403 || e.status === 404 && e.known)) throw e;
+    // storage.rules never open a book to a signed-out reader.
+    if (!(auth && auth.currentUser)) throw e;
     const path = book.filePath || `books/${book.id}/book.epub`;
     blob = await withTimeout(getBlob(ref(getStorage(app), path)), 25000);
   }
@@ -207,13 +215,13 @@ function withTimeout(p, ms) {
 
 // The primary path: /api/book-file on the site's own domain (a Hosting
 // rewrite to the bookFile function), authorised by the member's ID token.
-// Same origin, so no bucket CORS is involved.
+// Same origin, so no bucket CORS is involved. Signed out, the request goes
+// without a token, which the function accepts only for an open-access book.
 async function fetchFromSite(bookId) {
   const u = auth && auth.currentUser;
-  if (!u) throw Object.assign(new Error('not signed in'), { status: 401 });
-  const token = await u.getIdToken();
+  const headers = u ? { Authorization: `Bearer ${await u.getIdToken()}` } : {};
   const r = await withTimeout(fetch(`/api/book-file?book=${encodeURIComponent(bookId)}`, {
-    headers: { Authorization: `Bearer ${token}` }, cache: 'no-store'
+    headers, cache: 'no-store'
   }), 60000);
   const type = r.headers.get('Content-Type') || '';
   if (!r.ok || !type.includes('epub')) {

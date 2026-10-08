@@ -82,6 +82,36 @@ Introduction). The reader finds the chapter by matching "Chapter N" or
 differently, set `chapterHrefs` on `books/i-cant`, e.g.
 `{ "0": "text/intro.xhtml", "1": "text/ch01.xhtml" }`.
 
+## Free previews (open access)
+
+A book marked **open access** can be read by anyone with its link, no
+account: `/read?book={id}`. It is meant for a sample like the I Can't chapter
+one preview, never the full book.
+
+- `bookFile` serves it without a token while it is **Live**; Hidden stays
+  admins only, for proofing. storage.rules do not change, so the
+  same-origin route is the only way in.
+- The books the courses sell by default (`COURSE_FULFILLMENT`) are never
+  served this way, whatever their record says. Manage Library and
+  `upload-book.js` also refuse open access on a book attached to a course.
+- A guest's reading position is kept on their device; the back button leads
+  to the book's `buyHref`.
+
+**Making the chapter one preview from the full EPUB** (no install needed):
+
+```bash
+node scripts/make-preview-epub.js --in=i-cant.epub --out=i-cant-preview.epub \
+  --amazon="https://www.amazon.com/dp/..."   # --dry-run to see the cut first
+```
+
+It keeps everything before Chapter 2 (cover, front matter, Introduction,
+Chapter 1), deletes the later chapters from the file, prunes the contents and
+any printed contents page, and adds a closing "Keep Reading" page linking the
+book, free Module 1 (`/book-bonus.html`) and the bundle. Then upload it in
+Manage Library as its own book (id `i-cant-preview`, no courses ticked, tick
+**Open access**), proof it Hidden, switch it Live, and use **copy link**. Or:
+`cd scripts && node upload-book.js --id=i-cant-preview --epub=../i-cant-preview.epub --title="I Can't: Chapter One Preview" --author="Anthony Brown Sr." --status=hidden --open-access`.
+
 ## New editions
 
 Re-run `upload-book.js` with the new file. `version` changes, so every
@@ -92,6 +122,7 @@ device's offline copy refreshes on next open, and positions carry over.
 - `tests/books-fulfillment.test.cjs`: which purchases grant which books (unit).
 - `tests/firestore-rules.test.mjs`, `tests/storage-rules.test.mjs`: ownership can't be self-granted, the EPUB is served to owners only (emulators).
 - `tests/purchase-email.test.cjs`: what the confirmation email says (unit).
+- `tests/preview-epub.test.cjs`: the preview cut leaves no later chapter in the file, contents pruned, closing page added (unit).
 - `tests/purchase-e2e.test.mjs` (`cd tests && npm run e2e:purchase`): a signed Stripe `checkout.session.completed` posted to the shipped webhook on the Functions emulator, for both bundles: enrollment, the real book id in `ownedBookIds`, purchase and shipping-order records, Stripe retry idempotency, and the confirmation email captured from a local stand-in for the email provider.
 - `tests/reader-e2e.test.mjs`: the shipped reader and `books.js` against the Auth, Firestore and Storage emulators in Chromium: real download through the rule, position and bookmark sync across two devices, IndexedDB cache and version bump, non-owner denied, library shelf, and an admin uploading through Manage Library (file lands in Storage, record and course attachment in Firestore, PDF refused, hidden book proofable, re-upload bumps the edition, non-admin turned away). Needs Playwright and a sample EPUB:
 
