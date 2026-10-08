@@ -106,6 +106,12 @@ function openModal(book) {
           </div>
 
           <div class="crm-form-row">
+            <label>Buy link</label>
+            <input class="c-input" id="b-buy" value="${escapeHtml(b.buyHref || '')}" placeholder="/#shop for a preview, /bundle.html for a course book" />
+            <div class="pre-modal-sub">Where “Get the book” leads. A preview shows it on every page. Leave empty for the default.</div>
+          </div>
+
+          <div class="crm-form-row">
             <label>EPUB file ${editing ? '(leave empty to keep the current edition)' : '*'}</label>
             <div class="p-img-uploader" id="b-drop" style="border:1px dashed var(--border);border-radius:10px;padding:14px;">
               <div class="p-img-controls">
@@ -213,6 +219,8 @@ function openModal(book) {
     if (!editing && state.books.some((x) => x.id === id)) { err(`A book with the id "${id}" already exists.`); return; }
     if (!editing && !epubFile) { err('Choose the EPUB file.'); return; }
     const openAccess = $('b-open').checked;
+    const buy = $('b-buy').value.trim();
+    if (buy && !/^(\/(?!\/)|https:\/\/)/.test(buy)) { err('The buy link must start with / (a page on this site) or https://.'); return; }
     const wanted = [...$('b-courses').querySelectorAll('input[data-slug]')].filter((i) => i.checked).map((i) => i.dataset.slug);
     // A book that comes with a paid course is the product itself. Opening it
     // would give it away, so the two never go together.
@@ -237,7 +245,7 @@ function openModal(book) {
       }
       save.textContent = 'Saving…';
       await saveBook(id, {
-        title: $('b-title').value, author: $('b-author').value, status: $('b-status').value, coverUrl, openAccess
+        title: $('b-title').value, author: $('b-author').value, status: $('b-status').value, coverUrl, openAccess, buyHref: $('b-buy').value
       }, { isNew: !editing, newFile: !!epubFile });
 
       for (const c of state.courses) {

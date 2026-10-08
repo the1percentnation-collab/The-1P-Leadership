@@ -18,6 +18,8 @@
 //   --open-access     a free sample (e.g. the chapter one preview): anyone
 //                     with /read?book=<id> can read it, no account needed.
 //                     Never use it on a book a course sells.
+//   --buy=/path       where "Get the book" leads (default /bundle.html, or
+//                     /#shop, the book on the homepage, with --open-access)
 //   --dry-run         check the files and print the plan, write nothing
 //
 // Who can read the file is decided by storage.rules (users/{uid}.ownedBookIds),
@@ -109,7 +111,7 @@ async function main() {
     filePath,
     version,
     status,
-    buyHref: '/bundle.html',
+    buyHref: arg('buy') || (OPEN_ACCESS ? '/#shop' : '/bundle.html'),
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   };
   // Only set when asked, so re-uploading a preview keeps it open.

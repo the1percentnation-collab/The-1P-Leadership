@@ -94,20 +94,21 @@ one preview, never the full book.
 - The books the courses sell by default (`COURSE_FULFILLMENT`) are never
   served this way, whatever their record says. Manage Library and
   `upload-book.js` also refuse open access on a book attached to a course.
-- A guest's reading position is kept on their device; the back button leads
-  to the book's `buyHref`.
+- A "Get the book" button stays on every page, leading to the book's
+  `buyHref` (Manage Library: **Buy link**; `/#shop` by default for a
+  preview). A guest's reading position is kept on their device.
 
 **Making the chapter one preview from the full EPUB** (no install needed):
 
 ```bash
-node scripts/make-preview-epub.js --in=i-cant.epub --out=i-cant-preview.epub \
-  --amazon="https://www.amazon.com/dp/..."   # --dry-run to see the cut first
+node scripts/make-preview-epub.js --in=i-cant.epub --out=i-cant-preview.epub   # --dry-run to see the cut first
 ```
 
 It keeps everything before Chapter 2 (cover, front matter, Introduction,
 Chapter 1), deletes the later chapters from the file, prunes the contents and
 any printed contents page, and adds a closing "Keep Reading" page linking the
-book, free Module 1 (`/book-bonus.html`) and the bundle. Then upload it in
+book on the website (`/#shop`, override with `--buy=`), free Module 1
+(`/book-bonus.html`) and the bundle. Then upload it in
 Manage Library as its own book (id `i-cant-preview`, no courses ticked, tick
 **Open access**), proof it Hidden, switch it Live, and use **copy link**. Or:
 `cd scripts && node upload-book.js --id=i-cant-preview --epub=../i-cant-preview.epub --title="I Can't: Chapter One Preview" --author="Anthony Brown Sr." --status=hidden --open-access`.

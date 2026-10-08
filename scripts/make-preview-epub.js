@@ -10,14 +10,14 @@
 // table of contents and cross-references are pruned to match.
 //
 // USAGE (no npm install needed)
-//   node scripts/make-preview-epub.js --in=i-cant.epub --out=i-cant-preview.epub \
-//     --amazon="https://www.amazon.com/dp/XXXXXXXXXX"
+//   node scripts/make-preview-epub.js --in=i-cant.epub --out=i-cant-preview.epub
 //
 //   --through=1        last chapter to keep (default 1)
 //   --cut-at=FILE      cut before this spine file instead (e.g. text/ch02.xhtml),
 //                      for a book whose contents don't say "Chapter 2"
-//   --amazon=URL       "Get the full book" link on the closing page
-//   --site=URL         site for the course links (default https://the1pnation.com)
+//   --buy=URL          "Get the full book" link on the closing page
+//                      (default: the book on the website, <site>/#shop)
+//   --site=URL         the website (default https://the1pnation.com)
 //   --dry-run          print what would be kept and cut, write nothing
 //
 // Then upload it as its own book with open access, e.g.
@@ -138,7 +138,7 @@ function hrefsIn(html, fromFile) {
   return out;
 }
 
-function closingPage({ amazon, site, bookTitle }) {
+function closingPage({ buy, site, bookTitle }) {
   const option = (label, href, text) => `
     <div class="opt">
       <h2><a href="${escapeXml(href)}">${escapeXml(label)}</a></h2>
@@ -164,7 +164,7 @@ function closingPage({ amazon, site, bookTitle }) {
     <h1>You just finished chapter one.</h1>
     <p class="lede">If Fact vs. Verdict showed you something, that is the point. One belief, seen clearly, is where every shift starts.</p>
     <p>The rest of ${escapeXml(bookTitle)} picks up right here. Here is where to go next.</p>
-    ${amazon ? option('Get the full book', amazon, 'All ten chapters, every exercise, and the plan to turn "I can\'t" into your next move.') : ''}
+    ${option('Get the full book', buy || `${site}/#shop`, 'All ten chapters, every exercise, and the plan to turn "I can\'t" into your next move.')}
     ${option('Start the course free', `${site}/book-bonus.html`, 'Module 1 of I Can\'t: The Course walks you back through this chapter with Anthony and saves your Fact vs. Verdict work as a workbook.')}
     ${option('Go all in', `${site}/bundle.html`, 'The full book and all ten course modules together, one module per chapter.')}
     <p class="sign">Become one percent better every day.<br/>Anthony Brown Sr.</p>
@@ -176,7 +176,7 @@ function closingPage({ amazon, site, bookTitle }) {
 
 // ── The cut ─────────────────────────────────────────────────────────────
 
-function makePreview(epubBuf, { through = 1, cutAt = null, amazon = null, site = 'https://the1pnation.com' } = {}) {
+function makePreview(epubBuf, { through = 1, cutAt = null, buy = null, site = 'https://the1pnation.com' } = {}) {
   const entries = readZip(epubBuf);
   const byName = new Map(entries.map((e) => [e.name, e]));
   const read = (n) => { const e = byName.get(n); if (!e) throw new Error(`missing ${n} in the EPUB`); return e.data.toString('utf8'); };
@@ -293,7 +293,7 @@ function makePreview(epubBuf, { through = 1, cutAt = null, amazon = null, site =
   write(opfPath, opf);
 
   const out = entries.filter((e) => !dropped.has(e.name));
-  out.push({ name: endFile, data: Buffer.from(closingPage({ amazon, site, bookTitle }), 'utf8') });
+  out.push({ name: endFile, data: Buffer.from(closingPage({ buy, site, bookTitle }), 'utf8') });
   // mimetype must stay first.
   out.sort((a, b) => (a.name === 'mimetype' ? -1 : b.name === 'mimetype' ? 1 : 0));
 
@@ -316,11 +316,11 @@ if (require.main === module) {
   const dry = process.argv.includes('--dry-run');
   if (!input || !fs.existsSync(input)) { console.error('--in must point at the full book .epub'); process.exit(1); }
   if (!output && !dry) { console.error('--out is required (or use --dry-run)'); process.exit(1); }
-  const amazon = arg('amazon');
-  if (amazon && !/^https:\/\//.test(amazon)) { console.error('--amazon must be an https:// link'); process.exit(1); }
+  const buy = arg('buy');
+  if (buy && !/^https:\/\//.test(buy)) { console.error('--buy must be an https:// link'); process.exit(1); }
   try {
     const r = makePreview(fs.readFileSync(input), {
-      through: parseInt(arg('through') || '1', 10), cutAt: arg('cut-at'), amazon,
+      through: parseInt(arg('through') || '1', 10), cutAt: arg('cut-at'), buy,
       site: (arg('site') || 'https://the1pnation.com').replace(/\/+$/, '')
     });
     console.log('Keeps (in reading order):');
@@ -328,7 +328,6 @@ if (require.main === module) {
     console.log('  + preview-end.xhtml (Keep Reading)');
     console.log(`Cuts ${r.dropped.length} file(s): ${r.dropped.join(', ')}`);
     console.log(`Contents: ${r.toc.join(' | ')} | Keep Reading`);
-    if (!amazon) console.log('Note: no --amazon link, so the closing page offers only the course and the bundle.');
     if (dry) { console.log('\n--dry-run: nothing written.'); process.exit(0); }
     fs.writeFileSync(output, r.epub);
     console.log(`\nWrote ${output} (${(r.epub.length / 1024).toFixed(0)} KB). Proof it in the reader before going live.`);

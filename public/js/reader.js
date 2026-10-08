@@ -434,6 +434,14 @@ async function open() {
   }
   const free = isOpenAccess(book);
   if (!user && !free) { toLogin(); return; }
+  if (free) {
+    // A free preview always shows where to buy the full book.
+    for (const id of ['buy-pill', 'buy-bar']) {
+      $(id).href = book.buyHref || '/#shop';
+      $(id).hidden = false;
+    }
+    document.body.classList.add('has-buy');
+  }
   if (!user) {
     // No library to go back to: send a guest to the book's sales page.
     const back = $('back-btn');

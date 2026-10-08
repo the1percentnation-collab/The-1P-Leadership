@@ -63,7 +63,7 @@ const full = sampleEpub();
 const w = process.argv.find((a) => a.startsWith('--write='));
 if (w) fs.writeFileSync(w.slice(8), full);
 
-const r = makePreview(full, { amazon: 'https://www.amazon.com/dp/TEST' });
+const r = makePreview(full);
 const out = readZip(r.epub);
 const file = (n) => { const e = out.find((x) => x.name === n); return e ? e.data.toString('utf8') : null; };
 const all = out.map((e) => e.data.toString('utf8')).join('\n');
@@ -107,9 +107,10 @@ ok('a cross-reference to a cut chapter keeps its words, loses its link', () => {
   assert.ok(/back to this in Chapter 8\./.test(ch1) && !/ch8\.xhtml/.test(ch1));
 });
 
-ok('the closing page offers the book, the free module and the bundle', () => {
+ok('the closing page offers the book on the website, the free module and the bundle', () => {
   const end = file('OEBPS/preview-end.xhtml');
-  assert.ok(end.includes('https://www.amazon.com/dp/TEST'));
+  assert.ok(end.includes('href="https://the1pnation.com/#shop"'), 'Get the full book should lead to the book on the website');
+  assert.ok(readZip(makePreview(full, { buy: 'https://example.com/buy' }).epub).some((e) => e.data.toString().includes('https://example.com/buy')), '--buy not used');
   assert.ok(end.includes('https://the1pnation.com/book-bonus.html') && end.includes('https://the1pnation.com/bundle.html'));
   assert.ok(!/—/.test(end), 'em dash in the closing page');
   assert.ok(/<itemref idref="preview-end"\/>\s*<\/spine>/.test(file('OEBPS/content.opf')), 'closing page not last in the spine');
