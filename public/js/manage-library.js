@@ -63,7 +63,10 @@ function render() {
     </tbody></table></div>`;
   host.querySelectorAll('[data-copy]').forEach((a) => a.addEventListener('click', async (e) => {
     e.preventDefault();
-    const url = `${location.origin}/read?book=${encodeURIComponent(a.dataset.copy)}`;
+    // The chapter one preview has a short link (firebase.json redirects).
+    const url = a.dataset.copy === 'i-cant-preview'
+      ? `${location.origin}/icantpreview`
+      : `${location.origin}/read?book=${encodeURIComponent(a.dataset.copy)}`;
     try { await navigator.clipboard.writeText(url); a.textContent = 'copied ✓'; }
     catch (_) { window.prompt('Copy this link', url); }
   }));

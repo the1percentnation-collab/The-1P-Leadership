@@ -98,6 +98,12 @@ one preview, never the full book.
   `buyHref` (Manage Library: **Buy link**; `/#shop` by default for a
   preview). A guest's reading position is kept on their device.
 
+**The link to share is `the1pnation.com/icantpreview`.** It is a redirect in
+`firebase.json` to `/read?book=i-cant-preview` (any capitalisation, trailing
+slash fine; spelled `[Ii][Cc]…` because the Hosting emulator rejects RE2's `(?i)`), so the preview must be uploaded under that exact id. It is a 302,
+so it can be pointed elsewhere later without browsers holding on to the old
+target.
+
 **Making the chapter one preview from the full EPUB** (no install needed):
 
 ```bash
