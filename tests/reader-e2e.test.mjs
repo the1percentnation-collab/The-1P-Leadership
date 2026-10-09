@@ -332,6 +332,25 @@ await t('flagging the paid book open access does not open it', async () => {
   }
 });
 
+await t('with no Library upload, the preview link opens the copy built into the site', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const { deleteDoc } = await import('firebase/firestore');
+    await deleteDoc(doc(ctx.firestore(), 'books/i-cant-preview'));
+  });
+  const H = await makeContext(null, { id: 'H' });
+  const fetched = [];
+  H.page.on('request', (r) => { if (/\/books\/i-cant-preview\.epub$/.test(r.url())) fetched.push(r.url()); });
+  await H.page.goto(`${ORIGIN}/read?book=i-cant-preview`);
+  await opened(H.page);
+  assert(/\/read/.test(H.page.url()), 'guest was redirected: ' + H.page.url());
+  assert(fetched.length === 1, 'built-in file not fetched: ' + fetched.length);
+  assert(!bookFileHits.get('H'), 'built-in preview should not go through /api/book-file');
+  assert(await H.page.isVisible('#buy-pill'), '"Get the book" missing on the built-in preview');
+  const title = await H.page.textContent('#book-title');
+  assert(/Chapter One Preview/.test(title), 'title: ' + title);
+  await H.ctx.close();
+});
+
 // ── 4. Library shelf, real data ──────────────────────────────────────────
 await t('the library shelf shows the owned book with its synced progress', async () => {
   await B.page.goto(`${ORIGIN}/library`);
