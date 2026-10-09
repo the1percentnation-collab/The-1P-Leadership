@@ -98,6 +98,11 @@ one preview, never the full book.
   `buyHref` (Manage Library: **Buy link**; `/#shop` by default for a
   preview). A guest's reading position is kept on their device.
 
+**The I Can't preview ships with the site.** `public/books/i-cant-preview.epub`
+is listed in `BUILT_IN_BOOKS` (`public/js/books.js`), so the reader opens it
+with no Library upload. A Library record with the same id takes over, so a
+new edition can still be published from Manage Library.
+
 **The link to share is `the1pnation.com/icantpreview`.** It is a redirect in
 `firebase.json` to `/read?book=i-cant-preview` (any capitalisation, trailing
 slash fine; spelled `[Ii][Cc]…` because the Hosting emulator rejects RE2's `(?i)`), so the preview must be uploaded under that exact id. It is a 302,

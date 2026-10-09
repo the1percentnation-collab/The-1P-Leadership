@@ -45,9 +45,31 @@ export async function ownsBook(bookId) {
   return admin || ids.includes(bookId);
 }
 
+// Free previews that ship with the site itself (public/books/), so their
+// link works without a Library upload. A Library record with the same id
+// wins, so uploading a new edition in Manage Library replaces this one.
+export const BUILT_IN_BOOKS = {
+  'i-cant-preview': {
+    title: 'I Can\u2019t: Chapter One Preview',
+    author: 'Anthony Brown Sr.',
+    status: 'live',
+    openAccess: true,
+    staticUrl: '/books/i-cant-preview.epub',
+    version: 'site-2026-10-09',
+    buyHref: '/#shop',
+    coverUrl: '/assets/i-cant-book-poster.jpg'
+  }
+};
+
 export async function getBook(bookId) {
-  const snap = await getDoc(doc(db, 'books', bookId));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  let snap = null;
+  try {
+    snap = await getDoc(doc(db, 'books', bookId));
+  } catch (e) {
+    if (!BUILT_IN_BOOKS[bookId]) throw e;
+  }
+  if (snap && snap.exists()) return { id: snap.id, ...snap.data() };
+  return BUILT_IN_BOOKS[bookId] ? { id: bookId, ...BUILT_IN_BOOKS[bookId] } : null;
 }
 
 // ── Reading position ────────────────────────────────────────────────────
@@ -193,6 +215,14 @@ export async function getBookFile(book) {
   } catch (e) { /* private mode or blocked storage: fall through to network */ }
 
   let blob;
+  if (book.staticUrl) {
+    // A built-in preview: a plain file on this site, no sign-in involved.
+    const r = await withTimeout(fetch(book.staticUrl, { cache: 'no-store' }), 60000);
+    if (!r.ok) throw Object.assign(new Error(`book download failed (${r.status})`), { status: r.status });
+    blob = await r.blob();
+    try { await idbPutReplacing(`${book.id}:`, key, blob); } catch (e) {}
+    return new File([blob], `${book.id}.epub`, { type: 'application/epub+zip' });
+  }
   try {
     blob = await fetchFromSite(book.id);
   } catch (e) {
