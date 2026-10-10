@@ -346,6 +346,10 @@ await t('with no Library upload, the preview link opens the copy built into the 
   assert(fetched.length === 1, 'built-in file not fetched: ' + fetched.length);
   assert(!bookFileHits.get('H'), 'built-in preview should not go through /api/book-file');
   assert(await H.page.isVisible('#buy-pill'), '"Get the book" missing on the built-in preview');
+  assert((await H.page.getAttribute('#buy-pill', 'href')) === '/bundle.html', 'built-in preview should sell the bundle');
+  await H.page.evaluate(() => { const v = document.querySelector('foliate-view'); return v.goTo(v.book.sections.length - 1); });
+  await H.page.waitForTimeout(800);
+  if (process.env.READER_E2E_SHOTS) await H.page.screenshot({ path: path.join(process.env.READER_E2E_SHOTS, 'preview-closing-page.png') });
   const title = await H.page.textContent('#book-title');
   assert(/Chapter One Preview/.test(title), 'title: ' + title);
   await H.ctx.close();

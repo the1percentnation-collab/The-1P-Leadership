@@ -118,8 +118,8 @@ node scripts/make-preview-epub.js --in=i-cant.epub --out=i-cant-preview.epub   #
 It keeps everything before Chapter 2 (cover, front matter, Introduction,
 Chapter 1), deletes the later chapters from the file, prunes the contents and
 any printed contents page, and adds a closing "Keep Reading" page linking the
-book on the website (`/#shop`, override with `--buy=`), free Module 1
-(`/book-bonus.html`) and the bundle. Then upload it in
+one offer: the $197 I Can't bundle, the full ebook plus the course
+(`/bundle.html`, override with `--buy=`). Then upload it in
 Manage Library as its own book (id `i-cant-preview`, no courses ticked, tick
 **Open access**), proof it Hidden, switch it Live, and use **copy link**. Or:
 `cd scripts && node upload-book.js --id=i-cant-preview --epub=../i-cant-preview.epub --title="I Can't: Chapter One Preview" --author="Anthony Brown Sr." --status=hidden --open-access`.

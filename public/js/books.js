@@ -55,8 +55,8 @@ export const BUILT_IN_BOOKS = {
     status: 'live',
     openAccess: true,
     staticUrl: '/books/i-cant-preview.epub',
-    version: 'site-2026-10-09',
-    buyHref: '/#shop',
+    version: 'site-2026-10-10',
+    buyHref: '/bundle.html',
     coverUrl: '/assets/i-cant-book-poster.jpg'
   }
 };
