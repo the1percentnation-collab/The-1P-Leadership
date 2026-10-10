@@ -15,8 +15,8 @@
 //   --through=1        last chapter to keep (default 1)
 //   --cut-at=FILE      cut before this spine file instead (e.g. text/ch02.xhtml),
 //                      for a book whose contents don't say "Chapter 2"
-//   --buy=URL          "Get the full book" link on the closing page
-//                      (default: the book on the website, <site>/#shop)
+//   --buy=URL          the offer link on the closing page
+//                      (default: the I Can't bundle, <site>/bundle.html)
 //   --site=URL         the website (default https://the1pnation.com)
 //   --dry-run          print what would be kept and cut, write nothing
 //
@@ -163,10 +163,8 @@ function closingPage({ buy, site, bookTitle }) {
   <section epub:type="chapter">
     <h1>You just finished chapter one.</h1>
     <p class="lede">If Fact vs. Verdict showed you something, that is the point. One belief, seen clearly, is where every shift starts.</p>
-    <p>The rest of <i>${escapeXml(bookTitle)}</i> picks up right here. Here is where to go next.</p>
-    ${option('Get the full book', buy || `${site}/#shop`, 'All ten chapters, every exercise, and the plan to turn \u201cI can\u2019t\u201d into your next move.')}
-    ${option('Start the course free', `${site}/book-bonus.html`, 'Module 1 of I Can\u2019t: The Course walks you back through this chapter with Anthony and saves your Fact vs. Verdict work as a workbook.')}
-    ${option('Go all in', `${site}/bundle.html`, 'The full book and all ten course modules together, one module per chapter.')}
+    <p>The rest of <i>${escapeXml(bookTitle)}</i> picks up right here.</p>
+    ${option('Get the full book and the course: $197', buy || `${site}/bundle.html`, 'The complete ebook, all ten chapters, in this same reader, plus I Can\u2019t: The Course. One module per chapter, every exercise saved as a workbook, lifetime access.')}
     <p class="sign">Become one percent better every day.<br/>Anthony Brown Sr.</p>
   </section>
 </body>
