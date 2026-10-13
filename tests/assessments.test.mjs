@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import { loadPure } from './_load-pure.mjs';
 
 const {
-  validateAssessment, scoreAssessment, bandFor, headlineFor,
+  validateAssessment, scoreAssessment, bandFor, headlineFor, buildReport, levelFor,
   isPriorityLead, segmentFor, cleanProfile, CATEGORIES
 } = await loadPure('assessment-core.js');
 const { ASSESSMENTS, getAssessment } = await loadPure('assessments-data.js');
@@ -147,6 +147,72 @@ ok('every real assessment scores 0 and 100 at the extremes', () => {
     assert.strictEqual(scoreAssessment(a, best).overall, 100, a.slug);
     assert.strictEqual(scoreAssessment(a, worst).overall, 0, a.slug);
     assert.ok(headlineFor(a, scoreAssessment(a, best)), a.slug + ' has a headline');
+  }
+});
+
+// ── The report ───────────────────────────────────────────────────────────
+
+ok('area levels cut at 50 and 75, like the bands', () => {
+  assert.strictEqual(levelFor(0).key, 'low');
+  assert.strictEqual(levelFor(49).key, 'low');
+  assert.strictEqual(levelFor(50).key, 'mid');
+  assert.strictEqual(levelFor(74).key, 'mid');
+  assert.strictEqual(levelFor(75).key, 'high');
+});
+
+ok('score report: strength is the top area, focus the lowest, both named in one line', () => {
+  const a = getAssessment('alignment-scorecard');
+  const answers = Object.fromEntries(a.questions.map((q, i) => {
+    const want = q.dim === 'leadership' ? 5 : q.dim === 'growth' ? 1 : 3;
+    return [i, q.reverse ? 6 - want : want];
+  }));
+  const rep = buildReport(a, scoreAssessment(a, answers));
+  assert.strictEqual(rep.strength.key, 'leadership');
+  assert.strictEqual(rep.strength.level, 'high');
+  assert.strictEqual(rep.focus.key, 'growth');
+  assert.strictEqual(rep.focus.level, 'low');
+  assert.ok(rep.oneLine.includes('Leadership (100)') && rep.oneLine.includes('Growth (0)'), rep.oneLine);
+  assert.strictEqual(rep.focus.meaning, a.dimensions.find((d) => d.key === 'growth').levels.low);
+});
+
+ok('the 30-day plan is three weeks on the focus area, then the next weakest', () => {
+  const a = getAssessment('alignment-scorecard');
+  const answers = Object.fromEntries(a.questions.map((q, i) => {
+    const want = { growth: 1, identity: 2, awareness: 3, navigation: 4, leadership: 5 }[q.dim];
+    return [i, q.reverse ? 6 - want : want];
+  }));
+  const rep = buildReport(a, scoreAssessment(a, answers));
+  assert.deepStrictEqual(rep.plan.map((p) => p.area), ['Growth', 'Growth', 'Growth', 'Identity']);
+  const growth = a.dimensions.find((d) => d.key === 'growth');
+  assert.deepStrictEqual(rep.plan.slice(0, 3).map((p) => p.action), growth.actions);
+});
+
+ok('even scores still produce a readable line and a full plan', () => {
+  const a = getAssessment('alignment-scorecard');
+  const rep = buildReport(a, scoreAssessment(a, all(a, 3)));
+  assert.ok(/even/.test(rep.oneLine), rep.oneLine);
+  assert.strictEqual(rep.plan.length, 4);
+  assert.ok(rep.plan.every((p) => p.action));
+});
+
+ok('profile report: focus is the type, secondary the runner-up, plan ends on the runner-up', () => {
+  for (const a of ASSESSMENTS.filter((x) => x.mode === 'profile')) {
+    const second = a.dimensions[1].key;
+    const answers = Object.fromEntries(a.questions.map((q, i) => [i, q.dim === second ? 5 : q.dim === a.dimensions[0].key ? 4 : 1]));
+    const rep = buildReport(a, scoreAssessment(a, answers));
+    assert.strictEqual(rep.focus.key, second, a.slug);
+    assert.strictEqual(rep.secondary.key, a.dimensions[0].key, a.slug);
+    assert.strictEqual(rep.plan[3].area, rep.secondary.label, a.slug);
+    assert.ok(rep.headline && rep.summary && rep.oneLine, a.slug);
+  }
+});
+
+ok('every assessment builds a complete report at every level', () => {
+  for (const a of ASSESSMENTS) for (const v of [1, 3, 5]) {
+    const rep = buildReport(a, scoreAssessment(a, all(a, v)));
+    assert.ok(rep.headline && rep.summary && rep.oneLine, a.slug);
+    assert.strictEqual(rep.plan.length, 4, a.slug);
+    for (const ar of rep.areas) assert.ok(ar.meaning && ar.why && ar.reflect && ar.actions.length === 3, `${a.slug}/${ar.key}`);
   }
 });
 

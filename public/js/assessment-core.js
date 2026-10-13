@@ -151,6 +151,97 @@ export function bandFor(def, score) {
   return bands.find((b) => score >= b.min) || bands[bands.length - 1] || null;
 }
 
+// Where one area's score sits. The cut points match the bands every score
+// assessment uses (0 / 50 / 75), so an area and the overall read the same way.
+export const LEVELS = [
+  { key: 'low', min: 0, label: 'Needs focus', profileLabel: 'Light pull' },
+  { key: 'mid', min: 50, label: 'Steady', profileLabel: 'Moderate pull' },
+  { key: 'high', min: 75, label: 'Strong', profileLabel: 'Strong pull' }
+];
+
+export function levelFor(score) {
+  return LEVELS.slice().reverse().find((l) => score >= l.min) || LEVELS[0];
+}
+
+/**
+ * Everything the full report shows, in reading order, so the page only lays
+ * it out. Pure: the same answers always produce the same report.
+ *
+ *   headline / summary  the result in a phrase and a paragraph
+ *   oneLine             the result in plain words: best area, biggest gap
+ *   areas               every dimension, strongest first, with its level and
+ *                       the copy written for that level
+ *   strength / focus    the area to build on and the area to work on (in
+ *                       profile mode, focus is the person's type)
+ *   secondary           profile mode: the runner-up type
+ *   plan                four weeks, one concrete action each
+ */
+export function buildReport(def, result) {
+  const isProfile = def.mode === 'profile';
+  const order = def.dimensions.map((d) => d.key);
+  const scoreOf = (k) => (result.dims.find((d) => d.key === k) || { score: 0 }).score;
+  const area = (d) => {
+    const score = scoreOf(d.key);
+    const level = levelFor(score);
+    return {
+      key: d.key,
+      label: d.label,
+      headline: d.headline || null,
+      summary: d.summary || null,
+      desc: d.desc,
+      score,
+      level: level.key,
+      levelLabel: isProfile ? level.profileLabel : level.label,
+      meaning: d.levels ? d.levels[level.key] : '',
+      why: d.why || '',
+      leverage: d.leverage || '',
+      reflect: d.reflect || '',
+      actions: d.actions
+    };
+  };
+  const areas = def.dimensions.map(area)
+    .sort((a, b) => b.score - a.score || order.indexOf(a.key) - order.indexOf(b.key));
+  const byKey = (k) => areas.find((a) => a.key === k) || null;
+  const ascending = areas.slice().sort((a, b) => a.score - b.score || order.indexOf(a.key) - order.indexOf(b.key));
+
+  const strength = areas[0] || null;
+  const focus = isProfile ? byKey(result.profileType) : (ascending[0] || null);
+  const secondary = isProfile ? (areas.find((a) => a.key !== result.profileType) || null) : null;
+  // The next area to work on once the focus area has had three weeks.
+  const next = isProfile ? secondary : (ascending.find((a) => focus && a.key !== focus.key && a.key !== strength.key) || ascending[1] || null);
+
+  let oneLine;
+  if (isProfile) {
+    oneLine = secondary
+      ? `You lean most toward ${focus.label}, with ${secondary.label} close behind.`
+      : `You lean most toward ${focus.label}.`;
+  } else if (strength && focus && strength.key !== focus.key) {
+    oneLine = `Your strongest area is ${strength.label} (${strength.score}). Your biggest opportunity is ${focus.label} (${focus.score}).`;
+  } else {
+    oneLine = 'Your scores are even across every area. Pick the one that matters most to you right now and start there.';
+  }
+
+  const plan = focus ? [
+    { week: 1, area: focus.label, action: focus.actions[0] },
+    { week: 2, area: focus.label, action: focus.actions[1] },
+    { week: 3, area: focus.label, action: focus.actions[2] },
+    next
+      ? { week: 4, area: next.label, action: next.actions[0] }
+      : { week: 4, area: focus.label, action: 'Repeat the action from week one and notice what is easier now.' }
+  ] : [];
+
+  return {
+    headline: headlineFor(def, result),
+    summary: isProfile ? (focus && focus.summary) : (result.band && result.band.summary),
+    oneLine,
+    areas,
+    strength,
+    focus,
+    secondary,
+    plan
+  };
+}
+
 /** The headline a result leads with, for either mode. */
 export function headlineFor(def, result) {
   if (def.mode === 'profile') {
@@ -176,7 +267,7 @@ export function validateAssessment(def) {
   need(def.mode === 'score' || def.mode === 'profile', 'mode must be score or profile');
   need(Number.isInteger(def.minutes) && def.minutes > 0, 'minutes is required');
   need(Array.isArray(def.dimensions) && def.dimensions.length >= 3 && def.dimensions.length <= 6, '3 to 6 dimensions');
-  need(Array.isArray(def.questions) && def.questions.length >= 12 && def.questions.length <= 25, '12 to 25 questions');
+  need(Array.isArray(def.questions) && def.questions.length >= 20 && def.questions.length <= 30, '20 to 30 questions');
   if (errs.length) return errs;
 
   const keys = new Set();
@@ -187,7 +278,11 @@ export function validateAssessment(def) {
     need(d.label && d.desc, `dimension ${d.key} needs label and desc`);
     need(Array.isArray(d.actions) && d.actions.length === 3, `dimension ${d.key} needs exactly 3 actions`);
     const qs = def.questions.filter((q) => q.dim === d.key).length;
-    need(qs >= 3, `dimension ${d.key} needs at least 3 questions (has ${qs})`);
+    need(qs >= 4, `dimension ${d.key} needs at least 4 questions (has ${qs})`);
+    need(d.why, `dimension ${d.key} needs why (why this area matters)`);
+    need(d.reflect && /\?$/.test(d.reflect.trim()), `dimension ${d.key} needs a reflect question ending in ?`);
+    need(d.levels && LEVELS.every((l) => d.levels[l.key]), `dimension ${d.key} needs levels.low, levels.mid and levels.high`);
+    if (def.mode === 'score') need(d.leverage, `dimension ${d.key} needs leverage (using it as a strength)`);
     if (def.mode === 'profile') need(d.headline && d.summary, `profile dimension ${d.key} needs headline and summary`);
   });
   def.questions.forEach((q, i) => {

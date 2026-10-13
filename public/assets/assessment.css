@@ -203,3 +203,63 @@ details.dim p{color:var(--gray-400);font-size:15px;margin-top:8px;}
   .ring{width:170px;height:170px;}
   .ring b{font-size:64px;}
 }
+
+/* ── Full report: readable at a glance ───────────────────── */
+.res-line{font-size:19px;font-weight:600;color:var(--white);max-width:620px;margin:0 auto 10px;}
+.res-tools{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:22px;border-top:1px solid var(--border);padding-top:14px;}
+.res-tools .saved{margin-top:0;}
+#s-result{counter-reset:step;}
+.step{display:flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:var(--gray-400);margin-bottom:12px;}
+.step::before{counter-increment:step;content:counter(step);width:24px;height:24px;border-radius:50%;border:1px solid var(--border-strong);color:var(--white);display:inline-grid;place-items:center;font-size:12px;letter-spacing:0;}
+.panel h3 .lv{vertical-align:middle;margin-left:6px;}
+.legend{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 16px;}
+.lv{display:inline-block;font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;border-radius:999px;padding:3px 9px;border:1px solid;font-weight:700;white-space:nowrap;}
+.lv small{font-weight:400;opacity:.75;margin-left:4px;letter-spacing:0;}
+.lv-low{color:#ff8a8c;border-color:rgba(230,3,6,0.45);background:rgba(230,3,6,0.1);}
+.lv-mid{color:#e8e8e8;border-color:var(--border-strong);background:rgba(255,255,255,0.05);}
+.lv-high{color:#9dbcff;border-color:rgba(21,94,239,0.5);background:rgba(21,94,239,0.12);}
+.bar-head .tag{font-style:normal;font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--gray-400);margin-left:6px;}
+.bar-head > span:last-child{display:flex;align-items:center;gap:8px;}
+.bar-row.lvl-low .bar i{background:var(--red);}
+.bar-row.lvl-mid .bar i{background:var(--gray-300);}
+.bar-row.lvl-high .bar i{background:var(--blue);}
+.panel.strong{border-color:rgba(21,94,239,0.4);background:linear-gradient(135deg,rgba(21,94,239,0.1),transparent 70%),var(--surface);}
+.area{display:grid;gap:14px;margin-top:16px;}
+.area-row{display:grid;grid-template-columns:150px 1fr;gap:14px;align-items:start;}
+.area-row p{color:var(--gray-300);}
+.area-k{font-family:var(--font-mono);font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--gray-400);padding-top:4px;}
+.area-row .actions{margin-top:0;}
+.reflect{font-style:italic;color:var(--white) !important;}
+.note{font-size:14px;color:var(--gray-400);margin-top:10px;}
+details.dim summary{align-items:center;gap:12px;}
+details.dim summary > span:last-of-type{display:flex;align-items:center;gap:8px;margin-left:auto;}
+details.dim summary::after{margin-left:10px;}
+.plan{list-style:none;display:grid;gap:10px;margin-top:14px;}
+.plan li{display:grid;grid-template-columns:110px 1fr;gap:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
+.plan .wk{font-family:var(--font-display);font-size:22px;letter-spacing:0.03em;line-height:1;}
+.plan .wk small{display:block;font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--gray-400);margin-top:6px;}
+.plan p{color:var(--gray-300);}
+.plan .retake{border-style:dashed;}
+@media (max-width:760px){
+  .area-row,.plan li{grid-template-columns:1fr;gap:6px;}
+  .bar-head{flex-wrap:wrap;gap:4px;}
+}
+
+/* Print / save as PDF: the report only, on white. */
+@media print{
+  body{background:#fff;color:#111;}
+  body::before,.a-nav,.res-actions,.res-tools .text-btn,.cta-panel,.no-print,#consent-banner,[aria-label="Cookie consent"]{display:none !important;}
+  .screen{display:none !important;}
+  #s-result{display:block !important;padding:0;animation:none;}
+  .panel,.plan li{background:#fff !important;border:1px solid #ccc !important;break-inside:avoid;}
+  .panel h3,.res-label,.res-line,.plan .wk,.reflect,.step::before{color:#111 !important;}
+  .res-summary,.panel p,.area-row p,.plan p,.muted,.note,.actions li{color:#333 !important;}
+  .ring::before{background:#fff;}
+  .ring b{color:#111;}
+  .bar{background:#eee;}
+  .eyebrow,.step,.area-k,.res-label span{color:#B30205 !important;}
+  .lv{background:#fff !important;}
+  .lv-mid{color:#444 !important;border-color:#999 !important;}
+  .bar-row.lvl-mid .bar i{background:#888 !important;}
+  details.dim summary::after{display:none;}
+}

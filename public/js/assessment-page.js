@@ -7,11 +7,13 @@
 // than a blank quiz.
 import { getAssessment } from './assessments-data.js';
 import {
-  SCALE, PROFILE_QUESTIONS, scoreAssessment, headlineFor, isPriorityLead, cleanProfile
+  SCALE, PROFILE_QUESTIONS, LEVELS, scoreAssessment, headlineFor, buildReport, bandFor,
+  isPriorityLead, cleanProfile
 } from './assessment-core.js';
 import { onAuthReady, signupEmail, loginGoogle } from './auth.js';
-import { functions, firebaseReady } from './firebase.js';
+import { db, functions, firebaseReady } from './firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -164,51 +166,64 @@ async function showResult() {
   show('s-result');
 }
 
-function resultHead(r) {
+// How to read a score, shown once beside the breakdown.
+function legend() {
+  const isProfile = def.mode === 'profile';
+  const ranges = ['0 to 49', '50 to 74', '75 to 100'];
+  return `<div class="legend">${LEVELS.map((l, i) =>
+    `<span class="lv lv-${l.key}">${esc(isProfile ? l.profileLabel : l.label)} <small>${ranges[i]}</small></span>`).join('')}</div>`;
+}
+
+function resultHead(r, rep) {
   if (def.mode === 'profile') {
-    const d = def.dimensions.find((x) => x.key === r.profileType);
     return `<div class="res-top">
       <div class="eyebrow">Your result</div>
-      <h1 class="display res-label">${esc(d.headline)}</h1>
-      <p class="res-summary">${esc(d.summary)}</p>
+      <h1 class="display res-label">${esc(rep.headline)}</h1>
+      <p class="res-line">${esc(rep.oneLine)}</p>
+      <p class="res-summary">${esc(rep.summary)}</p>
     </div>`;
   }
   return `<div class="res-top">
     <div class="eyebrow">Your result</div>
     <div class="ring" style="--p:${r.overall}"><div><b>${r.overall}</b><small>OUT OF 100</small></div></div>
     <h1 class="display res-label">You are <span>${esc(r.band.label)}</span></h1>
+    <p class="res-line">${esc(rep.oneLine)}</p>
     <p class="res-summary">${esc(r.band.summary)}</p>
   </div>`;
 }
 
-function bars(r) {
-  const sorted = r.dims.slice().sort((a, b) => b.score - a.score);
-  return `<div class="bars">${sorted.map((d) => {
-    const cls = d.key === r.lowest && def.mode === 'score' ? 'low' : (d.key === r.highest ? 'top' : '');
-    return `<div class="bar-row ${cls}"><div class="bar-head"><span>${esc(d.label)}</span><b>${d.score}</b></div><div class="bar"><i style="width:${Math.max(d.score, 3)}%"></i></div></div>`;
+function bars(rep) {
+  return `<div class="bars">${rep.areas.map((a) => {
+    const mark = rep.focus && a.key === rep.focus.key ? (def.mode === 'profile' ? 'Your type' : 'Your focus')
+      : (def.mode === 'score' && rep.strength && a.key === rep.strength.key ? 'Your strength' : '');
+    return `<div class="bar-row lvl-${a.level}">
+      <div class="bar-head"><span>${esc(a.label)}${mark ? ` <em class="tag">${mark}</em>` : ''}</span><span><span class="lv lv-${a.level}">${esc(a.levelLabel)}</span> <b>${a.score}</b></span></div>
+      <div class="bar"><i style="width:${Math.max(a.score, 3)}%"></i></div>
+    </div>`;
   }).join('')}</div>`;
 }
 
 function renderTeaser() {
   const r = scoreAssessment(def, state.answers);
-  const focus = def.dimensions.find((d) => d.key === (def.mode === 'profile' ? r.profileType : r.lowest));
+  const rep = buildReport(def, r);
   const next = `/assessments/${slug}?unlock=1`;
   $('s-result').innerHTML = `
-    ${resultHead(r)}
+    ${resultHead(r, rep)}
     <div class="locked">
       <div class="preview" aria-hidden="true">
-        <div class="panel"><h3>Your breakdown</h3>${bars(r)}</div>
-        <div class="panel spot"><h3>${def.mode === 'profile' ? 'Living it out' : 'Start here'}: ${esc(focus ? focus.label : '')}</h3><ol class="actions"><li>Your first action</li><li>Your second action</li><li>Your third action</li></ol></div>
+        <div class="panel"><h3>At a glance</h3>${bars(rep)}</div>
+        <div class="panel spot"><h3>${def.mode === 'profile' ? 'Your type' : 'Your focus area'}: ${esc(rep.focus ? rep.focus.label : '')}</h3><ol class="actions"><li>Your first action</li><li>Your second action</li><li>Your third action</li></ol></div>
       </div>
       <div class="unlock">
         <div class="eyebrow">Your full report is ready</div>
         <h2 class="display">Unlock it free.</h2>
         <p class="sub">Create your free One Percent account to see the rest and keep it in your member portal.</p>
         <ul>
-          <li>Your score in all ${def.dimensions.length} areas</li>
-          <li>${def.mode === 'profile' ? 'What your result means and its blind spot' : 'The one area to fix first, named'}</li>
-          <li>Three specific actions to start this week</li>
-          <li>Every other free assessment, plus your results saved in one place</li>
+          <li>Your score in all ${def.dimensions.length} areas, and what each one means for you</li>
+          <li>${def.mode === 'profile' ? 'Your type in depth: its strengths, its blind spot and your runner-up' : 'Your strongest area, and the one to focus on first'}</li>
+          <li>A week-by-week 30-day plan with specific actions</li>
+          <li>Reflection questions, and a report you can print or save</li>
+          <li>Every other free assessment, with your results saved in one place</li>
         </ul>
         <form class="form" id="unlock-form" novalidate>
           <label for="u-name">First and last name</label>
@@ -313,13 +328,25 @@ function setSaved(text) {
   if (el) el.textContent = text;
 }
 
+// One area in full: what the score means at this level, why it matters,
+// what to do, and a question to sit with.
+function areaDetail(a, { open = false, showActions = true } = {}) {
+  return `<div class="area">
+    <div class="area-row"><span class="area-k">What your score means</span><p>${esc(a.meaning)}</p></div>
+    <div class="area-row"><span class="area-k">Why it matters</span><p>${esc(a.why)}</p></div>
+    ${showActions ? `<div class="area-row"><span class="area-k">What to do</span><ol class="actions">${a.actions.map((x) => `<li><span>${esc(x)}</span></li>`).join('')}</ol></div>` : ''}
+    <div class="area-row"><span class="area-k">Reflect</span><p class="reflect">${esc(a.reflect)}</p></div>
+  </div>`;
+}
+
 function renderFull(r, profile, status) {
   const isProfile = def.mode === 'profile';
-  const focusKey = isProfile ? r.profileType : r.lowest;
-  const focus = def.dimensions.find((d) => d.key === focusKey);
-  const others = def.dimensions.filter((d) => d.key !== focusKey);
+  const rep = buildReport(def, r);
   const priority = isPriorityLead(profile);
   const related = (def.related || []).map(getAssessment).filter(Boolean);
+  const f = rep.focus;
+  // Numbered by a CSS counter in reading order.
+  const step = (t) => `<div class="step">${esc(t)}</div>`;
 
   const auditPanel = priority && (!def.cta || def.cta.href !== '/corporate#audit')
     ? `<div class="panel cta-panel">
@@ -337,47 +364,76 @@ function renderFull(r, profile, status) {
         <a class="btn ${auditPanel ? 'btn-ghost' : 'btn-red'}" href="${esc(def.cta.href)}">${esc(def.cta.label)}</a>
       </div>` : '';
 
+  const strengthPanel = isProfile
+    ? (rep.secondary ? `<section class="panel">
+        ${step('Your runner-up')}
+        <h3>${esc(rep.secondary.headline || rep.secondary.label)}</h3>
+        <p class="muted">${esc(rep.secondary.summary || rep.secondary.desc)}</p>
+        <p class="note">Most people are a blend. Your runner-up explains the moments when you do not act like your main type.</p>
+      </section>` : '')
+    : (rep.strength && f && rep.strength.key !== f.key ? `<section class="panel strong">
+        ${step('Your strength')}
+        <h3>${esc(rep.strength.label)} <span class="lv lv-${rep.strength.level}">${esc(rep.strength.levelLabel)} · ${rep.strength.score}</span></h3>
+        <p>${esc(rep.strength.meaning)}</p>
+        <div class="area-row"><span class="area-k">Use it</span><p>${esc(rep.strength.leverage)}</p></div>
+      </section>` : '');
+
   $('s-result').innerHTML = `
-    ${resultHead(r)}
-    <div style="text-align:center;"><span class="saved" id="saved">${status === 'saving' ? 'Saving to your portal…' : ''}</span></div>
-
-    <div class="panel spot">
-      <div class="eyebrow">${isProfile ? 'Living it out' : 'Start here'}</div>
-      <h3>${esc(focus.label)}</h3>
-      <p class="muted">${esc(focus.desc)}</p>
-      <ol class="actions">${focus.actions.map((a) => `<li><span>${esc(a)}</span></li>`).join('')}</ol>
+    ${resultHead(r, rep)}
+    <div class="res-tools">
+      <span class="saved" id="saved">${status === 'saving' ? 'Saving to your portal…' : esc(status || '')}</span>
+      <button class="text-btn" type="button" id="print">Print or save as PDF</button>
     </div>
 
-    ${def.prompt ? `<div class="panel"><div class="eyebrow">Write your why</div><p class="why-prompt">${esc(def.prompt)}</p><p class="muted" style="margin-top:10px;">Fill it in tonight. Keep it where you will see it tomorrow morning.</p></div>` : ''}
+    <section class="panel">
+      ${step('At a glance')}
+      ${legend()}
+      ${bars(rep)}
+    </section>
 
-    <div class="panel">
-      <h3>${isProfile ? 'Your full profile' : 'Your breakdown'}</h3>
-      ${bars(r)}
-    </div>
+    <section class="panel spot">
+      ${step(isProfile ? 'Your type in depth' : 'Your focus area')}
+      <h3>${esc(isProfile ? (f.headline || f.label) : f.label)} <span class="lv lv-${f.level}">${esc(f.levelLabel)} · ${f.score}</span></h3>
+      <p class="muted">${esc(f.desc)}</p>
+      ${areaDetail(f)}
+    </section>
 
-    <div class="panel">
-      <h3>${isProfile ? 'The other types' : 'Every area, with actions'}</h3>
-      ${others.map((d) => `<details class="dim">
-        <summary><span>${esc(isProfile ? d.headline : d.label)}</span></summary>
-        <p>${esc(isProfile ? d.summary : d.desc)}</p>
-        <ol class="actions">${d.actions.map((a) => `<li><span>${esc(a)}</span></li>`).join('')}</ol>
+    ${strengthPanel}
+
+    ${def.prompt ? `<section class="panel"><div class="eyebrow">Write your why</div><p class="why-prompt">${esc(def.prompt)}</p><p class="muted" style="margin-top:10px;">Fill it in tonight. Keep it where you will see it tomorrow morning.</p></section>` : ''}
+
+    <section class="panel">
+      ${step('Your 30-day plan')}
+      <p class="muted">One action a week. Small enough to do, specific enough to matter.</p>
+      <ol class="plan">${rep.plan.map((p) => `<li><div class="wk">Week ${p.week}<small>${esc(p.area)}</small></div><p>${esc(p.action)}</p></li>`).join('')}
+        <li class="retake"><div class="wk">Day 30</div><p>Retake this assessment and compare. Progress you can measure is progress you keep.</p></li>
+      </ol>
+    </section>
+
+    <section class="panel">
+      ${step(isProfile ? 'Every type, explained' : 'Every area, explained')}
+      ${rep.areas.map((a) => `<details class="dim">
+        <summary><span>${esc(isProfile ? (a.headline || a.label) : a.label)}</span><span><span class="lv lv-${a.level}">${esc(a.levelLabel)}</span> <b>${a.score}</b></span></summary>
+        ${isProfile && a.summary ? `<p class="muted">${esc(a.summary)}</p>` : ''}
+        ${areaDetail(a)}
       </details>`).join('')}
-    </div>
+    </section>
 
     ${auditPanel}
     ${ctaPanel}
 
-    ${related.length ? `<div class="panel"><h3>Take another</h3><div class="related">${related.map((a) =>
-      `<a href="/assessments/${a.slug}"><b>${esc(a.title)}</b><span>${esc(a.hook)}</span></a>`).join('')}</div></div>` : ''}
+    ${related.length ? `<section class="panel no-print"><h3>Take another</h3><div class="related">${related.map((a) =>
+      `<a href="/assessments/${a.slug}"><b>${esc(a.title)}</b><span>${esc(a.hook)}</span></a>`).join('')}</div></section>` : ''}
 
     ${def.disclaimer ? `<p class="disclaimer">${esc(def.disclaimer)}</p>` : ''}
 
-    <div class="res-actions">
+    <div class="res-actions no-print">
       <a class="btn btn-red" href="/dashboard">Go to my portal</a>
       <a class="btn btn-ghost" href="/assessments">All assessments</a>
       <button class="btn btn-ghost" type="button" id="retake">Retake</button>
     </div>`;
 
+  $('print').addEventListener('click', () => { track('assessment_print', { assessment: slug }); window.print(); });
   $('retake').addEventListener('click', () => {
     state = { answers: {}, profile: {}, index: 0, finished: false };
     save();
@@ -386,6 +442,53 @@ function renderFull(r, profile, status) {
     renderIntro();
     show('s-intro');
   });
+}
+
+// Printing opens every area so the PDF has the whole report.
+window.addEventListener('beforeprint', () => {
+  document.querySelectorAll('#s-result details').forEach((d) => { d.dataset.wasOpen = d.open ? '1' : ''; d.open = true; });
+});
+window.addEventListener('afterprint', () => {
+  document.querySelectorAll('#s-result details').forEach((d) => { d.open = d.dataset.wasOpen === '1'; });
+});
+
+// A result saved from another device or an earlier visit, rebuilt from the
+// stored per-area scores so the member can read it again anywhere.
+function resultFromSaved(saved) {
+  const dims = def.dimensions.map((d) => ({
+    key: d.key, label: d.label, score: Number((saved.dims || {})[d.key]) || 0, answered: 1
+  }));
+  const order = def.dimensions.map((d) => d.key);
+  const desc = dims.slice().sort((a, b) => b.score - a.score || order.indexOf(a.key) - order.indexOf(b.key));
+  const asc = dims.slice().sort((a, b) => a.score - b.score || order.indexOf(a.key) - order.indexOf(b.key));
+  const overall = Number(saved.score) || 0;
+  return {
+    overall,
+    dims,
+    highest: desc[0].key,
+    lowest: asc[0].key,
+    band: def.mode === 'profile' ? null : bandFor(def, overall),
+    profileType: def.mode === 'profile' ? desc[0].key : null,
+    complete: true
+  };
+}
+
+async function showSavedResult(user) {
+  if (!firebaseReady) return false;
+  try {
+    const snap = await getDoc(doc(db, 'users', user.uid, 'assessments', slug));
+    if (!snap.exists() || !snap.data().dims) return false;
+    const saved = snap.data();
+    const when = saved.completedAt && saved.completedAt.toDate
+      ? saved.completedAt.toDate().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
+      : null;
+    renderFull(resultFromSaved(saved), saved.profile || {}, when ? `Your result from ${when}` : 'Your saved result');
+    show('s-result');
+    return true;
+  } catch (e) {
+    console.warn('[assessment] could not load saved result', e && e.message);
+    return false;
+  }
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────
@@ -403,5 +506,10 @@ if (!def) {
     showResult();
   } else {
     show('s-intro');
+    // Nothing in progress here: a signed-in member who took it before sees
+    // their saved result instead of a blank start.
+    if (!Object.keys(state.answers).length) {
+      onAuthReady().then((user) => { if (user) showSavedResult(user); });
+    }
   }
 }
