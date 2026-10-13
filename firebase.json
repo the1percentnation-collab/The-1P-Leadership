@@ -26,6 +26,10 @@
               ],
               "rewrites": [
                         {
+                                    "source": "/assessments/**",
+                                    "destination": "/assessment.html"
+                        },
+                        {
                                     "source": "/api/book-file",
                                     "function": {
                                               "functionId": "bookFile",

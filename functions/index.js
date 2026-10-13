@@ -14450,6 +14450,168 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
 });
 
 // ────────────────────────────────────────────────────────────────
+// submitAssessment — callable (signed-in members)
+// ────────────────────────────────────────────────────────────────
+// The free assessment library (/assessments) scores in the browser and
+// unlocks the full report once the visitor has a free portal account. This
+// saves that result to users/{uid}/assessments/{slug}, where the library and
+// the member read it back, and tags the member's CRM contact so the owner can
+// see who took what and filter by interest, segment and campaign.
+//
+// Keep ASSESSMENT_SLUGS in step with public/js/assessments-data.js; the
+// assessments test fails if they drift. The category labels mirror
+// CATEGORIES in public/js/assessment-core.js.
+const ASSESSMENT_SLUGS = {
+  'alignment-scorecard': { title: 'The Alignment Scorecard', category: 'self' },
+  'success-on-paper': { title: 'Successful on Paper, Empty in Practice?', category: 'self' },
+  'burnout-check': { title: 'The Burnout Check', category: 'self' },
+  'discipline-score': { title: 'The 1% Discipline Score', category: 'self' },
+  'playing-small': { title: 'Are You Playing Small?', category: 'self' },
+  'find-your-why': { title: 'Find Your Why', category: 'purpose' },
+  'purpose-at-work': { title: 'Purpose at Work', category: 'purpose' },
+  'leadership-style': { title: 'What Kind of Leader Are You?', category: 'leader' },
+  'leadership-readiness': { title: 'Leadership Readiness Assessment', category: 'leader' },
+  'limiting-beliefs': { title: 'What Belief Is Holding You Back?', category: 'leader' },
+  'delegation-audit': { title: 'The Delegation Audit', category: 'leader' },
+  'faith-leader': { title: 'The Faith Leader Health Check', category: 'leader' },
+  'team-alignment': { title: 'The Team Alignment Assessment', category: 'team' },
+  'sales-mindset': { title: 'The Sales Mindset Score', category: 'team' },
+  'financial-readiness': { title: 'The Financial Readiness Score', category: 'money' },
+  'money-mindset': { title: 'What Is Your Money Personality?', category: 'money' },
+  'legacy-protection': { title: 'The Legacy Protection Check', category: 'money' }
+};
+const ASSESSMENT_CATEGORY_LABELS = {
+  self: 'Self', purpose: 'Purpose', leader: 'Leadership', team: 'Team', money: 'Finances'
+};
+const ASSESSMENT_ROLES = {
+  professional: 'Professional', owner: 'Business Owner', manager: 'Manager',
+  executive: 'Executive', sales: 'Sales Leader', pastor: 'Pastor',
+  nonprofit: 'Nonprofit Leader', student: 'Student'
+};
+const ASSESSMENT_TEAM_SIZES = ['0', '1-10', '11-50', '51+'];
+
+// Mirrors isPriorityLead in public/js/assessment-core.js.
+function isPriorityAssessmentLead(role, teamSize) {
+  if (teamSize === '11-50' || teamSize === '51+') return true;
+  const runsOrg = role === 'executive' || role === 'pastor' || role === 'nonprofit' || role === 'owner';
+  return runsOrg && teamSize === '1-10';
+}
+
+exports.submitAssessment = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Create a free account to save your results.');
+  const db = admin.firestore();
+  const data = request.data || {};
+  const slug = String(data.slug || '');
+  const meta = Object.prototype.hasOwnProperty.call(ASSESSMENT_SLUGS, slug) ? ASSESSMENT_SLUGS[slug] : null;
+  if (!meta) throw new HttpsError('invalid-argument', 'Unknown assessment.');
+
+  await rateLimitCaller(db, request, { action: 'submitAssessment', max: 30, windowSec: 600 });
+
+  const pct = (v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+  const key = (v) => (/^[a-z][a-zA-Z0-9]{0,39}$/.test(String(v || '')) ? String(v) : null);
+  const short = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+
+  const dims = {};
+  const rawDims = data.dims && typeof data.dims === 'object' ? data.dims : {};
+  Object.keys(rawDims).slice(0, 6).forEach((k) => { if (key(k)) dims[k] = pct(rawDims[k]); });
+
+  const p = data.profile && typeof data.profile === 'object' ? data.profile : {};
+  const role = Object.prototype.hasOwnProperty.call(ASSESSMENT_ROLES, p.role) ? p.role : null;
+  const teamSize = ASSESSMENT_TEAM_SIZES.includes(p.teamSize) ? p.teamSize : null;
+
+  const u = data.utm && typeof data.utm === 'object' ? data.utm : {};
+  const utm = {
+    source: short(u.source, 60) || null,
+    medium: short(u.medium, 60) || null,
+    campaign: short(u.campaign, 80) || null
+  };
+
+  const result = {
+    slug,
+    title: meta.title,
+    category: meta.category,
+    score: pct(data.score),
+    label: short(data.label, 80),
+    dims,
+    highest: key(data.highest),
+    lowest: key(data.lowest),
+    profile: { role, teamSize },
+    utm
+  };
+
+  const FV = admin.firestore.FieldValue;
+  const resultRef = db.collection('users').doc(uid).collection('assessments').doc(slug);
+  const prior = await resultRef.get();
+  await resultRef.set(Object.assign({}, result, {
+    completedAt: FV.serverTimestamp(),
+    takenCount: FV.increment(1)
+  }, prior.exists ? {} : { firstCompletedAt: FV.serverTimestamp() }), { merge: true });
+
+  // CRM: best-effort. The result is saved either way.
+  const priority = isPriorityAssessmentLead(role, teamSize);
+  try {
+    const userRef = db.collection('users').doc(uid);
+    let userSnap = await userRef.get();
+    // A visitor who just created their account here races onUserCreated,
+    // which creates their CRM contact. Give it a moment so both paths land on
+    // the same contact instead of each creating one.
+    for (let i = 0; i < 4 && !(userSnap.exists && userSnap.data().crmContactId); i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      userSnap = await userRef.get();
+    }
+    const user = userSnap.exists ? userSnap.data() : {};
+    if (!user.email && request.auth.token && request.auth.token.email) user.email = request.auth.token.email;
+    const crm = await syncMemberToCrm(db, uid, user, {
+      source: 'Assessment',
+      activity: {
+        type: 'assessment',
+        actorName: 'Assessments',
+        description: `Took ${meta.title}: ${result.label || result.score}`
+          + (dims && Object.keys(dims).length ? ` (score ${result.score})` : ''),
+        meta: { slug, score: result.score, label: result.label, lowest: result.lowest, highest: result.highest, role, teamSize, utm }
+      }
+    });
+    if (crm) {
+      const tags = [
+        'Assessment Taker',
+        `Assessment: ${meta.title}`,
+        `Interest: ${ASSESSMENT_CATEGORY_LABELS[meta.category] || meta.category}`,
+        teamSize && teamSize !== '0' ? 'Segment: Leader' : 'Segment: Individual'
+      ];
+      if (role) tags.push(`Role: ${ASSESSMENT_ROLES[role]}`);
+      if (priority) tags.push('Priority Lead');
+      if (utm.campaign) tags.push(`Campaign: ${utm.campaign}`);
+      await crm.ref.set({ tags: FV.arrayUnion(...tags), lastActivityAt: FV.serverTimestamp() }, { merge: true });
+      if (priority) {
+        await notifyOwnerOfLead({
+          source: `Assessment (${meta.title})`,
+          name: user.displayName || null,
+          email: user.email || null,
+          phone: user.phone || null,
+          fields: {
+            Result: result.label || String(result.score),
+            Score: String(result.score),
+            Role: role ? ASSESSMENT_ROLES[role] : 'not given',
+            Leads: teamSize ? `${teamSize} people` : 'not given',
+            Campaign: utm.campaign || utm.source || 'direct'
+          },
+          contactUrl: `${APP_BASE_URL}/contact.html?id=${encodeURIComponent(crm.contactId)}`
+        });
+      }
+    }
+  } catch (e) {
+    console.error('[submitAssessment] CRM sync failed:', e && e.message);
+  }
+
+  return { ok: true, priority };
+});
+
+// Exposed for the assessments test, which checks this list against the
+// library in public/js/assessments-data.js. A plain object deploys nothing.
+exports.ASSESSMENT_SLUGS = ASSESSMENT_SLUGS;
+
+// ────────────────────────────────────────────────────────────────
 // Exposed for the emulator test (tests/launch-tick.test.mjs). A plain
 // function is not a trigger: the Functions loader registers only exports
 // that carry an endpoint definition, so this deploys nothing.

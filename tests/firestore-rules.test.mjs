@@ -411,6 +411,23 @@ await t('company member (not admin) CANNOT edit a contact source',
 await t('admin CAN read their own user doc (owner-name fallback)',
   () => assertSucceeds(getDoc(doc(adm, 'users/adm'))));
 
+// ── Free assessment results (written by submitAssessment) ──────────────────
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), 'users/solo/assessments/alignment-scorecard'), {
+    slug: 'alignment-scorecard', score: 62, label: 'Grinding'
+  });
+});
+await t('member CAN read their own assessment result',
+  () => assertSucceeds(getDoc(doc(solo, 'users/solo/assessments/alignment-scorecard'))));
+await t('member CAN list their own assessment results',
+  () => assertSucceeds(getDocs(collection(solo, 'users/solo/assessments'))));
+await t('another member CANNOT read someone else\'s assessment result',
+  () => assertFails(getDoc(doc(emp, 'users/solo/assessments/alignment-scorecard'))));
+await t('member CANNOT write their own assessment score (server-only)',
+  () => assertFails(setDoc(doc(solo, 'users/solo/assessments/alignment-scorecard'), { score: 100 })));
+await t('signed-out visitor CANNOT read assessment results',
+  () => assertFails(getDoc(doc(anon, 'users/solo/assessments/alignment-scorecard'))));
+
 await env.cleanup();
 
 let failed = 0;
