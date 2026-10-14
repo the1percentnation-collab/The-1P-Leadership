@@ -428,6 +428,23 @@ await t('member CANNOT write their own assessment score (server-only)',
 await t('signed-out visitor CANNOT read assessment results',
   () => assertFails(getDoc(doc(anon, 'users/solo/assessments/alignment-scorecard'))));
 
+// ── Reads: the essay series (written by seed-focus-tax.js) ─────────────────
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'reads/the-focus-tax'), { title: 'The Focus Tax', essays: [{ slug: 'e1', title: 'One' }] });
+  await setDoc(doc(db, 'reads/the-focus-tax/essays/e1'), { title: 'One', html: '<p>Full text</p>' });
+});
+await t('signed-out visitor CAN read the series archive (titles only)',
+  () => assertSucceeds(getDoc(doc(anon, 'reads/the-focus-tax'))));
+await t('signed-out visitor CANNOT read an essay\'s full text',
+  () => assertFails(getDoc(doc(anon, 'reads/the-focus-tax/essays/e1'))));
+await t('any signed-in member CAN read an essay\'s full text',
+  () => assertSucceeds(getDoc(doc(solo, 'reads/the-focus-tax/essays/e1'))));
+await t('a member CANNOT write an essay',
+  () => assertFails(setDoc(doc(solo, 'reads/the-focus-tax/essays/e1'), { html: '<p>x</p>' })));
+await t('an admin CANNOT write the series from the browser (seed only)',
+  () => assertFails(setDoc(doc(adm, 'reads/the-focus-tax'), { title: 'x' })));
+
 await env.cleanup();
 
 let failed = 0;

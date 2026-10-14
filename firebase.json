@@ -30,6 +30,14 @@
                                     "destination": "/assessment.html"
                         },
                         {
+                                    "source": "/reads",
+                                    "destination": "/reads.html"
+                        },
+                        {
+                                    "source": "/reads/",
+                                    "destination": "/reads.html"
+                        },
+                        {
                                     "source": "/api/book-file",
                                     "function": {
                                               "functionId": "bookFile",

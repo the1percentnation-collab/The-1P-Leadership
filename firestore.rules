@@ -996,6 +996,24 @@ service cloud.firestore {
     }
 
     // ────────────────────────────────────────────────────────────────
+    // Reads — the essay series at /reads (scripts/seed-focus-tax.js).
+    // The series doc is the public archive list: titles and hooks, no essay
+    // text. The essays hold the full text and are open to any signed-in
+    // account, since a free portal account is the whole price of reading.
+    // A signed-out reader gets an essay only through the claimRead
+    // function, which creates that account first. Written by the seed
+    // (Admin SDK) only.
+    // ────────────────────────────────────────────────────────────────
+    match /reads/{series} {
+      allow read: if true;
+      allow write: if false;
+      match /essays/{slug} {
+        allow read: if isSignedIn();
+        allow write: if false;
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────
     // Courses — Firestore-backed course catalog managed from
     // /manage-courses.html. Public read (marketing surface, like /events);
     // owner + admins write. The `stripe` map is server-only (written by
