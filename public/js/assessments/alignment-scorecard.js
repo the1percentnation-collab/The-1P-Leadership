@@ -9,7 +9,7 @@ export default {
   featured: true,
   hook: 'Successful on paper. Something still feels off?',
   short: 'Find out exactly where the gap is between the life you built and the life you want, across the five A.L.I.G.N. areas.',
-  intro: 'Twenty honest statements. Answer for how things are, not how you wish they were. There are no wrong answers, only clearer ones.',
+  intro: 'A few honest minutes. Answer for how things are, not how you wish they were. There are no wrong answers, only clearer ones.',
   dimensions: [
     {
       key: 'awareness',

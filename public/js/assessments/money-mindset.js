@@ -4,10 +4,10 @@ export default {
   title: 'What Is Your Money Personality?',
   category: 'money',
   mode: 'profile',
-  minutes: 5,
+  minutes: 4,
   hook: 'Your habits with money are not random. They have a personality.',
   short: 'Discover your money personality, the strength it gives you and the blind spot that may be slowing your progress.',
-  intro: 'Twenty statements about how you think and feel about money. There is no best type, only a clearer picture of yours.',
+  intro: 'A few honest minutes on how you think and feel about money. There is no best type, only a clearer picture of yours.',
   disclaimer: 'This assessment is for educational purposes only and is not financial, legal, tax or investment advice. Talk with a licensed professional about your situation.',
   dimensions: [
     {
@@ -109,7 +109,6 @@ export default {
   questions: [
     { dim: 'protector', text: 'I feel most at peace when I have a healthy amount saved.' },
     { dim: 'protector', text: 'I think carefully about what could go wrong before I spend or invest.' },
-    { dim: 'protector', text: 'Saving money comes more naturally to me than spending it.' },
     { dim: 'protector', text: 'I would rather keep money safe than take a chance on growing it.' },
 
     { dim: 'enjoyer', text: 'I believe money is meant to be enjoyed now, not just saved for later.' },
@@ -120,17 +119,14 @@ export default {
     { dim: 'avoider', text: 'I would rather not think about money unless I have to.' },
     { dim: 'avoider', text: 'I sometimes put off opening bills or checking my balance.' },
     { dim: 'avoider', text: 'Money conversations make me want to change the subject.' },
-    { dim: 'avoider', text: 'I trust things will work out without me tracking every detail.' },
 
     { dim: 'builder', text: 'I see money mainly as a tool to build something bigger.' },
     { dim: 'builder', text: 'I enjoy setting financial goals and tracking my progress toward them.' },
     { dim: 'builder', text: 'I regularly look for ways to grow my income or my net worth.' },
-    { dim: 'builder', text: 'I think about where my money will be ten years from now.' },
 
     { dim: 'giver', text: 'Helping family and friends with money brings me real joy.' },
     { dim: 'giver', text: 'I find it hard to say no when someone I care about needs help.' },
-    { dim: 'giver', text: 'Giving to my church, community or causes is a priority in my budget.' },
-    { dim: 'giver', text: "I often put other people's needs ahead of my own savings goals." }
+    { dim: 'giver', text: 'Giving to my church, community or causes is a priority in my budget.' }
   ],
   related: ['financial-readiness', 'limiting-beliefs', 'find-your-why'],
   cta: { label: 'Explore financial services', href: '/financial-services' }

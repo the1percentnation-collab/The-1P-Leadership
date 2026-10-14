@@ -7,7 +7,7 @@ export default {
   minutes: 7,
   hook: 'Ready for the next level, or just ready for the title?',
   short: 'Measure how prepared you are to lead at the next level across self-leadership, communication, decisions, developing others, and strategy.',
-  intro: 'Twenty-five statements about how you lead today. Answer honestly. The goal is clarity on where to grow, not a grade.',
+  intro: 'A few honest minutes on how you lead today. Answer honestly. The goal is clarity on where to grow, not a grade.',
   dimensions: [
     {
       key: 'selfLeadership',

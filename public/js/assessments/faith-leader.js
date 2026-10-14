@@ -7,7 +7,7 @@ export default {
   minutes: 7,
   hook: 'You pour into everyone. Who is pouring into you?',
   short: 'A health check for pastors and ministry leaders across spiritual health, rhythm, team leadership, vision, and family.',
-  intro: 'Twenty-five statements for those who lead in ministry and mission. Answer as you are today. This is a space for honesty, not performance.',
+  intro: 'A few honest minutes for those who lead in ministry and mission. Answer as you are today. This is a space for honesty, not performance.',
   dimensions: [
     {
       key: 'spiritualHealth',

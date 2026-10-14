@@ -7,7 +7,7 @@ export default {
   minutes: 6,
   hook: 'Is your team rowing in the same direction?',
   short: 'See how aligned your team really is across vision, roles, trust, accountability, communication, and engagement.',
-  intro: 'Twenty-four statements about the team you lead. Answer for how the team actually works today, not how it looks on the org chart.',
+  intro: 'A few honest minutes on the team you lead. Answer for how the team actually works today, not how it looks on the org chart.',
   dimensions: [
     {
       key: 'sharedVision',

@@ -292,6 +292,43 @@ export function driversFor(def, answers, dimKey) {
   return { lifts: lifts.map(strip), drags: drags.map(strip) };
 }
 
+// Common personal email domains, for catching typos like "gmial.com" before
+// they become a second account nobody can log into.
+const EMAIL_DOMAINS = [
+  'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com',
+  'live.com', 'msn.com', 'me.com', 'comcast.net', 'att.net', 'verizon.net', 'ymail.com'
+];
+
+function editDistance(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[a.length][b.length];
+}
+
+/**
+ * "antbrown@gmial.com" → "antbrown@gmail.com". Null when the domain is
+ * already a known one or nothing known is within two typos of it, so a
+ * company domain is left alone.
+ */
+export function suggestEmail(email) {
+  const m = String(email || '').trim().toLowerCase().match(/^([^@\s]+)@([^@\s]+)$/);
+  if (!m) return null;
+  const [, user, domain] = m;
+  if (EMAIL_DOMAINS.includes(domain)) return null;
+  let best = null;
+  for (const known of EMAIL_DOMAINS) {
+    const dist = editDistance(domain, known);
+    if (dist <= 2 && (!best || dist < best.dist)) best = { known, dist };
+  }
+  return best ? `${user}@${best.known}` : null;
+}
+
 /** The headline a result leads with, for either mode. */
 export function headlineFor(def, result) {
   if (def.mode === 'profile') {
@@ -317,7 +354,7 @@ export function validateAssessment(def) {
   need(def.mode === 'score' || def.mode === 'profile', 'mode must be score or profile');
   need(Number.isInteger(def.minutes) && def.minutes > 0, 'minutes is required');
   need(Array.isArray(def.dimensions) && def.dimensions.length >= 3 && def.dimensions.length <= 6, '3 to 6 dimensions');
-  need(Array.isArray(def.questions) && def.questions.length >= 20 && def.questions.length <= 30, '20 to 30 questions');
+  need(Array.isArray(def.questions) && def.questions.length >= 14 && def.questions.length <= 30, '14 to 30 questions');
   if (errs.length) return errs;
 
   const keys = new Set();
@@ -328,7 +365,7 @@ export function validateAssessment(def) {
     need(d.label && d.desc, `dimension ${d.key} needs label and desc`);
     need(Array.isArray(d.actions) && d.actions.length === 3, `dimension ${d.key} needs exactly 3 actions`);
     const qs = def.questions.filter((q) => q.dim === d.key).length;
-    need(qs >= 4, `dimension ${d.key} needs at least 4 questions (has ${qs})`);
+    need(qs >= 3, `dimension ${d.key} needs at least 3 questions (has ${qs})`);
     need(d.why, `dimension ${d.key} needs why (why this area matters)`);
     need(d.reflect && /\?$/.test(d.reflect.trim()), `dimension ${d.key} needs a reflect question ending in ?`);
     need(d.levels && LEVELS.every((l) => d.levels[l.key]), `dimension ${d.key} needs levels.low, levels.mid and levels.high`);
@@ -346,6 +383,9 @@ export function validateAssessment(def) {
   (def.related || []).forEach((r) => need(typeof r === 'string' && r !== def.slug, 'related must list other slugs'));
   if (def.cta) need(def.cta.label && /^\/[^/]/.test(def.cta.href || ''), 'cta needs a label and a site-relative href');
   if (def.category === 'money') need(def.disclaimer, 'money assessments need a disclaimer');
+  // The page shows the statement count itself; a count written into the
+  // intro goes stale the moment questions are added or trimmed.
+  need(!/\b(twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|\d+)\b[- ]?\w*\s+(honest\s+)?(statements|questions)/i.test(def.intro || ''), 'intro must not state the number of statements');
   // House style: no em or en dashes anywhere in copy.
   const copy = JSON.stringify(def);
   need(!/[—–]/.test(copy), 'copy contains an em or en dash');

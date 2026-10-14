@@ -4,10 +4,10 @@ export default {
   title: 'The Burnout Check',
   category: 'self',
   mode: 'score',
-  minutes: 7,
+  minutes: 5,
   hook: 'Are you building, or burning out?',
   short: 'See whether your pace is sustainable across energy, recovery, boundaries, meaning, and the signals your body is sending.',
-  intro: 'Twenty-five statements about the last month. Answer for how things actually are. Clarity comes before change.',
+  intro: 'A few honest minutes on the last month. Answer for how things actually are. Clarity comes before change.',
   dimensions: [
     {
       key: 'energy',
@@ -105,16 +105,13 @@ export default {
     { dim: 'energy', text: 'I rely on caffeine, sugar, or adrenaline to get through most days.', reverse: true },
     { dim: 'energy', text: 'I have energy left for the people I love after work.' },
     { dim: 'energy', text: 'I know which times of day I do my best work and plan around them.' },
-    { dim: 'energy', text: 'By mid afternoon, I am usually running on fumes.', reverse: true },
 
     { dim: 'recovery', text: 'I wake up most mornings feeling rested.' },
     { dim: 'recovery', text: 'When I take time off, I actually stop thinking about work.' },
     { dim: 'recovery', text: 'Even on my days off, I feel like I am falling behind.', reverse: true },
     { dim: 'recovery', text: 'I have a regular practice that genuinely restores me.' },
-    { dim: 'recovery', text: 'I take short breaks during the workday that help me reset.' },
 
     { dim: 'boundaries', text: 'I protect time in my week that work does not get to touch.' },
-    { dim: 'boundaries', text: 'I say yes to things I should decline because I do not want to disappoint people.', reverse: true },
     { dim: 'boundaries', text: 'I can be unreachable for an evening without feeling anxious about it.' },
     { dim: 'boundaries', text: 'I check work messages late at night or first thing in the morning.', reverse: true },
     { dim: 'boundaries', text: 'I am comfortable telling people when I do not have capacity for more.' },
@@ -122,13 +119,11 @@ export default {
     { dim: 'meaning', text: 'I still believe the work I do matters.' },
     { dim: 'meaning', text: 'I often feel like I am going through the motions.', reverse: true },
     { dim: 'meaning', text: 'I can see clear progress toward something I care about.' },
-    { dim: 'meaning', text: 'My effort is connected to a purpose bigger than the next deadline.' },
     { dim: 'meaning', text: 'I regularly see the difference my work makes for real people.' },
 
     { dim: 'body', text: 'I sleep at least seven hours on most nights.' },
     { dim: 'body', text: 'I regularly notice tension, headaches, or stomach trouble when work gets heavy.', reverse: true },
     { dim: 'body', text: 'I move my body in a way I enjoy several times a week.' },
-    { dim: 'body', text: 'I take care of my health before small issues become big ones.' },
     { dim: 'body', text: 'I eat in a way that keeps my energy steady through the day.' }
   ],
   bands: [

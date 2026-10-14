@@ -4,10 +4,10 @@ export default {
   title: 'What Belief Is Holding You Back?',
   category: 'leader',
   mode: 'profile',
-  minutes: 7,
+  minutes: 4,
   hook: "\"I can't\" is not a strategy. So what is really stopping you?",
   short: 'Uncover the limiting belief pattern that shows up most in your life, and the truth that breaks it.',
-  intro: "Twenty-five statements. Agree with the ones that sound like you, even if you would not say them out loud. Honesty here is where the breakthrough starts.",
+  intro: "Agree with the statements that sound like you, even if you would not say them out loud. Honesty here is where the breakthrough starts.",
   dimensions: [
     {
       key: 'fearOfFailure',
@@ -108,33 +108,24 @@ export default {
   questions: [
     { dim: 'fearOfFailure', text: 'I often avoid trying something new because I might not be good at it.' },
     { dim: 'fearOfFailure', text: 'I overprepare for things long after I am actually ready.' },
-    { dim: 'fearOfFailure', text: 'A mistake can stay on my mind for days.' },
     { dim: 'fearOfFailure', text: 'I would rather not attempt a big goal than attempt it and fall short.' },
     { dim: 'fearOfFailure', text: 'I tend to keep my goals to myself so no one sees if I miss them.' },
 
     { dim: 'imposter', text: 'I worry that people will eventually discover I am not as capable as they think.' },
     { dim: 'imposter', text: 'When I succeed, I tend to credit luck or timing more than my own ability.' },
     { dim: 'imposter', text: 'I often feel like I do not belong in the rooms I am in.' },
-    { dim: 'imposter', text: 'I work harder than necessary because I feel I have to prove myself.' },
-    { dim: 'imposter', text: 'Compliments about my work make me uncomfortable, and I quickly change the subject.' },
 
     { dim: 'waitingForPermission', text: 'I wait for someone else to tell me I am ready before I go after something.' },
     { dim: 'waitingForPermission', text: 'I hold back ideas until I am sure they will be approved.' },
-    { dim: 'waitingForPermission', text: 'I tell myself I will start when the timing is right.' },
     { dim: 'waitingForPermission', text: 'I feel I need more credentials or experience before I can lead.' },
-    { dim: 'waitingForPermission', text: 'I often look to others to make the first move before I act.' },
 
     { dim: 'comfortZone', text: 'My days look mostly the same, and part of me likes it that way.' },
     { dim: 'comfortZone', text: 'I know I am capable of more, but the effort to change feels like too much right now.' },
-    { dim: 'comfortZone', text: 'I choose what feels familiar over what would help me grow.' },
     { dim: 'comfortZone', text: 'I have goals I have talked about for years without really starting.' },
-    { dim: 'comfortZone', text: 'I turn down opportunities because they would disrupt a routine that works for me.' },
 
     { dim: 'peoplePleasing', text: 'I say yes to things I do not have time for because I do not want to disappoint anyone.' },
     { dim: 'peoplePleasing', text: 'I soften the truth so that people will not be upset with me.' },
-    { dim: 'peoplePleasing', text: "I often put other people's priorities ahead of my own." },
-    { dim: 'peoplePleasing', text: 'It bothers me for a long time when someone is unhappy with me.' },
-    { dim: 'peoplePleasing', text: 'I find it hard to ask for what I need, even from people close to me.' }
+    { dim: 'peoplePleasing', text: 'It bothers me for a long time when someone is unhappy with me.' }
   ],
   related: ['playing-small', 'alignment-scorecard', 'leadership-readiness'],
   cta: { label: "Read chapter one of I Can't free", href: '/icantpreview' }

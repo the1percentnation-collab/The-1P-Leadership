@@ -7,7 +7,7 @@ export default {
   minutes: 6,
   hook: 'If something happened to you tomorrow, would your family be okay?',
   short: 'A calm, clear look at whether the people you love are protected and your legacy plan is in place.',
-  intro: 'Twenty-four statements about the plans you have in place for the people who count on you. Answer honestly. Clarity is the first step toward peace of mind.',
+  intro: 'A few honest minutes on the plans you have in place for the people who count on you. Answer honestly. Clarity is the first step toward peace of mind.',
   disclaimer: 'This assessment is for educational purposes only and is not financial, legal, tax or investment advice. Talk with a licensed professional about your situation.',
   dimensions: [
     {

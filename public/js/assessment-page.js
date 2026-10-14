@@ -7,7 +7,7 @@
 // than a blank quiz.
 import { getAssessment } from './assessments-data.js';
 import {
-  SCALE, PROFILE_QUESTIONS, LEVELS, scoreAssessment, headlineFor, buildReport, bandFor,
+  SCALE, PROFILE_QUESTIONS, LEVELS, scoreAssessment, headlineFor, buildReport, bandFor, suggestEmail,
   isPriorityLead, cleanProfile
 } from './assessment-core.js';
 import { onAuthReady } from './auth.js';
@@ -41,7 +41,10 @@ function utm() {
 }
 
 // ── Saved progress ─────────────────────────────────────────────────────────
-const STORE = '1p-assess:' + slug;
+// Keyed to the question count as well as the slug: answers are stored by
+// position, so when an assessment is trimmed or extended, progress saved
+// against the old set is dropped instead of being read against new questions.
+const STORE = '1p-assess:' + slug + (def ? ':' + def.questions.length : '');
 function load() {
   try { return JSON.parse(localStorage.getItem(STORE) || 'null') || {}; } catch (e) { return {}; }
 }
@@ -93,9 +96,27 @@ function renderQuestion() {
   $('q-count').textContent = `Statement ${i + 1} of ${def.questions.length}`;
   $('q-bar').style.width = `${(i / def.questions.length) * 100}%`;
   $('q-text').textContent = q.text;
-  $('q-scale').innerHTML = SCALE.map((s) =>
-    `<button type="button" data-v="${s.value}" aria-pressed="${state.answers[i] === s.value}"><kbd>${s.value}</kbd>${esc(s.label)}</button>`).join('');
-  $('q-scale').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => answer(Number(b.dataset.v))));
+  // A labeled 5-point agreement scale, laid out as one row of circles from
+  // disagree to agree. Same validated Likert scale; faster to tap than a
+  // list, and every point keeps its label for screen readers and the hint.
+  const chosen = state.answers[i];
+  $('q-scale').innerHTML = `
+    <div class="likert-row">
+      <span class="likert-end">Disagree</span>
+      <div class="likert-dots">${SCALE.map((s) =>
+        `<button type="button" class="dot d${s.value}" data-v="${s.value}" aria-label="${esc(s.label)}" aria-pressed="${chosen === s.value}"></button>`).join('')}</div>
+      <span class="likert-end">Agree</span>
+    </div>
+    <div class="likert-hint" id="q-hint">${chosen ? esc(SCALE[chosen - 1].label) : 'Tap the circle that fits'}</div>`;
+  const hint = $('q-hint');
+  $('q-scale').querySelectorAll('.dot').forEach((b) => {
+    const label = SCALE[Number(b.dataset.v) - 1].label;
+    b.addEventListener('mouseenter', () => { hint.textContent = label; });
+    b.addEventListener('mouseleave', () => { const c = state.answers[state.index]; hint.textContent = c ? SCALE[c - 1].label : 'Tap the circle that fits'; });
+    b.addEventListener('click', () => answer(Number(b.dataset.v)));
+  });
+  const qt = $('q-text');
+  qt.classList.remove('q-in'); void qt.offsetWidth; qt.classList.add('q-in');
   $('q-back').style.visibility = i === 0 ? 'hidden' : 'visible';
 }
 
@@ -103,7 +124,8 @@ function answer(v) {
   const i = state.index;
   state.answers[i] = v;
   save();
-  $('q-scale').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === v)));
+  $('q-scale').querySelectorAll('.dot').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === v)));
+  if ($('q-hint')) $('q-hint').textContent = SCALE[v - 1].label;
   clearTimeout(advancing);
   advancing = setTimeout(() => {
     if (i + 1 < def.questions.length) {
@@ -293,6 +315,7 @@ function renderTeaser() {
   const msg = (t) => { $('u-msg').textContent = t || ''; $('u-msg').className = 'form-msg' + (t ? ' err' : ''); };
   if (!firebaseReady) msg('Accounts are unavailable right now. Check your connection and refresh.');
 
+  let checkedEmail = null;
   $('unlock-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     msg('');
@@ -300,6 +323,16 @@ function renderTeaser() {
     const email = $('u-email').value.trim();
     if (!name) return msg('Please enter your name.');
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return msg('Please enter a valid email.');
+    // A mistyped domain would become a second account they can never use.
+    // Ask once; submitting the same address again goes through as typed.
+    const fix = suggestEmail(email);
+    if (fix && checkedEmail !== email) {
+      checkedEmail = email;
+      $('u-msg').className = 'form-msg err';
+      $('u-msg').innerHTML = `Did you mean <button type="button" class="text-btn" id="u-fix" style="color:inherit;text-decoration:underline;padding:0;">${esc(fix)}</button>? Tap it to fix, or press the button again to keep what you typed.`;
+      $('u-fix').addEventListener('click', () => { $('u-email').value = fix; checkedEmail = fix; msg(''); });
+      return;
+    }
     $('u-go').disabled = true;
     $('u-go').textContent = 'Opening your report…';
     const out = await claim(name, email);
@@ -571,7 +604,10 @@ async function showSavedResult(user) {
     const when = saved.completedAt && saved.completedAt.toDate
       ? saved.completedAt.toDate().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
       : null;
-    const answers = Array.isArray(saved.answers) ? Object.assign({}, saved.answers) : null;
+    // Answers saved against a different version of the questions would quote
+    // the wrong statements, so they are only used when the set still matches.
+    const answers = Array.isArray(saved.answers) && saved.answers.length === def.questions.length
+      ? Object.assign({}, saved.answers) : null;
     renderFull(resultFromSaved(saved), saved.profile || {}, when ? `Your result from ${when}` : 'Your saved result', answers);
     show('s-result');
     return true;

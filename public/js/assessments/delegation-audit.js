@@ -7,7 +7,7 @@ export default {
   minutes: 7,
   hook: 'Are you the bottleneck?',
   short: 'Find out whether your team is growing around you or waiting on you, across trust, systems, letting go, capability, and focus.',
-  intro: 'Twenty-five statements about how work moves through you. Answer for a typical week, not your best one.',
+  intro: 'A few honest minutes on how work moves through you. Answer for a typical week, not your best one.',
   dimensions: [
     {
       key: 'trust',

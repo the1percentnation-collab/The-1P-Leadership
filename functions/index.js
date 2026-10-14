@@ -14737,6 +14737,20 @@ exports.claimAssessment = onCall({ secrets: [sendgridKey] }, async (request) => 
 
   let saved = true;
   if (!isNew) {
+    // A login with no profile doc (an older account) gets the normal shape
+    // now, so the saves below never leave a half-made profile behind.
+    const profile = await userRef.get();
+    if (!profile.exists) {
+      await userRef.set({
+        email,
+        displayName: name,
+        role: email === OWNER_EMAIL ? 'owner' : 'user',
+        companyId: null,
+        tier: 'individual',
+        createdAt: FV.serverTimestamp(),
+        lastActiveAt: FV.serverTimestamp()
+      });
+    }
     const prior = await userRef.collection('assessments').doc(result.slug).get();
     if (prior.exists) saved = false;
   }

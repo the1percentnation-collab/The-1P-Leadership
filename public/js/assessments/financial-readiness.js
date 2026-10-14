@@ -8,7 +8,7 @@ export default {
   featured: true,
   hook: "You're building a life on purpose. Is your money keeping up?",
   short: 'See how ready your money is for the life you want across cash flow, safety net, debt, protection, future and clarity.',
-  intro: 'Twenty-four honest statements about where your money stands today. Answer for how things are right now, not how you plan for them to be.',
+  intro: 'A few honest minutes on where your money stands today. Answer for how things are right now, not how you plan for them to be.',
   disclaimer: 'This assessment is for educational purposes only and is not financial, legal, tax or investment advice. Talk with a licensed professional about your situation.',
   dimensions: [
     {
