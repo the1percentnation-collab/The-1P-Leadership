@@ -4,10 +4,10 @@ export default {
   title: 'Successful on Paper, Empty in Practice?',
   category: 'self',
   mode: 'score',
-  minutes: 7,
+  minutes: 5,
   hook: 'You hit the goals. So why does it still feel empty?',
   short: 'Measure the gap between how your life looks from the outside and how it actually feels from the inside.',
-  intro: 'Twenty-five honest statements about the life you have built. Answer for how it feels today, not how it looks to everyone else.',
+  intro: 'A few honest minutes on the life you have built. Answer for how it feels today, not how it looks to everyone else.',
   dimensions: [
     {
       key: 'fulfillment',
@@ -104,30 +104,25 @@ export default {
     { dim: 'fulfillment', text: 'When I reach a goal, the satisfaction lasts longer than a few days.' },
     { dim: 'fulfillment', text: 'I have achieved things I once dreamed of, yet something still feels missing.', reverse: true },
     { dim: 'fulfillment', text: 'Most days, I feel genuinely content with the life I have built.' },
-    { dim: 'fulfillment', text: 'I often think the next promotion, deal, or milestone will finally make it feel worth it.', reverse: true },
     { dim: 'fulfillment', text: 'I take time to appreciate what I have accomplished before moving on to the next goal.' },
 
     { dim: 'values', text: 'I can name the three values that matter most to me.' },
     { dim: 'values', text: 'The way I spend my time reflects what I say is most important.' },
     { dim: 'values', text: 'I have made compromises for success that I am not proud of.', reverse: true },
     { dim: 'values', text: 'I say no to opportunities that do not fit who I want to be.' },
-    { dim: 'values', text: 'When I face a hard decision, I use my values to guide the choice.' },
 
     { dim: 'presence', text: 'The people closest to me get my full attention, not just what is left over.' },
     { dim: 'presence', text: 'I am often physically present but mentally somewhere else.', reverse: true },
     { dim: 'presence', text: 'I regularly enjoy the moments my hard work was meant to create.' },
     { dim: 'presence', text: 'I can put my phone away for an evening without feeling pulled back to it.' },
-    { dim: 'presence', text: 'The people I love have told me, directly or not, that they miss me even when I am home.', reverse: true },
 
     { dim: 'ownership', text: 'The definition of success I am chasing is one I chose for myself.' },
     { dim: 'ownership', text: 'Much of what I pursue is driven by what others expect of me.', reverse: true },
     { dim: 'ownership', text: 'I would still want my current goals even if nobody else ever knew about them.' },
-    { dim: 'ownership', text: 'I have updated my goals as I have changed, instead of holding onto old ones.' },
     { dim: 'ownership', text: 'I feel comfortable making choices that others in my circle would not make.' },
 
     { dim: 'direction', text: 'I have a clear sense of what the next chapter of my life is for.' },
     { dim: 'direction', text: 'I know what I want my work to add up to beyond income and title.' },
-    { dim: 'direction', text: 'When I think about the next ten years, I feel energized rather than tired.' },
     { dim: 'direction', text: 'I am making progress on something that matters to me beyond my career.' },
     { dim: 'direction', text: 'I mostly keep doing more of the same because I am not sure what else I would do.', reverse: true }
   ],

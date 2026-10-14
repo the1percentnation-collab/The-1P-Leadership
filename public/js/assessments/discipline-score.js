@@ -4,10 +4,10 @@ export default {
   title: 'The 1% Discipline Score',
   category: 'self',
   mode: 'score',
-  minutes: 7,
+  minutes: 5,
   hook: 'One percent better every day. Are you actually doing it?',
   short: 'Measure the daily discipline behind lasting growth: consistency, routines, follow-through, focus, and how fast you recover from a slip.',
-  intro: 'Twenty-five statements about how you actually operate day to day. Answer honestly. Discipline is built on clarity, not guilt.',
+  intro: 'A few honest minutes on how you actually operate day to day. Answer honestly. Discipline is built on clarity, not guilt.',
   dimensions: [
     {
       key: 'consistency',
@@ -102,7 +102,6 @@ export default {
   ],
   questions: [
     { dim: 'consistency', text: 'I do the important things even on days I do not feel like it.' },
-    { dim: 'consistency', text: 'My habits depend mostly on how motivated I feel that day.', reverse: true },
     { dim: 'consistency', text: 'I have at least one daily habit I have kept for more than a month.' },
     { dim: 'consistency', text: 'I can see small, steady progress in at least one important area of my life.' },
     { dim: 'consistency', text: 'I often start a new habit with energy, then drop it within a couple of weeks.', reverse: true },
@@ -111,25 +110,21 @@ export default {
     { dim: 'routines', text: 'I plan my day before it starts instead of reacting as it unfolds.' },
     { dim: 'routines', text: 'Most of my days feel unstructured and rushed.', reverse: true },
     { dim: 'routines', text: 'I have an evening routine that helps me close the day and rest well.' },
-    { dim: 'routines', text: 'I go to bed and wake up at roughly the same time most days.' },
 
     { dim: 'followThrough', text: 'When I commit to something, I see it through to the end.' },
     { dim: 'followThrough', text: 'I have several projects or goals that I started and never finished.', reverse: true },
     { dim: 'followThrough', text: 'I keep the promises I make to myself as seriously as the ones I make to others.' },
     { dim: 'followThrough', text: 'I break big goals into small steps I can actually complete.' },
-    { dim: 'followThrough', text: 'I limit how many goals I take on so I can finish the ones that matter.' },
 
     { dim: 'focus', text: 'I protect time each day for deep, focused work.' },
     { dim: 'focus', text: 'I check my phone or email far more often than I need to.', reverse: true },
     { dim: 'focus', text: 'I know the one or two priorities that matter most this week.' },
     { dim: 'focus', text: 'I can work on one task for an hour without switching to something else.' },
-    { dim: 'focus', text: 'I say no to tasks that would pull me away from my top priorities.' },
 
     { dim: 'recovery', text: 'When I miss a day, I get back on track quickly.' },
     { dim: 'recovery', text: 'One bad day can easily turn into a bad week for me.', reverse: true },
     { dim: 'recovery', text: 'I treat a slip as information about my system, not proof that I lack discipline.' },
     { dim: 'recovery', text: 'I adjust my plan when life gets busy instead of abandoning it.' },
-    { dim: 'recovery', text: 'After a setback, I am harder on myself than I would be on a friend.', reverse: true }
   ],
   bands: [
     {

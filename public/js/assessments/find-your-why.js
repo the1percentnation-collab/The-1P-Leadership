@@ -4,10 +4,10 @@ export default {
   title: 'Find Your Why',
   category: 'purpose',
   mode: 'profile',
-  minutes: 7,
+  minutes: 4,
   hook: 'You know what you do. Do you know why you do it?',
   short: 'Discover the core driver behind your best work: Impact, Mastery, Freedom, Legacy, or Connection.',
-  intro: 'Twenty-five statements about what energizes you. Answer for what genuinely lights you up, not what sounds impressive.',
+  intro: 'A few honest minutes on what energizes you. Answer for what genuinely lights you up, not what sounds impressive.',
   prompt: 'I exist to ___ so that ___.',
   dimensions: [
     {
@@ -109,32 +109,23 @@ export default {
   questions: [
     { dim: 'impact', text: 'I feel most alive when my work clearly changes something for someone else.' },
     { dim: 'impact', text: 'Seeing a real problem get solved gives me more energy than recognition does.' },
-    { dim: 'impact', text: 'I am drawn to work where the results are visible and meaningful.' },
     { dim: 'impact', text: 'I would choose a role with greater impact over one with a bigger title.' },
     { dim: 'impact', text: 'I lose motivation quickly when I cannot see how my work makes a difference.' },
 
     { dim: 'mastery', text: 'I love the process of getting better at something difficult.' },
     { dim: 'mastery', text: 'Doing excellent work is satisfying to me, even when nobody notices.' },
     { dim: 'mastery', text: 'I am energized by learning new skills and going deeper in my field.' },
-    { dim: 'mastery', text: 'I enjoy being the person others trust to get the hard things right.' },
-    { dim: 'mastery', text: 'I get restless when my work stops challenging me to improve.' },
 
     { dim: 'freedom', text: 'I do my best work when I can decide how and when to do it.' },
     { dim: 'freedom', text: 'Owning my time matters more to me than most other rewards.' },
-    { dim: 'freedom', text: 'I feel energized when I am building something on my own terms.' },
-    { dim: 'freedom', text: 'Having choices about my future gives me a strong sense of purpose.' },
     { dim: 'freedom', text: 'Close supervision drains my energy faster than hard work does.' },
 
     { dim: 'legacy', text: 'I often think about what I want to leave behind for the next generation.' },
     { dim: 'legacy', text: 'I am motivated by building something that will outlast me.' },
-    { dim: 'legacy', text: 'Providing long-term stability for my family or community drives many of my decisions.' },
-    { dim: 'legacy', text: 'I find meaning in investing in people who will carry the work forward.' },
     { dim: 'legacy', text: 'I am willing to give up a quick win for something that will matter in twenty years.' },
 
-    { dim: 'connection', text: 'I feel most energized when I am working closely with people I trust.' },
     { dim: 'connection', text: 'Bringing people together gives me a deep sense of purpose.' },
     { dim: 'connection', text: 'The relationships I build matter more to me than the results I achieve.' },
-    { dim: 'connection', text: 'I am at my best when I am part of a team or community working toward something together.' },
     { dim: 'connection', text: 'Long stretches of working alone leave me feeling flat, even when the work is good.' }
   ],
   related: ['purpose-at-work', 'success-on-paper', 'alignment-scorecard'],

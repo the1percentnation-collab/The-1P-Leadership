@@ -4,10 +4,10 @@ export default {
   title: 'Purpose at Work',
   category: 'purpose',
   mode: 'score',
-  minutes: 7,
+  minutes: 5,
   hook: 'Is your work a job, a career, or a calling?',
   short: 'See how well your work lines up with your purpose across meaning, fit, growth, contribution, and future.',
-  intro: 'Twenty-five statements about the work you do today. Answer for how it really is, not how it reads on your resume.',
+  intro: 'A few honest minutes on the work you do today. Answer for how it really is, not how it reads on your resume.',
   dimensions: [
     {
       key: 'meaning',
@@ -104,18 +104,15 @@ export default {
     { dim: 'meaning', text: 'The work I do every day matters to me personally.' },
     { dim: 'meaning', text: 'I can clearly explain how my work connects to something bigger than a paycheck.' },
     { dim: 'meaning', text: 'I mostly work for the money and the weekend.', reverse: true },
-    { dim: 'meaning', text: 'I often feel a sense of purpose during my workday.' },
     { dim: 'meaning', text: 'I would describe my work as an expression of what I care about.' },
 
     { dim: 'fit', text: 'My role uses the strengths I am best at.' },
     { dim: 'fit', text: 'I often feel like I am pretending to be someone else at work.', reverse: true },
     { dim: 'fit', text: 'The values of the organization I work in match my own.' },
     { dim: 'fit', text: 'Most of my week is spent on tasks that suit how I naturally work.' },
-    { dim: 'fit', text: 'I leave most workdays drained by tasks that do not suit me.', reverse: true },
 
     { dim: 'growth', text: 'I am becoming more capable because of the work I do.' },
     { dim: 'growth', text: 'I have learned very little in my role over the last year.', reverse: true },
-    { dim: 'growth', text: 'My work regularly challenges me in ways that help me grow.' },
     { dim: 'growth', text: 'I have someone at work who helps me develop, such as a mentor or manager.' },
     { dim: 'growth', text: 'I am building skills that will matter for the work I want to do next.' },
 
@@ -123,13 +120,11 @@ export default {
     { dim: 'contribution', text: 'My contributions are valued by the people I work with.' },
     { dim: 'contribution', text: 'I am making the kind of difference I hoped to make when I started this work.' },
     { dim: 'contribution', text: 'If I stopped tomorrow, I am not sure anyone would feel the difference.', reverse: true },
-    { dim: 'contribution', text: 'I regularly help others at work succeed, beyond my own job description.' },
 
     { dim: 'future', text: 'I can see a clear path from my current work to the work I feel called to do.' },
     { dim: 'future', text: 'I feel stuck in a role that does not lead where I want to go.', reverse: true },
     { dim: 'future', text: 'I am taking intentional steps toward the work I want to be doing in five years.' },
     { dim: 'future', text: 'When I picture my career a few years from now, I feel excited about it.' },
-    { dim: 'future', text: 'I can name the kind of work I feel called to do.' }
   ],
   bands: [
     {

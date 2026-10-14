@@ -4,10 +4,10 @@ export default {
   title: 'What Kind of Leader Are You?',
   category: 'leader',
   mode: 'profile',
-  minutes: 6,
+  minutes: 4,
   hook: 'Every leader has a natural style. Do you know yours?',
   short: 'Discover whether you lead most like a Visionary, a Builder, a Coach, or a Driver, and how to grow from there.',
-  intro: 'Twenty-four statements about how you naturally lead. Answer for what you actually do, not what you think a leader should do.',
+  intro: 'A few honest minutes on how you naturally lead. Answer for what you actually do, not what you think a leader should do.',
   dimensions: [
     {
       key: 'visionary',
@@ -90,30 +90,22 @@ export default {
     { dim: 'visionary', text: 'I often see possibilities that others have not noticed yet.' },
     { dim: 'visionary', text: 'I get energized by talking about where we could be in a few years.' },
     { dim: 'visionary', text: 'People tell me I inspire them to think bigger.' },
-    { dim: 'visionary', text: 'I would rather start something new than maintain something that already works.' },
     { dim: 'visionary', text: 'When I explain a project, I start with why it matters before how it will work.' },
-    { dim: 'visionary', text: 'I get restless when a conversation stays stuck on details for too long.' },
 
     { dim: 'builder', text: 'When something keeps going wrong, my first instinct is to build a better process.' },
     { dim: 'builder', text: 'I feel most effective when roles, steps, and expectations are clearly defined.' },
-    { dim: 'builder', text: 'I enjoy turning a loose idea into a plan with clear steps and owners.' },
     { dim: 'builder', text: 'People count on me to bring order when things feel chaotic.' },
     { dim: 'builder', text: 'I like to write down how something is done so anyone can repeat it.' },
-    { dim: 'builder', text: 'I would rather improve how we work than chase a brand new idea.' },
 
     { dim: 'coach', text: 'I get real satisfaction from watching someone I lead grow.' },
     { dim: 'coach', text: 'I would rather ask a good question than give the answer.' },
     { dim: 'coach', text: 'I pay close attention to how the people around me are doing, not just what they are doing.' },
-    { dim: 'coach', text: 'People often come to me for advice about their career or their life.' },
     { dim: 'coach', text: 'I will give someone a stretch assignment even if I could do it better myself.' },
-    { dim: 'coach', text: "I notice people's strengths early and look for ways to use them." },
 
     { dim: 'driver', text: 'I make decisions quickly, even without perfect information.' },
     { dim: 'driver', text: 'I hold myself and others to a high standard of results.' },
     { dim: 'driver', text: 'When a project stalls, I am usually the one who pushes it forward.' },
-    { dim: 'driver', text: 'I am comfortable being direct, even when the message is hard to hear.' },
-    { dim: 'driver', text: 'I keep a close eye on deadlines and numbers, and I notice quickly when they slip.' },
-    { dim: 'driver', text: 'I would rather make a decision and adjust than wait for everyone to agree.' }
+    { dim: 'driver', text: 'I am comfortable being direct, even when the message is hard to hear.' }
   ],
   related: ['leadership-readiness', 'delegation-audit', 'team-alignment'],
   cta: { label: 'Book a free Alignment Audit', href: '/book-a-call' }

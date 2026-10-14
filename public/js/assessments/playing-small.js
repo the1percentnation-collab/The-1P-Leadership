@@ -4,10 +4,10 @@ export default {
   title: 'Are You Playing Small?',
   category: 'self',
   mode: 'score',
-  minutes: 7,
+  minutes: 5,
   hook: 'You know you are capable of more. So what is holding you back?',
   short: 'Find out where you may be holding back across confidence, visibility, risk, asking, and speaking up for yourself.',
-  intro: 'Twenty-five statements about how you show up. Answer for what you actually do, not what you know you should do.',
+  intro: 'A few honest minutes on how you show up. Answer for what you actually do, not what you know you should do.',
   dimensions: [
     {
       key: 'confidence',
@@ -105,17 +105,14 @@ export default {
     { dim: 'confidence', text: 'I often wait until I feel completely ready before I act.', reverse: true },
     { dim: 'confidence', text: 'I believe I am capable of more than my current role or results show.' },
     { dim: 'confidence', text: 'I share my opinion even when others in the room may disagree.' },
-    { dim: 'confidence', text: 'I often second-guess my decisions after I make them.', reverse: true },
 
     { dim: 'visibility', text: 'The people who influence my future know what I am capable of.' },
     { dim: 'visibility', text: 'I downplay my accomplishments so I do not seem arrogant.', reverse: true },
     { dim: 'visibility', text: 'I regularly share my ideas and work with people beyond my immediate circle.' },
-    { dim: 'visibility', text: 'I speak up in meetings, even when I am not the most senior person there.' },
     { dim: 'visibility', text: 'When I do good work, I make sure the right people hear about it.' },
 
     { dim: 'risk', text: 'I have pursued at least one opportunity in the last year that scared me.' },
     { dim: 'risk', text: 'I stay in situations I have outgrown because they feel safe.', reverse: true },
-    { dim: 'risk', text: 'I can make a decision without needing a guarantee that it will work.' },
     { dim: 'risk', text: 'I see failure as part of growth rather than something to avoid at all costs.' },
     { dim: 'risk', text: 'I am willing to look like a beginner while I learn something new.' },
 
@@ -123,13 +120,11 @@ export default {
     { dim: 'asking', text: 'I regularly ask for introductions, referrals, or opportunities.' },
     { dim: 'asking', text: 'I would rather struggle alone than ask someone for something.', reverse: true },
     { dim: 'asking', text: 'I ask for feedback because I want to grow, not just to be reassured.' },
-    { dim: 'asking', text: 'I have a few people I can call for advice when I face a big decision.' },
 
     { dim: 'advocacy', text: 'I can clearly explain the value I bring.' },
     { dim: 'advocacy', text: 'I speak up when I am being underpaid, overlooked, or overloaded.' },
     { dim: 'advocacy', text: 'I hope my work will speak for itself instead of speaking up for it.', reverse: true },
     { dim: 'advocacy', text: 'I negotiate for what I need rather than accepting the first offer.' },
-    { dim: 'advocacy', text: 'I can say no to extra work without over-explaining or apologizing.' }
   ],
   bands: [
     {

@@ -7,7 +7,7 @@ export default {
   minutes: 6,
   hook: 'Your pipeline reflects your mindset before it reflects your market.',
   short: 'Find out which part of your sales mindset is driving your results and which part is quietly holding them back.',
-  intro: 'Twenty-four statements about how you sell. Answer for how you actually operate on an ordinary week, not your best one.',
+  intro: 'A few honest minutes on how you sell. Answer for how you actually operate on an ordinary week, not your best one.',
   dimensions: [
     {
       key: 'prospecting',
