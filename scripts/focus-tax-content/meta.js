@@ -219,7 +219,7 @@ module.exports = {
   },
 
   'the-system-you-abandoned': {
-    brief: 2,
+    brief: 3,
     workbook: {
       reflection: 'How many times have you started a system, had it work, and lost it? Write down what you decided that loss meant about you.',
       action: 'Write your restart protocol now, while nothing is broken: one block, within forty-eight hours, named in advance, with no makeup math, plus a fifteen-minute weekly review on the calendar.',
