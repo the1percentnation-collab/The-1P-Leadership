@@ -165,7 +165,6 @@ async function main() {
 
   const course = {
     title: 'The Focus Tax',
-    short: 'Short reads on focus, anxiety and the cost of an unstructured day.',
     contentSource: 'firestore',
     certificate: false,
     commitment: false,
