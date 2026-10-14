@@ -302,23 +302,46 @@ function renderTeaser() {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return msg('Please enter a valid email.');
     $('u-go').disabled = true;
     $('u-go').textContent = 'Opening your report…';
-    try {
-      const r = scoreAssessment(def, state.answers);
-      const res = await httpsCallable(functions, 'claimAssessment')(Object.assign({ name, email }, payloadFor(r)));
-      const out = (res && res.data) || {};
-      track('sign_up', { method: 'assessment_email', assessment: slug, fb: 'CompleteRegistration' });
-      state.claimed = { email, status: out.status, emailed: !!out.emailed };
-      save();
-      showClaimed();
-    } catch (err) {
-      msg((err && err.message) || 'Something went wrong. Please try again.');
+    const out = await claim(name, email);
+    if (out.error === 'invalid') {
+      msg(out.message);
       const b = $('u-go'); if (b) { b.disabled = false; b.textContent = 'Unlock my full report'; }
+      return;
     }
+    track('sign_up', { method: 'assessment_email', assessment: slug, fb: 'CompleteRegistration' });
+    // They gave their details in good faith, so a server problem never
+    // holds the report back. The save is retried on their next visit.
+    state.claimed = out.error ? { email, status: 'pending', name } : { email, status: out.status, emailed: !!out.emailed };
+    save();
+    showClaimed.retried = true; // just tried twice; the next visit retries
+    showClaimed();
   });
+}
+
+// Sends name, email and result to claimAssessment, retrying once on a
+// server hiccup. Returns the server's answer, or { error: 'invalid' |
+// 'server', message }.
+async function claim(name, email) {
+  const r = scoreAssessment(def, state.answers);
+  const call = () => httpsCallable(functions, 'claimAssessment')(Object.assign({ name, email }, payloadFor(r)));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await call();
+      return (res && res.data) || {};
+    } catch (err) {
+      const code = String((err && err.code) || '').replace('functions/', '');
+      if (code === 'invalid-argument') return { error: 'invalid', message: err.message || 'Please check your name and email.' };
+      if (code === 'resource-exhausted') return { error: 'invalid', message: 'Too many tries from this connection. Please wait a few minutes and try again.' };
+      console.warn('[assessment] claim failed', code, err && err.message);
+      if (attempt === 0) await new Promise((res) => setTimeout(res, 1200));
+    }
+  }
+  return { error: 'server' };
 }
 
 // The status line under a report unlocked by name and email.
 function claimedNote(c) {
+  if (c.status === 'pending') return 'Your report is below. We could not finish setting up your portal account just now, and will try again the next time you open this page.';
   if (c.status === 'existing') return `You already have a portal account with ${c.email}. Log in to see this saved in your profile.`;
   return c.emailed
     ? `Your portal account is ready. Check ${c.email} for a link to set your password.`
@@ -327,6 +350,15 @@ function claimedNote(c) {
 
 function showClaimed() {
   unlocked = true;
+  if (state.claimed && state.claimed.status === 'pending' && !showClaimed.retried) {
+    showClaimed.retried = true;
+    claim(state.claimed.name || '', state.claimed.email).then((out) => {
+      if (out.error) return;
+      state.claimed = { email: state.claimed.email, status: out.status, emailed: !!out.emailed };
+      save();
+      setSaved(claimedNote(state.claimed));
+    });
+  }
   const r = scoreAssessment(def, state.answers);
   renderFull(r, cleanProfile(state.profile), claimedNote(state.claimed), state.answers);
   show('s-result');
