@@ -15,6 +15,7 @@
 //   launchDate        when a coming-soon / pre-order item opens
 //   salePrice         on sale while < price and saleEndsAt has not passed
 //   sellable          false = only reachable inside a bundle; never listed alone
+//   shelf             courses only: 'toolkit' = listed under /toolkit, not as a course
 
 import { priceInfo } from './pricing.js';
 import { launchDateMs, hasLaunched } from './launch-date.js';
@@ -84,6 +85,8 @@ export function normalizeCourse(c, { now = Date.now() } = {}) {
     title: str(c.title || c.slug),
     summary: str(c.short || c.subtitle || ''),
     category: str(c.category || 'Course'),
+    // Listed under /toolkit rather than as a course (see visibleOn).
+    shelf: c.shelf || null,
     // The builder writes `coverImage`; a few older records carry `image`.
     imageUrl: c.coverImage || c.image || c.imageUrl || null,
     videoUrl: null,
@@ -133,10 +136,13 @@ export function isOnSale(item, { now = Date.now() } = {}) {
  *
  * Hidden never shows anywhere. `sellable: false` marks a course sold only
  * inside a bundle — it must not be listed on its own on either channel; the
- * bundle is. Each channel then has its own switch.
+ * bundle is. A Toolkit item (a free series on the course player) is listed in
+ * the Toolkit, never in the course grid, store or rails. Each channel then has
+ * its own switch.
  */
 export function visibleOn(item, channel) {
   if (!item || item.status === 'hidden' || item.sellable === false) return false;
+  if (item.shelf === 'toolkit') return false;
   if (channel === 'site') return item.showOnSite !== false;
   if (channel === 'dashboard') return item.showInDashboard !== false;
   return false;

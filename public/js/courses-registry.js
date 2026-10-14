@@ -497,7 +497,8 @@ export const COURSES = [
     // ─── The Focus Tax (free short reads) ────────────────────────────────
     // Four short pieces on the subjects the Brief does not cover: open loops,
     // the list versus the calendar, meetings and working memory, and decision
-    // load. Free, all published at once, no drip. Content and the Firestore
+    // load. Free, all published at once, no drip. Lives in the Toolkit, not
+    // Courses (see `shelf` below). Content and the Firestore
     // doc are written by scripts/seed-focus-tax.js (run by the Seed The Focus
     // Tax workflow), which creates the course live. The status here stays
     // coming-soon because it is only the fallback for a missing Firestore doc,
@@ -509,6 +510,9 @@ export const COURSES = [
     status: 'coming-soon',
     eyebrow: 'Free · Four short reads',
     category: 'Mindset & Personal Growth',
+    // Listed in the Toolkit under Free Reads, not in Courses. It still opens in
+    // the course player, so enrolment, progress and the workbook all work.
+    shelf: 'toolkit',
     price: 0,
     priceNote: 'Free. Read all four in under twenty minutes.',
     contentSource: 'firestore',

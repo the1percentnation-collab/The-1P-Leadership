@@ -129,12 +129,8 @@ export const TOUR_STOPS = [
     blurb: 'The books that come with your courses. Read on any device, and it opens to the exact page you left off on.'
   },
   {
-    key: 'resources', icon: 'resources', label: 'Resources', href: '/resources.html',
-    blurb: 'Templates, worksheets and downloads that go with the courses. Grab what you need, when you need it.'
-  },
-  {
-    key: 'assessments', icon: 'badge', label: 'Assessments', href: '/assessments',
-    blurb: 'Free assessments on alignment, purpose, leadership, your team and your money. Every result saves here, so you can retake one later and see how far you have come.'
+    key: 'toolkit', icon: 'resources', label: 'Toolkit', href: '/toolkit',
+    blurb: 'Assessments, free reads, calculators and planners. Every assessment result saves, so you can retake one later and see how far you have come.'
   },
   {
     key: 'community', icon: 'community', label: 'Community', href: '/community.html',
