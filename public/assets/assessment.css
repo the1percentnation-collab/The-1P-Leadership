@@ -111,11 +111,11 @@ input,select,textarea{font-size:16px;font-family:inherit;}
 .q-count{font-family:var(--font-mono);font-size:12px;letter-spacing:0.12em;color:var(--gray-400);text-transform:uppercase;}
 .q-text{font-size:clamp(24px,4.4vw,34px);font-weight:500;line-height:1.3;margin:34px 0 30px;min-height:3.9em;}
 .scale{display:grid;gap:10px;}
-.scale button{display:flex;align-items:center;gap:14px;text-align:left;background:var(--surface);border:1px solid var(--border);color:var(--white);
+.scale > button{display:flex;align-items:center;gap:14px;text-align:left;background:var(--surface);border:1px solid var(--border);color:var(--white);
   border-radius:12px;padding:16px 18px;font-size:16px;transition:border-color .15s,background .15s;}
-.scale button:hover{border-color:var(--border-strong);}
-.scale button[aria-pressed="true"]{border-color:var(--red);background:var(--red-glow);}
-.scale button kbd{font-family:var(--font-mono);font-size:12px;color:var(--gray-400);border:1px solid var(--border-strong);border-radius:6px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 26px;}
+.scale > button:hover{border-color:var(--border-strong);}
+.scale > button[aria-pressed="true"]{border-color:var(--red);background:var(--red-glow);}
+.scale > button kbd{font-family:var(--font-mono);font-size:12px;color:var(--gray-400);border:1px solid var(--border-strong);border-radius:6px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 26px;}
 .q-nav{display:flex;justify-content:space-between;align-items:center;margin-top:24px;}
 .text-btn{background:none;border:none;color:var(--gray-400);font-size:14px;padding:8px 0;}
 .text-btn:hover{color:var(--white);}
@@ -326,3 +326,39 @@ details.dim summary::after{margin-left:10px;}
   .acard p,.scale-note,.blend-key li,.drivers li > span:last-child{color:#333 !important;}
   .marker em{border:1px solid #111;}
 }
+
+/* ── Answer scale: one row of circles, disagree to agree ─── */
+.q-text.q-in{animation:qin .35s var(--ease-out);}
+@keyframes qin{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+.likert-row{display:flex;align-items:center;justify-content:center;gap:18px;margin-top:8px;}
+.likert-end{font-family:var(--font-mono);font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:var(--gray-400);width:84px;}
+.likert-end:first-child{text-align:right;color:#ff8a8c;}
+.likert-end:last-child{color:#9dbcff;}
+.likert-dots{display:flex;align-items:center;gap:clamp(10px,3vw,22px);}
+.dot{border-radius:50%;background:transparent;border:2px solid;padding:0;position:relative;
+  transition:transform .15s var(--ease-out),background .15s,box-shadow .15s;flex:0 0 auto;}
+.dot.d1,.dot.d5{width:60px;height:60px;}
+.dot.d2,.dot.d4{width:46px;height:46px;}
+.dot.d3{width:34px;height:34px;}
+.dot.d1,.dot.d2{border-color:rgba(230,3,6,0.75);}
+.dot.d3{border-color:rgba(255,255,255,0.35);}
+.dot.d4,.dot.d5{border-color:rgba(21,94,239,0.85);}
+.dot:hover{transform:scale(1.08);}
+.dot:focus-visible{outline:2px solid var(--white);outline-offset:3px;}
+.dot.d1[aria-pressed="true"],.dot.d2[aria-pressed="true"]{background:var(--red);box-shadow:0 0 0 6px rgba(230,3,6,0.18);}
+.dot.d3[aria-pressed="true"]{background:var(--gray-300);box-shadow:0 0 0 6px rgba(255,255,255,0.1);}
+.dot.d4[aria-pressed="true"],.dot.d5[aria-pressed="true"]{background:var(--blue);box-shadow:0 0 0 6px rgba(21,94,239,0.2);}
+.dot[aria-pressed="true"]::after{content:'\2713';position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-weight:700;font-size:16px;}
+.dot.d3[aria-pressed="true"]::after{color:#111;font-size:13px;}
+.likert-hint{text-align:center;margin-top:22px;font-size:16px;font-weight:500;color:var(--gray-300);min-height:1.5em;}
+@media (max-width:560px){
+  .likert-row{flex-wrap:wrap;gap:12px 0;}
+  .likert-dots{order:1;width:100%;justify-content:space-between;padding:0 4px;}
+  .likert-end{order:2;width:50%;text-align:left !important;}
+  .likert-end:last-child{text-align:right !important;}
+  .dot.d1,.dot.d5{width:54px;height:54px;}
+  .dot.d2,.dot.d4{width:42px;height:42px;}
+  .dot.d3{width:32px;height:32px;}
+  .kbd-tip{display:none;}
+}
+@media (hover:none){ .kbd-tip{display:none;} }

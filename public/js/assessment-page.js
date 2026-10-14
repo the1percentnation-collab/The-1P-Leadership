@@ -96,9 +96,27 @@ function renderQuestion() {
   $('q-count').textContent = `Statement ${i + 1} of ${def.questions.length}`;
   $('q-bar').style.width = `${(i / def.questions.length) * 100}%`;
   $('q-text').textContent = q.text;
-  $('q-scale').innerHTML = SCALE.map((s) =>
-    `<button type="button" data-v="${s.value}" aria-pressed="${state.answers[i] === s.value}"><kbd>${s.value}</kbd>${esc(s.label)}</button>`).join('');
-  $('q-scale').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => answer(Number(b.dataset.v))));
+  // A labeled 5-point agreement scale, laid out as one row of circles from
+  // disagree to agree. Same validated Likert scale; faster to tap than a
+  // list, and every point keeps its label for screen readers and the hint.
+  const chosen = state.answers[i];
+  $('q-scale').innerHTML = `
+    <div class="likert-row">
+      <span class="likert-end">Disagree</span>
+      <div class="likert-dots">${SCALE.map((s) =>
+        `<button type="button" class="dot d${s.value}" data-v="${s.value}" aria-label="${esc(s.label)}" aria-pressed="${chosen === s.value}"></button>`).join('')}</div>
+      <span class="likert-end">Agree</span>
+    </div>
+    <div class="likert-hint" id="q-hint">${chosen ? esc(SCALE[chosen - 1].label) : 'Tap the circle that fits'}</div>`;
+  const hint = $('q-hint');
+  $('q-scale').querySelectorAll('.dot').forEach((b) => {
+    const label = SCALE[Number(b.dataset.v) - 1].label;
+    b.addEventListener('mouseenter', () => { hint.textContent = label; });
+    b.addEventListener('mouseleave', () => { const c = state.answers[state.index]; hint.textContent = c ? SCALE[c - 1].label : 'Tap the circle that fits'; });
+    b.addEventListener('click', () => answer(Number(b.dataset.v)));
+  });
+  const qt = $('q-text');
+  qt.classList.remove('q-in'); void qt.offsetWidth; qt.classList.add('q-in');
   $('q-back').style.visibility = i === 0 ? 'hidden' : 'visible';
 }
 
@@ -106,7 +124,8 @@ function answer(v) {
   const i = state.index;
   state.answers[i] = v;
   save();
-  $('q-scale').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === v)));
+  $('q-scale').querySelectorAll('.dot').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === v)));
+  if ($('q-hint')) $('q-hint').textContent = SCALE[v - 1].label;
   clearTimeout(advancing);
   advancing = setTimeout(() => {
     if (i + 1 < def.questions.length) {
