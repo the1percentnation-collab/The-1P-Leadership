@@ -7,7 +7,7 @@
 // than a blank quiz.
 import { getAssessment } from './assessments-data.js';
 import {
-  SCALE, PROFILE_QUESTIONS, LEVELS, scoreAssessment, headlineFor, buildReport, bandFor,
+  SCALE, PROFILE_QUESTIONS, LEVELS, scoreAssessment, headlineFor, buildReport, bandFor, suggestEmail,
   isPriorityLead, cleanProfile
 } from './assessment-core.js';
 import { onAuthReady } from './auth.js';
@@ -293,6 +293,7 @@ function renderTeaser() {
   const msg = (t) => { $('u-msg').textContent = t || ''; $('u-msg').className = 'form-msg' + (t ? ' err' : ''); };
   if (!firebaseReady) msg('Accounts are unavailable right now. Check your connection and refresh.');
 
+  let checkedEmail = null;
   $('unlock-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     msg('');
@@ -300,6 +301,16 @@ function renderTeaser() {
     const email = $('u-email').value.trim();
     if (!name) return msg('Please enter your name.');
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return msg('Please enter a valid email.');
+    // A mistyped domain would become a second account they can never use.
+    // Ask once; submitting the same address again goes through as typed.
+    const fix = suggestEmail(email);
+    if (fix && checkedEmail !== email) {
+      checkedEmail = email;
+      $('u-msg').className = 'form-msg err';
+      $('u-msg').innerHTML = `Did you mean <button type="button" class="text-btn" id="u-fix" style="color:inherit;text-decoration:underline;padding:0;">${esc(fix)}</button>? Tap it to fix, or press the button again to keep what you typed.`;
+      $('u-fix').addEventListener('click', () => { $('u-email').value = fix; checkedEmail = fix; msg(''); });
+      return;
+    }
     $('u-go').disabled = true;
     $('u-go').textContent = 'Opening your report…';
     const out = await claim(name, email);

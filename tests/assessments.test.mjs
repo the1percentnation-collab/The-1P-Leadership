@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import { loadPure } from './_load-pure.mjs';
 
 const {
-  validateAssessment, scoreAssessment, bandFor, headlineFor, buildReport, levelFor, nextBand, blendFor, driversFor,
+  validateAssessment, scoreAssessment, bandFor, headlineFor, buildReport, levelFor, nextBand, blendFor, driversFor, suggestEmail,
   isPriorityLead, segmentFor, cleanProfile, CATEGORIES
 } = await loadPure('assessment-core.js');
 const { ASSESSMENTS, getAssessment } = await loadPure('assessments-data.js');
@@ -250,6 +250,16 @@ ok('the report carries drivers only when answers are given', () => {
   const r = scoreAssessment(a, all(a, 2));
   assert.ok(buildReport(a, r, all(a, 2)).areas.every((x) => x.drivers));
   assert.ok(buildReport(a, r).areas.every((x) => x.drivers === null));
+});
+
+ok('email typos on common providers are caught, real domains left alone', () => {
+  assert.strictEqual(suggestEmail('a@gmial.com'), 'a@gmail.com');
+  assert.strictEqual(suggestEmail('A@Gmail.con'), 'a@gmail.com');
+  assert.strictEqual(suggestEmail('a@iclod.com'), 'a@icloud.com');
+  assert.strictEqual(suggestEmail('a@gmail.com'), null);
+  assert.strictEqual(suggestEmail('a@icloud.com'), null);
+  assert.strictEqual(suggestEmail('a@the1pnation.com'), null);
+  assert.strictEqual(suggestEmail('not an email'), null);
 });
 
 // ── Segmenting ───────────────────────────────────────────────────────────

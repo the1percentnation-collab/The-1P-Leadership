@@ -292,6 +292,43 @@ export function driversFor(def, answers, dimKey) {
   return { lifts: lifts.map(strip), drags: drags.map(strip) };
 }
 
+// Common personal email domains, for catching typos like "gmial.com" before
+// they become a second account nobody can log into.
+const EMAIL_DOMAINS = [
+  'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com',
+  'live.com', 'msn.com', 'me.com', 'comcast.net', 'att.net', 'verizon.net', 'ymail.com'
+];
+
+function editDistance(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[a.length][b.length];
+}
+
+/**
+ * "antbrown@gmial.com" → "antbrown@gmail.com". Null when the domain is
+ * already a known one or nothing known is within two typos of it, so a
+ * company domain is left alone.
+ */
+export function suggestEmail(email) {
+  const m = String(email || '').trim().toLowerCase().match(/^([^@\s]+)@([^@\s]+)$/);
+  if (!m) return null;
+  const [, user, domain] = m;
+  if (EMAIL_DOMAINS.includes(domain)) return null;
+  let best = null;
+  for (const known of EMAIL_DOMAINS) {
+    const dist = editDistance(domain, known);
+    if (dist <= 2 && (!best || dist < best.dist)) best = { known, dist };
+  }
+  return best ? `${user}@${best.known}` : null;
+}
+
 /** The headline a result leads with, for either mode. */
 export function headlineFor(def, result) {
   if (def.mode === 'profile') {
