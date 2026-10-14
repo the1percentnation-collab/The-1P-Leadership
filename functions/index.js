@@ -12903,10 +12903,7 @@ exports.crmAssistantChat = onCall(
       } catch (err) {
         const status = err && err.status;
         console.error('[crmAssistant] model call failed', status, err && err.message);
-        if (status === 429 || (status >= 500 && status < 600)) {
-          throw new HttpsError('unavailable', 'The assistant is busy right now. Try again in a moment.');
-        }
-        throw new HttpsError('internal', 'The assistant could not complete that request.');
+        throw anthropicFailure(err);
       }
 
       if (outOfBudget) { complete = false; break; }
@@ -13281,6 +13278,27 @@ exports.crmAssistantRevert = onCall({ timeoutSeconds: 120 }, async (request) => 
   };
 });
 
+
+// Turns an Anthropic API error into a message an admin can act on. Only
+// admins reach the CRM assistant, and these name a setting to fix, never a
+// key or other secret, so they are safe to show in the chat.
+function anthropicFailure(err) {
+  const status = err && err.status;
+  const raw = String((err && err.message) || '');
+  if (/credit balance|billing|purchase credits/i.test(raw)) {
+    return new HttpsError('failed-precondition', 'The AI account is out of credits. Add credits in the Anthropic Console (Plans & Billing), then try again.');
+  }
+  if (status === 401 || status === 403) {
+    return new HttpsError('failed-precondition', 'The AI key was rejected. Check ANTHROPIC_API_KEY in Google Cloud Secret Manager and redeploy the functions.');
+  }
+  if (status === 404 || (status === 400 && /model/i.test(raw))) {
+    return new HttpsError('failed-precondition', 'The AI model this assistant uses is not available. Update CRM_MODEL in functions/index.js.');
+  }
+  if (status === 429 || status === 529 || (status >= 500 && status < 600)) {
+    return new HttpsError('unavailable', 'The AI service is busy right now. Try again in a moment.');
+  }
+  return new HttpsError('internal', 'The assistant could not complete that request.');
+}
 
 function getAnthropicClient() {
   let Anthropic;

@@ -462,9 +462,14 @@ function wireUp(root) {
       thinkRow.remove();
       // "Sign in required" is a normal state on the public pages, not a fault.
       // Saying so beats a generic failure the visitor can do nothing about.
-      const msg = err && err.code === 'functions/unauthenticated'
+      // Server errors carry a message written for the person reading it
+      // (out of credits, rate limited, no access). Show it instead of hiding
+      // every cause behind one generic line.
+      const code = String((err && err.code) || '').replace('functions/', '');
+      const readable = ['failed-precondition', 'unavailable', 'resource-exhausted', 'permission-denied', 'invalid-argument'];
+      const msg = code === 'unauthenticated'
         ? SIGN_IN_PROMPT
-        : 'Something went wrong — please try again.';
+        : (readable.includes(code) && err.message ? err.message : 'Something went wrong. Please try again.');
       addMsg('assistant', msg, err && err.code !== 'functions/unauthenticated');
       setS(S.IDLE);
     } finally {
