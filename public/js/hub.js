@@ -937,6 +937,50 @@ function renderLeaderboard(rows, stats, uid) {
   list.innerHTML = top.map((r, i) => row(r, i, r.uid === uid)).join('') + mine;
 }
 
+// ─── My assessments ───────────────────────────────────────────────────────
+// Free assessment results (users/{uid}/assessments, written by the
+// submitAssessment / claimAssessment functions), newest first, each linking
+// back to its saved report. A member with none gets one card inviting them
+// to take the flagship, so the section always leads somewhere.
+
+async function renderAssessments() {
+  const section = $('hub-assessments');
+  const row = $('hub-assessments-list');
+  if (!section || !row || !firebaseReady || !currentUser()) return;
+  let rows = [];
+  try {
+    const snap = await getDocs(collection(db, 'users', currentUser().uid, 'assessments'));
+    snap.forEach((d) => rows.push(d.data()));
+  } catch (e) {
+    console.warn('[hub] assessments unavailable', e);
+    return;
+  }
+  const ms = (r) => (r.completedAt && r.completedAt.toMillis ? r.completedAt.toMillis() : 0);
+  rows.sort((a, b) => ms(b) - ms(a));
+  const cards = rows.slice(0, 6).map((r) => {
+    const when = ms(r) ? new Date(ms(r)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+    const score = r.mode !== 'profile' ? `${Number(r.score) || 0} / 100` : '';
+    return `
+      <a class="hub-explore-card" href="/assessments/${encodeURIComponent(r.slug)}">
+        <span class="hub-explore-eyebrow">${escapeHtml(when ? 'Taken ' + when : 'Your result')}</span>
+        <span class="hub-explore-title">${escapeHtml(r.title || r.slug)}</span>
+        <span class="hub-explore-sub">${escapeHtml(r.label || '')}</span>
+        <span class="hub-explore-price">${escapeHtml(score)}</span>
+      </a>`;
+  });
+  if (!cards.length) {
+    cards.push(`
+      <a class="hub-explore-card" href="/assessments/alignment-scorecard">
+        <span class="hub-explore-eyebrow">Free · 5 minutes</span>
+        <span class="hub-explore-title">Take The Alignment Scorecard</span>
+        <span class="hub-explore-sub">See where the gap is between the life you built and the life you want. Your results save here.</span>
+        <span class="hub-explore-price"></span>
+      </a>`);
+  }
+  row.innerHTML = cards.join('');
+  section.hidden = false;
+}
+
 // ─── Explore next ─────────────────────────────────────────────────────────
 
 async function renderExplore() {
@@ -1147,6 +1191,7 @@ async function main() {
 
   // Below the fold and never awaited — the page is already usable without them.
   renderSpotlightRail({ role, companyId });
+  renderAssessments();
   renderExplore();
   renderReferral();
   renderOwnerPulse(role);

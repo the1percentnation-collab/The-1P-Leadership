@@ -133,6 +133,10 @@ export const TOUR_STOPS = [
     blurb: 'Templates, worksheets and downloads that go with the courses. Grab what you need, when you need it.'
   },
   {
+    key: 'assessments', icon: 'badge', label: 'Assessments', href: '/assessments',
+    blurb: 'Free assessments on alignment, purpose, leadership, your team and your money. Every result saves here, so you can retake one later and see how far you have come.'
+  },
+  {
     key: 'community', icon: 'community', label: 'Community', href: '/community.html',
     blurb: 'Where the work gets discussed. Post a win, ask a question, answer one. Posting is also how you earn points and climb the leaderboard.'
   },
