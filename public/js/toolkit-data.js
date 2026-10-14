@@ -37,6 +37,15 @@ export const TOOLKIT_SECTIONS = [
 
 export const TOOLS = [
   {
+    slug: 'focus-tax-calculator',
+    section: 'calculators',
+    title: 'Focus Tax Calculator',
+    short: 'Put a dollar figure on interruptions, switching, meetings and drift, then see what the time blocking system in How to Work Less and Gain More gives back.',
+    href: '/focus-tax-calculator',
+    minutes: 3,
+    status: 'live'
+  },
+  {
     slug: 'goal-planner',
     section: 'calculators',
     title: 'Custom Goal Planner',

@@ -36,6 +36,9 @@ const admin = new Proxy(_adminModule, {
 });
 const crypto = require('crypto');
 const sgMail = require('@sendgrid/mail');
+// The Focus Tax calculator's math, shared with the page (generated from
+// public/js/focus-tax-core.js by scripts/build-focus-tax-server.cjs).
+const { computeFocusTax, WORK_WEEKS: FOCUS_TAX_WEEKS } = require('./focus-tax.js');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
@@ -14183,7 +14186,11 @@ const LEAD_FORMS = {
   'book-bonus': { source: 'Book Bonus', tags: ['Book Bonus', 'Book Reader'] },
   // /contact-us — the public "get in touch" form. Someone who writes in
   // unprompted is asking for a reply, so this type always notifies.
-  'contact': { source: 'Contact Form', tags: ['Contact Form'], urgent: true }
+  'contact': { source: 'Contact Form', tags: ['Contact Form'], urgent: true },
+  // /focus-tax-calculator — someone asked for their Focus Tax report. Tagged
+  // with the book it is built on, so calculator leads are the launch list.
+  // Team-mode requests also join the corporate pipeline (see submitLeadForm).
+  'focus-tax': { source: 'Focus Tax Calculator', tags: ['Focus Tax Calculator', 'Work Less Gain More'] }
 };
 
 /**
@@ -14410,6 +14417,9 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
 
   const tags = form.tags.slice();
   if (consent) tags.push('Opt-In: Calls/SMS/Email');
+  // A leader pricing their team's Focus Tax is a corporate lead: the same
+  // buyer-input math the annual program conversation starts from.
+  if (formType === 'focus-tax' && fields.mode === 'team') tags.push('Corporate', 'Focus Tax: Team');
   const ref = await upsertCrmContact(db, companyId, {
     name, email, phone, source: form.source, tags
   });
@@ -14446,8 +14456,116 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
     contactUrl: `${APP_BASE_URL}/contact.html?id=${encodeURIComponent(ref.id)}`
   });
 
+  // The calculator promised a report, so send it. Recomputed here from the
+  // submitted inputs (clamped by computeFocusTax), never from totals the page
+  // sent, and rendered from a fixed template, so the form cannot be used to
+  // mail arbitrary text. Best-effort: the lead is already saved.
+  if (formType === 'focus-tax' && emailConfigured()) {
+    try {
+      const msg = focusTaxReportEmail({ firstName: name.split(/\s+/)[0], result: computeFocusTax(fields) });
+      await sendEmail({
+        to: email,
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject: msg.subject,
+        text: msg.text,
+        html: msg.html,
+        customArgs: { type: 'focus_tax_report' }
+      });
+    } catch (e) {
+      console.warn('[submitLeadForm] focus tax report failed:', e && e.message);
+    }
+  }
+
   return { ok: true };
 });
+
+// The Focus Tax report: the visitor's numbers, the one fix to run first, and
+// the two tools from How to Work Less and Gain More that make the fix stick
+// (the fifteen-minute weekly plan, Phase Six, and the weekly audit, Phase Ten).
+function focusTaxReportEmail({ firstName, result: r }) {
+  const usd = (n) => '$' + Math.round(n).toLocaleString('en-US');
+  const h = (n) => `${(Math.round(n * 10) / 10).toString()} hrs`;
+  const team = r.input.mode === 'team';
+  const hi = firstName ? `Hi ${firstName},` : 'Hi,';
+  const who = team ? `your team of ${r.people}` : 'you';
+  const headline = `${usd(r.yearlyCost)} a year`;
+  const perWeek = team
+    ? `${h(r.weeklyHours)} a week per person, ${Math.round(r.pctOfWeek * 100)}% of every working week.`
+    : `${h(r.weeklyHours)} a week, ${Math.round(r.pctOfWeek * 100)}% of your working week.`;
+  const lineRows = r.lines.map((l) => ({
+    label: l.label, hours: h(l.hours), cost: usd(l.hours * r.hourly * r.people * FOCUS_TAX_WEEKS), chapter: l.chapter
+  }));
+  const plan = [
+    'Block deep work first: your highest-value work in the first two to three hours of the morning.',
+    'Set two communication windows, one mid-morning and one mid-afternoon. Outside them the inbox stays closed.',
+    'Put admin in the early to mid-afternoon, when energy is naturally lower.',
+    'Leave a thirty-minute buffer block in the morning and one in the afternoon.'
+  ];
+  const audit = [
+    'What did I actually spend most of my time on this week?',
+    'Which activities produced the most real results?',
+    'What consumed time without producing meaningful results?',
+    'Was my most important work protected, or did it keep getting pushed back?',
+    'What one thing will I do differently next week?'
+  ];
+  const back = r.reclaimedHours > 0
+    ? `Run the system from the book and ${who} get back about ${h(r.reclaimedHours)} a week${team ? ' per person' : ''}, worth ${usd(r.reclaimedYearlyCost)} a year.`
+    : 'Your answers already match the system. Keep auditing weekly so it stays that way.';
+  const bookUrl = `${APP_BASE_URL}/#shop`;
+  const auditUrl = `${APP_BASE_URL}/corporate#audit`;
+  const calcUrl = `${APP_BASE_URL}/focus-tax-calculator`;
+
+  const subject = team ? `Your team's Focus Tax: ${headline}` : `Your Focus Tax: ${headline}`;
+  const text = [
+    hi, '',
+    `Here is the Focus Tax you calculated for ${who}: ${headline}.`,
+    perWeek, '',
+    ...lineRows.map((l) => `${l.label}: ${l.hours} a week, ${l.cost} a year (${l.chapter})`),
+    '',
+    r.biggest ? `Your biggest tax is ${r.biggest.label.toLowerCase()}. Run this first: ${r.biggest.fix}` : '',
+    '', back, '',
+    'The fifteen-minute weekly plan (Phase Six):',
+    ...plan.map((p, n) => `${n + 1}. ${p}`),
+    '',
+    'The weekly audit, ten minutes every Friday (Phase Ten):',
+    ...audit.map((q, n) => `${n + 1}. ${q}`),
+    '',
+    `The whole system is in How to Work Less and Gain More: ${bookUrl}`,
+    team ? `To walk through these numbers with your leadership team, book a free Alignment Audit: ${auditUrl}` : '',
+    `Run the numbers again any time: ${calcUrl}`,
+    '', 'Anthony Brown Sr.', 'The One Percent'
+  ].join('\n');
+
+  const li = (items, ordered) => `<${ordered ? 'ol' : 'ul'} style="font-size:14px;color:#333;padding-left:20px;margin:8px 0 0;">${items.map((x) => `<li style="margin:4px 0;">${textToHtml(x)}</li>`).join('')}</${ordered ? 'ol' : 'ul'}>`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;">
+    <p style="font-size:15px;">${textToHtml(hi)}</p>
+    <p style="font-size:15px;">Here is the Focus Tax you calculated for ${textToHtml(who)}.</p>
+    <div style="border:1px solid #eee;border-left:4px solid #E60306;border-radius:8px;padding:16px 18px;margin:18px 0;">
+      <div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#888;">${team ? "Your team's Focus Tax" : 'Your Focus Tax'}</div>
+      <div style="font-size:26px;font-weight:700;margin-top:4px;">${textToHtml(headline)}</div>
+      <p style="font-size:14px;color:#444;margin:6px 0 0;">${textToHtml(perWeek)}</p>
+    </div>
+    <table style="width:100%;font-size:14px;border-collapse:collapse;">
+      ${lineRows.map((l) => `<tr>
+        <td style="padding:8px 0;border-bottom:1px solid #eee;"><strong>${textToHtml(l.label)}</strong><br><span style="font-size:12px;color:#888;">${textToHtml(l.chapter)}</span></td>
+        <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;">${textToHtml(l.hours)} / wk<br><span style="color:#666;">${textToHtml(l.cost)} / yr</span></td>
+      </tr>`).join('')}
+    </table>
+    ${r.biggest ? `<p style="font-size:15px;margin-top:20px;"><strong>Your biggest tax is ${textToHtml(r.biggest.label.toLowerCase())}.</strong> Run this first: ${textToHtml(r.biggest.fix)}</p>` : ''}
+    <p style="font-size:15px;">${textToHtml(back)}</p>
+    <h3 style="font-size:16px;margin:24px 0 0;">The fifteen-minute weekly plan</h3>
+    ${li(plan, true)}
+    <h3 style="font-size:16px;margin:24px 0 0;">The weekly audit, ten minutes every Friday</h3>
+    ${li(audit, true)}
+    <p style="font-size:15px;margin-top:24px;">The whole system is in <em>How to Work Less and Gain More</em>.</p>
+    <p style="margin:18px 0;"><a href="${bookUrl}" style="background:#E60306;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;">Get the book</a></p>
+    ${team ? `<p style="font-size:14px;">Want to walk through these numbers with your leadership team? <a href="${auditUrl}" style="color:#E60306;">Book a free Alignment Audit</a>: 45 minutes with Anthony and a one-page scorecard within 48 hours.</p>` : ''}
+    <p style="font-size:13px;color:#888;">Run the numbers again any time at <a href="${calcUrl}" style="color:#888;">the1pnation.com/focus-tax-calculator</a>. An estimate from your own inputs and the research cited in the book, not a guarantee.</p>
+    <p style="font-size:14px;margin-top:24px;">Anthony Brown Sr.<br>The One Percent</p>
+  </div>`;
+  return { subject, text, html };
+}
 
 // ────────────────────────────────────────────────────────────────
 // submitAssessment — callable (signed-in members)
