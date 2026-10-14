@@ -53,6 +53,16 @@ export async function loadCourses({ force = false } = {}) {
   return _merged;
 }
 
+/**
+ * Is this record a Toolkit item rather than a course? Some free series (The
+ * Focus Tax) run on the course player so progress and workbooks save, but they
+ * are listed under /toolkit, never beside the paid courses. Every course
+ * listing (library, dashboard rails, catalog, "More courses") checks this.
+ */
+export function isToolkitItem(c) {
+  return !!c && c.shelf === 'toolkit';
+}
+
 /** Synchronous getter — call after loadCourses() has resolved. */
 export function getCourses({ includeInactive = false } = {}) {
   const all = _merged || COURSES;

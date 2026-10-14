@@ -12,7 +12,7 @@ import {
   doc, getDoc, collection, getDocs
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
-import { loadCourses, getCourses, getCourseBySlug, priceInfo } from './courses-data.js';
+import { loadCourses, getCourses, getCourseBySlug, priceInfo, isToolkitItem } from './courses-data.js';
 
 const LS_KEY = '1p_academy_enrollments';
 
@@ -109,9 +109,14 @@ export function isEnrolled(slug) {
 // Keyed on `kind`, not `bundleHref`: a bundle-only course also carries a
 // bundleHref (its landing page points buyers at the bundle), and filtering on
 // that hid the course itself from the people who had just bought it.
-export function enrolledCourses() {
+//
+// `includeToolkit: false` drops Toolkit items (free series that run on the
+// course player but are listed under /toolkit) for the places that show a
+// member their courses. Access checks and targeting keep the default.
+export function enrolledCourses({ includeToolkit = true } = {}) {
   const set = _cache || new Set();
-  return getCourses().filter((c) => set.has(c.slug) && c.kind !== 'bundle');
+  return getCourses().filter((c) => set.has(c.slug) && c.kind !== 'bundle'
+    && (includeToolkit || !isToolkitItem(c)));
 }
 
 // Courses you could still buy. A course marked `sellable: false` is only
@@ -120,8 +125,10 @@ export function enrolledCourses() {
 // but the testers who already hold it, who see it under "Your courses".
 // A checkout option of another offer (`optionOf`, e.g. the paperback
 // variant of the I Can't bundle) is chosen on that offer's page, never listed.
+// A Toolkit item is listed under /toolkit instead.
 export function availableCourses() {
   const set = _cache || new Set();
   return getCourses().filter((c) =>
-    !set.has(c.slug) && c.sellable !== false && c.status !== 'beta' && !c.optionOf);
+    !set.has(c.slug) && c.sellable !== false && c.status !== 'beta' && !c.optionOf
+    && !isToolkitItem(c));
 }

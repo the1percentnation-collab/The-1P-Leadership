@@ -44,4 +44,8 @@ ok('it is temporary (302), so it can be repointed', () => {
   assert.strictEqual(hosting.redirects.find((x) => x.destination === '/read?book=i-cant-preview').type, 302);
 });
 
+ok('the old Resources page lands on the Toolkit', () => {
+  for (const u of ['/resources', '/resources.html']) assert.strictEqual(target(u), '/toolkit', u);
+});
+
 console.log(`\n${passed} passed`);

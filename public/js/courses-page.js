@@ -11,7 +11,7 @@
 // Access gating: if X isn't in the user's enrollments, the welcome view
 // is shown with a message. Nothing auto-opens; the user always chooses.
 
-import { loadCourses, getCourseBySlug, priceInfo } from './courses-data.js';
+import { loadCourses, getCourseBySlug, priceInfo, isToolkitItem } from './courses-data.js';
 import { onAuthReady, currentUser } from './auth.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import { renderShell } from './academy-shell.js';
@@ -89,7 +89,9 @@ function sidebarEntryHtml(course, { isActive, completedCount = 0 } = {}) {
 function renderSidebar(activeSlug) {
   const list = $('courses-sidebar-list');
   if (!list) return;
-  const enrolled = enrolledCourses();
+  // Toolkit items (free series) are not courses, so they only appear here
+  // while one is open.
+  const enrolled = enrolledCourses().filter((c) => !isToolkitItem(c) || c.slug === activeSlug);
   const completedCount = store.completed ? store.completed.size : 0;
 
   if (enrolled.length === 0) {
@@ -167,7 +169,7 @@ function renderAvailableCourses() {
   if (!slot) return;
 
   const available = availableCourses();
-  const enrolled = enrolledCourses();
+  const enrolled = enrolledCourses({ includeToolkit: false });
   if (available.length === 0) {
     slot.innerHTML = enrolled.length > 0 ? `
       <div class="available-empty">You're enrolled in every course we offer. Keep going.</div>
@@ -776,7 +778,8 @@ async function main() {
   } catch (e) {}
   // courses.html has its own primary nav (academy-tabs); chip carries
   // only the bell + avatar + sign-out so we don't duplicate the nav.
-  renderShell({ current: 'courses', role, compact: true });
+  // A Toolkit item (a free series) opens here but belongs to the Toolkit tab.
+  renderShell({ current: isToolkitItem(course) ? 'toolkit' : 'courses', role, compact: true });
   renderTopbar({ user: currentUser(), profile, role, currentPage: null, links: [], withSignOut: false });
 }
 

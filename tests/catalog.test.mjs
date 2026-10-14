@@ -181,6 +181,16 @@ ok('a bundle-only course is never listed on its own', () => {
   assert.strictEqual(visibleOn(i, 'dashboard'), false);
 });
 
+ok('a Toolkit item is listed in the Toolkit, never on a catalog channel', () => {
+  // The Focus Tax runs on the course player but is a free series, not a
+  // course, so it must not sit in the course grid, the store or the rails.
+  const i = normalizeCourse(course({ shelf: 'toolkit', showOnSite: true, showInDashboard: true }));
+  assert.strictEqual(i.shelf, 'toolkit');
+  assert.strictEqual(visibleOn(i, 'site'), false);
+  assert.strictEqual(visibleOn(i, 'dashboard'), false);
+  assert.strictEqual(normalizeCourse(course()).shelf, null, 'a plain course has no shelf');
+});
+
 ok('an unknown channel shows nothing', () => {
   assert.strictEqual(visibleOn(normalizeProduct(product()), 'email'), false);
 });

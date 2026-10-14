@@ -494,7 +494,7 @@ function renderNextSteps(steps) {
 // ─── Continue card ────────────────────────────────────────────────────────
 
 function primaryCourse() {
-  const enrolled = enrolledCourses();
+  const enrolled = enrolledCourses({ includeToolkit: false });
   if (!enrolled.length) return null;
   // The course with the most work already done and something still left in
   // it. That is where momentum lives; a fresh course can wait one scroll.
@@ -578,7 +578,7 @@ function renderModuleMap(slug) {
   const link = $('hub-progress-link');
   if (!section || !slot) return;
 
-  const enrolled = enrolledCourses();
+  const enrolled = enrolledCourses({ includeToolkit: false });
   const primary = primaryCourse();
   const target = slug || (primary && primary.course.slug);
   const course = enrolled.find((c) => c.slug === target);
@@ -616,7 +616,7 @@ function renderModuleMap(slug) {
 function renderCourseSwitch(activeSlug) {
   const wrap = $('hub-course-switch');
   if (!wrap) return;
-  const withModules = enrolledCourses().filter((c) => {
+  const withModules = enrolledCourses({ includeToolkit: false }).filter((c) => {
     const comp = completions.get(c.slug);
     return comp && comp.modules.length;
   });
@@ -786,7 +786,7 @@ function renderWatching() {
   const row = $('hub-watch-list');
   if (!section || !row) return;
 
-  const cards = enrolledCourses()
+  const cards = enrolledCourses({ includeToolkit: false })
     .map((c) => ({ course: c, completion: completions.get(c.slug) }))
     .filter((r) => r.completion)
     .sort((a, b) => {
@@ -1132,7 +1132,7 @@ async function main() {
       uid,
       name: greetingName(currentUser(), profile),
       firstVisit,
-      enrolled: enrolledCourses().length > 0
+      enrolled: enrolledCourses({ includeToolkit: false }).length > 0
     });
   }
 
