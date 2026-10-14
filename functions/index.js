@@ -14450,6 +14450,347 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
 });
 
 // ────────────────────────────────────────────────────────────────
+// submitAssessment — callable (signed-in members)
+// ────────────────────────────────────────────────────────────────
+// The free assessment library (/assessments) scores in the browser and
+// unlocks the full report once the visitor has a free portal account. This
+// saves that result to users/{uid}/assessments/{slug}, where the library and
+// the member read it back, and tags the member's CRM contact so the owner can
+// see who took what and filter by interest, segment and campaign.
+//
+// Keep ASSESSMENT_SLUGS in step with public/js/assessments-data.js; the
+// assessments test fails if they drift. The category labels mirror
+// CATEGORIES in public/js/assessment-core.js.
+const ASSESSMENT_SLUGS = {
+  'alignment-scorecard': { title: 'The Alignment Scorecard', category: 'self' },
+  'success-on-paper': { title: 'Successful on Paper, Empty in Practice?', category: 'self' },
+  'burnout-check': { title: 'The Burnout Check', category: 'self' },
+  'discipline-score': { title: 'The 1% Discipline Score', category: 'self' },
+  'playing-small': { title: 'Are You Playing Small?', category: 'self' },
+  'find-your-why': { title: 'Find Your Why', category: 'purpose' },
+  'purpose-at-work': { title: 'Purpose at Work', category: 'purpose' },
+  'leadership-style': { title: 'What Kind of Leader Are You?', category: 'leader' },
+  'leadership-readiness': { title: 'Leadership Readiness Assessment', category: 'leader' },
+  'limiting-beliefs': { title: 'What Belief Is Holding You Back?', category: 'leader' },
+  'delegation-audit': { title: 'The Delegation Audit', category: 'leader' },
+  'faith-leader': { title: 'The Faith Leader Health Check', category: 'leader' },
+  'team-alignment': { title: 'The Team Alignment Assessment', category: 'team' },
+  'sales-mindset': { title: 'The Sales Mindset Score', category: 'team' },
+  'financial-readiness': { title: 'The Financial Readiness Score', category: 'money' },
+  'money-mindset': { title: 'What Is Your Money Personality?', category: 'money' },
+  'legacy-protection': { title: 'The Legacy Protection Check', category: 'money' }
+};
+const ASSESSMENT_CATEGORY_LABELS = {
+  self: 'Self', purpose: 'Purpose', leader: 'Leadership', team: 'Team', money: 'Finances'
+};
+const ASSESSMENT_ROLES = {
+  professional: 'Professional', owner: 'Business Owner', manager: 'Manager',
+  executive: 'Executive', sales: 'Sales Leader', pastor: 'Pastor',
+  nonprofit: 'Nonprofit Leader', student: 'Student'
+};
+const ASSESSMENT_TEAM_SIZES = ['0', '1-10', '11-50', '51+'];
+
+// Mirrors isPriorityLead in public/js/assessment-core.js.
+function isPriorityAssessmentLead(role, teamSize) {
+  if (teamSize === '11-50' || teamSize === '51+') return true;
+  const runsOrg = role === 'executive' || role === 'pastor' || role === 'nonprofit' || role === 'owner';
+  return runsOrg && teamSize === '1-10';
+}
+
+// Turns a client payload into a stored result. Scores are computed in the
+// browser (the definitions live there), so everything is clamped and
+// allowlisted here rather than trusted.
+function parseAssessmentPayload(data) {
+  const slug = String(data.slug || '');
+  const meta = Object.prototype.hasOwnProperty.call(ASSESSMENT_SLUGS, slug) ? ASSESSMENT_SLUGS[slug] : null;
+  if (!meta) throw new HttpsError('invalid-argument', 'Unknown assessment.');
+
+  const pct = (v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+  const key = (v) => (/^[a-z][a-zA-Z0-9]{0,39}$/.test(String(v || '')) ? String(v) : null);
+  const short = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+
+  const dims = {};
+  const rawDims = data.dims && typeof data.dims === 'object' ? data.dims : {};
+  Object.keys(rawDims).slice(0, 6).forEach((k) => { if (key(k)) dims[k] = pct(rawDims[k]); });
+
+  const p = data.profile && typeof data.profile === 'object' ? data.profile : {};
+  const role = Object.prototype.hasOwnProperty.call(ASSESSMENT_ROLES, p.role) ? p.role : null;
+  const teamSize = ASSESSMENT_TEAM_SIZES.includes(p.teamSize) ? p.teamSize : null;
+
+  const u = data.utm && typeof data.utm === 'object' ? data.utm : {};
+  const utm = {
+    source: short(u.source, 60) || null,
+    medium: short(u.medium, 60) || null,
+    campaign: short(u.campaign, 80) || null
+  };
+
+  // The raw 1-5 answers, so the report can show which statements drove each
+  // score when the member reopens it on another device.
+  const answers = Array.isArray(data.answers)
+    ? data.answers.slice(0, 30).map((v) => { const n = Math.round(Number(v)); return n >= 1 && n <= 5 ? n : 0; })
+    : [];
+
+  return {
+    meta,
+    // Only ever emailed back to the address that asked for it.
+    oneLine: short(data.oneLine, 200),
+    result: {
+      slug,
+      mode: data.mode === 'profile' ? 'profile' : 'score',
+      answers,
+      title: meta.title,
+      category: meta.category,
+      score: pct(data.score),
+      label: short(data.label, 80),
+      dims,
+      highest: key(data.highest),
+      lowest: key(data.lowest),
+      profile: { role, teamSize },
+      utm
+    }
+  };
+}
+
+// Saves a result to users/{uid}/assessments/{slug} and mirrors it into the
+// CRM (tags, activity, and an owner email for a priority lead). The result
+// is saved even if the CRM step fails. Returns { priority, crm }.
+async function recordAssessment(db, uid, { meta, result }, { authEmail, source } = {}) {
+  const FV = admin.firestore.FieldValue;
+  const resultRef = db.collection('users').doc(uid).collection('assessments').doc(result.slug);
+  const prior = await resultRef.get();
+  await resultRef.set(Object.assign({}, result, {
+    completedAt: FV.serverTimestamp(),
+    takenCount: FV.increment(1)
+  }, prior.exists ? {} : { firstCompletedAt: FV.serverTimestamp() }), { merge: true });
+
+  const { role, teamSize } = result.profile;
+  const utm = result.utm;
+  const priority = isPriorityAssessmentLead(role, teamSize);
+  let crm = null;
+  try {
+    const userRef = db.collection('users').doc(uid);
+    let userSnap = await userRef.get();
+    // A just-created account races onUserCreated, which creates its CRM
+    // contact. Give it a moment so both paths land on the same contact
+    // instead of each creating one.
+    for (let i = 0; i < 4 && !(userSnap.exists && userSnap.data().crmContactId); i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      userSnap = await userRef.get();
+    }
+    const user = userSnap.exists ? userSnap.data() : {};
+    if (!user.email && authEmail) user.email = authEmail;
+    crm = await syncMemberToCrm(db, uid, user, {
+      source: source || 'Assessment',
+      activity: {
+        type: 'assessment',
+        actorName: 'Assessments',
+        description: `Took ${meta.title}: ${result.label || result.score}`
+          + (Object.keys(result.dims).length ? ` (score ${result.score})` : ''),
+        meta: { slug: result.slug, score: result.score, label: result.label, lowest: result.lowest, highest: result.highest, role, teamSize, utm }
+      }
+    });
+    if (crm) {
+      const tags = [
+        'Assessment Taker',
+        `Assessment: ${meta.title}`,
+        `Interest: ${ASSESSMENT_CATEGORY_LABELS[meta.category] || meta.category}`,
+        teamSize && teamSize !== '0' ? 'Segment: Leader' : 'Segment: Individual'
+      ];
+      if (role) tags.push(`Role: ${ASSESSMENT_ROLES[role]}`);
+      if (priority) tags.push('Priority Lead');
+      if (utm.campaign) tags.push(`Campaign: ${utm.campaign}`);
+      await crm.ref.set({ tags: FV.arrayUnion(...tags), lastActivityAt: FV.serverTimestamp() }, { merge: true });
+      if (priority) {
+        await notifyOwnerOfLead({
+          source: `Assessment (${meta.title})`,
+          name: user.displayName || null,
+          email: user.email || null,
+          phone: user.phone || null,
+          fields: {
+            Result: result.label || String(result.score),
+            Score: String(result.score),
+            Role: role ? ASSESSMENT_ROLES[role] : 'not given',
+            Leads: teamSize ? `${teamSize} people` : 'not given',
+            Campaign: utm.campaign || utm.source || 'direct'
+          },
+          contactUrl: `${APP_BASE_URL}/contact.html?id=${encodeURIComponent(crm.contactId)}`
+        });
+      }
+    }
+  } catch (e) {
+    console.error('[recordAssessment] CRM sync failed:', e && e.message);
+  }
+  return { priority, crm };
+}
+
+// The email a visitor gets after giving their name and email for a report:
+// their headline result and the link into their portal. For a new account
+// the button sets their password; for an existing one it logs them in.
+function assessmentResultsEmail({ firstName, title, score, label, oneLine, actionUrl, isNew }) {
+  const hi = firstName ? `Hi ${firstName},` : 'Hi,';
+  const headline = label ? `${label}${score != null ? ` (${score} out of 100)` : ''}` : `${score} out of 100`;
+  const button = isNew ? 'Set your password and see your report' : 'Log in to see your report';
+  const portalLine = isNew
+    ? 'We created your free One Percent portal account with this email. Set a password to open your full report any time, along with every other free assessment.'
+    : 'Your result is saved in your One Percent portal. Log in to open your full report.';
+  const subject = `Your ${title} results`;
+  const text = [
+    hi, '',
+    `Thank you for taking ${title}. Your result: ${headline}.`,
+    oneLine ? `\n${oneLine}` : '',
+    '', portalLine, '',
+    `${button}: ${actionUrl}`,
+    '', isNew ? 'This link expires in about an hour. If it does, use "Forgot password" on the login page with this email.' : '',
+    '', 'Anthony Brown Sr.', 'The One Percent'
+  ].join('\n');
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;">
+    <p style="font-size:15px;">${textToHtml(hi)}</p>
+    <p style="font-size:15px;">Thank you for taking <strong>${textToHtml(title)}</strong>.</p>
+    <div style="border:1px solid #eee;border-left:4px solid #E60306;border-radius:8px;padding:16px 18px;margin:18px 0;">
+      <div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#888;">Your result</div>
+      <div style="font-size:22px;font-weight:700;margin-top:4px;">${textToHtml(headline)}</div>
+      ${oneLine ? `<p style="font-size:14px;color:#444;margin:8px 0 0;">${textToHtml(oneLine)}</p>` : ''}
+    </div>
+    <p style="font-size:15px;">${textToHtml(portalLine)}</p>
+    <p style="margin:22px 0;"><a href="${actionUrl}" style="background:#E60306;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;">${button}</a></p>
+    ${isNew ? '<p style="font-size:12px;color:#888;">This link expires in about an hour. If it does, use "Forgot password" on the login page with this email.</p>' : ''}
+    <p style="font-size:14px;margin-top:24px;">Anthony Brown Sr.<br>The One Percent</p>
+  </div>`;
+  return { subject, text, html };
+}
+
+/**
+ * submitAssessment — a signed-in member saves their result.
+ */
+exports.submitAssessment = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Create a free account to save your results.');
+  const db = admin.firestore();
+  const payload = parseAssessmentPayload(request.data || {});
+  await rateLimitCaller(db, request, { action: 'submitAssessment', max: 30, windowSec: 600 });
+  const authEmail = request.auth.token && request.auth.token.email;
+  const { priority } = await recordAssessment(db, uid, payload, { authEmail });
+  return { ok: true, priority };
+});
+
+/**
+ * claimAssessment — a visitor gives their name and email to unlock their
+ * report. No password step: this creates their portal account, saves the
+ * result to it, and emails them a link to set their password. That one
+ * email stands in for the standard welcome email.
+ *
+ * An email that already has an account is never signed in or changed from
+ * here, since anyone can type any address. Its result is saved only when
+ * that member has no result for this assessment yet (so a stranger cannot
+ * overwrite a real one), and they are emailed a login link instead.
+ */
+exports.claimAssessment = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  const name = String(data.name || '').trim().slice(0, 120);
+  const email = normalizeEmail(data.email).slice(0, 160);
+  if (!name) throw new HttpsError('invalid-argument', 'Please enter your name.');
+  if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
+  const payload = parseAssessmentPayload(data);
+  await rateLimitCaller(db, request, { action: 'claimAssessment', max: 8, windowSec: 600 });
+
+  const FV = admin.firestore.FieldValue;
+  const { meta, result, oneLine } = payload;
+  const firstName = name.split(/\s+/)[0] || '';
+
+  let uid = null;
+  let isNew = false;
+  try {
+    uid = (await admin.auth().getUserByEmail(email)).uid;
+  } catch (e) {
+    if (!(e && e.code === 'auth/user-not-found')) throw new HttpsError('internal', 'Could not set up your account. Please try again.');
+  }
+  if (!uid) {
+    try {
+      uid = (await admin.auth().createUser({ email, displayName: name, emailVerified: false })).uid;
+      isNew = true;
+    } catch (e) {
+      // Two submits at once: the other one created it.
+      if (e && e.code === 'auth/email-already-exists') uid = (await admin.auth().getUserByEmail(email)).uid;
+      else throw new HttpsError('internal', 'Could not set up your account. Please try again.');
+    }
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  if (isNew) {
+    // Same shape ensureUserDoc writes at a normal signup. The welcome email
+    // is held as "sending" so onUserCreated skips it; the results email
+    // below is this account's welcome.
+    await userRef.set({
+      email,
+      displayName: name,
+      role: email === OWNER_EMAIL ? 'owner' : 'user',
+      companyId: null,
+      tier: 'individual',
+      signupSource: 'assessment',
+      createdAt: FV.serverTimestamp(),
+      lastActiveAt: FV.serverTimestamp(),
+      welcomeEmailStatus: 'sending',
+      welcomeEmailAttemptedAt: FV.serverTimestamp()
+    }, { merge: true });
+  }
+
+  let saved = true;
+  if (!isNew) {
+    const prior = await userRef.collection('assessments').doc(result.slug).get();
+    if (prior.exists) saved = false;
+  }
+  const rec = saved
+    ? await recordAssessment(db, uid, payload, { authEmail: email, source: 'Assessment' })
+    : { priority: isPriorityAssessmentLead(result.profile.role, result.profile.teamSize), crm: null };
+
+  const reportPath = `/assessments/${result.slug}`;
+  let actionUrl = `${APP_BASE_URL}/login?next=${encodeURIComponent(reportPath)}`;
+  let emailed = false;
+  try {
+    if (isNew) actionUrl = await admin.auth().generatePasswordResetLink(email, { url: `${APP_BASE_URL}${reportPath}` });
+    if (emailConfigured()) {
+      const msg = assessmentResultsEmail({
+        firstName, title: meta.title, score: Object.keys(result.dims).length ? result.score : null,
+        label: result.label, oneLine, actionUrl, isNew
+      });
+      const customArgs = { type: isNew ? 'welcome' : 'assessment', uid };
+      if (rec.crm && rec.crm.companyId && rec.crm.contactId) {
+        customArgs.companyId = rec.crm.companyId;
+        customArgs.contactId = rec.crm.contactId;
+      }
+      const { messageId } = await sendEmail({
+        to: email,
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject: msg.subject,
+        text: msg.text,
+        html: msg.html,
+        customArgs
+      });
+      emailed = true;
+      if (isNew) {
+        await userRef.set({
+          welcomeEmailStatus: 'sent', welcomeEmailSentAt: FV.serverTimestamp(), welcomeEmailMessageId: messageId
+        }, { merge: true });
+      }
+    }
+  } catch (e) {
+    console.error('[claimAssessment] results email failed:', e && e.message);
+  }
+  if (isNew && !emailed) {
+    // Leave it for the standard welcome retry (submitOnboarding / owner sync).
+    try { await userRef.set({ welcomeEmailStatus: 'failed', welcomeEmailError: 'assessment email not sent' }, { merge: true }); } catch (e) {}
+  }
+
+  return { ok: true, status: isNew ? 'created' : 'existing', saved, emailed, priority: rec.priority };
+});
+
+// Exposed for the assessments test, which checks this list against the
+// library in public/js/assessments-data.js. A plain object deploys nothing.
+exports.ASSESSMENT_SLUGS = ASSESSMENT_SLUGS;
+
+// ────────────────────────────────────────────────────────────────
 // Exposed for the emulator test (tests/launch-tick.test.mjs). A plain
 // function is not a trigger: the Functions loader registers only exports
 // that carry an endpoint definition, so this deploys nothing.

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Served at /assessments/<slug> by a hosting rewrite, so every URL on
+       this page is absolute. -->
+  <title>Free Assessment | The One Percent Nation</title>
+  <meta name="description" content="A free five-minute assessment from The One Percent. Get your score and a personal action plan.">
+  <meta property="og:title" content="Free Assessment | The One Percent Nation">
+  <meta property="og:description" content="Five minutes. An honest score. A plan you can start this week.">
+  <meta property="og:image" content="https://the1pnation.com/assets/founder-stage-banner.jpg">
+  <link rel="icon" href="/assets/favicon.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/assessment.css">
+</head>
+<body>
+  <nav class="a-nav">
+    <div class="wrap">
+      <a class="a-logo" href="/"><img src="/assets/academy-logo.png" alt=""><span>The One Percent</span></a>
+      <div class="a-nav-links">
+        <a class="a-link" href="/assessments">All Assessments</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="narrow">
+    <!-- Intro -->
+    <section class="screen intro" id="s-intro" aria-live="polite"></section>
+
+    <!-- One statement at a time -->
+    <section class="screen" id="s-quiz">
+      <div class="q-count" id="q-count"></div>
+      <div class="progress"><i id="q-bar"></i></div>
+      <h2 class="q-text" id="q-text"></h2>
+      <div class="scale" id="q-scale" role="group" aria-label="Your answer"></div>
+      <div class="q-nav">
+        <button class="text-btn" type="button" id="q-back">← Back</button>
+        <span class="muted" style="font-size:13px;">Tip: press 1 to 5</span>
+      </div>
+    </section>
+
+    <!-- Two unscored questions -->
+    <section class="screen prof" id="s-profile">
+      <div class="eyebrow">Last step</div>
+      <h2 class="display">A little about you.</h2>
+      <p class="muted">So your report fits where you are. This is not scored.</p>
+      <div id="prof-qs"></div>
+      <div style="margin-top:30px;"><button class="btn btn-red btn-block" type="button" id="prof-go">See my results</button></div>
+    </section>
+
+    <!-- Result: teaser, then the full report once unlocked -->
+    <section class="screen" id="s-result"></section>
+
+    <section class="screen notfound" id="s-missing">
+      <div class="eyebrow">Not found</div>
+      <h1 class="display" style="font-size:64px;margin:12px 0;">That assessment moved.</h1>
+      <p class="muted" style="margin-bottom:24px;">Browse the full library. Every one is free.</p>
+      <a class="btn btn-red" href="/assessments">See all assessments</a>
+    </section>
+  </main>
+
+  <script type="module" src="/js/assessment-page.js"></script>
+  <script src="/js/consent-banner.js" defer></script>
+</body>
+</html>
