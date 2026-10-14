@@ -1,50 +1,50 @@
 ---
-title: The 4 PM Collapse
-slug: the-4pm-collapse
+title: How to Run a Meeting When Your Brain Won't Stay in the Room
+slug: meeting-brain-wont-stay-in-the-room
 series: the-focus-tax
 issue: 003
 date: 
 access: free
-pillar: energy
-tags: [circadian, deep-work, scheduling, energy-management]
+pillar: focus
+tags: [meetings, working-memory, tactical, leadership]
 read_time: 3 min
-hook: You are not failing in the afternoon. You are scheduling your best work at the worst hour and calling the result a character problem.
+hook: You are not bad at meetings. You are trying to hold the whole thing in a container that was never built to hold it.
 ---
 
 ## The Reality
 
-Watch what happens to a week. The morning gets handed to email, because email is what is in front of you when you sit down. The middle of the day goes to whoever booked it. And the work that actually decides whether this year is different from last year, the thinking work, the building work, gets whatever is left.
+Twelve minutes in, someone is still talking, and you are gone. Not bored, gone. You are three steps ahead on a problem they mentioned in passing, or you are somewhere else entirely, and you come back to the room at the exact moment someone says "what do you think?"
 
-What is left is four in the afternoon.
+You cover. You are good at covering. You pull the last fragment you heard, build a response around it, and it lands well enough that nobody notices.
 
-So you sit down at four with the most important thing on your list and you read the same paragraph three times. You open a document, look at it, and go get coffee instead. An hour later you have produced almost nothing, and the conclusion you draw is that you need to be more disciplined.
-
-You do not need more discipline. You scheduled a performance for an hour when the building was closed.
+Then you walk out and realize you could not reconstruct that meeting if someone paid you. You know roughly how it felt. You do not know what was decided, what you agreed to, or what you are supposed to do before Thursday. So you wait for someone to send notes, and if nobody does, the commitment quietly disappears until it resurfaces as a problem.
 
 ## The Shift
 
-Energy is not a resource you ration across the day. It is a curve, and it is largely biological.
+Stop trying to pay better attention. That is the instruction you have been given your whole life and it has never once worked, because attention is not something you can simply apply harder to a low-stimulation hour.
 
-Most people have a window of roughly two to four hours where thinking is clearest and output is strongest. For most, though not everyone, it sits in the morning, somewhere after waking up and before the early afternoon. Then energy drops. The early-to-mid afternoon dip is tied to circadian rhythm, not to how motivated you are or how hard you have been working. It arrives whether you earned it or not.
+The real constraint is working memory. A meeting asks you to hold a running thread, track who said what, form your own position, and remember your commitments, all at the same time, with no external support. For some people that container is large. For others it is not, and no amount of effort expands it.
 
-So the hour you have been giving your most valuable work is the hour your brain is least equipped to do it. And because the work goes badly in that hour, you slowly build a story about yourself. You start to believe you are bad at the deep work, when the only real finding is that you are bad at it at four in the afternoon, which is true of nearly everyone.
+So the move is not to hold more. It is to stop holding and start externalizing. Every piece of that meeting you can push out of your head and onto a surface is capacity returned to the part that actually matters, which is thinking.
 
-The fix is not to push harder through the dip. Fighting your own biology is a losing position and an expensive one. The fix is to match the work to the hour.
+This is also why meetings with no agenda are so much harder for you than for the person next to you. Without structure, you are being asked to build the container and sit in it simultaneously.
 
 ## Do This Now
 
-Spend one week finding your actual window, then build around it.
+These are tactical and they work immediately.
 
-1. For five days, make one note at the end of each day: what hour did the best work happen in? Not the busiest hour. The hour where thinking came easily. Five data points is enough.
-2. Open next week's calendar and put your single most important work inside that window. Block it before anything else lands on it, and label it so other people can see it is taken.
-3. Move the low-thinking work into the dip on purpose. Admin, invoices, filing, scheduling, routine follow-up. These still have to happen and they do not need your best brain. Give the afternoon the work the afternoon can actually do.
-4. Protect a recovery gap between the heavy block and whatever comes next. Ten minutes away from a screen is maintenance, not laziness. Skipping it usually costs more than it saves.
+1. Write continuously, by hand if you can. Not notes you will read later. Writing is a physical task that keeps you anchored in the room, and the record is a side benefit. The act is the point.
+2. Use three columns. Decisions, questions, my commitments. Everything you hear lands in one of the three, which gives your attention a job instead of asking it to float.
+3. Ask for the agenda before you accept. One line is enough: what are we deciding? If nobody can answer, the meeting is not ready and you have just saved everyone an hour.
+4. Take the recap role. Offer to summarize in the last three minutes. It sounds like leadership, which it is, and it gives you a reason to track the thread the entire time. This single move does more than every focus technique combined.
+5. Repeat your commitments out loud before you leave. "So I am sending the numbers by Wednesday." Saying it encodes it. It also surfaces the ones you misheard, which is more common than you think.
+6. Block ten minutes immediately after. Turn commitments into calendar blocks right then, while they are still in your hand. A commitment that only exists in your notes is already at risk.
 
-The point is not to work more hours. It is to stop spending your sharpest hours on your dullest tasks and then judging yourself for the output.
+Everything here is scaffolding. You would not insult someone for using a ladder.
 
 ## One Line to Carry
 
-Put the hardest work in the best hour and most of your discipline problem disappears.
+Do not hold the meeting in your head. Put it on a surface and think with your hands free.
 
 ---
-**Source note:** Research on circadian rhythm and the post-lunch dip in alertness, and the broad finding in performance research that sustained high-focus capacity runs a few hours a day rather than the full workday. Peak windows vary between people, which is why the week of observation matters more than any general rule.
+**Source note:** Working memory research, including Russell Barkley's model of executive function, where working memory limitations predict exactly this pattern of losing the thread in unstructured verbal settings while performing well in structured ones.

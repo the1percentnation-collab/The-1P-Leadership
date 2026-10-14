@@ -46,7 +46,7 @@ account key. Move them onto `lib/init.js` before running any of them.
 | `fix-clc-slugs.js` | Moves the Leader Coach off the `1p-clc` slug onto `1p-clc-leader` with its lessons, members and purchases; resets `1p-clc` to the Life Coach identity; archives the superseded `silence-the-voice` draft. | **Yes, once.** See below. |
 | `seed-clc.js` | Writes the 8 written modules, the 48-question exam bank, the FOUNDING coupon and certification config for the $3,497 Life Coach program. | **Yes, once — but only AFTER `fix-clc-slugs.js`.** It refuses to run before that and tells you so. |
 | `seed-brief.js` | Writes The One Percent Brief course ($12/month subscription) and one module per file in `brief-content/`. Brief 1 is published, the rest are drafts. Re-runs never change status, price or a brief's published state. | **Yes**, once to create it, and again whenever a brief is added or edited. |
-| `seed-focus-tax.js` | Writes The Focus Tax course (free) and one module per markdown file in `focus-tax-content/`, all published. Each piece ends in a link to the Brief module that goes deeper on the same subject. Re-runs never change status, price or a piece's published state. | **Yes**, once to create it, and again whenever a piece is added or edited. |
+| `seed-focus-tax.js` | Writes The Focus Tax course (free) and one module per markdown file in `focus-tax-content/`, all published. A piece with a `brief` in `meta.js` ends in a link to that brief. Re-runs never change status, price or a piece's published state. | **Yes**, once to create it, and again whenever a piece is added or edited. |
 | `upload-book.js` | Uploads an EPUB (and cover) to the digital library and writes `books/{id}`. See `docs/digital-library.md`. | **Yes**, once the final EPUB is ready, and again for each new edition. |
 | `setup-digital-library.js` | Makes the I Can't bundle digital, creates the paperback option, and adds the book to everyone already enrolled. | **Yes, once** after the first upload. Dry run by default; `--apply` writes. |
 | `seed-booking.js` | Writes `config/booking` with the Zoom scheduler URL. | Optional. `/book-a-call.html` already works from a hardcoded fallback. |
@@ -86,10 +86,20 @@ rest of the sequence.
 
 These two are one funnel, so they are run and released together.
 
-`the-focus-tax` is free and short: twelve pieces of roughly 600 words, each
-ending in a pointer to the Brief module that covers the same subject at
-length. `one-percent-brief` is the paid side, $12 a month or $99 a year, six
-long-form briefs written and one published.
+`the-focus-tax` is free and short: four pieces of roughly 600 words on time,
+capacity and structure. `one-percent-brief` is the paid side, $12 a month or
+$99 a year, six long-form briefs written and one published.
+
+Four and not more by design. The briefs already cover ADHD focus, overthinking
+and burnout at length, so short pieces on those subjects would compete with
+the thing they are supposed to sell. These four are the subjects no brief
+covers: open loops, the list versus the calendar, meetings and working memory,
+and decision load.
+
+Pieces 1 and 3 point at brief 3, which goes deeper on starting tasks and on
+external structure. Pieces 2 and 4 carry no pointer, because nothing in the
+Brief covers the calendar or decision load yet. Give them a `brief` in
+`meta.js` when something does.
 
 A piece of the Focus Tax is a markdown file in `focus-tax-content/` with
 frontmatter (`title`, `slug`, `issue`, `pillar`, `read_time`, `hook`) plus an

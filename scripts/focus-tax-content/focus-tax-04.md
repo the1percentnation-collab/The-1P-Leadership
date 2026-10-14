@@ -1,49 +1,54 @@
 ---
-title: Boredom Is a Medical Event
-slug: boredom-is-a-medical-event
+title: You Do Not Need More Focus, You Need Fewer Decisions
+slug: fewer-decisions-not-more-focus
 series: the-focus-tax
 issue: 004
 date: 
 access: free
-pillar: focus
-tags: [understimulation, adhd, reward, task-design]
-read_time: 3 min
-hook: For some people boredom is mildly unpleasant. For others it is physically intolerable, and that difference explains most of what looks like laziness.
+pillar: systems
+tags: [decision-load, pre-deciding, thesis, capacity]
+read_time: 4 min
+hook: The work is not what exhausted you. Deciding what to work on, forty times, is what exhausted you.
 ---
 
 ## The Reality
 
-There is a task on your desk that takes eleven minutes. You know it takes eleven minutes. You have done it before. It is not difficult, it is not emotionally loaded, and it has been sitting there since Tuesday.
+Count what happens between sitting down and starting.
 
-Every time you look at it, something in your body refuses. Not your mind, your body. There is a physical resistance to starting, the same way there is a physical resistance to getting into cold water. You can override it, but you have to spend something to do it, and some days you do not have it to spend.
+What should I do first. Is that email urgent or does it feel urgent. Should I return the call now or finish this. Is this the right time for the hard thing or should I warm up with something small. Should I eat first. Should I just check one thing.
 
-Then a text comes in about a problem that needs solving right now and you are up and moving before you have decided anything. Same person. Same day. Same hour.
+None of that is work. All of it is spending.
 
-The explanation you have probably been given is that you are undisciplined about the boring stuff. That explanation has never once helped you start the eleven-minute task, which is a reasonable sign that it is not what is going on.
+By the time you choose, you have already used some of what you needed to do the thing well. Multiply it across a day and you arrive at four in the afternoon drained, having produced something that does not match how tired you are. And the explanation you reach for is that you need more focus, so you read something about focus, and it tells you to eliminate distractions, and you try, and nothing much changes.
+
+That is because distraction was never the main cost. The main cost was the forty small negotiations you had with yourself before anything got done.
 
 ## The Shift
 
-The research on reward processing shows that people vary considerably in how they experience understimulation. For some, boredom is a mild background state. For others, especially people whose brains are less responsive to low-level reward signals, it registers closer to discomfort, and the drive to escape it behaves like the drive to escape any other discomfort. Automatic. Fast. Not available for negotiation.
+This is the thesis under everything in this series, so here it is plainly.
 
-If that is how your system works, then a boring task is not a small ask. You are being asked to sit inside something your nervous system is actively pushing you out of, using willpower as the only counterweight. That works sometimes. It does not work reliably, and it never works all day.
+Your capacity in a day is finite. Every open question draws on it. Not just the hard calls, the small ones too, and the small ones are far more numerous than anyone accounts for. Unstructured time does not simply sit there waiting for you to use it well. It generates decisions continuously, and each one takes a withdrawal.
 
-This reframes the whole problem. The question stops being how do I force myself to care about this, which has no answer, and becomes how do I raise the stimulation of this task to the point where I can stay in it. That question has a lot of answers.
+This is why structure outperforms motivation so reliably that it is barely an argument anymore. A pre-decided day does not require you to be disciplined at two in the afternoon. The deciding already happened, on Sunday, when nothing was at stake and you were thinking clearly. All that is left at two in the afternoon is execution, which is a much cheaper act.
+
+It is also why every piece in this series pointed at the same place. The open loop that would not go quiet needed a time attached to it. The task you avoided needed a start time rather than a priority level. The rest that did not restore you needed a closing sequence. The meeting needed an agenda. In every case the fix was the same move. Take the decision out of the moment and make it somewhere cheaper.
+
+Focus is not the resource you are short on. Decisions are the expense you have not been tracking.
 
 ## Do This Now
 
-Pick the task you have been avoiding and change its conditions rather than your attitude.
+Cut decision load in four places this week.
 
-1. Add a clock. Set a visible timer for less time than the task needs. Artificial urgency is the cheapest stimulation available and it works even when you know you created it.
-2. Add a body. Do it on a call with someone doing their own version, or in a room where other people are working. Presence raises the stakes slightly, and slightly is often enough.
-3. Add motion or sound. Stand, walk, change rooms, put something on in the background. A dull task in a dull environment is twice the ask.
-4. Add an end point you can see. Not "work on invoices," but "six invoices, then I stop." An undefined task offers no finish line to move toward, which removes the one reward boring work has.
-5. Shrink the entry. Commit to two minutes. Starting is the only part your system is actually fighting.
+1. Pre-decide the day the night before. One sentence: the most important thing tomorrow is this, and it happens at this time. Written down, before you sleep. That single sentence eliminates the most expensive decision of the following morning.
+2. Default the repeating choices. Same breakfast on workdays. Same two windows for email. Same afternoon slot for admin. Anything you decide more than twice a week should be a standing rule instead of a fresh question.
+3. Batch by type. Group calls together, writing together, admin together. Switching between kinds of work forces your brain to reload context every time, and each reload is a tax you pay in attention.
+4. Protect the first two hours with a published rule, not with willpower. If people know your mornings are claimed, most of the requests never arrive, and the ones that do have an answer waiting that you did not have to invent on the spot.
 
-None of this is about tricking yourself. You are supplying an input the task does not supply on its own, the same way you would turn on a light rather than squint harder.
+Run this for two weeks and watch what happens to four in the afternoon. The work did not get easier. You just stopped paying for it twice.
 
 ## One Line to Carry
 
-You are not avoiding the task. You are avoiding how it feels to sit still inside it.
+Decide once, when it is cheap. Execute many times, when it is not.
 
 ---
-**Source note:** Research on reward sensitivity and delay aversion in attention research, which consistently finds meaningful individual differences in tolerance for low-stimulation tasks. These are population-level findings, not a diagnosis, and nothing here is a substitute for an evaluation by a qualified professional.
+**Source note:** Research on decision fatigue and cognitive load in the American Psychological Association literature, and the implementation intention findings that run through this series. Worth noting that some specific decision-fatigue experiments have faced replication challenges, while the broader finding that unstructured choice carries a real cost has held up well.
