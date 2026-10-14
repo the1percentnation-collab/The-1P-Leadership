@@ -8,6 +8,7 @@ import { loadPure } from './_load-pure.mjs';
 
 const {
   validateAssessment, scoreAssessment, bandFor, headlineFor, buildReport, levelFor, nextBand, blendFor, driversFor, suggestEmail,
+  readingOf, levelLabelFor, toneFor, howToRead,
   isPriorityLead, segmentFor, cleanProfile, CATEGORIES
 } = await loadPure('assessment-core.js');
 const { ASSESSMENTS, getAssessment } = await loadPure('assessments-data.js');
@@ -260,6 +261,34 @@ ok('email typos on common providers are caught, real domains left alone', () => 
   assert.strictEqual(suggestEmail('a@icloud.com'), null);
   assert.strictEqual(suggestEmail('a@the1pnation.com'), null);
   assert.strictEqual(suggestEmail('not an email'), null);
+});
+
+ok('labels and colors follow what a high score means', () => {
+  const lb = getAssessment('limiting-beliefs');
+  const ls = getAssessment('leadership-style');
+  const al = getAssessment('alignment-scorecard');
+  assert.strictEqual(readingOf(lb), 'lower-better');
+  assert.strictEqual(readingOf(ls), 'profile');
+  assert.strictEqual(readingOf(al), 'score');
+  assert.deepStrictEqual(['low', 'high'].map((k) => [levelLabelFor(lb, k), toneFor(lb, k)]), [['Barely there', 'good'], ['Strong hold', 'watch']]);
+  assert.deepStrictEqual(['low', 'high'].map((k) => [levelLabelFor(al, k), toneFor(al, k)]), [['Needs focus', 'watch'], ['Strong', 'good']]);
+  assert.deepStrictEqual(['low', 'high'].map((k) => toneFor(ls, k)), ['n1', 'n3']);
+  assert.ok(/Lower is better/.test(howToRead(lb)) && /No type is better/.test(howToRead(ls)));
+});
+
+ok('limiting beliefs: when nothing scores high, the result says so plainly', () => {
+  const lb = getAssessment('limiting-beliefs');
+  const low = buildReport(lb, scoreAssessment(lb, Object.fromEntries(lb.questions.map((q, i) => [i, q.dim === 'comfortZone' ? 2 : 1]))));
+  assert.strictEqual(low.clear, true);
+  assert.strictEqual(low.headline, lb.clearHeadline);
+  assert.strictEqual(low.summary, lb.clearSummary);
+  assert.ok(/Comfort Zone shows up most/.test(low.oneLine), low.oneLine);
+  assert.strictEqual(low.focus.tone, 'good');
+  const high = buildReport(lb, scoreAssessment(lb, Object.fromEntries(lb.questions.map((q, i) => [i, q.dim === 'comfortZone' ? 5 : 1]))));
+  assert.strictEqual(high.clear, false);
+  assert.ok(/Comfort Zone/.test(high.headline), high.headline);
+  assert.strictEqual(high.focus.levelLabel, 'Strong hold');
+  assert.strictEqual(high.focus.tone, 'watch');
 });
 
 // ── Segmenting ───────────────────────────────────────────────────────────
