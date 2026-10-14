@@ -49,8 +49,11 @@ export function priceInfo(item, { now = Date.now() } = {}) {
   const interval = isSubscription ? (item.pricing.interval || 'month') : null;
   const intervalSuffix = interval ? (interval === 'year' ? '/yr' : '/mo') : '';
 
-  const baseLabel = item.priceLabel || (base != null ? fmtMoney(base) + intervalSuffix : '');
-  const label = onSale ? fmtMoney(sale) + intervalSuffix : baseLabel;
+  // A one-time price of zero reads "Free", not "$0". A $0 subscription keeps
+  // its number so the interval still shows.
+  const money = (n) => (n === 0 && !isSubscription ? 'Free' : fmtMoney(n) + intervalSuffix);
+  const baseLabel = item.priceLabel || (base != null ? money(base) : '');
+  const label = onSale ? money(sale) : baseLabel;
 
   return {
     label,

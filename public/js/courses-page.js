@@ -688,6 +688,15 @@ async function main() {
     }
   }
 
+  // A live free course has nothing to buy, so opening it is enough to join:
+  // the member is enrolled on the way in rather than bounced back to the
+  // library to find a Join button. enrollFree re-checks live and free on the
+  // server. Runs before the commitment gate so that gate still applies.
+  if (course && !preview && firebaseReady && currentUser() && !isEnrolled(course.slug)
+      && course.status === 'live' && priceInfo(course).isFree) {
+    try { await enrollInCourse(course.slug); } catch (e) { console.warn('Free enroll failed', e); }
+  }
+
   // Parkinson's Law gate: before the first session in a course the member
   // sets a deadline and a weekly rhythm (commit.html). Sits here, after the
   // enrollment check, so free enrolls, Stripe returns, admin grants and deep

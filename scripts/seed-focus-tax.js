@@ -170,7 +170,9 @@ async function main() {
     commitment: false,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   };
-  if (blank(live.status)) course.status = 'coming-soon';
+  // Free and ungated: a new course goes straight to live so members can open
+  // it from the portal. A status already set in /manage-courses.html stays.
+  if (blank(live.status)) course.status = 'live';
   if (typeof live.price !== 'number') course.price = 0;
 
   const kept = ['status', 'price'].filter((k) => !(k in course));
@@ -198,11 +200,12 @@ async function main() {
       `(${state ? 'published' : 'draft'}${keepPublished ? ', kept' : ''})`);
   }
 
-  console.log(`\nSeeded ${PIECES.length} pieces. To open The Focus Tax:`);
-  console.log(`  1. Preview it: /courses.html?course=${SLUG}&preview=1`);
-  console.log('  2. Set the course status to live in /manage-courses.html.');
-  console.log('     It is free, so members enroll without checkout.');
-  console.log(`  3. Make sure ${BRIEF_SLUG} is live too. Every piece that links`);
+  console.log(`\nSeeded ${PIECES.length} pieces. The Focus Tax is free and open:`);
+  console.log(`  1. Check it: /courses.html?course=${SLUG}`);
+  console.log('     A member who opens it is enrolled on the way in, no checkout.');
+  console.log('     If the status line above says it kept an older status, set it');
+  console.log('     to live in /manage-courses.html.');
+  console.log(`  2. Make sure ${BRIEF_SLUG} is live too. Every piece that links`);
   console.log('     to it is pointing at a paid product, and that pointer is the');
   console.log('     only thing turning free readers into $12 a month.');
 }

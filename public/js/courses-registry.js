@@ -503,7 +503,7 @@ export const COURSES = [
     title: 'The Focus Tax',
     short: 'Focus Tax',
     subtitle: 'Short reads on focus, capacity, and the cost of an unstructured day.',
-    status: 'coming-soon',
+    status: 'live',
     eyebrow: 'Free · Four short reads',
     category: 'Mindset & Personal Growth',
     price: 0,

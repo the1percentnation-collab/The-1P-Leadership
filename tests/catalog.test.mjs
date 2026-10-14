@@ -36,6 +36,15 @@ ok('a sale price below the price is on sale, with both labels', () => {
   assert.strictEqual(p.amount, 14.99);
 });
 
+ok('a one-time price of zero reads Free, a $0 subscription keeps its interval', () => {
+  assert.strictEqual(priceInfo({ price: 0 }).label, 'Free');
+  assert.strictEqual(priceInfo({ price: 0 }).isFree, true);
+  assert.strictEqual(priceInfo({ price: 20, salePrice: 0 }, { now: NOW }).label, 'Free');
+  assert.strictEqual(priceInfo({ price: 20, salePrice: 0 }, { now: NOW }).originalLabel, '$20');
+  assert.strictEqual(priceInfo({ price: 0, pricing: { mode: 'subscription' } }).label, '$0/mo');
+  assert.strictEqual(priceInfo({ price: 0, priceLabel: 'Gift' }).label, 'Gift', 'an explicit label still wins');
+});
+
 ok('a sale price equal to or above the price is not a sale', () => {
   assert.strictEqual(priceInfo({ price: 20, salePrice: 20 }).onSale, false);
   assert.strictEqual(priceInfo({ price: 20, salePrice: 25 }).onSale, false);
