@@ -168,7 +168,7 @@ function renderProfile() {
   $('prof-qs').innerHTML = PROFILE_QUESTIONS.map((pq) => `
     <div class="prof-q">
       <h3>${esc(pq.text)}</h3>
-      <div class="opts" data-key="${pq.key}">${pq.options.map((o) =>
+      <div class="opts${pq.options.length <= 4 ? ' opts-short' : ''}" data-key="${pq.key}">${pq.options.map((o) =>
         `<button type="button" data-v="${o.value}" aria-pressed="${state.profile[pq.key] === o.value}">${esc(o.label)}</button>`).join('')}</div>
     </div>`).join('');
   $('prof-qs').querySelectorAll('.opts').forEach((group) => {
