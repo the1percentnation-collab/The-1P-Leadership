@@ -11,7 +11,7 @@ import {
   readingOf, levelLabelFor, toneFor, howToRead,
   isPriorityLead, cleanProfile
 } from './assessment-core.js';
-import { onAuthReady } from './auth.js';
+import { onAuthReady, signOut } from './auth.js';
 import { db, functions, firebaseReady } from './firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -191,6 +191,9 @@ $('prof-go').addEventListener('click', () => {
 // ── Result ─────────────────────────────────────────────────────────────────
 let unlocked = false;
 let savedOnce = false;
+// The signed-in member a result is being saved to, shown on the report so a
+// shared computer never quietly saves to someone else's account.
+let member = null;
 
 async function showResult() {
   const user = await onAuthReady();
@@ -441,6 +444,7 @@ function payloadFor(r) {
 }
 
 async function unlock(user) {
+  member = user;
   if (unlocked) return;
   unlocked = true;
   const r = scoreAssessment(def, state.answers);
@@ -525,6 +529,7 @@ function renderFull(r, profile, status, answers) {
 
   $('s-result').innerHTML = `
     ${resultHead(r, rep)}
+    ${member ? `<div class="whoami no-print">Signed in as <b>${esc(member.email || member.displayName || 'a member')}</b>. Not you? <button type="button" class="text-btn" id="not-me">Sign out</button></div>` : ''}
     <div class="res-tools">
       <span class="saved" id="saved">${status === 'saving' ? 'Saving to your portal…' : esc(status || '')}</span>
       <span class="res-tool-btns">
@@ -583,6 +588,16 @@ function renderFull(r, profile, status, answers) {
     </div>`;
 
   $('print').addEventListener('click', () => { track('assessment_print', { assessment: slug }); window.print(); });
+  if ($('not-me')) $('not-me').addEventListener('click', async () => {
+    try { await signOut(); } catch (e) { /* signed out locally either way */ }
+    // Their answers stay, so the person at the keyboard can claim this
+    // result with their own name and email.
+    state.savedFor = null;
+    state.claimed = null;
+    state.contact = null;
+    save();
+    location.reload();
+  });
   $('retake').addEventListener('click', retake);
   $('retake-top').addEventListener('click', retake);
 }
@@ -633,6 +648,7 @@ function resultFromSaved(saved) {
 
 async function showSavedResult(user) {
   if (!firebaseReady) return false;
+  member = user;
   try {
     const snap = await getDoc(doc(db, 'users', user.uid, 'assessments', slug));
     if (!snap.exists() || !snap.data().dims) return false;

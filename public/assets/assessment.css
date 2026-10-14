@@ -385,3 +385,6 @@ details.dim summary::after{margin-left:10px;}
 .acard.tone-n3 .bar i{background:#fff;}
 details.dim summary .tag{font-style:normal;font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--gray-400);margin-left:8px;}
 @media print{ .lv.t-n3{color:#111 !important;border-color:#111 !important;} .how-read{color:#333 !important;} }
+.whoami{margin-top:18px;text-align:center;font-size:13px;color:var(--gray-400);}
+.whoami b{color:var(--gray-300);font-weight:600;}
+.whoami .text-btn{font-size:13px;text-decoration:underline;color:var(--gray-300);padding:0;}

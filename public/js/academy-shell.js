@@ -74,6 +74,7 @@ const MAIN_NAV = [
   { key: 'courses',   href: '/courses.html',   label: 'Courses',   icon: 'courses' },
   { key: 'library',   href: '/library',        label: 'Library',   icon: 'library' },
   { key: 'resources', href: '/resources.html', label: 'Resources', icon: 'resources' },
+  { key: 'assessments', href: '/assessments', label: 'Assessments', icon: 'badge' },
   { key: 'community', href: '/community.html', label: 'Community', icon: 'community' },
   { key: 'events',    href: '/events',         label: 'Events',    icon: 'events' },
   { key: 'store',     href: '/store.html',     label: 'Store',     icon: 'store' }
