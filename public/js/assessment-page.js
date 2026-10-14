@@ -8,6 +8,7 @@
 import { getAssessment } from './assessments-data.js';
 import {
   SCALE, PROFILE_QUESTIONS, LEVELS, scoreAssessment, headlineFor, buildReport, bandFor, suggestEmail,
+  readingOf, levelLabelFor, toneFor, howToRead,
   isPriorityLead, cleanProfile
 } from './assessment-core.js';
 import { onAuthReady } from './auth.js';
@@ -201,10 +202,16 @@ async function showResult() {
 
 // How to read a score, shown once beside the breakdown.
 function legend() {
-  const isProfile = def.mode === 'profile';
   const ranges = ['0 to 49', '50 to 74', '75 to 100'];
-  return `<div class="legend">${LEVELS.map((l, i) =>
-    `<span class="lv lv-${l.key}">${esc(isProfile ? l.profileLabel : l.label)} <small>${ranges[i]}</small></span>`).join('')}</div>`;
+  return `<p class="how-read">${esc(howToRead(def))}</p>
+  <div class="legend">${LEVELS.map((l, i) =>
+    `<span class="lv t-${toneFor(def, l.key)}">${esc(levelLabelFor(def, l.key))} <small>${ranges[i]}</small></span>`).join('')}</div>`;
+}
+
+// What the top area is called on a card and in the lists.
+function focusTag(rep) {
+  if (readingOf(def) === 'lower-better') return 'Shows up most';
+  return def.mode === 'profile' ? 'Your type' : 'Focus here';
 }
 
 function resultHead(r, rep) {
@@ -248,7 +255,9 @@ function scaleBar(r, rep) {
 
 // Profile mode: the whole blend, not just the winner.
 function blendBar(rep) {
-  if (!rep.blend) return '';
+  // A blend of patterns you want less of reads as a share of a problem, so
+  // only types and styles show one.
+  if (!rep.blend || readingOf(def) === 'lower-better') return '';
   return `<div class="blend">
     <div class="blend-track">${rep.blend.map((b, i) => `<i class="b${i}" style="flex:${Math.max(b.pct, 1)}" title="${esc(b.label)} ${b.pct}%"></i>`).join('')}</div>
     <ul class="blend-key">${rep.blend.map((b, i) => `<li><i class="b${i}"></i><span>${esc(b.label)}</span><b>${b.pct}%</b></li>`).join('')}</ul>
@@ -260,11 +269,11 @@ function blendBar(rep) {
 function areaCards(rep) {
   const isProfile = def.mode === 'profile';
   return `<div class="cards">${rep.areas.map((a) => {
-    const mark = rep.focus && a.key === rep.focus.key ? (isProfile ? 'Your type' : 'Focus here')
+    const mark = rep.focus && a.key === rep.focus.key ? focusTag(rep)
       : (!isProfile && rep.strength && a.key === rep.strength.key ? 'Your strength' : '');
-    return `<div class="acard lvl-${a.level}">
+    return `<div class="acard tone-${a.tone}">
       <div class="acard-top"><span class="acard-name">${esc(a.label)}</span>${mark ? `<em class="tag">${mark}</em>` : ''}</div>
-      <div class="acard-score"><b>${a.score}</b><small>/100</small><span class="lv lv-${a.level}">${esc(a.levelLabel)}</span></div>
+      <div class="acard-score"><b>${a.score}</b><small>/100</small><span class="lv t-${a.tone}">${esc(a.levelLabel)}</span></div>
       <div class="bar"><i style="width:${Math.max(a.score, 3)}%"></i></div>
       <p>${esc(a.desc)}</p>
     </div>`;
@@ -294,7 +303,7 @@ function renderTeaser() {
     </section>
     <div class="locked">
       <div class="preview" aria-hidden="true">
-        <div class="panel spot"><h3>${def.mode === 'profile' ? 'Your type in depth' : 'Your focus area'}: ${esc(rep.focus ? rep.focus.label : '')}</h3>
+        <div class="panel spot"><h3>${readingOf(def) === 'lower-better' ? 'Your strongest pattern' : (def.mode === 'profile' ? 'Your type in depth' : 'Your focus area')}: ${esc(rep.focus ? rep.focus.label : '')}</h3>
           <p>What your score means, the exact statements that pulled it down, and why it matters.</p>
           <ol class="actions"><li>Your first action</li><li>Your second action</li><li>Your third action</li></ol></div>
         <div class="panel"><h3>Your 30-day plan</h3><p>Week 1. Week 2. Week 3. Week 4.</p></div>
@@ -501,15 +510,15 @@ function renderFull(r, profile, status, answers) {
       </div>` : '';
 
   const strengthPanel = isProfile
-    ? (rep.secondary ? `<section class="panel">
-        ${step('Your runner-up')}
+    ? (rep.secondary && !rep.clear ? `<section class="panel">
+        ${step(readingOf(def) === 'lower-better' ? 'Also showing up' : 'Your runner-up')}
         <h3>${esc(rep.secondary.headline || rep.secondary.label)}</h3>
         <p class="muted">${esc(rep.secondary.summary || rep.secondary.desc)}</p>
-        <p class="note">Most people are a blend. Your runner-up explains the moments when you do not act like your main type.</p>
+        <p class="note">${readingOf(def) === 'lower-better' ? 'Patterns often travel together. This one tends to show up when the first one is quiet.' : 'Most people are a blend. Your runner-up explains the moments when you do not act like your main type.'}</p>
       </section>` : '')
     : (rep.strength && f && rep.strength.key !== f.key ? `<section class="panel strong">
         ${step('Your strength')}
-        <h3>${esc(rep.strength.label)} <span class="lv lv-${rep.strength.level}">${esc(rep.strength.levelLabel)} · ${rep.strength.score}</span></h3>
+        <h3>${esc(rep.strength.label)} <span class="lv t-${rep.strength.tone}">${esc(rep.strength.levelLabel)} · ${rep.strength.score}</span></h3>
         <p>${esc(rep.strength.meaning)}</p>
         <div class="area-row"><span class="area-k">Use it</span><p>${esc(rep.strength.leverage)}</p></div>
       </section>` : '');
@@ -531,8 +540,8 @@ function renderFull(r, profile, status, answers) {
     </section>
 
     <section class="panel spot">
-      ${step(isProfile ? 'Your type in depth' : 'Your focus area')}
-      <h3>${esc(isProfile ? (f.headline || f.label) : f.label)} <span class="lv lv-${f.level}">${esc(f.levelLabel)} · ${f.score}</span></h3>
+      ${step(rep.clear ? 'The one to watch' : (readingOf(def) === 'lower-better' ? 'Your strongest pattern' : (isProfile ? 'Your type in depth' : 'Your focus area')))}
+      <h3>${esc(isProfile && !rep.clear ? (f.headline || f.label) : f.label)} <span class="lv t-${f.tone}">${esc(f.levelLabel)} · ${f.score}</span></h3>
       <p class="muted">${esc(f.desc)}</p>
       ${areaDetail(f)}
     </section>
@@ -550,9 +559,10 @@ function renderFull(r, profile, status, answers) {
     </section>
 
     <section class="panel">
-      ${step(isProfile ? 'Every type, explained' : 'Every area, explained')}
+      ${step(readingOf(def) === 'lower-better' ? 'Every pattern, explained' : (isProfile ? 'Every type, explained' : 'Every area, explained'))}
+      <p class="how-read">${esc(howToRead(def))} Tap any one for the details.</p>
       ${rep.areas.map((a) => `<details class="dim">
-        <summary><span>${esc(isProfile ? (a.headline || a.label) : a.label)}</span><span><span class="lv lv-${a.level}">${esc(a.levelLabel)}</span> <b>${a.score}</b></span></summary>
+        <summary><span>${esc(a.label)}${rep.focus && a.key === rep.focus.key ? ` <em class="tag">${focusTag(rep)}</em>` : ''}</span><span><span class="lv t-${a.tone}">${esc(a.levelLabel)}</span> <b>${a.score}</b></span></summary>
         ${isProfile && a.summary ? `<p class="muted">${esc(a.summary)}</p>` : ''}
         ${areaDetail(a)}
       </details>`).join('')}

@@ -365,3 +365,23 @@ details.dim summary::after{margin-left:10px;}
 .res-tool-btns{display:flex;gap:18px;flex-wrap:wrap;}
 #retake-top{color:var(--white);font-weight:600;}
 @media print{ .res-tool-btns{display:none !important;} }
+
+/* ── Tones: color follows meaning, not just the number ───── */
+.how-read{color:var(--gray-300);font-size:15px;margin:0 0 12px;max-width:640px;}
+.lv.t-good{color:#9dbcff;border-color:rgba(21,94,239,0.5);background:rgba(21,94,239,0.12);}
+.lv.t-mid{color:#e8e8e8;border-color:var(--border-strong);background:rgba(255,255,255,0.05);}
+.lv.t-watch{color:#ff8a8c;border-color:rgba(230,3,6,0.45);background:rgba(230,3,6,0.1);}
+.lv.t-n1{color:var(--gray-400);border-color:var(--border);background:transparent;}
+.lv.t-n2{color:#e0e0e0;border-color:var(--border-strong);background:rgba(255,255,255,0.05);}
+.lv.t-n3{color:#111;border-color:#fff;background:#fff;}
+.acard.tone-good{border-color:rgba(21,94,239,0.4);}
+.acard.tone-watch{border-color:rgba(230,3,6,0.35);}
+.acard.tone-n3{border-color:rgba(255,255,255,0.35);}
+.acard.tone-good .bar i{background:var(--blue);}
+.acard.tone-mid .bar i{background:var(--gray-300);}
+.acard.tone-watch .bar i{background:var(--red);}
+.acard.tone-n1 .bar i{background:#5a5a5a;}
+.acard.tone-n2 .bar i{background:#a8a8a8;}
+.acard.tone-n3 .bar i{background:#fff;}
+details.dim summary .tag{font-style:normal;font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--gray-400);margin-left:8px;}
+@media print{ .lv.t-n3{color:#111 !important;border-color:#111 !important;} .how-read{color:#333 !important;} }

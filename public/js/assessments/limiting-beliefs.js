@@ -4,6 +4,10 @@ export default {
   title: 'What Belief Is Holding You Back?',
   category: 'leader',
   mode: 'profile',
+  // Agreeing means the belief is present, so a low score is the good news.
+  polarity: 'lower-better',
+  clearHeadline: "No belief has a strong hold on you",
+  clearSummary: "None of these patterns scored high enough to be steering your decisions right now. That is real progress, and it usually comes from work you have already done. The one that shows up most is still worth watching, because patterns grow quietly when life gets hard. Read it below and keep it on your radar.",
   minutes: 4,
   hook: "\"I can't\" is not a strategy. So what is really stopping you?",
   short: 'Uncover the limiting belief pattern that shows up most in your life, and the truth that breaks it.',

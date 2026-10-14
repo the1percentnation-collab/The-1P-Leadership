@@ -154,10 +154,45 @@ export function bandFor(def, score) {
 // Where one area's score sits. The cut points match the bands every score
 // assessment uses (0 / 50 / 75), so an area and the overall read the same way.
 export const LEVELS = [
-  { key: 'low', min: 0, label: 'Needs focus', profileLabel: 'Light pull' },
-  { key: 'mid', min: 50, label: 'Steady', profileLabel: 'Moderate pull' },
-  { key: 'high', min: 75, label: 'Strong', profileLabel: 'Strong pull' }
+  { key: 'low', min: 0, label: 'Needs focus' },
+  { key: 'mid', min: 50, label: 'Steady' },
+  { key: 'high', min: 75, label: 'Strong' }
 ];
+
+// How each level is named and colored depends on what a high score means.
+//   score         higher is better (skills, health): low needs focus
+//   profile       a type or style, no better or worse: how well it matches
+//   lower-better  a pattern you want less of (limiting beliefs): low is good
+// `tone` drives color: good (blue), mid (gray), watch (red), and n1..n3
+// (neutral grays, brighter for a stronger match).
+const LEVEL_WORDS = {
+  score: { low: 'Needs focus', mid: 'Steady', high: 'Strong' },
+  profile: { low: 'Low match', mid: 'Some match', high: 'Strong match' },
+  'lower-better': { low: 'Barely there', mid: 'Shows up at times', high: 'Strong hold' }
+};
+const LEVEL_TONES = {
+  score: { low: 'watch', mid: 'mid', high: 'good' },
+  profile: { low: 'n1', mid: 'n2', high: 'n3' },
+  'lower-better': { low: 'good', mid: 'mid', high: 'watch' }
+};
+
+/** 'score', 'profile' or 'lower-better'. */
+export function readingOf(def) {
+  if (def.mode === 'profile') return def.polarity === 'lower-better' ? 'lower-better' : 'profile';
+  return 'score';
+}
+
+export function levelLabelFor(def, key) { return LEVEL_WORDS[readingOf(def)][key]; }
+export function toneFor(def, key) { return LEVEL_TONES[readingOf(def)][key]; }
+
+/** One plain sentence on how to read the area scores. */
+export function howToRead(def) {
+  return {
+    score: 'Each area is scored 0 to 100. Higher is stronger. Your lowest area is where focus pays off most.',
+    profile: 'Each score shows how closely that type matches your answers, 0 to 100. Higher means more like you. No type is better than another.',
+    'lower-better': 'Each score shows how strongly that belief shows up in your answers, 0 to 100. Lower is better: a low score means it is not holding you back.'
+  }[readingOf(def)];
+}
 
 export function levelFor(score) {
   return LEVELS.slice().reverse().find((l) => score >= l.min) || LEVELS[0];
@@ -191,7 +226,8 @@ export function buildReport(def, result, answers) {
       desc: d.desc,
       score,
       level: level.key,
-      levelLabel: isProfile ? level.profileLabel : level.label,
+      levelLabel: levelLabelFor(def, level.key),
+      tone: toneFor(def, level.key),
       meaning: d.levels ? d.levels[level.key] : '',
       why: d.why || '',
       leverage: d.leverage || '',
@@ -211,8 +247,13 @@ export function buildReport(def, result, answers) {
   // The next area to work on once the focus area has had three weeks.
   const next = isProfile ? secondary : (ascending.find((a) => focus && a.key !== focus.key && a.key !== strength.key) || ascending[1] || null);
 
+  // A pattern you want less of, where even the strongest one is low: say so
+  // plainly instead of naming it "your pattern".
+  const clear = readingOf(def) === 'lower-better' && focus && focus.level === 'low';
   let oneLine;
-  if (isProfile) {
+  if (clear) {
+    oneLine = `${focus.label} shows up most (${focus.score}), but nothing has a strong hold on you.`;
+  } else if (isProfile) {
     oneLine = secondary
       ? `You lean most toward ${focus.label}, with ${secondary.label} close behind.`
       : `You lean most toward ${focus.label}.`;
@@ -234,8 +275,9 @@ export function buildReport(def, result, answers) {
   return {
     next: nextBand(def, result.overall),
     blend: isProfile ? blendFor(result) : null,
-    headline: headlineFor(def, result),
-    summary: isProfile ? (focus && focus.summary) : (result.band && result.band.summary),
+    clear,
+    headline: clear ? def.clearHeadline : headlineFor(def, result),
+    summary: clear ? def.clearSummary : (isProfile ? (focus && focus.summary) : (result.band && result.band.summary)),
     oneLine,
     areas,
     strength,
@@ -383,6 +425,8 @@ export function validateAssessment(def) {
   (def.related || []).forEach((r) => need(typeof r === 'string' && r !== def.slug, 'related must list other slugs'));
   if (def.cta) need(def.cta.label && /^\/[^/]/.test(def.cta.href || ''), 'cta needs a label and a site-relative href');
   if (def.category === 'money') need(def.disclaimer, 'money assessments need a disclaimer');
+  need(def.polarity === undefined || (def.mode === 'profile' && def.polarity === 'lower-better'), 'polarity is only lower-better, on a profile');
+  if (def.polarity === 'lower-better') need(def.clearHeadline && def.clearSummary, 'lower-better needs clearHeadline and clearSummary');
   // The page shows the statement count itself; a count written into the
   // intro goes stale the moment questions are added or trimmed.
   need(!/\b(twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|\d+)\b[- ]?\w*\s+(honest\s+)?(statements|questions)/i.test(def.intro || ''), 'intro must not state the number of statements');
