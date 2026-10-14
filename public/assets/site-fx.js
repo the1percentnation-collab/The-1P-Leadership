@@ -307,6 +307,6 @@
   var line = document.querySelector('.hero-title-line');
   if (line) line.classList.add('revealed');
   document.querySelectorAll('.hero-reveal').forEach(function (el, i) { setTimeout(function () { el.classList.add('in'); }, 900 + i * 180); });
-  var card = document.querySelector('.hero-card');
-  if (card) card.classList.add('in');
+  // Desktop card beside the copy, and the phone copy under the headline.
+  document.querySelectorAll('.hero-card').forEach(function (card) { card.classList.add('in'); });
 })();
