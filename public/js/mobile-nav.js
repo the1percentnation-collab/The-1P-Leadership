@@ -31,7 +31,7 @@ const TABS = [
 
 // Everything else a member can reach, in the sheet.
 const MORE = [
-  { href: '/resources.html', label: 'Resources', icon: 'resources' },
+  { href: '/toolkit',        label: 'Toolkit',   icon: 'resources' },
   { href: '/events',         label: 'Events',    icon: 'events' },
   { href: '/store.html',     label: 'Store',     icon: 'store' },
   { href: '/members.html',   label: 'Members',   icon: 'community' },

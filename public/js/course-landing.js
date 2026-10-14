@@ -6,7 +6,7 @@
 // purchase card → What you'll learn → This course includes → Course content
 // accordion → Requirements → Description → Instructor → More courses.
 
-import { loadCourses, getCourses, getCourseBySlug, priceInfo } from './courses-data.js';
+import { loadCourses, getCourses, getCourseBySlug, priceInfo, isToolkitItem } from './courses-data.js';
 import { launchDateMs, fmtLaunchDate, launchCountdown } from './launch-date.js';
 import { onAuthReady, currentUser } from './auth.js';
 import { firebaseReady, functions, db } from './firebase.js';
@@ -282,7 +282,8 @@ function instructorHtml() {
 }
 
 function moreCoursesHtml(course) {
-  const others = getCourses().filter((c) => c.slug !== course.slug && !c.optionOf).slice(0, 5);
+  const others = getCourses()
+    .filter((c) => c.slug !== course.slug && !c.optionOf && !isToolkitItem(c)).slice(0, 5);
   if (!others.length) return '';
   const rows = others.map((c) => {
     const p = priceInfo(c);
