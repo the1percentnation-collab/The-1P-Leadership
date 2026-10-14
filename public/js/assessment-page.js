@@ -181,6 +181,7 @@ function resultHead(r, rep) {
       <h1 class="display res-label">${esc(rep.headline)}</h1>
       <p class="res-line">${esc(rep.oneLine)}</p>
       <p class="res-summary">${esc(rep.summary)}</p>
+      ${blendBar(rep)}
     </div>`;
   }
   return `<div class="res-top">
@@ -189,37 +190,88 @@ function resultHead(r, rep) {
     <h1 class="display res-label">You are <span>${esc(r.band.label)}</span></h1>
     <p class="res-line">${esc(rep.oneLine)}</p>
     <p class="res-summary">${esc(r.band.summary)}</p>
+    ${scaleBar(r, rep)}
   </div>`;
 }
 
-function bars(rep) {
-  return `<div class="bars">${rep.areas.map((a) => {
-    const mark = rep.focus && a.key === rep.focus.key ? (def.mode === 'profile' ? 'Your type' : 'Your focus')
-      : (def.mode === 'score' && rep.strength && a.key === rep.strength.key ? 'Your strength' : '');
-    return `<div class="bar-row lvl-${a.level}">
-      <div class="bar-head"><span>${esc(a.label)}${mark ? ` <em class="tag">${mark}</em>` : ''}</span><span><span class="lv lv-${a.level}">${esc(a.levelLabel)}</span> <b>${a.score}</b></span></div>
+// Where the overall score lands across the three bands, with the distance
+// to the next one. Turns "38" into a position on a path.
+function scaleBar(r, rep) {
+  if (def.mode !== 'score') return '';
+  const bands = def.bands.slice().sort((a, b) => a.min - b.min);
+  const segs = bands.map((b, i) => {
+    const end = i + 1 < bands.length ? bands[i + 1].min : 101;
+    const here = r.band && b.label === r.band.label;
+    return `<div class="seg seg-${i}${here ? ' here' : ''}" style="flex:${end - b.min}"><span>${esc(b.label)}</span><small>${b.min} to ${Math.min(end - 1, 100)}</small></div>`;
+  }).join('');
+  const where = rep.next
+    ? `You scored <b>${r.overall}</b>, in <b>${esc(r.band.label)}</b>. <b>${rep.next.pointsAway} more point${rep.next.pointsAway === 1 ? '' : 's'}</b> moves you to <b>${esc(rep.next.band.label)}</b>.`
+    : `You scored <b>${r.overall}</b>, in the top band: <b>${esc(r.band.label)}</b>. Your work now is protecting it and lifting your lowest area.`;
+  return `<div class="scale-wrap">
+    <div class="scale-track">${segs}<i class="marker" style="left:${Math.min(Math.max(r.overall, 1), 99)}%"><em>${r.overall}</em></i></div>
+    <p class="scale-note">${where}</p>
+  </div>`;
+}
+
+// Profile mode: the whole blend, not just the winner.
+function blendBar(rep) {
+  if (!rep.blend) return '';
+  return `<div class="blend">
+    <div class="blend-track">${rep.blend.map((b, i) => `<i class="b${i}" style="flex:${Math.max(b.pct, 1)}" title="${esc(b.label)} ${b.pct}%"></i>`).join('')}</div>
+    <ul class="blend-key">${rep.blend.map((b, i) => `<li><i class="b${i}"></i><span>${esc(b.label)}</span><b>${b.pct}%</b></li>`).join('')}</ul>
+  </div>`;
+}
+
+// One card per area: the score, its level, and what the area measures.
+// Shown before signup, so the free view already says something real.
+function areaCards(rep) {
+  const isProfile = def.mode === 'profile';
+  return `<div class="cards">${rep.areas.map((a) => {
+    const mark = rep.focus && a.key === rep.focus.key ? (isProfile ? 'Your type' : 'Focus here')
+      : (!isProfile && rep.strength && a.key === rep.strength.key ? 'Your strength' : '');
+    return `<div class="acard lvl-${a.level}">
+      <div class="acard-top"><span class="acard-name">${esc(a.label)}</span>${mark ? `<em class="tag">${mark}</em>` : ''}</div>
+      <div class="acard-score"><b>${a.score}</b><small>/100</small><span class="lv lv-${a.level}">${esc(a.levelLabel)}</span></div>
       <div class="bar"><i style="width:${Math.max(a.score, 3)}%"></i></div>
+      <p>${esc(a.desc)}</p>
     </div>`;
   }).join('')}</div>`;
 }
 
+// The statements behind one area's score, in the person's own answers.
+function driversBlock(a) {
+  const d = a.drivers;
+  if (!d || (!d.lifts.length && !d.drags.length)) return '';
+  const row = (x, kind) => `<li class="${kind}"><span class="dv-icon">${kind === 'up' ? '+' : '−'}</span><span>“${esc(x.text)}”<small>You answered: ${esc(x.answer)}</small></span></li>`;
+  return `<div class="area-row"><span class="area-k">What drove this score</span><ul class="drivers">
+    ${d.lifts.map((x) => row(x, 'up')).join('')}${d.drags.map((x) => row(x, 'down')).join('')}
+  </ul></div>`;
+}
+
 function renderTeaser() {
   const r = scoreAssessment(def, state.answers);
-  const rep = buildReport(def, r);
+  const rep = buildReport(def, r, state.answers);
   const next = `/assessments/${slug}?unlock=1`;
   $('s-result').innerHTML = `
     ${resultHead(r, rep)}
+    <section class="panel">
+      <div class="step plain">Your scores by area</div>
+      ${legend()}
+      ${areaCards(rep)}
+    </section>
     <div class="locked">
       <div class="preview" aria-hidden="true">
-        <div class="panel"><h3>At a glance</h3>${bars(rep)}</div>
-        <div class="panel spot"><h3>${def.mode === 'profile' ? 'Your type' : 'Your focus area'}: ${esc(rep.focus ? rep.focus.label : '')}</h3><ol class="actions"><li>Your first action</li><li>Your second action</li><li>Your third action</li></ol></div>
+        <div class="panel spot"><h3>${def.mode === 'profile' ? 'Your type in depth' : 'Your focus area'}: ${esc(rep.focus ? rep.focus.label : '')}</h3>
+          <p>What your score means, the exact statements that pulled it down, and why it matters.</p>
+          <ol class="actions"><li>Your first action</li><li>Your second action</li><li>Your third action</li></ol></div>
+        <div class="panel"><h3>Your 30-day plan</h3><p>Week 1. Week 2. Week 3. Week 4.</p></div>
       </div>
       <div class="unlock">
         <div class="eyebrow">Your full report is ready</div>
         <h2 class="display">Unlock it free.</h2>
         <p class="sub">Create your free One Percent account to see the rest and keep it in your member portal.</p>
         <ul>
-          <li>Your score in all ${def.dimensions.length} areas, and what each one means for you</li>
+          <li>What each of your ${def.dimensions.length} scores means for you, and the exact answers behind it</li>
           <li>${def.mode === 'profile' ? 'Your type in depth: its strengths, its blind spot and your runner-up' : 'Your strongest area, and the one to focus on first'}</li>
           <li>A week-by-week 30-day plan with specific actions</li>
           <li>Reflection questions, and a report you can print or save</li>
@@ -290,7 +342,7 @@ async function unlock(user) {
   unlocked = true;
   const r = scoreAssessment(def, state.answers);
   const profile = cleanProfile(state.profile);
-  renderFull(r, profile, 'saving');
+  renderFull(r, profile, 'saving', state.answers);
   show('s-result');
   track('assessment_unlocked', { assessment: slug, fb: 'Lead' });
   // Coming back to a result that is already saved (a refresh, or returning
@@ -311,6 +363,7 @@ async function unlock(user) {
       highest: r.highest,
       lowest: r.lowest,
       profile,
+      answers: def.questions.map((_, i) => Number(state.answers[i]) || 0),
       utm: utm()
     });
     state.savedFor = user.uid;
@@ -333,15 +386,16 @@ function setSaved(text) {
 function areaDetail(a, { open = false, showActions = true } = {}) {
   return `<div class="area">
     <div class="area-row"><span class="area-k">What your score means</span><p>${esc(a.meaning)}</p></div>
+    ${driversBlock(a)}
     <div class="area-row"><span class="area-k">Why it matters</span><p>${esc(a.why)}</p></div>
     ${showActions ? `<div class="area-row"><span class="area-k">What to do</span><ol class="actions">${a.actions.map((x) => `<li><span>${esc(x)}</span></li>`).join('')}</ol></div>` : ''}
     <div class="area-row"><span class="area-k">Reflect</span><p class="reflect">${esc(a.reflect)}</p></div>
   </div>`;
 }
 
-function renderFull(r, profile, status) {
+function renderFull(r, profile, status, answers) {
   const isProfile = def.mode === 'profile';
-  const rep = buildReport(def, r);
+  const rep = buildReport(def, r, answers);
   const priority = isPriorityLead(profile);
   const related = (def.related || []).map(getAssessment).filter(Boolean);
   const f = rep.focus;
@@ -386,9 +440,9 @@ function renderFull(r, profile, status) {
     </div>
 
     <section class="panel">
-      ${step('At a glance')}
+      ${step('Your scores by area')}
       ${legend()}
-      ${bars(rep)}
+      ${areaCards(rep)}
     </section>
 
     <section class="panel spot">
@@ -482,7 +536,8 @@ async function showSavedResult(user) {
     const when = saved.completedAt && saved.completedAt.toDate
       ? saved.completedAt.toDate().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
       : null;
-    renderFull(resultFromSaved(saved), saved.profile || {}, when ? `Your result from ${when}` : 'Your saved result');
+    const answers = Array.isArray(saved.answers) ? Object.assign({}, saved.answers) : null;
+    renderFull(resultFromSaved(saved), saved.profile || {}, when ? `Your result from ${when}` : 'Your saved result', answers);
     show('s-result');
     return true;
   } catch (e) {

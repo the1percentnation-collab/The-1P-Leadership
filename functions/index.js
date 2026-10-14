@@ -14527,8 +14527,15 @@ exports.submitAssessment = onCall({ secrets: [sendgridKey] }, async (request) =>
     campaign: short(u.campaign, 80) || null
   };
 
+  // The raw 1-5 answers, so the report can show which statements drove each
+  // score when the member reopens it on another device.
+  const answers = Array.isArray(data.answers)
+    ? data.answers.slice(0, 30).map((v) => { const n = Math.round(Number(v)); return n >= 1 && n <= 5 ? n : 0; })
+    : [];
+
   const result = {
     slug,
+    answers,
     title: meta.title,
     category: meta.category,
     score: pct(data.score),

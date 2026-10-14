@@ -176,7 +176,7 @@ export function levelFor(score) {
  *   secondary           profile mode: the runner-up type
  *   plan                four weeks, one concrete action each
  */
-export function buildReport(def, result) {
+export function buildReport(def, result, answers) {
   const isProfile = def.mode === 'profile';
   const order = def.dimensions.map((d) => d.key);
   const scoreOf = (k) => (result.dims.find((d) => d.key === k) || { score: 0 }).score;
@@ -196,7 +196,8 @@ export function buildReport(def, result) {
       why: d.why || '',
       leverage: d.leverage || '',
       reflect: d.reflect || '',
-      actions: d.actions
+      actions: d.actions,
+      drivers: answers ? driversFor(def, answers, d.key) : null
     };
   };
   const areas = def.dimensions.map(area)
@@ -231,6 +232,8 @@ export function buildReport(def, result) {
   ] : [];
 
   return {
+    next: nextBand(def, result.overall),
+    blend: isProfile ? blendFor(result) : null,
     headline: headlineFor(def, result),
     summary: isProfile ? (focus && focus.summary) : (result.band && result.band.summary),
     oneLine,
@@ -240,6 +243,53 @@ export function buildReport(def, result) {
     secondary,
     plan
   };
+}
+
+/**
+ * The next band up and how far away it is, so a score reads as a position
+ * on a path ("12 points from Grinding") rather than a verdict. Null at the top.
+ */
+export function nextBand(def, score) {
+  if (def.mode !== 'score') return null;
+  const up = (def.bands || []).slice().sort((a, b) => a.min - b.min).find((b) => b.min > score);
+  return up ? { band: up, pointsAway: up.min - score } : null;
+}
+
+/**
+ * Profile mode: each type's share of the whole, rounded to whole percents
+ * that add to 100, strongest first. Shows a blend, not just a winner.
+ */
+export function blendFor(result) {
+  const dims = result.dims.filter((d) => d.answered);
+  const total = dims.reduce((s, d) => s + d.score, 0);
+  if (!total) return dims.map((d) => ({ key: d.key, label: d.label, pct: Math.round(100 / (dims.length || 1)) }));
+  const raw = dims.map((d) => ({ key: d.key, label: d.label, exact: (d.score / total) * 100 }));
+  raw.forEach((r) => { r.pct = Math.floor(r.exact); });
+  let left = 100 - raw.reduce((s, r) => s + r.pct, 0);
+  raw.slice().sort((a, b) => (b.exact - b.pct) - (a.exact - a.pct)).forEach((r) => { if (left > 0) { r.pct += 1; left -= 1; } });
+  return raw.sort((a, b) => b.pct - a.pct).map(({ key, label, pct }) => ({ key, label, pct }));
+}
+
+/**
+ * What drove one area's score: the statements that lifted it most and the
+ * ones that held it back, with the answer the person gave. Reverse-scored
+ * statements are judged by their effect, so agreeing with "I dread Monday"
+ * shows as holding the score back. At most two of each.
+ */
+export function driversFor(def, answers, dimKey) {
+  const a = answers || {};
+  const rated = [];
+  def.questions.forEach((q, i) => {
+    if (q.dim !== dimKey) return;
+    const raw = Number(a[i]);
+    if (!(raw >= 1 && raw <= 5)) return;
+    const effect = q.reverse ? 6 - raw : raw;
+    rated.push({ text: q.text, answer: SCALE[raw - 1].label, effect, i });
+  });
+  const lifts = rated.filter((r) => r.effect >= 4).sort((x, y) => y.effect - x.effect || x.i - y.i).slice(0, 2);
+  const drags = rated.filter((r) => r.effect <= 2).sort((x, y) => x.effect - y.effect || x.i - y.i).slice(0, 2);
+  const strip = ({ text, answer }) => ({ text, answer });
+  return { lifts: lifts.map(strip), drags: drags.map(strip) };
 }
 
 /** The headline a result leads with, for either mode. */

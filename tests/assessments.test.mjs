@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import { loadPure } from './_load-pure.mjs';
 
 const {
-  validateAssessment, scoreAssessment, bandFor, headlineFor, buildReport, levelFor,
+  validateAssessment, scoreAssessment, bandFor, headlineFor, buildReport, levelFor, nextBand, blendFor, driversFor,
   isPriorityLead, segmentFor, cleanProfile, CATEGORIES
 } = await loadPure('assessment-core.js');
 const { ASSESSMENTS, getAssessment } = await loadPure('assessments-data.js');
@@ -214,6 +214,42 @@ ok('every assessment builds a complete report at every level', () => {
     assert.strictEqual(rep.plan.length, 4, a.slug);
     for (const ar of rep.areas) assert.ok(ar.meaning && ar.why && ar.reflect && ar.actions.length === 3, `${a.slug}/${ar.key}`);
   }
+});
+
+ok('next band: points to the next level, null at the top', () => {
+  assert.deepStrictEqual(nextBand(def, 38), { band: def.bands[1], pointsAway: 12 });
+  assert.strictEqual(nextBand(def, 74).pointsAway, 1);
+  assert.strictEqual(nextBand(def, 80), null);
+  assert.strictEqual(nextBand({ mode: 'profile' }, 10), null);
+});
+
+ok('blend: whole percents that add to 100, strongest first', () => {
+  for (const a of ASSESSMENTS.filter((x) => x.mode === 'profile')) {
+    const r = scoreAssessment(a, Object.fromEntries(a.questions.map((q, i) => [i, (i % 5) + 1])));
+    const b = blendFor(r);
+    assert.strictEqual(b.reduce((s, x) => s + x.pct, 0), 100, a.slug);
+    for (let i = 1; i < b.length; i++) assert.ok(b[i - 1].pct >= b[i].pct, a.slug);
+  }
+  const zero = blendFor({ dims: [{ key: 'a', label: 'A', score: 0, answered: 1 }, { key: 'b', label: 'B', score: 0, answered: 1 }] });
+  assert.deepStrictEqual(zero.map((x) => x.pct), [50, 50]);
+});
+
+ok('drivers: lifts and drags judged by effect, reverse-scored included, two each at most', () => {
+  const d = driversFor(def, { 0: 5, 1: 5 }, 'a');
+  assert.deepStrictEqual(d.lifts, [{ text: '1', answer: 'Strongly agree' }]);
+  assert.deepStrictEqual(d.drags, [{ text: '2', answer: 'Strongly agree' }]);
+  assert.deepStrictEqual(driversFor(def, { 0: 3, 1: 3 }, 'a'), { lifts: [], drags: [] });
+  const a = getAssessment('alignment-scorecard');
+  const dr = driversFor(a, all(a, 1), 'awareness');
+  assert.ok(dr.lifts.length <= 2 && dr.drags.length <= 2);
+  assert.ok(dr.lifts.length && dr.drags.length, 'awareness has a reversed item, so all-1s yields both');
+});
+
+ok('the report carries drivers only when answers are given', () => {
+  const a = getAssessment('burnout-check');
+  const r = scoreAssessment(a, all(a, 2));
+  assert.ok(buildReport(a, r, all(a, 2)).areas.every((x) => x.drivers));
+  assert.ok(buildReport(a, r).areas.every((x) => x.drivers === null));
 });
 
 // ── Segmenting ───────────────────────────────────────────────────────────
