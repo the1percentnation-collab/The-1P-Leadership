@@ -1,0 +1,50 @@
+name: Seed The Focus Tax
+# Writes courses/the-focus-tax and its modules to Firestore by running
+# scripts/seed-focus-tax.js with the deploy service account. Merging the code
+# does not create the Firestore record, and until it exists enrollFree answers
+# "Unknown course." Running the seed here means a release, or an edit to a
+# piece, needs no terminal.
+#
+# Safe to run on every push: the seed never changes a status, price or
+# published state the owner set in /manage-courses.html.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/seed-focus-tax.js'
+      - 'scripts/focus-tax-content/**'
+      - '.github/workflows/seed-focus-tax.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: seed-focus-tax
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Write service account key
+        id: sa
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP }}
+        run: |
+          echo "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+          echo "path=$RUNNER_TEMP/sa.json" >> "$GITHUB_OUTPUT"
+
+      - name: Install script dependencies
+        working-directory: scripts
+        run: npm ci
+
+      - name: Seed
+        working-directory: scripts
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.sa.outputs.path }}
+        run: node seed-focus-tax.js

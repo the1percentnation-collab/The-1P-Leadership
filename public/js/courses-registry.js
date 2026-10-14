@@ -498,12 +498,15 @@ export const COURSES = [
     // Four short pieces on the subjects the Brief does not cover: open loops,
     // the list versus the calendar, meetings and working memory, and decision
     // load. Free, all published at once, no drip. Content and the Firestore
-    // doc are written by scripts/seed-focus-tax.js.
+    // doc are written by scripts/seed-focus-tax.js (run by the Seed The Focus
+    // Tax workflow), which creates the course live. The status here stays
+    // coming-soon because it is only the fallback for a missing Firestore doc,
+    // and with no doc enrollFree has nothing to enroll into.
     slug: 'the-focus-tax',
     title: 'The Focus Tax',
     short: 'Focus Tax',
     subtitle: 'Short reads on focus, capacity, and the cost of an unstructured day.',
-    status: 'live',
+    status: 'coming-soon',
     eyebrow: 'Free · Four short reads',
     category: 'Mindset & Personal Growth',
     price: 0,
