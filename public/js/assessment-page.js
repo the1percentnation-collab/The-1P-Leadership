@@ -41,7 +41,10 @@ function utm() {
 }
 
 // ── Saved progress ─────────────────────────────────────────────────────────
-const STORE = '1p-assess:' + slug;
+// Keyed to the question count as well as the slug: answers are stored by
+// position, so when an assessment is trimmed or extended, progress saved
+// against the old set is dropped instead of being read against new questions.
+const STORE = '1p-assess:' + slug + (def ? ':' + def.questions.length : '');
 function load() {
   try { return JSON.parse(localStorage.getItem(STORE) || 'null') || {}; } catch (e) { return {}; }
 }
@@ -582,7 +585,10 @@ async function showSavedResult(user) {
     const when = saved.completedAt && saved.completedAt.toDate
       ? saved.completedAt.toDate().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
       : null;
-    const answers = Array.isArray(saved.answers) ? Object.assign({}, saved.answers) : null;
+    // Answers saved against a different version of the questions would quote
+    // the wrong statements, so they are only used when the set still matches.
+    const answers = Array.isArray(saved.answers) && saved.answers.length === def.questions.length
+      ? Object.assign({}, saved.answers) : null;
     renderFull(resultFromSaved(saved), saved.profile || {}, when ? `Your result from ${when}` : 'Your saved result', answers);
     show('s-result');
     return true;
