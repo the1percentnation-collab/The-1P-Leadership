@@ -437,7 +437,7 @@ async function open() {
   if (free) {
     // A free preview always shows where to buy the full book.
     for (const id of ['buy-pill', 'buy-bar']) {
-      $(id).href = book.buyHref || '/#shop';
+      $(id).href = book.buyHref || '/books';
       $(id).hidden = false;
     }
     document.body.classList.add('has-buy');
