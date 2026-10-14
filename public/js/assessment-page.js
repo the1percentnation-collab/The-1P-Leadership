@@ -10,7 +10,7 @@ import {
   SCALE, PROFILE_QUESTIONS, LEVELS, scoreAssessment, headlineFor, buildReport, bandFor,
   isPriorityLead, cleanProfile
 } from './assessment-core.js';
-import { onAuthReady, signupEmail, loginGoogle } from './auth.js';
+import { onAuthReady } from './auth.js';
 import { db, functions, firebaseReady } from './firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -162,6 +162,7 @@ let savedOnce = false;
 async function showResult() {
   const user = await onAuthReady();
   if (user) return unlock(user);
+  if (state.claimed) return showClaimed();
   renderTeaser();
   show('s-result');
 }
@@ -269,7 +270,7 @@ function renderTeaser() {
       <div class="unlock">
         <div class="eyebrow">Your full report is ready</div>
         <h2 class="display">Unlock it free.</h2>
-        <p class="sub">Create your free One Percent account to see the rest and keep it in your member portal.</p>
+        <p class="sub">Enter your name and email. Your full report opens right here, and we save it to a free portal account for you.</p>
         <ul>
           <li>What each of your ${def.dimensions.length} scores means for you, and the exact answers behind it</li>
           <li>${def.mode === 'profile' ? 'Your type in depth: its strengths, its blind spot and your runner-up' : 'Your strongest area, and the one to focus on first'}</li>
@@ -282,14 +283,10 @@ function renderTeaser() {
           <input id="u-name" autocomplete="name" required>
           <label for="u-email">Email</label>
           <input id="u-email" type="email" autocomplete="email" required>
-          <label for="u-pass">Create a password (8+ characters)</label>
-          <input id="u-pass" type="password" autocomplete="new-password" minlength="8" required>
           <div class="form-msg" id="u-msg" role="status" aria-live="polite"></div>
           <button class="btn btn-red btn-block" type="submit" id="u-go">Unlock my full report</button>
-          <div class="or">OR</div>
-          <button class="btn btn-white btn-block" type="button" id="u-google">Continue with Google</button>
         </form>
-        <p class="fine">Already a member? <a href="/login?next=${encodeURIComponent(next)}">Log in to see your report</a>. Free, no card needed. By creating an account you agree to our <a href="/terms">terms</a> and <a href="/privacy">privacy policy</a>.</p>
+        <p class="fine">No password needed now. We will create your free One Percent portal account, save this report to your profile, and email you a link to set your password. Already a member? <a href="/login?next=${encodeURIComponent(next)}">Log in instead</a>. By continuing you agree to our <a href="/terms">terms</a> and <a href="/privacy">privacy policy</a>.</p>
       </div>
     </div>`;
 
@@ -299,42 +296,60 @@ function renderTeaser() {
   $('unlock-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     msg('');
-    const displayName = $('u-name').value.trim();
+    const name = $('u-name').value.trim();
     const email = $('u-email').value.trim();
-    const password = $('u-pass').value;
-    if (!displayName) return msg('Please enter your name.');
+    if (!name) return msg('Please enter your name.');
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return msg('Please enter a valid email.');
-    if (password.length < 8) return msg('Your password needs at least 8 characters.');
     $('u-go').disabled = true;
+    $('u-go').textContent = 'Opening your report…';
     try {
-      const user = await signupEmail({ email, password, displayName });
-      track('sign_up', { method: 'email', assessment: slug, fb: 'CompleteRegistration' });
-      await unlock(user);
+      const r = scoreAssessment(def, state.answers);
+      const res = await httpsCallable(functions, 'claimAssessment')(Object.assign({ name, email }, payloadFor(r)));
+      const out = (res && res.data) || {};
+      track('sign_up', { method: 'assessment_email', assessment: slug, fb: 'CompleteRegistration' });
+      state.claimed = { email, status: out.status, emailed: !!out.emailed };
+      save();
+      showClaimed();
     } catch (err) {
-      const code = err && err.code;
-      if (code === 'auth/email-already-in-use') {
-        msg('You already have an account with that email. Use "Log in" below and your report will be waiting.');
-      } else if (code === 'auth/weak-password') {
-        msg('Please choose a stronger password.');
-      } else {
-        msg((err && err.message) || 'Something went wrong. Please try again.');
-      }
-    } finally {
-      const b = $('u-go'); if (b) b.disabled = false;
+      msg((err && err.message) || 'Something went wrong. Please try again.');
+      const b = $('u-go'); if (b) { b.disabled = false; b.textContent = 'Unlock my full report'; }
     }
   });
+}
 
-  $('u-google').addEventListener('click', async () => {
-    msg('');
-    try {
-      const user = await loginGoogle();
-      track('sign_up', { method: 'google', assessment: slug, fb: 'CompleteRegistration' });
-      await unlock(user);
-    } catch (err) {
-      if (err && err.code === 'auth/popup-closed-by-user') return;
-      msg((err && err.message) || 'Google sign-in did not complete.');
-    }
-  });
+// The status line under a report unlocked by name and email.
+function claimedNote(c) {
+  if (c.status === 'existing') return `You already have a portal account with ${c.email}. Log in to see this saved in your profile.`;
+  return c.emailed
+    ? `Your portal account is ready. Check ${c.email} for a link to set your password.`
+    : 'Your portal account is ready. Use "Forgot password" on the login page with your email to set your password.';
+}
+
+function showClaimed() {
+  unlocked = true;
+  const r = scoreAssessment(def, state.answers);
+  renderFull(r, cleanProfile(state.profile), claimedNote(state.claimed), state.answers);
+  show('s-result');
+  track('assessment_unlocked', { assessment: slug, fb: 'Lead' });
+}
+
+// What the server needs to save a result, from either unlock path.
+function payloadFor(r) {
+  const dims = {};
+  r.dims.forEach((d) => { dims[d.key] = d.score; });
+  return {
+    slug,
+    mode: def.mode,
+    score: r.overall,
+    label: headlineFor(def, r),
+    oneLine: buildReport(def, r).oneLine,
+    dims,
+    highest: r.highest,
+    lowest: r.lowest,
+    profile: cleanProfile(state.profile),
+    answers: def.questions.map((_, i) => Number(state.answers[i]) || 0),
+    utm: utm()
+  };
 }
 
 async function unlock(user) {
@@ -353,19 +368,7 @@ async function unlock(user) {
   }
   savedOnce = true;
   try {
-    const dims = {};
-    r.dims.forEach((d) => { dims[d.key] = d.score; });
-    await httpsCallable(functions, 'submitAssessment')({
-      slug,
-      score: r.overall,
-      label: headlineFor(def, r),
-      dims,
-      highest: r.highest,
-      lowest: r.lowest,
-      profile,
-      answers: def.questions.map((_, i) => Number(state.answers[i]) || 0),
-      utm: utm()
-    });
+    await httpsCallable(functions, 'submitAssessment')(payloadFor(r));
     state.savedFor = user.uid;
     save();
     setSaved('Saved to your member portal');

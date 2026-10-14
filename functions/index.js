@@ -14497,16 +14497,13 @@ function isPriorityAssessmentLead(role, teamSize) {
   return runsOrg && teamSize === '1-10';
 }
 
-exports.submitAssessment = onCall({ secrets: [sendgridKey] }, async (request) => {
-  const uid = request.auth && request.auth.uid;
-  if (!uid) throw new HttpsError('unauthenticated', 'Create a free account to save your results.');
-  const db = admin.firestore();
-  const data = request.data || {};
+// Turns a client payload into a stored result. Scores are computed in the
+// browser (the definitions live there), so everything is clamped and
+// allowlisted here rather than trusted.
+function parseAssessmentPayload(data) {
   const slug = String(data.slug || '');
   const meta = Object.prototype.hasOwnProperty.call(ASSESSMENT_SLUGS, slug) ? ASSESSMENT_SLUGS[slug] : null;
   if (!meta) throw new HttpsError('invalid-argument', 'Unknown assessment.');
-
-  await rateLimitCaller(db, request, { action: 'submitAssessment', max: 30, windowSec: 600 });
 
   const pct = (v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
   const key = (v) => (/^[a-z][a-zA-Z0-9]{0,39}$/.test(String(v || '')) ? String(v) : null);
@@ -14533,50 +14530,63 @@ exports.submitAssessment = onCall({ secrets: [sendgridKey] }, async (request) =>
     ? data.answers.slice(0, 30).map((v) => { const n = Math.round(Number(v)); return n >= 1 && n <= 5 ? n : 0; })
     : [];
 
-  const result = {
-    slug,
-    answers,
-    title: meta.title,
-    category: meta.category,
-    score: pct(data.score),
-    label: short(data.label, 80),
-    dims,
-    highest: key(data.highest),
-    lowest: key(data.lowest),
-    profile: { role, teamSize },
-    utm
+  return {
+    meta,
+    // Only ever emailed back to the address that asked for it.
+    oneLine: short(data.oneLine, 200),
+    result: {
+      slug,
+      mode: data.mode === 'profile' ? 'profile' : 'score',
+      answers,
+      title: meta.title,
+      category: meta.category,
+      score: pct(data.score),
+      label: short(data.label, 80),
+      dims,
+      highest: key(data.highest),
+      lowest: key(data.lowest),
+      profile: { role, teamSize },
+      utm
+    }
   };
+}
 
+// Saves a result to users/{uid}/assessments/{slug} and mirrors it into the
+// CRM (tags, activity, and an owner email for a priority lead). The result
+// is saved even if the CRM step fails. Returns { priority, crm }.
+async function recordAssessment(db, uid, { meta, result }, { authEmail, source } = {}) {
   const FV = admin.firestore.FieldValue;
-  const resultRef = db.collection('users').doc(uid).collection('assessments').doc(slug);
+  const resultRef = db.collection('users').doc(uid).collection('assessments').doc(result.slug);
   const prior = await resultRef.get();
   await resultRef.set(Object.assign({}, result, {
     completedAt: FV.serverTimestamp(),
     takenCount: FV.increment(1)
   }, prior.exists ? {} : { firstCompletedAt: FV.serverTimestamp() }), { merge: true });
 
-  // CRM: best-effort. The result is saved either way.
+  const { role, teamSize } = result.profile;
+  const utm = result.utm;
   const priority = isPriorityAssessmentLead(role, teamSize);
+  let crm = null;
   try {
     const userRef = db.collection('users').doc(uid);
     let userSnap = await userRef.get();
-    // A visitor who just created their account here races onUserCreated,
-    // which creates their CRM contact. Give it a moment so both paths land on
-    // the same contact instead of each creating one.
+    // A just-created account races onUserCreated, which creates its CRM
+    // contact. Give it a moment so both paths land on the same contact
+    // instead of each creating one.
     for (let i = 0; i < 4 && !(userSnap.exists && userSnap.data().crmContactId); i++) {
       await new Promise((r) => setTimeout(r, 1000));
       userSnap = await userRef.get();
     }
     const user = userSnap.exists ? userSnap.data() : {};
-    if (!user.email && request.auth.token && request.auth.token.email) user.email = request.auth.token.email;
-    const crm = await syncMemberToCrm(db, uid, user, {
-      source: 'Assessment',
+    if (!user.email && authEmail) user.email = authEmail;
+    crm = await syncMemberToCrm(db, uid, user, {
+      source: source || 'Assessment',
       activity: {
         type: 'assessment',
         actorName: 'Assessments',
         description: `Took ${meta.title}: ${result.label || result.score}`
-          + (dims && Object.keys(dims).length ? ` (score ${result.score})` : ''),
-        meta: { slug, score: result.score, label: result.label, lowest: result.lowest, highest: result.highest, role, teamSize, utm }
+          + (Object.keys(result.dims).length ? ` (score ${result.score})` : ''),
+        meta: { slug: result.slug, score: result.score, label: result.label, lowest: result.lowest, highest: result.highest, role, teamSize, utm }
       }
     });
     if (crm) {
@@ -14608,10 +14618,172 @@ exports.submitAssessment = onCall({ secrets: [sendgridKey] }, async (request) =>
       }
     }
   } catch (e) {
-    console.error('[submitAssessment] CRM sync failed:', e && e.message);
+    console.error('[recordAssessment] CRM sync failed:', e && e.message);
+  }
+  return { priority, crm };
+}
+
+// The email a visitor gets after giving their name and email for a report:
+// their headline result and the link into their portal. For a new account
+// the button sets their password; for an existing one it logs them in.
+function assessmentResultsEmail({ firstName, title, score, label, oneLine, actionUrl, isNew }) {
+  const hi = firstName ? `Hi ${firstName},` : 'Hi,';
+  const headline = label ? `${label}${score != null ? ` (${score} out of 100)` : ''}` : `${score} out of 100`;
+  const button = isNew ? 'Set your password and see your report' : 'Log in to see your report';
+  const portalLine = isNew
+    ? 'We created your free One Percent portal account with this email. Set a password to open your full report any time, along with every other free assessment.'
+    : 'Your result is saved in your One Percent portal. Log in to open your full report.';
+  const subject = `Your ${title} results`;
+  const text = [
+    hi, '',
+    `Thank you for taking ${title}. Your result: ${headline}.`,
+    oneLine ? `\n${oneLine}` : '',
+    '', portalLine, '',
+    `${button}: ${actionUrl}`,
+    '', isNew ? 'This link expires in about an hour. If it does, use "Forgot password" on the login page with this email.' : '',
+    '', 'Anthony Brown Sr.', 'The One Percent'
+  ].join('\n');
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;">
+    <p style="font-size:15px;">${textToHtml(hi)}</p>
+    <p style="font-size:15px;">Thank you for taking <strong>${textToHtml(title)}</strong>.</p>
+    <div style="border:1px solid #eee;border-left:4px solid #E60306;border-radius:8px;padding:16px 18px;margin:18px 0;">
+      <div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#888;">Your result</div>
+      <div style="font-size:22px;font-weight:700;margin-top:4px;">${textToHtml(headline)}</div>
+      ${oneLine ? `<p style="font-size:14px;color:#444;margin:8px 0 0;">${textToHtml(oneLine)}</p>` : ''}
+    </div>
+    <p style="font-size:15px;">${textToHtml(portalLine)}</p>
+    <p style="margin:22px 0;"><a href="${actionUrl}" style="background:#E60306;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;">${button}</a></p>
+    ${isNew ? '<p style="font-size:12px;color:#888;">This link expires in about an hour. If it does, use "Forgot password" on the login page with this email.</p>' : ''}
+    <p style="font-size:14px;margin-top:24px;">Anthony Brown Sr.<br>The One Percent</p>
+  </div>`;
+  return { subject, text, html };
+}
+
+/**
+ * submitAssessment — a signed-in member saves their result.
+ */
+exports.submitAssessment = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Create a free account to save your results.');
+  const db = admin.firestore();
+  const payload = parseAssessmentPayload(request.data || {});
+  await rateLimitCaller(db, request, { action: 'submitAssessment', max: 30, windowSec: 600 });
+  const authEmail = request.auth.token && request.auth.token.email;
+  const { priority } = await recordAssessment(db, uid, payload, { authEmail });
+  return { ok: true, priority };
+});
+
+/**
+ * claimAssessment — a visitor gives their name and email to unlock their
+ * report. No password step: this creates their portal account, saves the
+ * result to it, and emails them a link to set their password. That one
+ * email stands in for the standard welcome email.
+ *
+ * An email that already has an account is never signed in or changed from
+ * here, since anyone can type any address. Its result is saved only when
+ * that member has no result for this assessment yet (so a stranger cannot
+ * overwrite a real one), and they are emailed a login link instead.
+ */
+exports.claimAssessment = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  const name = String(data.name || '').trim().slice(0, 120);
+  const email = normalizeEmail(data.email).slice(0, 160);
+  if (!name) throw new HttpsError('invalid-argument', 'Please enter your name.');
+  if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
+  const payload = parseAssessmentPayload(data);
+  await rateLimitCaller(db, request, { action: 'claimAssessment', max: 8, windowSec: 600 });
+
+  const FV = admin.firestore.FieldValue;
+  const { meta, result, oneLine } = payload;
+  const firstName = name.split(/\s+/)[0] || '';
+
+  let uid = null;
+  let isNew = false;
+  try {
+    uid = (await admin.auth().getUserByEmail(email)).uid;
+  } catch (e) {
+    if (!(e && e.code === 'auth/user-not-found')) throw new HttpsError('internal', 'Could not set up your account. Please try again.');
+  }
+  if (!uid) {
+    try {
+      uid = (await admin.auth().createUser({ email, displayName: name, emailVerified: false })).uid;
+      isNew = true;
+    } catch (e) {
+      // Two submits at once: the other one created it.
+      if (e && e.code === 'auth/email-already-exists') uid = (await admin.auth().getUserByEmail(email)).uid;
+      else throw new HttpsError('internal', 'Could not set up your account. Please try again.');
+    }
   }
 
-  return { ok: true, priority };
+  const userRef = db.collection('users').doc(uid);
+  if (isNew) {
+    // Same shape ensureUserDoc writes at a normal signup. The welcome email
+    // is held as "sending" so onUserCreated skips it; the results email
+    // below is this account's welcome.
+    await userRef.set({
+      email,
+      displayName: name,
+      role: email === OWNER_EMAIL ? 'owner' : 'user',
+      companyId: null,
+      tier: 'individual',
+      signupSource: 'assessment',
+      createdAt: FV.serverTimestamp(),
+      lastActiveAt: FV.serverTimestamp(),
+      welcomeEmailStatus: 'sending',
+      welcomeEmailAttemptedAt: FV.serverTimestamp()
+    }, { merge: true });
+  }
+
+  let saved = true;
+  if (!isNew) {
+    const prior = await userRef.collection('assessments').doc(result.slug).get();
+    if (prior.exists) saved = false;
+  }
+  const rec = saved
+    ? await recordAssessment(db, uid, payload, { authEmail: email, source: 'Assessment' })
+    : { priority: isPriorityAssessmentLead(result.profile.role, result.profile.teamSize), crm: null };
+
+  const reportPath = `/assessments/${result.slug}`;
+  let actionUrl = `${APP_BASE_URL}/login?next=${encodeURIComponent(reportPath)}`;
+  let emailed = false;
+  try {
+    if (isNew) actionUrl = await admin.auth().generatePasswordResetLink(email, { url: `${APP_BASE_URL}${reportPath}` });
+    if (emailConfigured()) {
+      const msg = assessmentResultsEmail({
+        firstName, title: meta.title, score: Object.keys(result.dims).length ? result.score : null,
+        label: result.label, oneLine, actionUrl, isNew
+      });
+      const customArgs = { type: isNew ? 'welcome' : 'assessment', uid };
+      if (rec.crm && rec.crm.companyId && rec.crm.contactId) {
+        customArgs.companyId = rec.crm.companyId;
+        customArgs.contactId = rec.crm.contactId;
+      }
+      const { messageId } = await sendEmail({
+        to: email,
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject: msg.subject,
+        text: msg.text,
+        html: msg.html,
+        customArgs
+      });
+      emailed = true;
+      if (isNew) {
+        await userRef.set({
+          welcomeEmailStatus: 'sent', welcomeEmailSentAt: FV.serverTimestamp(), welcomeEmailMessageId: messageId
+        }, { merge: true });
+      }
+    }
+  } catch (e) {
+    console.error('[claimAssessment] results email failed:', e && e.message);
+  }
+  if (isNew && !emailed) {
+    // Leave it for the standard welcome retry (submitOnboarding / owner sync).
+    try { await userRef.set({ welcomeEmailStatus: 'failed', welcomeEmailError: 'assessment email not sent' }, { merge: true }); } catch (e) {}
+  }
+
+  return { ok: true, status: isNew ? 'created' : 'existing', saved, emailed, priority: rec.priority };
 });
 
 // Exposed for the assessments test, which checks this list against the

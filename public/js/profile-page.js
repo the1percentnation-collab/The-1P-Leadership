@@ -163,6 +163,14 @@ function renderEdit(me) {
           </div>
         </section>
 
+        <section class="profile-card" id="my-assessments">
+          <div class="profile-card-head">
+            <h2>My assessments</h2>
+            <p>Private: only you can see these. Open any one for your full report.</p>
+          </div>
+          <div id="my-assessments-list" class="profile-save-status">Loading…</div>
+        </section>
+
         <section class="profile-section" id="privacy-section">
           <div class="profile-section-head">
             <h3>Privacy &amp; your data</h3>
@@ -183,6 +191,8 @@ function renderEdit(me) {
       </main>
     </div>
   `;
+
+  renderMyAssessments(me.uid);
 
   $('avatar-file').addEventListener('change', async (e) => {
     const f = e.target.files && e.target.files[0];
@@ -286,6 +296,36 @@ function renderEdit(me) {
       deleteBtn.disabled = false;
     }
   });
+}
+
+// Free assessment results (users/{uid}/assessments, written by the
+// submitAssessment / claimAssessment functions), newest first.
+async function renderMyAssessments(uid) {
+  const box = $('my-assessments-list');
+  if (!box) return;
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'assessments'));
+    const rows = [];
+    snap.forEach((d) => rows.push(d.data()));
+    rows.sort((a, b) => ((b.completedAt && b.completedAt.toMillis && b.completedAt.toMillis()) || 0)
+      - ((a.completedAt && a.completedAt.toMillis && a.completedAt.toMillis()) || 0));
+    if (!rows.length) {
+      box.innerHTML = `<p>You have not taken one yet. <a href="/assessments">Browse the free assessments</a>.</p>`;
+      return;
+    }
+    box.innerHTML = `<div style="display:grid;gap:10px;">${rows.map((r) => {
+      const when = r.completedAt && r.completedAt.toDate
+        ? r.completedAt.toDate().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+      // Personality-type results have a type, not a score out of 100.
+      const hasScore = r.mode !== 'profile';
+      return `<a href="/assessments/${encodeURIComponent(r.slug)}" style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid rgba(255,255,255,0.1);border-radius:12px;text-decoration:none;color:inherit;">
+        <span><strong>${escapeHtml(r.title || r.slug)}</strong><br><span style="opacity:.7;font-size:13px;">${escapeHtml(r.label || '')}${when ? ' · ' + escapeHtml(when) : ''}</span></span>
+        <span style="white-space:nowrap;">${hasScore ? `<strong style="font-size:20px;">${Number(r.score) || 0}</strong><span style="opacity:.6;font-size:12px;">/100</span> ` : ''}<span style="color:var(--red,#E60306);">View →</span></span>
+      </a>`;
+    }).join('')}<a href="/assessments" style="font-size:14px;">Take another free assessment →</a></div>`;
+  } catch (e) {
+    box.textContent = 'Could not load your assessments right now.';
+  }
 }
 
 function profileCompletion(me) {
