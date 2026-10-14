@@ -494,6 +494,61 @@ export const COURSES = [
     ]
   },
   {
+    // ─── The Focus Tax (free short reads) ────────────────────────────────
+    // Four short pieces on the subjects the Brief does not cover: open loops,
+    // the list versus the calendar, meetings and working memory, and decision
+    // load. Free, all published at once, no drip. Content and the Firestore
+    // doc are written by scripts/seed-focus-tax.js.
+    slug: 'the-focus-tax',
+    title: 'The Focus Tax',
+    short: 'Focus Tax',
+    subtitle: 'Short reads on focus, capacity, and the cost of an unstructured day.',
+    status: 'live',
+    eyebrow: 'Free · Four short reads',
+    category: 'Mindset & Personal Growth',
+    price: 0,
+    priceNote: 'Free. Read all four in under twenty minutes.',
+    contentSource: 'firestore',
+    certificate: false,
+    commitment: false,
+    whatYoullLearn: [
+      'Why unfinished commitments cost you capacity whether you work on them or not.',
+      'Why a to-do list lets you overcommit and a calendar does not.',
+      'How to hold a meeting without trying to hold it in your head.',
+      'Why the exhausting part of a day is usually the deciding, not the work.'
+    ],
+    requirements: [
+      'No prerequisites. Each piece stands on its own.',
+      'About three minutes per read, plus the exercise if you want it.',
+      'A calendar you are willing to actually use.'
+    ],
+    includes: [
+      'Four short reads, all open from the start',
+      'A workbook with every piece: one reflection, one action, four prompts',
+      'Key takeaways for each piece',
+      'Sources named in plain language at the end of every read',
+      'Read on desktop and mobile'
+    ],
+    description: [
+      'Most advice about focus tells you to want it more. That has never worked, because ' +
+      'wanting was not the missing piece. These four reads are about the mechanics instead: ' +
+      'what an open loop costs, what a list cannot do, what a meeting asks of you, and what ' +
+      'deciding forty times before lunch takes out of the day.',
+      'Each one is short on purpose. Read the piece, run the one thing at the end, move on.'
+    ],
+    curriculum: [
+      {
+        title: 'The four pieces',
+        lessons: [
+          { t: '001: The Tab You Never Closed. What an open loop costs you', d: '3 min read' },
+          { t: '002: Why Your To-Do List Keeps Lying to You. A list has no capacity', d: '3 min read' },
+          { t: '003: How to Run a Meeting When Your Brain Won\'t Stay in the Room', d: '3 min read' },
+          { t: '004: You Do Not Need More Focus, You Need Fewer Decisions', d: '4 min read' }
+        ]
+      }
+    ]
+  },
+  {
     slug: 'mindset-foundations',
     title: 'Mindset Foundations',
     short: 'Mindset',

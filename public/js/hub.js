@@ -998,7 +998,7 @@ async function renderExplore() {
   row.innerHTML = items.map((i) => {
     const href = hrefFor(i, 'dashboard');
     const eyebrow = i.onSale ? 'On sale'
-      : (i.status === 'live' ? (i.kind === 'course' ? 'Enroll now' : 'Available')
+      : (i.status === 'live' ? (i.kind === 'course' ? (i.isFree ? 'Free' : 'Enroll now') : 'Available')
         : (i.status === 'preorder' ? 'Pre-order' : whenLabel(i)));
     const price = i.label
       ? `${i.onSale ? `<s style="color:var(--gray-mid);margin-right:6px;">${escapeHtml(i.originalLabel)}</s>` : ''}${escapeHtml(i.label)}`
