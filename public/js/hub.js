@@ -568,72 +568,6 @@ function renderContinueCard() {
   `;
 }
 
-// ─── Course arc ───────────────────────────────────────────────────────────
-
-// Every enrolled course gets a roadmap now, not just the one whose modules
-// happened to be hardcoded in JS.
-function renderModuleMap(slug) {
-  const section = $('hub-progress');
-  const slot = $('hub-module-map');
-  const link = $('hub-progress-link');
-  if (!section || !slot) return;
-
-  const enrolled = enrolledCourses({ includeToolkit: false });
-  const primary = primaryCourse();
-  const target = slug || (primary && primary.course.slug);
-  const course = enrolled.find((c) => c.slug === target);
-  const completion = course ? completions.get(course.slug) : null;
-
-  if (!course || !completion || !completion.modules.length) {
-    section.hidden = true;
-    return;
-  }
-  section.hidden = false;
-  if (link) link.href = `/courses.html?course=${encodeURIComponent(course.slug)}`;
-
-  renderCourseSwitch(course.slug);
-
-  const nextId = (completion.modules.find((m) => !completion.completed.has(m.id)) || {}).id;
-  slot.innerHTML = completion.modules.map((m) => {
-    const done = completion.completed.has(m.id);
-    const isCurrent = m.id === nextId && !done;
-    const state = done ? 'is-done' : (isCurrent ? 'is-current' : 'is-todo');
-    const marker = done ? '✓' : String(m.id).padStart(2, '0');
-    const href = `/courses.html?course=${encodeURIComponent(course.slug)}&module=${m.id}`;
-    return `
-      <a class="hub-mm-cell ${state}" href="${href}" title="${escapeHtml(m.title)}">
-        <span class="hub-mm-marker">${marker}</span>
-        <span class="hub-mm-body">
-          <span class="hub-mm-pillar">${escapeHtml(m.tagLabel || m.pillar || '')}</span>
-          <span class="hub-mm-title">${escapeHtml(m.title)}</span>
-          <span class="hub-mm-duration">${escapeHtml(m.duration || '')}</span>
-        </span>
-      </a>
-    `;
-  }).join('');
-}
-
-function renderCourseSwitch(activeSlug) {
-  const wrap = $('hub-course-switch');
-  if (!wrap) return;
-  const withModules = enrolledCourses({ includeToolkit: false }).filter((c) => {
-    const comp = completions.get(c.slug);
-    return comp && comp.modules.length;
-  });
-  if (withModules.length < 2) { wrap.hidden = true; return; }
-
-  wrap.hidden = false;
-  wrap.innerHTML = withModules.map((c) => {
-    const comp = completions.get(c.slug);
-    return `<button class="hub-course-pill${c.slug === activeSlug ? ' is-active' : ''}" type="button"
-              data-slug="${escapeHtml(c.slug)}">${escapeHtml(c.short || c.title)} <em>${comp.pct}%</em></button>`;
-  }).join('');
-
-  wrap.querySelectorAll('.hub-course-pill').forEach((b) => {
-    b.addEventListener('click', () => renderModuleMap(b.dataset.slug));
-  });
-}
-
 // ─── Activity feed ────────────────────────────────────────────────────────
 
 let activityCache = { community: null, you: null };
@@ -777,7 +711,7 @@ function renderEventsTable() {
 
 // ─── Continue watching ────────────────────────────────────────────────────
 //
-// One card per enrolled course, ordered by momentum: the course furthest
+// One continue prompt per enrolled course, ordered by momentum: the course furthest
 // along and still open comes first, finished courses last. Same ranking the
 // continue card uses, so the two never disagree about what you are working on.
 
@@ -809,6 +743,26 @@ function renderWatching() {
     const sub = completion.total
       ? `${completion.done} of ${completion.total} modules`
       : 'Not started';
+
+    // The card is a continue prompt: it names the one module to open next,
+    // so the member never has to scan a roadmap to find their place.
+    let nextLabel, nextTitle, cta;
+    if (next) {
+      const isFirst = completion.done === 0;
+      const tag = next.tagLabel || `Module ${next.id}`;
+      nextLabel = `${isFirst ? 'Start here' : 'Up next'} · ${tag}${next.duration ? ` · ${next.duration}` : ''}`;
+      nextTitle = next.title;
+      cta = isFirst ? 'Start' : 'Resume';
+    } else if (completion.isComplete) {
+      nextLabel = 'Complete';
+      nextTitle = 'Every module done. Return when you need to recalibrate.';
+      cta = 'Revisit';
+    } else {
+      nextLabel = 'Coming soon';
+      nextTitle = 'Modules are on the way.';
+      cta = 'Open course';
+    }
+
     return `
       <a class="hub-watch-card" href="${href}">
         <span class="hub-watch-art">${art}<span class="hub-watch-mark">${mark}</span></span>
@@ -817,6 +771,11 @@ function renderWatching() {
           <span class="hub-watch-title">${escapeHtml(course.title)}</span>
           <span class="progress-bar"><span class="progress-fill" style="width:${completion.pct}%"></span></span>
           <span class="hub-watch-meta">${escapeHtml(sub)} · ${completion.pct}%</span>
+          <span class="hub-watch-next">
+            <span class="hub-watch-next-label">${escapeHtml(nextLabel)}</span>
+            <span class="hub-watch-next-title">${escapeHtml(nextTitle)}</span>
+          </span>
+          <span class="hub-watch-cta">${escapeHtml(cta)} →</span>
         </span>
       </a>`;
   }).join('');
@@ -1168,7 +1127,6 @@ async function main() {
   renderStatbar({ streak, stats, hasNewCommunity });
   renderContinueCard();
   renderWatching();
-  renderModuleMap();
   renderEventsTable();
   renderMe(currentUser(), profile, stats, streak);
   renderChart(stats);
