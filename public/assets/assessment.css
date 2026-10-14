@@ -362,3 +362,6 @@ details.dim summary::after{margin-left:10px;}
   .kbd-tip{display:none;}
 }
 @media (hover:none){ .kbd-tip{display:none;} }
+.res-tool-btns{display:flex;gap:18px;flex-wrap:wrap;}
+#retake-top{color:var(--white);font-weight:600;}
+@media print{ .res-tool-btns{display:none !important;} }

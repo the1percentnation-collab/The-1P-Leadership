@@ -118,6 +118,7 @@ function renderQuestion() {
   const qt = $('q-text');
   qt.classList.remove('q-in'); void qt.offsetWidth; qt.classList.add('q-in');
   $('q-back').style.visibility = i === 0 ? 'hidden' : 'visible';
+  $('q-restart').style.visibility = Object.keys(state.answers).length ? 'visible' : 'hidden';
 }
 
 function answer(v) {
@@ -139,6 +140,15 @@ function answer(v) {
     }
   }, 220);
 }
+
+$('q-restart').addEventListener('click', () => {
+  if (!Object.keys(state.answers).length) return;
+  if (!window.confirm('Start over? Your answers so far will be cleared.')) return;
+  clearTimeout(advancing);
+  state = Object.assign({ answers: {}, profile: {}, index: 0, finished: false }, state.contact ? { contact: state.contact } : {});
+  save();
+  renderQuestion();
+});
 
 $('q-back').addEventListener('click', () => {
   clearTimeout(advancing);
@@ -313,6 +323,10 @@ function renderTeaser() {
     </div>`;
 
   const msg = (t) => { $('u-msg').textContent = t || ''; $('u-msg').className = 'form-msg' + (t ? ' err' : ''); };
+  if (state.contact) {
+    $('u-name').value = state.contact.name || '';
+    $('u-email').value = state.contact.email || '';
+  }
   if (!firebaseReady) msg('Accounts are unavailable right now. Check your connection and refresh.');
 
   let checkedEmail = null;
@@ -344,7 +358,7 @@ function renderTeaser() {
     track('sign_up', { method: 'assessment_email', assessment: slug, fb: 'CompleteRegistration' });
     // They gave their details in good faith, so a server problem never
     // holds the report back. The save is retried on their next visit.
-    state.claimed = out.error ? { email, status: 'pending', name } : { email, status: out.status, emailed: !!out.emailed };
+    state.claimed = out.error ? { email, status: 'pending', name } : { email, name, status: out.status, emailed: !!out.emailed };
     save();
     showClaimed.retried = true; // just tried twice; the next visit retries
     showClaimed();
@@ -504,7 +518,10 @@ function renderFull(r, profile, status, answers) {
     ${resultHead(r, rep)}
     <div class="res-tools">
       <span class="saved" id="saved">${status === 'saving' ? 'Saving to your portal…' : esc(status || '')}</span>
-      <button class="text-btn" type="button" id="print">Print or save as PDF</button>
+      <span class="res-tool-btns">
+        <button class="text-btn" type="button" id="retake-top">↻ Retake the assessment</button>
+        <button class="text-btn" type="button" id="print">Print or save as PDF</button>
+      </span>
     </div>
 
     <section class="panel">
@@ -552,18 +569,27 @@ function renderFull(r, profile, status, answers) {
     <div class="res-actions no-print">
       <a class="btn btn-red" href="/dashboard">Go to my portal</a>
       <a class="btn btn-ghost" href="/assessments">All assessments</a>
-      <button class="btn btn-ghost" type="button" id="retake">Retake</button>
+      <button class="btn btn-ghost" type="button" id="retake">↻ Retake the assessment</button>
     </div>`;
 
   $('print').addEventListener('click', () => { track('assessment_print', { assessment: slug }); window.print(); });
-  $('retake').addEventListener('click', () => {
-    state = { answers: {}, profile: {}, index: 0, finished: false };
-    save();
-    unlocked = false;
-    savedOnce = false;
-    renderIntro();
-    show('s-intro');
-  });
+  $('retake').addEventListener('click', retake);
+  $('retake-top').addEventListener('click', retake);
+}
+
+// Back to statement one with a clean slate. The name and email they already
+// gave are kept to prefill the unlock form, so a retake never asks twice.
+function retake() {
+  const c = state.claimed;
+  state = { answers: {}, profile: {}, index: 0, finished: false };
+  if (c && c.email) state.contact = { name: c.name || '', email: c.email };
+  save();
+  unlocked = false;
+  savedOnce = false;
+  showClaimed.retried = false;
+  track('assessment_retake', { assessment: slug });
+  renderQuestion();
+  show('s-quiz');
 }
 
 // Printing opens every area so the PDF has the whole report.
