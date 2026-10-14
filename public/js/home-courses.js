@@ -314,10 +314,15 @@ function renderShop(items) {
   else host.querySelectorAll('.fade-up').forEach((el) => el.classList.add('visible'));
 }
 
+// Used by every public front-door page (index, start, books). Each one carries
+// only the hosts it needs: the homepage has the launch banner, /start has the
+// banner and the course grid, /books has the banner and the shop. Whatever is
+// present gets filled; whatever is absent is skipped.
 export async function init() {
   const grid = document.getElementById(GRID_ID);
   const section = document.getElementById('courses');
-  if (!grid || !section) return;
+  const hasGrid = !!(grid && section);
+  if (!hasGrid && !document.getElementById(BANNER_ID) && !document.getElementById(SHOP_ID)) return;
 
   // One load for the whole page: the grid, the launch banner and the shop all
   // read the same normalised catalog, so what the homepage shows can't drift
@@ -329,7 +334,7 @@ export async function init() {
     // Fail closed: we can't tell which courses are published, and showing an
     // unpublished one on the marketing site is worse than showing none.
     console.warn('[home-courses] catalog load failed; hiding the section', e);
-    hideCoursesSection(section);
+    if (hasGrid) hideCoursesSection(section);
     const banner = document.getElementById(BANNER_ID);
     if (banner) banner.hidden = true;
     return;
@@ -358,6 +363,7 @@ export async function init() {
   renderLaunchBanner(items);
   renderShop(items);
 
+  if (!hasGrid) return;
   if (!courses.length) {
     hideCoursesSection(section);
     return;

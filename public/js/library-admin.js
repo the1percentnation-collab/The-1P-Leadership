@@ -101,7 +101,7 @@ export async function saveBook(bookId, fields, { isNew = false, newFile = false 
     status: fields.status === 'hidden' ? 'hidden' : 'live',
     // Where "Get this book" leads: the bundle for a course book, the book's
     // own sales section for a free preview.
-    buyHref: String(fields.buyHref || '').trim() || (fields.openAccess === true ? '/#shop' : '/bundle.html'),
+    buyHref: String(fields.buyHref || '').trim() || (fields.openAccess === true ? '/books' : '/bundle.html'),
     // A free sample anyone with the link can read, no account needed.
     openAccess: fields.openAccess === true,
     updatedAt: serverTimestamp()

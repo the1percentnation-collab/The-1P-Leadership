@@ -110,7 +110,7 @@ function openModal(book) {
 
           <div class="crm-form-row">
             <label>Buy link</label>
-            <input class="c-input" id="b-buy" value="${escapeHtml(b.buyHref || '')}" placeholder="/#shop for a preview, /bundle.html for a course book" />
+            <input class="c-input" id="b-buy" value="${escapeHtml(b.buyHref || '')}" placeholder="/books for a preview, /bundle.html for a course book" />
             <div class="pre-modal-sub">Where “Get the book” leads. A preview shows it on every page. Leave empty for the default.</div>
           </div>
 
