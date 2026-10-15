@@ -1263,6 +1263,13 @@ service cloud.firestore {
     // client should be able to pull in bulk. Direct reads stay open to the
     // owner for debugging; every write path is server-side.
     // ────────────────────────────────────────────────────────────────
+    // Alignment Audit scorecards, written in the owner's builder
+    // (/scorecards.html). They hold a client's private findings, so they are
+    // the owner's alone: no admin, no member, no Cloud Function reads them.
+    match /auditScorecards/{scorecardId} {
+      allow read, write: if isOwner();
+    }
+
     match /betaTesters/{testerEmail} {
       allow read: if isOwner();
       allow write: if false;

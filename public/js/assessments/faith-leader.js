@@ -149,5 +149,5 @@ export default {
     }
   ],
   related: ['burnout-check', 'delegation-audit', 'find-your-why'],
-  cta: { label: 'Book a free Alignment Audit', href: '/book-a-call' }
+  cta: { label: 'Request a free Alignment Audit', href: '/corporate#audit' }
 };

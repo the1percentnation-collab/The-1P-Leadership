@@ -101,6 +101,7 @@ const STAFF_GROUPS = [
   { label: 'Admin', items: [
     { key: 'admin',               href: '/admin.html',                label: 'Admin Console',  icon: 'admin',     requires: 'admin' },
     { key: 'beta-admin',          href: '/beta-admin.html',           label: 'Beta',           icon: 'flask',     requires: 'owner' },
+    { key: 'scorecards',          href: '/scorecards.html',           label: 'Audit Scorecards', icon: 'resources', requires: 'owner' },
     { key: 'owner',               href: '/owner.html',                label: 'Owner Console',  icon: 'key',       requires: 'owner' }
   ] }
 ];

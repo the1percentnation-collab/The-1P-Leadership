@@ -68,6 +68,17 @@ service firebase.storage {
                    && request.resource.contentType.matches('audio/.*');
     }
 
+    // auditScorecards/{id}/{fileName} — a client's logo for their Alignment
+    // Scorecard. Owner only, like the scorecard itself; the builder shows it
+    // through the download URL it saved.
+    match /auditScorecards/{scorecardId}/{fileName} {
+      allow read: if request.auth != null && request.auth.token.role == 'owner';
+      allow delete: if request.auth != null && request.auth.token.role == 'owner';
+      allow create, update: if request.auth != null && request.auth.token.role == 'owner'
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/(png|jpeg|webp|svg\\+xml)');
+    }
+
     // avatars/{uid}/{filename} — readable by any signed-in user, writable only by that uid.
     match /avatars/{uid}/{filename} {
       allow read: if request.auth != null;

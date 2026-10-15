@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Audit Scorecards | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="/assets/scorecard.css">
+  <style>
+    .sc-row-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .sc-pill { display: inline-block; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+    .sc-pill-draft, .sc-pill-open { background: rgba(160,160,160,.15); color: #c9c9c9; }
+    .sc-pill-unscheduled { background: rgba(120,120,120,.12); color: #8a8a8a; }
+    .sc-pill-due-soon { background: rgba(212,175,55,.14); color: #E4C65B; }
+    .sc-pill-overdue { background: rgba(230,3,6,.15); color: #FF7070; }
+    .sc-pill-delivered { background: rgba(74,222,128,.1); color: #4ade80; }
+    .sc-muted { font-size: 12px; color: var(--gray-light); }
+    .sc-head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+    .sc-head-row h2 { margin: 0; }
+
+    /* Editor: form on the left, the live document on the right. */
+    .sc-editor { display: grid; grid-template-columns: minmax(360px, 1fr) minmax(0, 1.15fr); gap: 24px; align-items: start; }
+    @media (max-width: 1100px) { .sc-editor { grid-template-columns: minmax(0, 1fr); } .sc-preview-wrap { position: static; } }
+    @media (max-width: 560px) { .console-body { padding: 16px; } .sc-form .card { padding: 16px; } }
+    .sc-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+    .sc-toolbar .grow { flex: 1; }
+    .sc-save-state { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--gray-mid); }
+    .sc-form .card { margin-bottom: 16px; }
+    .sc-form h3 { font-family: var(--font-display); font-size: 20px; letter-spacing: .04em; margin: 0 0 12px; font-weight: 400; }
+    .sc-form .hint { font-size: 12px; color: var(--gray-light); margin: -6px 0 12px; }
+    .sc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 560px) { .sc-grid2 { grid-template-columns: 1fr; } }
+    .sc-f { margin-bottom: 12px; }
+    .sc-f > label { display: block; font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--gray-light); margin-bottom: 6px; }
+    .sc-f input:not([type="color"]):not([type="file"]), .sc-f select, .sc-f textarea {
+      width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--white); font-family: var(--font-body); font-size: 14px; padding: 9px 12px;
+    }
+    .sc-f textarea { min-height: 84px; resize: vertical; line-height: 1.5; }
+    .sc-f input:focus, .sc-f select:focus, .sc-f textarea:focus { outline: none; border-color: rgba(204,27,27,0.5); }
+    .sc-f select option { background: var(--charcoal); color: var(--white); }
+    .sc-count { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--gray-mid); text-align: right; margin-top: 3px; }
+    .sc-count.near { color: #E4C65B; }
+    .sc-brand-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .sc-brand-row input[type="color"] { width: 44px; height: 36px; border: 1px solid var(--border); border-radius: 8px; background: transparent; padding: 2px; cursor: pointer; }
+    .sc-logo-thumb { height: 36px; max-width: 120px; object-fit: contain; background: #fff; border-radius: 6px; padding: 3px; }
+    .sc-area-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; background: rgba(255,255,255,0.02); }
+    .sc-area-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+    .sc-area-top strong { font-size: 14px; }
+    .sc-area-top select { width: auto !important; min-width: 150px; }
+    .sc-area-desc { font-size: 12px; color: var(--gray-mid); margin: -4px 0 10px; }
+    .sc-area-card.is-skipped .sc-area-text { display: none; }
+
+    /* Preview: the real document, scaled to the column. */
+    .sc-preview-wrap { position: sticky; top: 84px; }
+    .sc-fit { font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 8px; }
+    .sc-fit.ok { color: #4ade80; }
+    .sc-fit.over { color: #FF7070; }
+    .sc-preview { overflow: hidden; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,.45); background: #fff; }
+    .sc-preview .sc-doc { transform-origin: top left; }
+    .sc-missing { font-size: 12px; color: var(--gray-light); margin-top: 10px; }
+    .sc-missing ul { margin: 6px 0 0; padding-left: 18px; }
+
+    /* Printing prints the scorecard and nothing else, at full size. */
+    #print-root { display: none; }
+    @page { size: letter; margin: 0; }
+    @media print {
+      body { background: #fff !important; }
+      .console-shell { display: none !important; }
+      #print-root { display: block; }
+      #print-root .sc-doc { width: 8.5in; height: 11in; min-height: 0; overflow: hidden; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+  <div class="console-shell">
+    <div class="console-topbar">
+      <div class="console-topbar-left">
+        <a class="console-brand" href="/dashboard.html" aria-label="The One Percent Academy">
+          <img src="/assets/academy-logo.png" alt="" class="console-brand-mark">
+        </a>
+        <a class="back-to-main" href="/owner.html">&larr; Owner Console</a>
+      </div>
+      <div class="user-chip" id="user-chip"></div>
+    </div>
+
+    <div class="console-body">
+      <div id="gate-msg"></div>
+
+      <!-- List: audit requests waiting on a scorecard, and every scorecard -->
+      <div id="view-list" style="display:none;">
+        <div class="card">
+          <div class="sc-head-row">
+            <h2>Audit requests</h2>
+            <button class="btn btn-ghost btn-sm" type="button" id="btn-blank">New blank scorecard</button>
+          </div>
+          <p class="sc-muted" style="margin-bottom:14px;">Requests from the Alignment Audit form that do not have a scorecard yet. Start one after the session and the client's details carry over.</p>
+          <table class="data-table">
+            <thead><tr><th>Requested by</th><th>Organization</th><th>Call with</th><th>Team</th><th>Requested</th><th></th></tr></thead>
+            <tbody id="requests-body"><tr><td colspan="6" class="sc-muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="sc-head-row"><h2>Scorecards</h2></div>
+          <p class="sc-muted" style="margin-bottom:14px;">Each one is due 48 hours after its session. Overdue ones float to the top.</p>
+          <table class="data-table">
+            <thead><tr><th>Organization</th><th>Prepared for</th><th>Session</th><th>Due</th><th>Status</th><th></th></tr></thead>
+            <tbody id="scorecards-body"><tr><td colspan="6" class="sc-muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Editor -->
+      <div id="view-editor" style="display:none;">
+        <div class="sc-toolbar">
+          <a class="btn btn-ghost btn-sm" href="/scorecards.html">&larr; All scorecards</a>
+          <span class="sc-save-state" id="save-state"></span>
+          <span class="grow"></span>
+          <button class="btn btn-ghost btn-sm" type="button" id="btn-delete">Delete</button>
+          <button class="btn btn-ghost btn-sm" type="button" id="btn-print">Download PDF</button>
+          <button class="btn btn-primary btn-sm" type="button" id="btn-deliver">Mark delivered</button>
+        </div>
+
+        <div class="sc-editor">
+          <form class="sc-form" id="sc-form" novalidate autocomplete="off">
+            <div class="card">
+              <h3>The client</h3>
+              <div class="sc-grid2">
+                <div class="sc-f"><label for="f-orgName">Organization</label><input id="f-orgName" data-k="orgName"></div>
+                <div class="sc-f"><label for="f-sessionDate">Session date</label><input id="f-sessionDate" data-k="sessionDate" type="date"></div>
+                <div class="sc-f"><label for="f-preparedFor">Prepared for</label><input id="f-preparedFor" data-k="preparedFor"></div>
+                <div class="sc-f"><label for="f-preparedRole">Their role</label><input id="f-preparedRole" data-k="preparedRole"></div>
+                <div class="sc-f"><label for="f-format">Session</label><select id="f-format" data-k="format"></select></div>
+                <div class="sc-f"><label for="f-teamSize">Team size</label><input id="f-teamSize" data-k="teamSize" placeholder="e.g. 10–40"></div>
+              </div>
+              <div class="sc-f">
+                <label>Team branding</label>
+                <div class="sc-brand-row">
+                  <input type="color" id="f-accent" data-k="accent" aria-label="Team accent color">
+                  <span class="sc-muted">Accent color for their scores</span>
+                  <img id="logo-thumb" class="sc-logo-thumb" alt="" hidden>
+                  <label class="btn btn-ghost btn-sm" for="f-logo" style="margin:0; cursor:pointer;">Upload logo</label>
+                  <input type="file" id="f-logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+                  <button class="btn btn-ghost btn-sm" type="button" id="btn-logo-remove" hidden>Remove logo</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3>The headline</h3>
+              <p class="hint">One sentence the leader will repeat to their boss. What is actually going on.</p>
+              <div class="sc-f"><textarea id="f-headline" data-k="headline" aria-label="Headline"></textarea></div>
+            </div>
+
+            <div class="card">
+              <h3>The six areas</h3>
+              <p class="hint">Rate what you saw, then write it plainly. Mark an area "Not assessed" if it did not come up and it prints greyed out.</p>
+              <div id="areas"></div>
+            </div>
+
+            <div class="card">
+              <h3>The 90-day plan</h3>
+              <div class="sc-f"><label for="f-priority">Start here</label><select id="f-priority" data-k="priority"></select></div>
+              <div id="plan"></div>
+            </div>
+
+            <div class="card">
+              <h3>Recommended next step</h3>
+              <div class="sc-grid2">
+                <div class="sc-f"><label for="f-program">Program</label><select id="f-program" data-k="recommendation.program"></select></div>
+                <div class="sc-f"><label for="f-delivery">Format</label><select id="f-delivery" data-k="recommendation.delivery"></select></div>
+              </div>
+              <div class="sc-f"><label for="f-why">Why this fits</label><textarea id="f-why" data-k="recommendation.why"></textarea></div>
+              <div class="sc-f"><label for="f-note">Personal note (optional)</label><textarea id="f-note" data-k="note"></textarea></div>
+            </div>
+          </form>
+
+          <div class="sc-preview-wrap">
+            <div class="sc-fit" id="fit"></div>
+            <div class="sc-preview" id="preview"></div>
+            <div class="sc-missing" id="missing"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="print-root" aria-hidden="true"></div>
+  <script type="module" src="js/scorecards.js"></script>
+</body>
+</html>

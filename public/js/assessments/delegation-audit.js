@@ -149,5 +149,5 @@ export default {
     }
   ],
   related: ['leadership-readiness', 'team-alignment', 'burnout-check'],
-  cta: { label: 'Book a free Alignment Audit', href: '/book-a-call' }
+  cta: { label: 'Request a free Alignment Audit', href: '/corporate#audit' }
 };
