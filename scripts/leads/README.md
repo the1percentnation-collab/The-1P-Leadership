@@ -20,10 +20,16 @@ in the role and to find one real detail for the first line of the email.
 
 ## Setup (once)
 
+Needs Python 3.10 or newer. The `python3` built into macOS is 3.9, which is
+too old: pip then fails with `No matching distribution found for
+scrapegraphai`. Install 3.13 from python.org/downloads and use `python3.13`
+explicitly.
+
 ```bash
 cd scripts/leads
-python3 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
 playwright install chromium
 export ANTHROPIC_API_KEY=sk-ant-...
