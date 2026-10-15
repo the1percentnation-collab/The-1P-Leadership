@@ -15,7 +15,7 @@ export const TEAMS = [
     key: 'coaching',
     label: 'The Coaching Team',
     org: 'The One Percent Nation',
-    intro: 'Certified 1P coaches deliver the workshops, intensives, and monthly coaching inside our corporate programs. Same frameworks, same standard, more rooms.'
+    intro: 'Certified 1P coaches deliver the workshops and monthly coaching inside our corporate programs. Same frameworks, same standard, more rooms.'
   },
   {
     key: 'financial',
@@ -33,9 +33,9 @@ export const ROLES = [
     open: true,
     title: '1P Certified Coach',
     meta: ['Delivery team', 'Remote and on-site', 'Per engagement'],
-    summary: 'Deliver One Percent workshops, intensives, and monthly team coaching inside corporate annual programs, using the framework you are certified in.',
+    summary: 'Deliver One Percent workshops and monthly team coaching inside corporate annual programs, using the framework you are certified in.',
     does: [
-      'Facilitate workshops and intensives built on One Percent content modules',
+      'Facilitate workshops built on One Percent content modules',
       'Run monthly coaching sessions for teams inside annual programs',
       'Report progress against the measures each client agreed to up front'
     ],
