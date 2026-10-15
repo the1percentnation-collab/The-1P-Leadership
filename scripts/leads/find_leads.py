@@ -77,8 +77,11 @@ BUYER_TITLES = {
              r"sales manager|vp,? (of )?revenue",
     "leadership": r"\bceo\b|chief executive|\bcoo\b|chief operating|president|"
                   r"founder|owner|managing (director|partner)|general manager",
+    # Only the person who signs off on spend. A church with a large staff has
+    # a dozen pastors; the associate, youth and children's pastors are not it.
     "faith": r"executive director|senior pastor|lead pastor|head pastor|"
-             r"\bpastor\b|bishop|ceo|president|founder",
+             r"executive pastor|senior minister|lead minister|\brector\b|bishop|"
+             r"\bceo\b|president|founder",
 }
 INFLUENCER_TITLES = r"\bhr\b|human resources|people (ops|operations)|talent|" \
                     r"learning|l&d|training|development director|culture"
@@ -88,6 +91,9 @@ GENERIC_INBOX = re.compile(
     r"church|welcome|connect|media|sales|marketing|jobs|careers|hr|billing)@",
     re.I,
 )
+# Stripped from names so a campaign's first-name merge reads "Hi Jon", not
+# "Hi Rev.". The title column still carries the role.
+HONORIFIC_RE = re.compile(r"^((rev|dr|pastor|bishop|mr|mrs|ms|fr|elder)\.?\s+)+", re.I)
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
 CSV_HEADERS = ["Name", "Email", "Phone", "Company", "Tags", "Title", "Source URL"]
@@ -249,7 +255,7 @@ def rows_for_target(url: str, field: str, org_override: str, max_pages: int, inc
             role = "generic-inbox" if generic else classify(title, field)
             tags = ["scraped", f"field:{field}", role]
             rows.append({
-                "Name": name.strip(),
+                "Name": HONORIFIC_RE.sub("", name.strip()),
                 "Email": email,
                 "Phone": (phone or "").strip(),
                 "Company": company.strip(),
