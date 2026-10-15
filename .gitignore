@@ -31,3 +31,8 @@ tests/firestore-debug.log
 
 # Emulator-only secrets written by tests/purchase-e2e.test.mjs
 functions/.secret.local
+
+# Lead finder output (personal data, keep out of git)
+scripts/leads/out/
+scripts/leads/.venv/
+scripts/leads/targets.csv

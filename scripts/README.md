@@ -4,6 +4,10 @@ One-off migrations and seeds that run against Firestore with Admin
 credentials, from your machine. They are not deployed and nothing calls them
 automatically.
 
+`leads/` is separate: a Python lead finder that builds a CRM import CSV from
+public organization websites. It never touches Firestore. See
+[`leads/README.md`](leads/README.md).
+
 ## One-time setup
 
 ```bash

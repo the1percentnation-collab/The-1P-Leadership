@@ -1,0 +1,6 @@
+url,field,organization
+# One organization per row. Point at the homepage or, better, the staff/leadership page.
+# field: sales | leadership | faith. It decides which titles count as buyers.
+https://www.example-church.org/staff,faith,Example Church
+https://www.example-company.com/about/leadership,leadership,
+https://www.example-saas.com/team,sales,
