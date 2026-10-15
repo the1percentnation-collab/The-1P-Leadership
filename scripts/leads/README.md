@@ -22,18 +22,24 @@ in the role and to find one real detail for the first line of the email.
 
 Needs Python 3.10 or newer. The `python3` built into macOS is 3.9, which is
 too old: pip then fails with `No matching distribution found for
-scrapegraphai`. Install 3.13 from python.org/downloads and use `python3.13`
-explicitly.
+scrapegraphai`. Use Python 3.13, the version this was tested on.
+
+The cleanest route is [uv](https://docs.astral.sh/uv/), which downloads the
+right Python itself and leaves the system one alone:
 
 ```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh   # once, then open a new Terminal window
 cd scripts/leads
-python3.13 -m venv .venv
+uv venv --python 3.13
 source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 playwright install chromium
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+With Homebrew instead: `brew install python@3.13`, then
+`python3.13 -m venv .venv` and `pip install -r requirements.txt` in place of
+the two `uv` lines.
 
 The model defaults to `claude-opus-5-5`. For large runs where cost matters
 more than accuracy, set `export LEADS_MODEL=claude-haiku-5-5`.
