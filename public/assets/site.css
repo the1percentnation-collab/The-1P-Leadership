@@ -278,10 +278,14 @@ main, footer { position: relative; z-index: 1; }
 .problem-copy p { color: var(--gray-300); font-size: 18px; margin: 0 0 18px; max-width: 54ch; }
 .problem-copy p.strong { color: var(--white); font-weight: 500; }
 .symptoms { list-style: none; margin: 30px 0 0; padding: 0; border-top: 1px solid var(--line); }
-.symptoms li { padding: 16px 12px; margin: 0 -12px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 90px 1fr; gap: 16px; align-items: baseline; transition: background .2s; }
-.symptoms li:hover { background: var(--red-glow); }
+.symptoms li { border-bottom: 1px solid var(--line); }
+.symptoms a { padding: 16px 12px; margin: 0 -12px; display: grid; grid-template-columns: 90px 1fr auto; gap: 16px; align-items: baseline; color: inherit; text-decoration: none; transition: background .2s; }
+.symptoms a:hover, .symptoms a:focus-visible { background: var(--red-glow); }
 .symptoms .who { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--red); }
 .symptoms .what { font-size: 17px; }
+.symptoms .go { color: var(--red); opacity: 0; transform: translateX(-6px); transition: opacity .2s, transform .2s; }
+.symptoms a:hover .go, .symptoms a:focus-visible .go { opacity: 1; transform: none; }
+@media (hover: none) { .symptoms .go { opacity: 1; transform: none; } }
 
 /* ===== Homepage: paths ===== */
 .doors { display: grid; grid-template-columns: 1.35fr 1fr; gap: 20px; }
@@ -480,7 +484,9 @@ footer.site-footer { background: var(--black-2); padding-block: 64px 32px; borde
 }
 @media (max-width: 520px) {
   .logo-text .l1 { font-size: 12px; }
-  .symptoms li { grid-template-columns: 1fr; gap: 4px; }
+  .symptoms a { grid-template-columns: 1fr auto; gap: 4px 16px; }
+  .symptoms .what { grid-column: 1; }
+  .symptoms .go { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
   .hero-actions .btn { width: 100%; }
   .foot-top { grid-template-columns: 1fr; }
 }
