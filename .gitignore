@@ -36,3 +36,4 @@ functions/.secret.local
 scripts/leads/out/
 scripts/leads/.venv/
 scripts/leads/targets.csv
+__pycache__/
