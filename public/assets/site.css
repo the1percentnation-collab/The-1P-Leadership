@@ -320,10 +320,14 @@ main, footer { position: relative; z-index: 1; }
 .cta-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 
 /* ===== Final CTA band ===== */
+/* Cursor light: site-fx.js sets --mx/--my and fades --spot in while the pointer is over the band. */
+@property --spot { syntax: '<number>'; initial-value: 0; inherits: false; }
 .final {
+  --spot: 0; transition: --spot 0.6s ease;
   position: relative; overflow: hidden; isolation: isolate; padding-block: clamp(64px, 9vw, 112px);
   /* Lit from the top left, falling into shadow bottom right, so the band reads as a surface instead of a flat fill. */
   background:
+    radial-gradient(560px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 150, 130, calc(var(--spot) * 0.4)), rgba(255, 60, 50, calc(var(--spot) * 0.12)) 40%, transparent 70%),
     radial-gradient(ellipse 60% 90% at 12% 0%, rgba(255, 90, 80, 0.45), transparent 60%),
     radial-gradient(ellipse 55% 85% at 95% 100%, rgba(40, 0, 0, 0.45), transparent 70%),
     linear-gradient(135deg, #F2140F 0%, var(--red) 38%, var(--red-dark) 78%, #7A0103 100%);
@@ -349,6 +353,7 @@ main, footer { position: relative; z-index: 1; }
   color: rgba(0, 0, 0, 0.1); -webkit-text-stroke: 2px rgba(255, 255, 255, 0.16);
   text-shadow: 0 30px 60px rgba(0, 0, 0, 0.18);
 }
+.final.lit { --spot: 1; }
 .final .wrap { position: relative; }
 .final-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 40px; align-items: end; }
 .final-grid > * { min-width: 0; }

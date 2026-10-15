@@ -122,6 +122,25 @@
     hero.addEventListener('touchcancel', release, { passive: true });
   }
 
+  /* ── Closing CTA band: cursor light ────────────────────────── */
+  // Same idea as the hero spotlight, on the red band: a warm light follows the
+  // pointer (mouse or finger) and fades out when it leaves.
+  if (!reduce) {
+    document.querySelectorAll('.final').forEach(function (band) {
+      var px = 0, py = 0, frame = 0;
+      var paint = function () { frame = 0; band.style.setProperty('--mx', px + 'px'); band.style.setProperty('--my', py + 'px'); };
+      band.addEventListener('pointermove', function (e) {
+        var r = band.getBoundingClientRect();
+        px = e.clientX - r.left; py = e.clientY - r.top;
+        if (!band.classList.contains('lit')) { paint(); band.classList.add('lit'); }
+        else if (!frame) frame = requestAnimationFrame(paint);
+      }, { passive: true });
+      var off = function () { band.classList.remove('lit'); };
+      band.addEventListener('pointerleave', off, { passive: true });
+      band.addEventListener('pointercancel', off, { passive: true });
+    });
+  }
+
   /* ── Hero: drifting particles ──────────────────────────────── */
   if (hero && !reduce && hero.hasAttribute('data-particles')) {
     var canvas = document.createElement('canvas');
