@@ -1,0 +1,100 @@
+/* Alignment Scorecard: the printed, client-facing document.
+ *
+ * One US Letter page, white paper, co-branded: The One Percent mark and red
+ * for the frame, the client's logo and accent color for their scores. The
+ * builder (scorecards.html) shows this same markup as a live preview, and
+ * printing that page prints only the document. Rendered by renderScorecard()
+ * in js/scorecard-core.js.
+ */
+.sc-doc {
+  --sc-ink: #121212;
+  --sc-soft: #5a5a5a;
+  --sc-line: #e3e3e3;
+  --sc-red: #E60306;
+  --sc-accent: #E60306;
+  box-sizing: border-box;
+  width: 8.5in;
+  min-height: 11in;
+  padding: 0.5in 0.55in 0.4in;
+  background: #fff;
+  color: var(--sc-ink);
+  font-family: 'Outfit', Arial, sans-serif;
+  font-size: 10.5px;
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  border-top: 8px solid var(--sc-accent);
+  position: relative;
+}
+.sc-doc *, .sc-doc *::before, .sc-doc *::after { box-sizing: border-box; }
+.sc-doc p { margin: 0; }
+.sc-k, .sc-eyebrow, .sc-meta, .sc-legal, .sc-areas thead th, .sc-rating, .sc-rec-format, .sc-index-l {
+  font-family: 'Space Mono', 'Courier New', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.sc-k { font-size: 8.5px; color: var(--sc-red); margin-bottom: 5px; }
+.sc-empty { color: #b0b0b0; font-style: italic; }
+
+/* Header */
+.sc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
+.sc-brand { display: flex; align-items: center; gap: 12px; min-height: 52px; }
+.sc-1p { width: 46px; height: 46px; border-radius: 6px; object-fit: cover; }
+.sc-x { color: #bdbdbd; font-size: 18px; }
+.sc-client-logo { max-height: 52px; max-width: 170px; object-fit: contain; }
+.sc-client-name { font-family: 'Bebas Neue', Impact, sans-serif; font-size: 24px; line-height: 1; max-width: 200px; }
+.sc-title { text-align: right; }
+.sc-eyebrow { font-size: 8.5px; color: var(--sc-soft); }
+.sc-title h1 { font-family: 'Bebas Neue', Impact, sans-serif; font-weight: 400; font-size: 40px; line-height: 0.95; margin: 4px 0 2px; letter-spacing: 0.01em; }
+.sc-org { font-size: 13px; font-weight: 600; }
+.sc-meta { margin-top: 14px; padding: 8px 0; border-top: 1px solid var(--sc-line); border-bottom: 1px solid var(--sc-line); font-size: 8.5px; color: var(--sc-soft); }
+.sc-dot { margin: 0 8px; color: #c4c4c4; }
+
+/* Summary */
+.sc-summary { display: grid; grid-template-columns: 1.6in 1fr; gap: 22px; margin-top: 16px; align-items: start; }
+.sc-index-n { font-family: 'Bebas Neue', Impact, sans-serif; font-size: 56px; line-height: 0.9; color: var(--sc-accent); }
+.sc-index-l { font-size: 8px; color: var(--sc-soft); margin-top: 4px; }
+.sc-bar { height: 6px; background: #efefef; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+.sc-bar span { display: block; height: 100%; background: var(--sc-accent); }
+.sc-headline p { font-size: 15px; line-height: 1.4; font-weight: 500; }
+
+/* Areas */
+.sc-areas { width: 100%; border-collapse: collapse; margin-top: 18px; table-layout: fixed; }
+.sc-areas thead th { font-size: 8px; color: var(--sc-soft); font-weight: 400; text-align: left; padding: 0 10px 6px 0; border-bottom: 2px solid var(--sc-ink); }
+.sc-areas thead th:first-child { width: 1.55in; }
+.sc-areas tbody th, .sc-areas td { text-align: left; vertical-align: top; padding: 8px 10px 8px 0; border-bottom: 1px solid var(--sc-line); }
+.sc-areas td { font-size: 10px; }
+.sc-areas tbody th { font-weight: 400; padding-left: 8px; border-left: 3px solid transparent; }
+.sc-areas tr.is-first th { border-left-color: var(--sc-red); }
+.sc-areas tr.is-skipped { color: #a5a5a5; }
+.sc-area { font-weight: 600; font-size: 11px; }
+.sc-pips { display: flex; gap: 3px; margin: 5px 0 3px; }
+.sc-pips i { width: 14px; height: 5px; border-radius: 2px; background: #e6e6e6; }
+.sc-pips i.on { background: var(--sc-accent); }
+.sc-rating { font-size: 7.5px; color: var(--sc-soft); }
+
+/* Plan */
+.sc-plan { margin-top: 16px; }
+.sc-plan-head { display: flex; justify-content: space-between; align-items: baseline; }
+.sc-start { font-size: 10px; color: var(--sc-soft); }
+.sc-start strong { color: var(--sc-ink); }
+.sc-plan-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.sc-plan-col { background: #f6f6f6; border-radius: 6px; padding: 10px 12px; border-top: 3px solid var(--sc-accent); }
+.sc-plan-col .sc-k { color: var(--sc-ink); }
+
+/* Recommendation + sign-off */
+.sc-foot { display: grid; grid-template-columns: 1.25fr 1fr; gap: 22px; margin-top: 16px; align-items: end; }
+.sc-rec { border: 1px solid var(--sc-line); border-left: 4px solid var(--sc-red); border-radius: 6px; padding: 10px 14px; }
+.sc-rec-t { font-family: 'Bebas Neue', Impact, sans-serif; font-size: 22px; line-height: 1; margin-bottom: 4px; }
+.sc-rec-format { font-size: 8px; color: var(--sc-soft); vertical-align: middle; margin-left: 6px; }
+.sc-sign { text-align: right; }
+.sc-note { font-size: 10px; color: var(--sc-soft); margin-bottom: 10px !important; text-align: left; }
+.sc-sig { font-family: 'Bebas Neue', Impact, sans-serif; font-size: 20px; line-height: 1; }
+.sc-sig-r { font-size: 9px; color: var(--sc-soft); }
+
+.sc-legal { margin-top: auto; padding-top: 14px; display: flex; justify-content: space-between; font-size: 7.5px; color: #9a9a9a; }
+
+@media print {
+  .sc-empty { display: none; }
+  .sc-rec.is-empty { visibility: hidden; }
+}

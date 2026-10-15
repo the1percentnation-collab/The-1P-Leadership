@@ -59,7 +59,7 @@ function roleAllows(roleRequired, role) {
 const PRIVILEGED_HREFS = [
   '/crm.html', '/manage-store.html', '/manage-courses.html', '/manage-library.html',
   '/manage-products.html', '/manage-announcements.html', '/manage-affiliates.html',
-  '/certification-admin.html', '/admin.html', '/beta-admin.html', '/owner.html'
+  '/certification-admin.html', '/admin.html', '/beta-admin.html', '/scorecards.html', '/owner.html'
 ];
 
 /**

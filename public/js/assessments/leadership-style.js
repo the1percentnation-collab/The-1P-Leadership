@@ -108,5 +108,5 @@ export default {
     { dim: 'driver', text: 'I am comfortable being direct, even when the message is hard to hear.' }
   ],
   related: ['leadership-readiness', 'delegation-audit', 'team-alignment'],
-  cta: { label: 'Book a free Alignment Audit', href: '/book-a-call' }
+  cta: { label: 'Request a free Alignment Audit', href: '/corporate#audit' }
 };

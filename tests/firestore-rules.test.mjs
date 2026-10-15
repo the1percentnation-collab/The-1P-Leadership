@@ -428,6 +428,20 @@ await t('member CANNOT write their own assessment score (server-only)',
 await t('signed-out visitor CANNOT read assessment results',
   () => assertFails(getDoc(doc(anon, 'users/solo/assessments/alignment-scorecard'))));
 
+// ── Alignment Audit scorecards (owner's builder only) ─────────────────────
+await t('owner CAN create an audit scorecard',
+  () => assertSucceeds(setDoc(doc(owner, 'auditScorecards/sc1'), { orgName: 'Acme', status: 'draft' })));
+await t('owner CAN read and list audit scorecards',
+  () => assertSucceeds(getDocs(collection(owner, 'auditScorecards'))));
+await t('company admin CANNOT read an audit scorecard',
+  () => assertFails(getDoc(doc(adm, 'auditScorecards/sc1'))));
+await t('member CANNOT read an audit scorecard',
+  () => assertFails(getDoc(doc(solo, 'auditScorecards/sc1'))));
+await t('company admin CANNOT write an audit scorecard',
+  () => assertFails(setDoc(doc(adm, 'auditScorecards/sc2'), { orgName: 'Sneaky' })));
+await t('signed-out visitor CANNOT read an audit scorecard',
+  () => assertFails(getDoc(doc(anon, 'auditScorecards/sc1'))));
+
 await env.cleanup();
 
 let failed = 0;

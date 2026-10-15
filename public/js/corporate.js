@@ -53,6 +53,7 @@ function init() {
       role: $('a-role').value.trim(),
       field: $('a-field').value,
       team_size: $('a-size').value,
+      format: $('a-format').value,
       situation: $('a-problem').value.trim()
     };
     Object.keys(fields).forEach((k) => { if (!fields[k]) delete fields[k]; });
