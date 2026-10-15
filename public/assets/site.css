@@ -462,6 +462,12 @@ footer.site-footer { background: var(--black-2); padding-block: 64px 32px; borde
   .foot-top { grid-template-columns: 1fr 1fr; }
   .foot-brand { grid-column: 1 / -1; }
 }
+/* Phones: each headline line stays on one row ("Releasing Potential." is the
+   widest at ~7.05em), so the type scales to the screen instead of wrapping. */
+@media (max-width: 600px) {
+  .hero-title { font-size: min(60px, calc((100vw - var(--gutter-l) - var(--gutter-r)) / 7.25)); }
+  .hero-title .line { white-space: nowrap; }
+}
 @media (max-width: 680px) {
   .launch-banner-inner { flex-direction: column; align-items: flex-start; }
   .launch-banner-title { font-size: 22px; }
