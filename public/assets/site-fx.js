@@ -165,28 +165,38 @@
     }
   }
 
-  /* ── Hero title: letter scramble on hover ──────────────────── */
+  /* ── Hero title: letter scramble ───────────────────────────
+     Desktop: on hover. Phones have no hover, so there it plays once after
+     the headline reveals and again on every tap of the headline. */
   var title = document.querySelector('.hero-title');
+  var scramble = function () {};
   if (title && !reduce) {
     var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1%!';
-    var timer = null;
-    title.addEventListener('mouseenter', function () {
+    scramble = function () {
       title.querySelectorAll('.red').forEach(function (span) {
         var target = span.querySelector('.word-inner') || span;
         var original = target.dataset.orig || (target.dataset.orig = target.textContent);
+        clearInterval(target._scr);
+        // Hold the word's width so wider random letters can't nudge the line.
+        if (target.classList.contains('word-inner')) target.style.width = target.getBoundingClientRect().width + 'px';
         var it = 0;
-        clearInterval(timer);
-        timer = setInterval(function () {
+        target._scr = setInterval(function () {
           target.textContent = original.split('').map(function (c, i) {
             if (i < it) return original[i];
             if (c === ' ') return ' ';
             return chars[Math.floor(Math.random() * chars.length)];
           }).join('');
-          if (it >= original.length) { clearInterval(timer); target.textContent = original; }
+          if (it >= original.length) {
+            clearInterval(target._scr);
+            target.textContent = original;
+            target.style.width = '';
+          }
           it += 0.5;
         }, 40);
       });
-    });
+    };
+    title.addEventListener('mouseenter', scramble);
+    if (!finePointer) title.addEventListener('click', scramble);
   }
 
   /* ── Magnetic buttons ──────────────────────────────────────── */
@@ -301,12 +311,13 @@
     setTimeout(function () {
       title.querySelectorAll('.red, .outline').forEach(function (el) { el.classList.add('revealed'); });
     }, 650 + words.length * 90);
+    if (!finePointer) setTimeout(scramble, 950 + words.length * 90);
   }
   var eyebrow = document.querySelector('.hero-eyebrow');
   if (eyebrow) setTimeout(function () { eyebrow.classList.add('in'); }, 100);
   var line = document.querySelector('.hero-title-line');
   if (line) line.classList.add('revealed');
   document.querySelectorAll('.hero-reveal').forEach(function (el, i) { setTimeout(function () { el.classList.add('in'); }, 900 + i * 180); });
-  var card = document.querySelector('.hero-card');
-  if (card) card.classList.add('in');
+  // Desktop card beside the copy, and the phone copy under the headline.
+  document.querySelectorAll('.hero-card').forEach(function (card) { card.classList.add('in'); });
 })();

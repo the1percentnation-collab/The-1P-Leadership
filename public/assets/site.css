@@ -203,6 +203,10 @@ main, footer { position: relative; z-index: 1; }
 .hero-card::before { content: ''; position: absolute; inset: 0; border: 1px solid var(--red-line); border-radius: inherit; z-index: 2; pointer-events: none; animation: border-pulse 3s ease-in-out infinite; animation-delay: 1.5s; }
 @keyframes border-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 .hero-card img { width: 100%; height: 100%; object-fit: cover; object-position: 42% center; }
+/* Phones: a short copy of the photo sits between the headline and the intro
+   text, so the face is in the first screen instead of below both buttons. */
+.hero-card--mobile { display: none; }
+.hero-card--contain img { object-fit: contain; object-position: center; background: #000; }
 .hero-card figcaption { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 20px 18px; background: linear-gradient(transparent, rgba(0, 0, 0, 0.85)); display: flex; justify-content: space-between; align-items: end; gap: 12px; z-index: 1; }
 .hero-card .who { font-family: var(--font-display); font-size: 24px; line-height: 1; }
 .hero-card .who small { display: block; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.14em; color: var(--gray-300); margin-top: 6px; text-transform: uppercase; }
@@ -444,13 +448,25 @@ footer.site-footer { background: var(--black-2); padding-block: 64px 32px; borde
 @media (max-width: 860px) {
   .hero-grid, .problem-grid, .doors, .founder-grid, .final-grid, .mm-band, .grid-2 { grid-template-columns: 1fr; }
   .grid-3, .path-steps { grid-template-columns: 1fr; }
-  .hero-card { aspect-ratio: 16 / 11; }
+  .hero-grid > .hero-card { display: none; }
+  .hero-card--mobile { display: block; aspect-ratio: 16 / 10; margin: 0 0 26px; }
+  .hero-card--mobile img { object-position: center 28%; }
+  .hero-card--mobile img[src*="leadership-story-poster"] { object-position: center 22%; }
+  .hero-card--mobile.hero-card--contain img { object-position: center; }
+  .hero-title-line { margin-bottom: 22px; }
+  .anim .hero-card--mobile { transform: translateY(16px); transition-delay: .45s; }
   .founder-visual { max-width: 420px; }
   .founder-badge { left: 12px; }
   .steps { grid-template-columns: 1fr; }
   .step, .step + .step { padding: 24px 0; border-left: 0; border-bottom: 1px solid var(--line); }
   .foot-top { grid-template-columns: 1fr 1fr; }
   .foot-brand { grid-column: 1 / -1; }
+}
+/* Phones: each headline line stays on one row ("Releasing Potential." is the
+   widest at ~7.05em), so the type scales to the screen instead of wrapping. */
+@media (max-width: 600px) {
+  .hero-title { font-size: min(60px, calc((100vw - var(--gutter-l) - var(--gutter-r)) / 7.25)); }
+  .hero-title .line { white-space: nowrap; }
 }
 @media (max-width: 680px) {
   .launch-banner-inner { flex-direction: column; align-items: flex-start; }
