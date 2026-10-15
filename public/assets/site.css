@@ -293,10 +293,25 @@ main, footer { position: relative; z-index: 1; }
 .door-stack { display: grid; gap: 20px; }
 .door-org { padding: 0; overflow: hidden; border-color: var(--red-line); }
 .door-org .door-photo { aspect-ratio: 16 / 9; max-width: 100%; overflow: hidden; border-bottom: 1px solid var(--line); }
+/* Side by side, the right column (member + certification cards) runs taller
+   than this card. Let the photo take up the difference instead of leaving a
+   gap above the buttons. */
+@media (min-width: 1025px) {
+  .door-org .door-photo { flex: 1 1 auto; min-height: 0; }
+  .door-org .door-body { flex: 0 0 auto; }
+}
 .door-org .door-photo img { width: 100%; height: 100%; object-fit: cover; object-position: center 22%; transition: transform .8s var(--ease-out); }
 .door-org:hover .door-photo img { transform: scale(1.04); }
 .door-org .door-body { padding: clamp(24px, 3vw, 36px); display: flex; flex-direction: column; gap: 14px; flex: 1; }
 .door-org .card-label { color: var(--red); }
+/* The certification card leads with the course cover. The art carries the
+   course title, so the frame matches its 3:2 shape and nothing is cropped. */
+.door-coach { padding: 0; overflow: hidden; }
+.door-coach .door-photo { display: block; aspect-ratio: 3 / 2; overflow: hidden; border-bottom: 1px solid var(--line); background: #0b0b0b; }
+.door-coach .door-photo img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform .8s var(--ease-out); }
+.door-coach:hover .door-photo img { transform: scale(1.03); }
+.door-coach .door-body { padding: clamp(24px, 3vw, 36px); display: flex; flex-direction: column; gap: 14px; flex: 1; }
+.door-coach .card-label { color: var(--red); }
 
 /* ===== Method steps ===== */
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line-strong); }
