@@ -24,13 +24,16 @@ let _ownedCache = null;
 export async function libraryAccess({ fresh = false } = {}) {
   if (_ownedCache && !fresh) return _ownedCache;
   const u = currentUser();
-  if (!firebaseReady || !u) return { ids: [], admin: false };
+  if (!firebaseReady || !u) return { ids: [], admin: false, member: false };
   const snap = await getDoc(doc(db, 'users', u.uid));
   const data = snap.exists() ? snap.data() : {};
   const ids = Array.isArray(data.ownedBookIds) ? data.ownedBookIds.map(String) : [];
   // Admins see every book so they can proof an upload before it is sold.
   const admin = data.role === 'admin' || data.role === 'owner';
-  _ownedCache = { ids, admin };
+  // Active members of The One Percent Membership read the whole library
+  // (storage.rules and the bookFile route allow the same).
+  const member = data.membershipActive === true;
+  _ownedCache = { ids, admin, member };
   return _ownedCache;
 }
 
@@ -41,8 +44,8 @@ export function isOpenAccess(book) {
 }
 
 export async function ownsBook(bookId) {
-  const { ids, admin } = await libraryAccess();
-  return admin || ids.includes(bookId);
+  const { ids, admin, member } = await libraryAccess();
+  return admin || member || ids.includes(bookId);
 }
 
 // Free previews that ship with the site itself (public/books/), so their

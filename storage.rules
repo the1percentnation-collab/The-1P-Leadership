@@ -50,7 +50,12 @@ service firebase.storage {
                   || isCourseAdmin()
                   || (request.auth != null
                       && bookId in firestore.get(/databases/(default)/documents/users/$(request.auth.uid))
-                           .data.get('ownedBookIds', []));
+                           .data.get('ownedBookIds', []))
+                  // Active members of The One Percent Membership read the
+                  // whole library (membershipActive is server-written only).
+                  || (request.auth != null
+                      && firestore.get(/databases/(default)/documents/users/$(request.auth.uid))
+                           .data.get('membershipActive', false) == true);
       allow write: if isCourseAdmin()
                    && request.resource.size < 50 * 1024 * 1024
                    && request.resource.contentType.matches('application/epub\\+zip|image/(jpeg|png|webp)');

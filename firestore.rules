@@ -54,6 +54,23 @@ service cloud.firestore {
              .data.get('enrolledCourseSlugs', []);
     }
 
+    // The One Percent Membership opens the courses on config/membership's
+    // includedSlugs to active members. membershipActive and the list are both
+    // server-written. Certifications are excluded here as well as on the
+    // server, so no list edit can ever open them to members.
+    function isActiveMember() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid))
+             .data.get('membershipActive', false) == true;
+    }
+    function memberHasCourse(slug) {
+      return !(slug in ['1p-clc', '1p-clc-leader'])
+        && isActiveMember()
+        && exists(/databases/$(database)/documents/config/membership)
+        && slug in get(/databases/$(database)/documents/config/membership).data.get('includedSlugs', []);
+    }
+
     // Is the caller an admin of company `cid`? We read the company doc and check adminUids.
     function isCompanyAdmin(cid) {
       return isSignedIn()
@@ -138,7 +155,12 @@ service cloud.firestore {
                      // could merge their profile into someone else's contact.
                      && !('crmContactId' in request.resource.data)
                      && !('crmCompanyId' in request.resource.data)
-                     && !('welcomeEmailStatus' in request.resource.data));
+                     && !('welcomeEmailStatus' in request.resource.data)
+                     // Membership is written only by Stripe checkout and the
+                     // webhook; a user who could set it would open every
+                     // membership course and the whole library for free.
+                     && !('membershipActive' in request.resource.data)
+                     && !('membership' in request.resource.data));
       // On UPDATE the privilege fields must be byte-for-byte unchanged from the
       // existing doc. (Owner writes bypass; server writes use the Admin SDK.)
       allow update: if isOwner() || (isSelf(uid)
@@ -154,6 +176,9 @@ service cloud.firestore {
                      // Digital book ownership — same reasoning: storage.rules
                      // hands out the book file on this field alone.
                      && request.resource.data.get('ownedBookIds', []) == resource.data.get('ownedBookIds', [])
+                     // Membership — server-only, same reasoning.
+                     && request.resource.data.get('membershipActive', false) == resource.data.get('membershipActive', false)
+                     && request.resource.data.get('membership', null) == resource.data.get('membership', null)
                      // Referral bookkeeping — server-only, same reasoning as create.
                      && request.resource.data.get('referralToken', '') == resource.data.get('referralToken', '')
                      && request.resource.data.get('referralCredited', false) == resource.data.get('referralCredited', false)
@@ -1022,7 +1047,7 @@ service cloud.firestore {
       // titles and durations into it), and that doc stays world-readable
       // above. Only the lesson bodies moved behind the paywall.
       match /modules/{moduleId} {
-        allow read: if isAnyAdmin() || isEnrolledIn(slug);
+        allow read: if isAnyAdmin() || isEnrolledIn(slug) || memberHasCourse(slug);
         allow create, update, delete: if isAnyAdmin();
       }
 
@@ -1030,7 +1055,7 @@ service cloud.firestore {
       // live weekly call join link (courses/{slug}/private/cohort). The
       // public cohort facts (dates, capacity) stay on the course doc.
       match /private/{docId} {
-        allow read: if isAnyAdmin() || isEnrolledIn(slug);
+        allow read: if isAnyAdmin() || isEnrolledIn(slug) || memberHasCourse(slug);
         allow create, update, delete: if isAnyAdmin();
       }
     }
@@ -1210,8 +1235,10 @@ service cloud.firestore {
     // pages can render without auth; everything else under config
     // (certification thresholds, lead routing) stays admin-only.
     match /config/{docId} {
-      allow read: if docId == 'booking' || isAnyAdmin();
-      allow write: if isAnyAdmin();
+      // config/membership (included courses, founding count) is public so
+      // the membership page can show it, and server-written only.
+      allow read: if docId == 'booking' || docId == 'membership' || isAnyAdmin();
+      allow write: if isAnyAdmin() && docId != 'membership';
     }
 
     // ────────────────────────────────────────────────────────────────

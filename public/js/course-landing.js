@@ -11,8 +11,18 @@ import { launchDateMs, fmtLaunchDate, launchCountdown } from './launch-date.js';
 import { onAuthReady, currentUser } from './auth.js';
 import { firebaseReady, functions, db } from './firebase.js';
 import {
-  collection, query, where, orderBy, limit, getDocs
+  collection, query, where, orderBy, limit, getDocs, doc, getDoc
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { includedSlugs, isCertification, PLANS } from './membership-core.js';
+
+// Courses The One Percent Membership opens (config/membership, public read).
+let _membershipSlugs = new Set();
+async function loadMembershipSlugs() {
+  try {
+    const snap = await getDoc(doc(db, 'config', 'membership'));
+    _membershipSlugs = new Set(includedSlugs(snap.exists() ? snap.data() : null));
+  } catch (e) { _membershipSlugs = new Set(includedSlugs(null)); }
+}
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { escapeHtml, getUserProfile } from './community.js';
 import { renderTopbar } from './topbar.js';
@@ -390,6 +400,8 @@ function purchaseCardHtml(course, { enrolled }) {
         ${planHtml}
         ${billingHtml}
         ${cta}
+        ${!enrolled && _membershipSlugs.has(course.slug) && !isCertification(course.slug, course) ? `
+        <div class="cl-price-note" style="margin-top:10px;">Included in <a href="/membership" style="color:inherit;text-decoration:underline;">The One Percent Membership</a>, from $${PLANS.founding.month} a month, with every other course in it.</div>` : ''}
         <div id="cl-cta-msg" class="cl-cta-msg"></div>
         <ul class="cl-buy-perks">
           ${perks.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}
@@ -646,6 +658,7 @@ async function main() {
   }
 
   document.title = `${course.title} | The One Percent Academy`;
+  if (firebaseReady) await loadMembershipSlugs();
   const enrolled = !!user && isEnrolled(course.slug);
 
   root().innerHTML = `

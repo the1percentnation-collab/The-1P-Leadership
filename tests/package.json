@@ -21,10 +21,11 @@
     "e2e:reader": "bash run-e2e.sh reader",
     "e2e:notify": "bash run-e2e.sh notify",
     "e2e:agreement": "bash run-e2e.sh agreement",
+    "e2e:membership": "bash run-e2e.sh membership",
     "test:beta": "node beta-cohort.test.cjs && node beta-progress.test.mjs",
     "test:commitment": "node commitment.test.mjs",
     "test:assessments": "node assessments.test.mjs",
-    "test:tools": "node focus-tax.test.mjs && node scorecard.test.mjs && node careers.test.mjs && node agreement.test.mjs"
+    "test:tools": "node focus-tax.test.mjs && node scorecard.test.mjs && node careers.test.mjs && node agreement.test.mjs && node membership.test.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
