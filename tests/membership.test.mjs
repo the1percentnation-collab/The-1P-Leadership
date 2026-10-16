@@ -104,4 +104,24 @@ ok('browser and server agree', () => {
   assert.strictEqual(server.planForSignup(100), planForSignup(100));
 });
 
+console.log('membership — books and live sessions are not included');
+
+ok('no rule or server path opens books or members-only events to members', () => {
+  const storage = fs.readFileSync(new URL('../storage.rules', import.meta.url), 'utf8');
+  assert.ok(!/membershipActive/.test(storage), 'storage.rules must not grant books to members');
+  const fn = fs.readFileSync(new URL('../functions/index.js', import.meta.url), 'utf8');
+  assert.ok(!/membersOnly/.test(fn), 'registerForEvent must not gate on membership');
+  const bookFile = fn.slice(fn.indexOf('ownedBookIds.includes(bookId)') - 200, fn.indexOf('ownedBookIds.includes(bookId)') + 200);
+  assert.ok(!/isActiveMember/.test(bookFile), 'bookFile must not open books to members');
+});
+
+ok('the pages never promise the library or a live session as part of the membership', () => {
+  const page = fs.readFileSync(new URL('../public/membership.html', import.meta.url), 'utf8');
+  const included = page.slice(page.indexOf('id="included-list"'), page.indexOf('</ul>', page.indexOf('id="included-list"')));
+  assert.ok(!/librar|live session/i.test(included), 'included list mentions the library or live sessions');
+  const home = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const card = home.slice(home.indexOf('Become a member.'), home.indexOf('href="/membership"', home.indexOf('Become a member.')));
+  assert.ok(!/librar|live session/i.test(card), 'homepage member card mentions the library or live sessions');
+});
+
 console.log(`\n${passed} passed`);
