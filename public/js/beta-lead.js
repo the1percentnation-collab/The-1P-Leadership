@@ -65,8 +65,9 @@ if (form) {
     btn.textContent = 'Sending…';
     msg('');
 
-    // One program in beta for now. Sent as a field so the CRM record says which.
-    const fields = { course: "I Can't: The Course", why: $('beta-why').value.trim() };
+    // Testers sign up once for every course in beta. The owner picks which
+    // courses to grant in the Beta Console when approving them.
+    const fields = { course: 'All courses', why: $('beta-why').value.trim(), feedback_ok: $('beta-consent').checked ? 'yes' : 'no' };
     Object.keys(fields).forEach((k) => { if (!fields[k]) delete fields[k]; });
 
     try {
@@ -76,7 +77,9 @@ if (form) {
         email,
         phone: $('beta-phone').value.trim() || undefined,
         fields,
-        consent: $('beta-consent').checked
+        // Callback-only: /beta is not a declared SMS opt-in page, so the box
+        // is a feedback commitment, never contact consent.
+        consent: false
       });
       form.style.display = 'none';
       $('beta-done').classList.add('show');

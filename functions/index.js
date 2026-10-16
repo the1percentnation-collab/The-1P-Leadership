@@ -39,6 +39,7 @@ const sgMail = require('@sendgrid/mail');
 // The Focus Tax calculator's math, shared with the page (generated from
 // public/js/focus-tax-core.js by scripts/build-focus-tax-server.cjs).
 const { computeFocusTax, WORK_WEEKS: FOCUS_TAX_WEEKS } = require('./focus-tax.js');
+const { careerTags } = require('./careers.js');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
@@ -14190,7 +14191,11 @@ const LEAD_FORMS = {
   // /focus-tax-calculator — someone asked for their Focus Tax report. Tagged
   // with the book it is built on, so calculator leads are the launch list.
   // Team-mode requests also join the corporate pipeline (see submitLeadForm).
-  'focus-tax': { source: 'Focus Tax Calculator', tags: ['Focus Tax Calculator', 'Work Less Gain More'] }
+  'focus-tax': { source: 'Focus Tax Calculator', tags: ['Focus Tax Calculator', 'Work Less Gain More'] },
+  // /join — someone asking about a coaching or financial team role. Tagged
+  // "Recruiting" plus one tag per role (functions/careers.js), so each hiring
+  // track is its own CRM filter. A recruit is not a buyer, so no sales tags.
+  'careers': { source: 'Join the Team', tags: [] }
 };
 
 /**
@@ -14420,6 +14425,8 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
   // A leader pricing their team's Focus Tax is a corporate lead: the same
   // buyer-input math the annual program conversation starts from.
   if (formType === 'focus-tax' && fields.mode === 'team') tags.push('Corporate', 'Focus Tax: Team');
+  // The page sends a role key, never a tag; careerTags maps it to a fixed set.
+  if (formType === 'careers') tags.push(...careerTags(fields.role_key));
   const ref = await upsertCrmContact(db, companyId, {
     name, email, phone, source: form.source, tags
   });

@@ -23,7 +23,7 @@
     "test:beta": "node beta-cohort.test.cjs && node beta-progress.test.mjs",
     "test:commitment": "node commitment.test.mjs",
     "test:assessments": "node assessments.test.mjs",
-    "test:tools": "node focus-tax.test.mjs && node scorecard.test.mjs"
+    "test:tools": "node focus-tax.test.mjs && node scorecard.test.mjs && node careers.test.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",

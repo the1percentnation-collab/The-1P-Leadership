@@ -46,7 +46,6 @@ export const DELIVERY = [
   { key: '', label: 'Format to be decided' },
   { key: 'keynote', label: 'Keynote' },
   { key: 'workshop', label: 'Workshop' },
-  { key: 'intensive', label: 'Intensive' },
   { key: 'retreat', label: 'Retreat' },
   { key: 'annual', label: '12-month program' }
 ];
