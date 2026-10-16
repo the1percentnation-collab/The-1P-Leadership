@@ -71,7 +71,8 @@ ok('the financial team shows the licensing path and the contractor disclosure', 
   const fin = TEAMS.find((t) => t.key === 'financial');
   const path = JSON.stringify(fin.path);
   assert.ok(Array.isArray(fin.path) && fin.path.length >= 4, 'path steps');
-  for (const exam of ['life and health', 'SIE', 'Series 6', 'Series 63']) assert.ok(path.includes(exam), `path names ${exam}`);
+  for (const exam of ['life insurance licensing exam', 'SIE', 'Series 6', 'Series 63']) assert.ok(path.includes(exam), `path names ${exam}`);
+  assert.ok(!/health/i.test(JSON.stringify({ fin, roles: ROLES.filter((r) => r.team === 'financial') })), 'no health license on the financial team');
   assert.ok(/independent contractors/i.test(fin.disclaimer));
   assert.ok(/no salary, no guaranteed income/i.test(fin.disclaimer));
   assert.ok(!/\$\d/.test(path + fin.disclaimer), 'no dollar figures on the financial team');

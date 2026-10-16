@@ -29,7 +29,7 @@ export const TEAMS = [
     path: [
       { title: 'Inquire and talk', text: 'Tell us about you below. If it fits, we sit down and walk through the work, the standard, and how the business runs.' },
       { title: 'Join and clear a background check', text: 'Joining is part of onboarding with the national financial services firm our team is affiliated with. Any onboarding fee is explained in writing before you commit.' },
-      { title: 'Earn your life license', text: 'An online pre-licensing course, then your state\'s life and health licensing exam. You study at your own pace, with the team helping you prepare.' },
+      { title: 'Earn your life license', text: 'An online pre-licensing course, then your state\'s life insurance licensing exam. You study at your own pace, with the team helping you prepare.' },
       { title: 'Train in the field', text: 'Your first client appointments run alongside a licensed field trainer, until you are ready to run them on your own.' },
       { title: 'Add securities, if you choose', text: 'Once you are life licensed, you can pursue the SIE, Series 6, and Series 63 exams. The Series 6 and 63 require a sponsoring broker-dealer, which comes through the firm after you join.' },
       { title: 'Grow into leadership', text: 'Promotions are earned, not bought: by your licensed client work, and by training and developing licensed people on your own team.' }
@@ -73,7 +73,7 @@ export const ROLES = [
     ],
     fits: [
       '18 or older and able to pass a background check',
-      'Holds a state life and health license, or is ready to earn one with the team\'s help',
+      'Holds a state life insurance license, or is ready to earn one with the team\'s help',
       'Coachable: shows up to training, follows the process, and does the reps',
       'Starting part-time around a current job is welcome'
     ]
