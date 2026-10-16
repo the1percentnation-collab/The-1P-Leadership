@@ -62,6 +62,7 @@ function render() {
         <div><div class="team-org">${esc(t.org)}</div><h2 class="team-title">${esc(t.label)}</h2></div>
         <p class="team-intro">${esc(t.intro)}</p>
       </div>
+      ${t.path ? `<div class="team-path-k">How you get started</div><ol class="team-path">${t.path.map((st, i) => `<li><span class="n">${String(i + 1).padStart(2, '0')}</span><strong>${esc(st.title)}</strong><span>${esc(st.text)}</span></li>`).join('')}</ol>` : ''}
       <div class="roles${t.roles.length === 1 ? ' one' : ''}">${t.roles.map(roleCard).join('')}</div>
       ${t.disclaimer ? `<p class="team-note">${esc(t.disclaimer)}</p>` : ''}
     </section>`).join('');

@@ -74,7 +74,6 @@ export function renderAgreement(snap, { provider = null, client = null, audit = 
       <div class="ag-word"><span class="ag-word-1">The One Percent</span><span class="ag-word-2">Nation</span></div>
     </div>
     <div class="ag-contact">
-      <div>${esc(p.city)}</div>
       <div>${esc(p.web)}</div>
       <div>${esc(p.email)}</div>
     </div>

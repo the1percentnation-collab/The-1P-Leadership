@@ -121,6 +121,12 @@
     .role-path { font-size: 13.5px; color: var(--gray-400); }
     .role-path a { color: var(--white); border-bottom: 1px solid var(--red); padding-bottom: 1px; }
     .role-foot { margin-top: auto; padding-top: 8px; }
+    .team-path-k { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gray-600); margin: 0 0 12px; }
+    .team-path { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
+    .team-path li { background: #0d0d0d; padding: 20px 20px 22px; display: flex; flex-direction: column; gap: 6px; }
+    .team-path .n { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; color: var(--red); }
+    .team-path strong { font-size: 15px; font-weight: 600; color: var(--white); }
+    .team-path li > span:last-child { font-size: 13.5px; line-height: 1.6; color: var(--gray-400); }
     .team-note { margin-top: 18px; font-size: 12px; line-height: 1.6; color: var(--gray-600); max-width: 900px; }
 
     .btn-outline {
@@ -198,6 +204,7 @@
       .nav-inner { padding: 0 20px; }
       .role { padding: 24px 20px 22px; }
       .role-cols { grid-template-columns: 1fr; gap: 18px; }
+      .team-path { grid-template-columns: minmax(0, 1fr); }
       .cform { grid-template-columns: 1fr; }
       .panel { padding: 26px 18px 20px; }
       .panel-title { font-size: 32px; }
@@ -286,7 +293,7 @@
           </div>
           <div>
             <label for="j-credentials">Licenses or certifications</label>
-            <input id="j-credentials" type="text" maxlength="160" placeholder="e.g. 1P-CLC, Life &amp; Health">
+            <input id="j-credentials" type="text" maxlength="160" placeholder="e.g. 1P-CLC, Life license, SIE">
           </div>
           <div class="full">
             <label for="j-why">What draws you to this team? <span class="req">*</span></label>

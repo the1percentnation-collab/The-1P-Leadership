@@ -465,6 +465,40 @@ await t('company admin CANNOT read agreements',
 await t('signed-out visitor CANNOT read an agreement (or its token)',
   () => assertFails(getDoc(doc(anon, 'agreements/agSigned'))));
 
+// ── The One Percent Membership ───────────────────────────────────────────
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'users/memb'), { email: 'memb@x.com', role: 'user', membershipActive: true, membership: { status: 'active', plan: 'founding' } });
+  await setDoc(doc(db, 'users/lapsed'), { email: 'lapsed@x.com', role: 'user', membershipActive: false });
+  // The list deliberately includes a certification: the rules must still refuse it.
+  await setDoc(doc(db, 'config/membership'), { includedSlugs: ['icant', '1p-clc'], foundingCount: 3 });
+  await setDoc(doc(db, 'courses/icant/modules/m1'), { title: 'Lesson 1', html: '<p>paid</p>' });
+  await setDoc(doc(db, 'courses/mindset-foundations/modules/m1'), { title: 'Lesson 1' });
+  await setDoc(doc(db, 'courses/1p-clc/modules/m1'), { title: 'Certification lesson' });
+});
+const memb = env.authenticatedContext('memb').firestore();
+const lapsed = env.authenticatedContext('lapsed').firestore();
+await t('active member CAN read lessons of a course in the membership',
+  () => assertSucceeds(getDoc(doc(memb, 'courses/icant/modules/m1'))));
+await t('active member CANNOT read lessons of a course outside the membership',
+  () => assertFails(getDoc(doc(memb, 'courses/mindset-foundations/modules/m1'))));
+await t('active member CANNOT read certification lessons, even if listed',
+  () => assertFails(getDoc(doc(memb, 'courses/1p-clc/modules/m1'))));
+await t('lapsed member CANNOT read membership lessons',
+  () => assertFails(getDoc(doc(lapsed, 'courses/icant/modules/m1'))));
+await t('member CANNOT switch their own membership on',
+  () => assertFails(updateDoc(doc(lapsed, 'users/lapsed'), { membershipActive: true })));
+await t('member CANNOT rewrite their membership record',
+  () => assertFails(updateDoc(doc(memb, 'users/memb'), { 'membership.plan': 'founding', 'membership.paidMonths': 99 })));
+await t('a new account CANNOT start with a membership',
+  () => assertFails(setDoc(doc(env.authenticatedContext('newbie').firestore(), 'users/newbie'), { email: 'n@x.com', role: 'user', membershipActive: true })));
+await t('anyone CAN read the membership course list and founding count',
+  () => assertSucceeds(getDoc(doc(anon, 'config/membership'))));
+await t('admin CANNOT edit the membership list directly',
+  () => assertFails(setDoc(doc(adm, 'config/membership'), { includedSlugs: ['1p-clc'] })));
+await t('owner CANNOT edit the membership list directly (server only)',
+  () => assertFails(setDoc(doc(owner, 'config/membership'), { includedSlugs: ['1p-clc'] })));
+
 await env.cleanup();
 
 let failed = 0;

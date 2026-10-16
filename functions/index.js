@@ -2668,6 +2668,15 @@ exports.registerForEvent = onCall(async (request) => {
   if (!eventSnap.exists) throw new HttpsError('not-found', 'Event not found.');
   const event = { id: eventId, ...eventSnap.data() };
 
+  // Members-only live sessions: the join link goes to active members only.
+  if (event.membersOnly === true) {
+    const u = uid ? ((await db.collection('users').doc(uid).get()).data() || {}) : null;
+    const staff = request.auth && request.auth.token && request.auth.token.role === 'owner';
+    if (!staff && !membershipCore.isActiveMember(u)) {
+      throw new HttpsError('permission-denied', 'This live session is for members of The One Percent Membership.');
+    }
+  }
+
   // Dedup key: uid for members, hashed email for the public.
   const regId = uid || ('e_' + crypto.createHash('sha256').update(email).digest('hex').slice(0, 24));
   const regRef = eventRef.collection('registrations').doc(regId);
@@ -5492,7 +5501,8 @@ exports.saveCourseCommitment = onCall(async (request) => {
   const userRef = db.collection('users').doc(uid);
   const userSnap = await userRef.get();
   const slugs = (userSnap.exists && userSnap.data().enrolledCourseSlugs) || [];
-  if (!Array.isArray(slugs) || !slugs.includes(slug)) {
+  const enrolledHere = Array.isArray(slugs) && slugs.includes(slug);
+  if (!enrolledHere && !(await memberCourseAccess(db, userSnap.exists ? userSnap.data() : {}, slug, null))) {
     throw new HttpsError('permission-denied', 'Enroll in this course first.');
   }
 
@@ -6981,7 +6991,9 @@ exports.recordCourseCompletion = onCall({ secrets: [sendgridKey] }, async (reque
 
   const u = userSnap.exists ? userSnap.data() : {};
   const enrolled = Array.isArray(u.enrolledCourseSlugs) && u.enrolledCourseSlugs.includes(slug);
-  if (!enrolled) throw new HttpsError('permission-denied', 'Not enrolled in this course.');
+  if (!enrolled && !(await memberCourseAccess(db, u, slug, courseSnap.exists ? courseSnap.data() : null))) {
+    throw new HttpsError('permission-denied', 'Not enrolled in this course.');
+  }
 
   const course = courseSnap.exists ? courseSnap.data() : null;
   const total = await courseModuleTotal(db, slug, course);
@@ -7566,6 +7578,15 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
     appliedCoupon = resolved.code;
   }
 
+  // ── Member credit toward a certification ───────────────────────────
+  // An active member gets up to three months of dues off a certification
+  // paid in full, once. Not combined with promo codes or payment plans.
+  let memberCredit = 0;
+  if (!plan && !appliedCoupon && !isSubscription && membershipCore.isCertification(slug, course)) {
+    memberCredit = membershipCore.certificationCredit(userSnap.exists ? userSnap.data() : {}, slug, course);
+    if (memberCredit > 0) chargeDollars = Math.max(1, chargeDollars - memberCredit);
+  }
+
   // Affiliate attribution — validate the referral code server-side and lock
   // the commission rate into the session metadata at purchase time.
   let refCode = String((request.data && request.data.refCode) || '').trim().toUpperCase();
@@ -7591,6 +7612,7 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
     metadata.refPercent = String(refPercent);
   }
   if (appliedCoupon) metadata.couponCode = appliedCoupon;
+  if (memberCredit > 0) metadata.memberCredit = String(memberCredit);
   if (fulfil.shipsBook) metadata.shipsBook = '1';
   if (fulfil.enrollsAlso.length) metadata.enrollsAlso = fulfil.enrollsAlso.join(',');
   const grantsBooks = booksForCourse(slug, course, await fulfillmentDocs(db, slug, course));
@@ -7744,7 +7766,8 @@ exports.bookFile = onRequest({ cors: false, invoker: 'public', memory: '512MiB',
     const userSnap = await db.collection('users').doc(token.uid).get();
     const u = userSnap.exists ? (userSnap.data() || {}) : {};
     const isAdmin = token.role === 'owner' || u.role === 'admin' || u.role === 'owner';
-    const owns = Array.isArray(u.ownedBookIds) && u.ownedBookIds.includes(bookId);
+    // Active members read the whole library.
+    const owns = (Array.isArray(u.ownedBookIds) && u.ownedBookIds.includes(bookId)) || membershipCore.isActiveMember(u);
     if (!isAdmin && (!owns || book.status === 'hidden')) { res.status(403).send('not in your library'); return; }
   }
 
@@ -7851,6 +7874,11 @@ exports.stripeWebhook = onRequest(
         const productId = session.metadata && session.metadata.productId;
         const couponCode = session.metadata && session.metadata.couponCode;
         const licenseRenewal = session.metadata && session.metadata.licenseRenewal;
+
+        // ── Membership ───────────────────────────────────────────────
+        if (session.metadata && session.metadata.kind === 'membership') {
+          await handleMembershipCheckout(db, stripe, session);
+        }
 
         // ── License renewal ──────────────────────────────────────────
         // Extends the A.L.I.G.N. Practitioner License one year from its
@@ -7969,6 +7997,10 @@ exports.stripeWebhook = onRequest(
             enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(courseSlug, ...enrollsAlso),
             ...(grantsBooks.length
               ? { ownedBookIds: admin.firestore.FieldValue.arrayUnion(...grantsBooks) }
+              : {}),
+            // The member credit toward a certification is used once.
+            ...(session.metadata && session.metadata.memberCredit
+              ? { membership: { certCreditUsedAt: admin.firestore.FieldValue.serverTimestamp(), certCreditAmount: Number(session.metadata.memberCredit) || 0 } }
               : {})
           }, { merge: true });
 
@@ -8107,7 +8139,7 @@ exports.stripeWebhook = onRequest(
               }
             }
           } catch (e) { console.warn('[stripeWebhook] deal tie-in skipped:', e && e.message); }
-        } else {
+        } else if (!(session.metadata && session.metadata.kind === 'membership')) {
           console.warn('[stripeWebhook] session missing uid/courseSlug metadata', session.id);
         }
       } else if (event.type === 'invoice.paid') {
@@ -8121,6 +8153,12 @@ exports.stripeWebhook = onRequest(
           const idxRef = db.collection('stripeSubscriptions').doc(String(subId));
           const idx = await idxRef.get();
           const meta = idx.exists ? idx.data() : null;
+          // A membership invoice can arrive before its checkout event, so the
+          // subscription's own metadata stands in until the index exists.
+          const subMeta = (invoice.subscription_details && invoice.subscription_details.metadata) || null;
+          if ((meta && meta.kind === 'membership') || (!meta && subMeta && subMeta.kind === 'membership')) {
+            await handleMembershipInvoicePaid(db, invoice, meta || subMeta);
+          }
           if (meta && meta.installments) {
             const paidCount = (Number(meta.paidCount) || 0) + 1;
             await idxRef.set({ paidCount }, { merge: true });
@@ -8146,7 +8184,9 @@ exports.stripeWebhook = onRequest(
         const sub = event.data.object;
         const idx = await db.collection('stripeSubscriptions').doc(String(sub.id)).get();
         const meta = idx.exists ? idx.data() : null;
-        if (meta && meta.uid && meta.sessionId && !meta.installments
+        if (meta && meta.kind === 'membership') {
+          await handleMembershipUpdated(db, sub, meta);
+        } else if (meta && meta.uid && meta.sessionId && !meta.installments
             && sub.status !== 'canceled' && sub.status !== 'incomplete_expired') {
           const accessUntil = sub.cancel_at_period_end ? subscriptionPeriodEndMs(sub) : null;
           await db.collection('users').doc(meta.uid).collection('purchases').doc(meta.sessionId).set({
@@ -8159,7 +8199,9 @@ exports.stripeWebhook = onRequest(
         const sub = event.data.object;
         const idx = await db.collection('stripeSubscriptions').doc(String(sub.id)).get();
         const meta = idx.exists ? idx.data() : (sub.metadata && sub.metadata.uid ? sub.metadata : null);
-        if (meta && meta.installmentsComplete === true) {
+        if (meta && meta.kind === 'membership') {
+          await handleMembershipEnded(db, sub, meta);
+        } else if (meta && meta.installmentsComplete === true) {
           // A completed installment plan ending is not a cancellation —
           // the buyer paid in full and keeps access.
         } else if (meta && meta.uid && meta.courseSlug) {
@@ -8176,6 +8218,11 @@ exports.stripeWebhook = onRequest(
         const subId = invoice.subscription;
         if (subId) {
           const idx = await db.collection('stripeSubscriptions').doc(String(subId)).get();
+          if (idx.exists && idx.data().kind === 'membership' && idx.data().uid) {
+            await db.collection('users').doc(idx.data().uid).set({
+              membership: { status: 'past_due', updatedAt: admin.firestore.FieldValue.serverTimestamp() }
+            }, { merge: true });
+          }
           if (idx.exists && idx.data().sessionId) {
             const meta = idx.data();
             await db.collection('users').doc(meta.uid).collection('purchases').doc(meta.sessionId)
@@ -15194,3 +15241,280 @@ exports.voidAgreement = onCall(async (request) => {
   await ref.update({ status: 'void', voidedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
   return { ok: true };
 });
+
+// ════════════════════════════════════════════════════════════════
+// The One Percent Membership.
+//
+// One Stripe subscription (monthly or annual) that opens every course on the
+// membership list, the ebook library, and members-only live sessions. The
+// rules live in functions/membership-core.js (generated from
+// public/js/membership-core.js). Membership is its own flag on the user,
+// users/{uid}.membershipActive plus a users/{uid}.membership record, written
+// only here and in stripeWebhook. It is never mixed into enrolledCourseSlugs,
+// so ending a membership cannot remove a course someone bought.
+//
+// config/membership holds the included course list and the founding-member
+// count. It is publicly readable (the membership page shows spots left) and
+// server-written only. Certifications can never be added to the list.
+// ════════════════════════════════════════════════════════════════
+
+const membershipCore = require('./membership-core.js');
+
+async function membershipConfig(db) {
+  const ref = db.collection('config').doc('membership');
+  const snap = await ref.get();
+  if (snap.exists) return snap.data() || {};
+  const seed = {
+    includedSlugs: membershipCore.DEFAULT_INCLUDED,
+    foundingCount: 0,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+  await ref.set(seed, { merge: true });
+  return seed;
+}
+
+/** Does this user's active membership open this course? */
+async function memberCourseAccess(db, user, slug, course) {
+  if (!membershipCore.isActiveMember(user)) return false;
+  return membershipCore.memberHasCourse(user, await membershipConfig(db), slug, course);
+}
+
+async function tagMemberInCrm(db, { email, name, tags }) {
+  try {
+    const companyId = await resolveAcademyCompanyId(db);
+    if (!companyId || !email) return;
+    await upsertCrmContact(db, companyId, { name: name || '', email, source: 'Membership', tags });
+  } catch (e) {
+    console.warn('[membership] CRM tag failed:', e && e.message);
+  }
+}
+
+/**
+ * createMembershipCheckout({ billing }) — starts a Stripe Checkout session for
+ * the membership. The plan (founding or standard) is decided here from the
+ * live founding count, never by the browser.
+ */
+exports.createMembershipCheckout = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const billing = String((request.data && request.data.billing) || 'month');
+  if (billing !== 'month' && billing !== 'year') throw new HttpsError('invalid-argument', 'Unknown billing option.');
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'createMembershipCheckout', max: 10, windowSec: 600 });
+  const stripe = getStripe();
+  if (!stripe) throw new HttpsError('failed-precondition', 'Online checkout isn\'t available yet.');
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const user = userSnap.exists ? userSnap.data() : {};
+  if (membershipCore.isActiveMember(user)) {
+    throw new HttpsError('already-exists', 'You are already a member.');
+  }
+  const config = await membershipConfig(db);
+  const plan = membershipCore.planForSignup(config.foundingCount);
+  const dollars = membershipCore.priceFor(plan, billing);
+  const metadata = { kind: 'membership', uid, plan, billing };
+  const label = membershipCore.PLANS[plan].label;
+
+  const session = await stripe.checkout.sessions.create({
+    mode: 'subscription',
+    line_items: [{
+      price_data: {
+        currency: 'usd',
+        unit_amount: dollars * 100,
+        recurring: { interval: billing },
+        product_data: { name: `${membershipCore.MEMBERSHIP_NAME} (${label}, ${billing === 'year' ? 'annual' : 'monthly'})` }
+      },
+      quantity: 1
+    }],
+    customer_email: (request.auth.token && request.auth.token.email) || undefined,
+    client_reference_id: uid,
+    metadata,
+    subscription_data: { metadata },
+    success_url: `${APP_BASE_URL}/membership?welcome=1`,
+    cancel_url: `${APP_BASE_URL}/membership`
+  });
+  return { ok: true, url: session.url, plan, amount: dollars };
+});
+
+/** manageMembership({ action: 'cancel' | 'resume' }) — the member's own button. */
+exports.manageMembership = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
+  const action = String((request.data && request.data.action) || '');
+  if (action !== 'cancel' && action !== 'resume') throw new HttpsError('invalid-argument', 'action must be cancel or resume.');
+  const stripe = getStripe();
+  if (!stripe) throw new HttpsError('failed-precondition', 'Payments are not configured yet.');
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+  const user = (await userRef.get()).data() || {};
+  const subId = user.membership && user.membership.subscriptionId;
+  if (!subId || !membershipCore.isActiveMember(user)) throw new HttpsError('not-found', 'No active membership found.');
+  const sub = await stripe.subscriptions.update(subId, { cancel_at_period_end: action === 'cancel' });
+  const accessUntil = sub.cancel_at_period_end ? subscriptionPeriodEndMs(sub) : null;
+  await userRef.set({
+    membership: {
+      status: sub.cancel_at_period_end ? 'canceling' : 'active',
+      cancelAt: accessUntil ? admin.firestore.Timestamp.fromMillis(accessUntil) : null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }
+  }, { merge: true });
+  return { ok: true, status: sub.cancel_at_period_end ? 'canceling' : 'active', accessUntil };
+});
+
+/**
+ * setMembershipCourse({ slug, included }) — owner only. Adds a course to or
+ * removes it from the membership. Certifications are refused here, in the
+ * security rules, and in membership-core, whatever the request says.
+ */
+exports.setMembershipCourse = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  if (!(request.auth.token && request.auth.token.role === 'owner')) throw new HttpsError('permission-denied', 'Owner access required.');
+  const slug = String((request.data && request.data.slug) || '').trim();
+  const included = (request.data && request.data.included) === true;
+  if (!slug || slug.length > 120 || slug.includes('/')) throw new HttpsError('invalid-argument', 'slug is required.');
+  const db = admin.firestore();
+  const courseSnap = await db.collection('courses').doc(slug).get();
+  const course = courseSnap.exists ? courseSnap.data() : null;
+  if (included && membershipCore.isCertification(slug, course)) {
+    throw new HttpsError('failed-precondition', 'Certifications are paid programs and cannot be part of the membership.');
+  }
+  await membershipConfig(db);
+  const ref = db.collection('config').doc('membership');
+  await db.runTransaction(async (tx) => {
+    const cur = (await tx.get(ref)).data() || {};
+    const list = membershipCore.includedSlugs(cur).filter((s) => s !== slug);
+    if (included) list.push(slug);
+    tx.set(ref, { includedSlugs: list, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
+  return { ok: true, includedSlugs: membershipCore.includedSlugs((await ref.get()).data()) };
+});
+
+// ── Webhook handlers (called from stripeWebhook) ─────────────────────────
+
+async function handleMembershipCheckout(db, stripe, session) {
+  const meta = session.metadata || {};
+  const uid = meta.uid || session.client_reference_id;
+  if (!uid) return;
+  const subId = session.subscription ? String(session.subscription) : null;
+  const plan = membershipCore.PLANS[meta.plan] ? meta.plan : 'standard';
+  const billing = meta.billing === 'year' ? 'year' : 'month';
+  let periodEnd = null;
+  if (subId && stripe) {
+    try { periodEnd = subscriptionPeriodEndMs(await stripe.subscriptions.retrieve(subId)); } catch (e) { /* best-effort */ }
+  }
+  const userRef = db.collection('users').doc(uid);
+  const prior = ((await userRef.get()).data() || {}).membership || {};
+  await userRef.set({
+    membershipActive: true,
+    membership: {
+      status: 'active',
+      plan,
+      billing,
+      subscriptionId: subId,
+      customerId: session.customer ? String(session.customer) : null,
+      sessionId: session.id,
+      startedAt: prior.startedAt || admin.firestore.FieldValue.serverTimestamp(),
+      currentPeriodEnd: periodEnd ? admin.firestore.Timestamp.fromMillis(periodEnd) : null,
+      cancelAt: null,
+      endedAt: null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }
+  }, { merge: true });
+  if (subId) {
+    await db.collection('stripeSubscriptions').doc(subId).set({ uid, kind: 'membership', plan, billing, sessionId: session.id }, { merge: true });
+  }
+  await userRef.collection('purchases').doc(session.id).set({
+    kind: 'membership', mode: 'membership', plan, billing,
+    amount: typeof session.amount_total === 'number' ? session.amount_total / 100 : membershipCore.priceFor(plan, billing),
+    subscriptionId: subId, status: 'active',
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  // A founding spot is counted once per subscription, on the first checkout.
+  if (plan === 'founding' && subId) {
+    const cfgRef = db.collection('config').doc('membership');
+    const claimRef = cfgRef.collection('foundingClaims').doc(subId);
+    await db.runTransaction(async (tx) => {
+      if ((await tx.get(claimRef)).exists) return;
+      tx.set(claimRef, { uid, at: admin.firestore.FieldValue.serverTimestamp() });
+      tx.set(cfgRef, { foundingCount: admin.firestore.FieldValue.increment(1) }, { merge: true });
+    });
+  }
+
+  const email = (session.customer_details && session.customer_details.email) || session.customer_email;
+  await tagMemberInCrm(db, { email, name: session.customer_details && session.customer_details.name, tags: ['Member', `Member: ${membershipCore.PLANS[plan].label}`] });
+  if (email && emailConfigured()) {
+    try {
+      const url = `${APP_BASE_URL}/membership`;
+      await sendEmail({
+        to: email,
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject: `Welcome to ${membershipCore.MEMBERSHIP_NAME}`,
+        text: `Welcome in.\n\nYour membership is active. Every course in the membership, the ebook library, and the monthly members-only live session are open to you now:\n\n${url}\n\nAnthony Brown Sr.\nThe One Percent Nation`,
+        html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;">
+          <div style="border-bottom:3px solid #111;padding-bottom:10px;margin-bottom:18px;font-weight:700;letter-spacing:1px;">THE ONE PERCENT NATION</div>
+          <h2 style="font-size:20px;margin:0 0 12px;">Welcome in.</h2>
+          <p style="font-size:15px;line-height:1.55;">Your membership is active${plan === 'founding' ? ', at the founding rate you keep for as long as you stay' : ''}. Every course in the membership, the ebook library, and the monthly members-only live session are open to you now.</p>
+          <p style="margin:22px 0;"><a href="${url}" style="display:inline-block;background:#E60306;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">Start with your membership</a></p>
+          <p style="font-size:15px;line-height:1.55;">One percent better, every day.<br>Anthony Brown Sr.</p>
+        </div>`,
+        customArgs: { type: 'membership_welcome' }
+      });
+    } catch (e) {
+      console.warn('[membership] welcome email failed:', e && e.message);
+    }
+  }
+}
+
+/** invoice.paid on a membership: count paid months and keep access current. */
+async function handleMembershipInvoicePaid(db, invoice, meta) {
+  const uid = meta && meta.uid;
+  if (!uid) return;
+  const line = invoice.lines && invoice.lines.data && invoice.lines.data[0];
+  const periodEnd = line && line.period && line.period.end ? line.period.end * 1000 : null;
+  const months = meta.billing === 'year' ? 12 : 1;
+  await db.collection('users').doc(uid).set({
+    membershipActive: true,
+    membership: {
+      status: 'active',
+      ...(meta.plan ? { plan: meta.plan } : {}),
+      ...(meta.billing ? { billing: meta.billing } : {}),
+      ...(invoice.subscription ? { subscriptionId: String(invoice.subscription) } : {}),
+      paidMonths: admin.firestore.FieldValue.increment(months),
+      ...(periodEnd ? { currentPeriodEnd: admin.firestore.Timestamp.fromMillis(periodEnd) } : {}),
+      lastPaidAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }
+  }, { merge: true });
+}
+
+/** customer.subscription.updated on a membership. A failed payment keeps access while Stripe retries. */
+async function handleMembershipUpdated(db, sub, meta) {
+  if (!meta || !meta.uid) return;
+  const ended = sub.status === 'canceled' || sub.status === 'incomplete_expired' || sub.status === 'unpaid';
+  const accessUntil = sub.cancel_at_period_end ? subscriptionPeriodEndMs(sub) : null;
+  await db.collection('users').doc(meta.uid).set({
+    membershipActive: !ended,
+    membership: {
+      status: ended ? 'canceled' : sub.cancel_at_period_end ? 'canceling' : (sub.status === 'past_due' ? 'past_due' : 'active'),
+      cancelAt: accessUntil ? admin.firestore.Timestamp.fromMillis(accessUntil) : null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }
+  }, { merge: true });
+}
+
+/** customer.subscription.deleted on a membership: access ends; purchases are untouched. */
+async function handleMembershipEnded(db, sub, meta) {
+  if (!meta || !meta.uid) return;
+  const userRef = db.collection('users').doc(meta.uid);
+  const u = (await userRef.get()).data() || {};
+  // Only the subscription on record ends the membership, so an old ended
+  // subscription can never switch off a newer one.
+  if (u.membership && u.membership.subscriptionId && u.membership.subscriptionId !== String(sub.id)) return;
+  await userRef.set({
+    membershipActive: false,
+    membership: { status: 'canceled', endedAt: admin.firestore.FieldValue.serverTimestamp(), cancelAt: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() }
+  }, { merge: true });
+  await tagMemberInCrm(db, { email: u.email, name: u.displayName, tags: ['Former Member'] });
+}

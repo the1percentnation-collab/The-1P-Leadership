@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>The One Percent Membership | The One Percent Nation</title>
+  <meta name="description" content="Every self-paced course, the ebook library, and a monthly members-only live session with Anthony Brown Sr. One membership, monthly or annual. Founding members keep their rate.">
+  <link rel="canonical" href="https://the1pnation.com/membership">
+  <meta property="og:title" content="The One Percent Membership">
+  <meta property="og:description" content="Every self-paced course, the ebook library, and a monthly members-only live session with Anthony Brown Sr. One membership, monthly or annual. Founding members keep their rate.">
+  <meta property="og:url" content="https://the1pnation.com/membership">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="The One Percent Membership">
+  <meta name="twitter:description" content="Every self-paced course, the ebook library, and a monthly members-only live session with Anthony Brown Sr. One membership, monthly or annual. Founding members keep their rate.">
+  <link rel="icon" type="image/jpeg" href="/assets/favicon.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/site.css">
+  <script>
+    /* Arm the reveal animations for motion-OK visitors. site-fx.js confirms by
+       setting window.__1pFx; if it never loads, nothing stays hidden. */
+    (function () {
+      try {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) return;
+        var d = document.documentElement;
+        d.classList.add('anim');
+        setTimeout(function () { if (!window.__1pFx) d.classList.remove('anim'); }, 3000);
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    .mb-toggle { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 999px; padding: 4px; gap: 4px; margin-bottom: 22px; }
+    .mb-toggle button { font: inherit; font-size: 14px; font-weight: 600; color: var(--gray-300); background: transparent; border: 0; border-radius: 999px; padding: 8px 18px; cursor: pointer; }
+    .mb-toggle button.is-on { background: var(--white); color: var(--black); }
+    .mb-toggle small { font-weight: 500; color: var(--red); margin-left: 6px; }
+    .mb-toggle button.is-on small { color: var(--red); }
+    .mb-price-card { background: var(--charcoal); border: 1px solid var(--red-line); border-radius: 12px; padding: clamp(26px, 3.4vw, 40px); display: flex; flex-direction: column; gap: 16px; }
+    .mb-plan { font-family: var(--font-mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--red); }
+    .mb-amount { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .mb-amount .n { font-family: var(--font-display); font-size: clamp(64px, 8vw, 96px); line-height: .9; }
+    .mb-amount .per { color: var(--gray-300); font-size: 16px; }
+    .mb-amount s { color: var(--gray-500); font-size: 20px; }
+    .mb-note { color: var(--gray-300); font-size: 15px; margin: 0; }
+    .mb-spots { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; color: var(--gray-300); }
+    .mb-spots b { color: var(--white); }
+    .mb-bar { height: 6px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; }
+    .mb-bar span { display: block; height: 100%; background: var(--red); }
+    .mb-fine { font-size: 13px; color: var(--gray-500); margin: 0; }
+    .mb-msg { font-size: 14px; color: #ff6b6d; min-height: 1em; margin: 0; }
+    .mb-member { border-color: rgba(74,222,128,.4); }
+    .mb-member .mb-plan { color: #4ade80; }
+    .mb-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0; border-top: 1px solid var(--line); }
+    .mb-list li { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: baseline; padding: 16px 0; border-bottom: 1px solid var(--line); }
+    .mb-list .t { font-size: 17px; font-weight: 600; }
+    .mb-list .d { display: block; color: var(--gray-300); font-size: 14.5px; font-weight: 400; margin-top: 3px; }
+    .mb-list .v { font-family: var(--font-mono); font-size: 12px; color: var(--gray-500); white-space: nowrap; }
+    .mb-list .v.soon { color: #E4C65B; }
+    .mb-not li .t { color: var(--gray-300); }
+    .mb-credit { border: 1px solid var(--line); border-left: 3px solid var(--red); border-radius: 8px; padding: 20px 22px; background: rgba(255,255,255,.02); }
+    .mb-credit h3 { font-family: var(--font-display); font-weight: 400; font-size: 30px; margin: 0 0 8px; }
+    .mb-credit p { color: var(--gray-300); margin: 0; }
+    .mb-faq { border-top: 1px solid var(--line); }
+    .mb-faq details { border-bottom: 1px solid var(--line); padding: 18px 0; }
+    .mb-faq summary { cursor: pointer; font-size: 17px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+    .mb-faq summary::after { content: '+'; color: var(--red); font-family: var(--font-mono); }
+    .mb-faq details[open] summary::after { content: '\2212'; }
+    .mb-faq p { color: var(--gray-300); margin: 10px 0 0; max-width: 70ch; }
+    .mb-welcome { border: 1px solid rgba(74,222,128,.4); background: rgba(74,222,128,.06); border-radius: 10px; padding: 16px 20px; margin-bottom: 22px; color: var(--white); }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+<div id="page-sweep" class="cover" aria-hidden="true"></div>
+<header class="nav band" id="nav">
+  <div class="wrap nav-bar">
+    <a class="logo" href="/" aria-label="The One Percent Nation home">
+      <img src="/assets/favicon.jpg" alt="" width="38" height="38">
+      <span class="logo-text"><span class="l1">THE ONE PERCENT</span><span class="l2">NATION</span></span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="/corporate">For Organizations</a></li>
+      <li><a href="/start" aria-current="page">For Individuals</a></li>
+      <li><a href="/clc">Become a Coach</a></li>
+      <li><a href="/about">About</a></li>
+      <li><a href="/books">Books</a></li>
+      <li><a href="/beta">Beta Testers</a></li>
+    </ul>
+    <div class="nav-right">
+      <a class="btn-portal" href="/login.html">Member Portal</a>
+      <a class="btn-cta-nav" href="/corporate#audit">Free Alignment Audit</a>
+      <button class="burger" id="burger" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu"><span></span><span></span><span></span></button>
+    </div>
+  </div>
+  <nav class="mobile-menu" id="mobile-menu" aria-label="Mobile">
+    <a class="m-link" href="/corporate">For Organizations</a>
+    <a class="m-link" href="/start">For Individuals</a>
+    <a class="m-link" href="/clc">Become a Coach</a>
+    <a class="m-link" href="/about">About</a>
+    <a class="m-link" href="/books">Books</a>
+    <a class="m-link" href="/beta">Become a Beta Tester</a>
+    <div class="m-actions">
+      <a class="btn btn-red" href="/login.html">Member Portal</a>
+      <a class="btn btn-ghost" href="/corporate#audit">Book a Free Alignment Audit</a>
+    </div>
+  </nav>
+</header>
+
+<main id="top">
+
+<section class="hero hero--page band" data-particles>
+  <div class="hero-bg"></div>
+  <div class="hero-gridlines"></div>
+  <div class="hero-spotlight"></div>
+  <img class="hero-watermark" src="/assets/favicon.jpg" alt="" aria-hidden="true">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div>
+        <div class="hero-eyebrow"><span class="tag">The One Percent Membership</span></div>
+        <h1 class="display hero-title h-xl">
+          <span class="line">One membership.</span>
+          <span class="line"><span class="red">Every step.</span></span>
+        </h1>
+        <span class="hero-title-line"></span>
+        <p class="lede hero-reveal">Every self-paced course, the ebook library, and a live session with Anthony every month. Built for people who are successful on paper and ready to line it up with who they are, one percent at a time.</p>
+        <div class="hero-actions hero-reveal">
+          <a class="btn btn-member-glow" href="#join">Join the membership &rarr;</a>
+          <a class="btn btn-ghost" href="#included">See what is included</a>
+        </div>
+        <p class="hero-sub-link hero-reveal" id="hero-spots">Founding members keep their rate for as long as they stay.</p>
+      </div>
+      <div class="mb-price-card fade-up" id="join">
+        <div class="mb-welcome" id="welcome" hidden></div>
+        <div id="join-panel">
+          <div class="mb-toggle" role="group" aria-label="Billing">
+            <button type="button" class="is-on" data-billing="month">Monthly</button>
+            <button type="button" data-billing="year">Annual<small>2 months free</small></button>
+          </div>
+          <div class="mb-plan" id="plan-label">Founding member rate</div>
+          <div class="mb-amount"><span class="n" id="price">$29</span><span class="per" id="per">/ month</span><s id="was">$39</s></div>
+          <p class="mb-note" id="plan-note">Locked in for as long as you stay a member.</p>
+          <div id="spots-box">
+            <div class="mb-spots"><b id="spots-left">100</b> of 100 founding spots left</div>
+            <div class="mb-bar" style="margin-top:8px"><span id="spots-bar" style="width:0%"></span></div>
+          </div>
+          <button class="btn btn-red btn-lg" type="button" id="btn-join" style="margin-top:6px">Join as a founding member &rarr;</button>
+          <p class="mb-msg" id="join-msg" role="status" aria-live="polite"></p>
+          <p class="mb-fine">Cancel anytime. Courses and books you buy on their own stay yours either way. Certifications are separate programs.</p>
+        </div>
+        <div id="member-panel" hidden></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section band" id="included">
+  <div class="wrap grid-2" style="gap:clamp(32px,5vw,64px);align-items:start">
+    <div class="fade-up">
+      <span class="tag">What is included</span>
+      <h2 class="display h-lg" style="margin:20px 0 14px">Everything you need <span class="red">to keep going.</span></h2>
+      <p class="lede">One price opens the work. New courses join the membership as they launch, at no extra cost.</p>
+    </div>
+    <ul class="mb-list fade-up fade-up-delay-1" id="included-list">
+      <li><span class="t">Every self-paced course in the membership<span class="d" id="course-names">Loading the course list…</span></span><span class="v" id="course-count"></span></li>
+      <li><span class="t">The ebook library<span class="d">Every book in the library, read in the browser on any device. New books are added as they publish.</span></span><span class="v">Included</span></li>
+      <li><span class="t">A live members-only session, every month<span class="d">An hour with Anthony on the framework, your questions, and the work in front of you. Replays stay in the portal.</span></span><span class="v">Monthly</span></li>
+      <li><span class="t">The One Percent Brief<span class="d">One focused read a month on one real-life challenge, with tools you can use the day you finish.</span></span><span class="v">Monthly</span></li>
+      <li><span class="t">The member community and toolkit<span class="d">Accountability with people who hold the same standard, plus the templates and calculators.</span></span><span class="v">Included</span></li>
+    </ul>
+  </div>
+</section>
+
+<section class="section band">
+  <div class="wrap grid-2" style="gap:clamp(32px,5vw,64px);align-items:start">
+    <div class="fade-up">
+      <span class="tag">Kept separate</span>
+      <h2 class="display h-lg" style="margin:20px 0 14px">Some work <span class="red">is its own commitment.</span></h2>
+      <p class="lede">These are paid programs with their own standard. Members get a head start on them.</p>
+    </div>
+    <div class="fade-up fade-up-delay-1" style="display:grid;gap:22px">
+      <ul class="mb-list mb-not">
+        <li><span class="t">Coach certifications<span class="d">1P Certified Life Coach and Certified Leader Coach.</span></span><span class="v">Separate</span></li>
+        <li><span class="t">Corporate programs and speaking<span class="d">Keynotes, workshops, retreats, and annual programs.</span></span><span class="v">Separate</span></li>
+        <li><span class="t">One-on-one coaching and live cohorts<span class="d">Including masterminds like The Social Media Matrix.</span></span><span class="v">Separate</span></li>
+        <li><span class="t">Print books<span class="d">The ebooks are included; paperbacks are not.</span></span><span class="v">Separate</span></li>
+      </ul>
+      <div class="mb-credit">
+        <h3>Your dues count toward certification.</h3>
+        <p>Ready to coach? When a member enrolls in a certification, paid in full, up to three months of membership dues come off the price. Once per member.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section band">
+  <div class="wrap" style="max-width:900px">
+    <div class="fade-up" style="margin-bottom:26px"><span class="tag">Questions</span></div>
+    <div class="mb-faq fade-up">
+      <details><summary>Can I cancel anytime?</summary><p>Yes. Cancel from this page whenever you like. Your membership stays open until the end of the period you already paid for, and nothing renews after that.</p></details>
+      <details><summary>What happens to courses I bought on their own?</summary><p>They are yours, with or without a membership. The membership opens courses on top of what you own; it never takes anything away.</p></details>
+      <details><summary>What is the founding rate?</summary><p>The first 100 members pay $29 a month, or $290 a year, and keep that rate for as long as they stay members. After that the membership is $39 a month, or $390 a year.</p></details>
+      <details><summary>Is annual billing worth it?</summary><p>Annual is ten months for the price of twelve, billed once a year. It also counts as twelve paid months toward the certification credit.</p></details>
+      <details><summary>Can I still buy a single course?</summary><p>Yes. Every course is still sold on its own for people who want to own one outright.</p></details>
+      <details><summary>When are the live sessions?</summary><p>Once a month. The date and join link appear on the Events page and in your portal for members, and every session is recorded.</p></details>
+    </div>
+  </div>
+</section>
+
+<section class="final band" id="final">
+  <div class="wrap">
+    <div class="final-grid">
+      <div class="fade-up">
+        <h2 class="display">One percent better.<br>Every day.</h2>
+        <p>Not motivation for the moment. A membership built around the work that lasts.</p>
+      </div>
+      <div class="fade-up fade-up-delay-1">
+        <a class="btn btn-dark btn-lg magnetic" href="#join">Join the membership &rarr;</a>
+        <p class="alt">Not ready yet? <a href="/assessments">Take the free assessment</a><br>Already a member? <a href="/login.html">Go to your portal</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer band" id="footer">
+  <div class="wrap">
+    <div class="foot-top">
+      <div class="foot-brand">
+        <a class="logo" href="/"><img src="/assets/favicon.jpg" alt="" width="38" height="38"><span class="logo-text"><span class="l1">THE ONE PERCENT</span><span class="l2">NATION</span></span></a>
+        <p>Redefining Success. Realigning Purpose. Releasing Potential. Weekly insights on mindset, leadership, and execution.</p>
+        <form class="nl" id="nl-form" novalidate>
+          <label class="sr-only" for="nl-email">Email address</label>
+          <input id="nl-email" type="email" placeholder="Your email address" autocomplete="email">
+          <button class="btn btn-red" type="submit">Subscribe</button>
+        </form>
+        <div class="nl-msg" id="nl-msg" aria-live="polite">No spam. Unsubscribe anytime.</div>
+        <div class="socials">
+          <a href="https://www.facebook.com/TheOnePercentNation" target="_blank" rel="noopener" aria-label="Facebook">f</a>
+          <a href="https://www.instagram.com/theonepercentnation" target="_blank" rel="noopener" aria-label="Instagram">ig</a>
+          <a href="https://www.linkedin.com/in/anthony-brown-20040a130" target="_blank" rel="noopener" aria-label="LinkedIn">in</a>
+        </div>
+      </div>
+      <div class="foot-col">
+        <h4>Organizations</h4>
+        <a href="/corporate">Corporate Programs</a>
+        <a href="/corporate#programs">Signature Programs</a>
+        <a href="/corporate#audit">Alignment Audit</a>
+        <a href="/coaches.html">Find a Certified Coach</a>
+      </div>
+      <div class="foot-col">
+        <h4>Individuals</h4>
+        <a class="is-key" href="/login.html">Member Portal</a>
+        <a href="/membership">Become a Member</a>
+        <a href="/assessments">Free Assessments</a>
+        <a href="/start#courses">Courses</a>
+        <a href="/books">Books</a>
+        <a href="/webinar.html">Live Webinars</a>
+        <a href="/matrix.html">The Social Media Matrix</a>
+        <a href="/goal-planning.html">Goal Planner</a>
+      </div>
+      <div class="foot-col">
+        <h4>Company</h4>
+        <a href="/about">About</a>
+        <a href="/clc">Become a Coach</a>
+        <a href="/book-a-call.html">Book a Call</a>
+        <a href="/financial-services.html">Financial Services</a>
+        <a href="/contact-us.html">Contact</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>&copy; <span id="yr">2026</span> The One Percent Nation. All rights reserved.</span>
+      <nav aria-label="Legal"><a href="/privacy.html">Privacy Policy</a><a href="/terms.html">Terms of Service</a><a href="/contact-us.html">Contact</a></nav>
+    </div>
+  </div>
+</footer>
+<script>document.getElementById("yr").textContent = new Date().getFullYear();</script>
+<script src="/assets/site-fx.js" defer></script>
+<script type="module">
+  import { init as initChatbot } from "/js/chatbot.js";
+  initChatbot();
+</script>
+<script type="module" src="/js/membership-page.js"></script>
+<script src="/js/consent-banner.js" defer></script>
+<script type="module" src="/js/newsletter-lead.js"></script>
+</body>
+</html>

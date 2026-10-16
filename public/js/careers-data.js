@@ -6,9 +6,12 @@
 // the inquiry lands in the CRM filtered under the right tag.
 // tests/careers.test.mjs fails if the two lists drift.
 //
-// Copy rules for the financial roles: no compensation figures, no product
-// offers, no named broker-dealer or carrier. Licensing, registration and
-// supervision are discussed in conversation, never on the page.
+// Copy rules for the financial roles: no compensation figures or income
+// claims, no product offers, and never the name of the affiliated firm, its
+// broker-dealer, or a carrier. The licensing path (life license first, then
+// SIE / Series 6 / Series 63 by choice) is described; fees, contracts and
+// supervision are covered in conversation and in writing, never on the page.
+// tests/careers.test.mjs holds the page to these rules.
 
 export const TEAMS = [
   {
@@ -21,8 +24,17 @@ export const TEAMS = [
     key: 'financial',
     label: 'The Financial Team',
     org: 'Aligned Wealth',
-    intro: 'Aligned growth includes your money. We are building a team of financial professionals who bring the same intention to a client\'s finances that The One Percent brings to everything else.',
-    disclaimer: 'Aligned Wealth is a separate company from The One Percent Nation. This page describes roles we are building toward. It is not an offer of employment or a contract, and nothing here offers or recommends any insurance or securities product. Licensing, registration, and supervision are discussed directly, never on this page.'
+    intro: 'Aligned growth includes your money. We are building a team of financial professionals who bring the same intention to a family\'s finances that The One Percent brings to everything else. You do not need a background in finance. You need to be coachable, consistent, and willing to earn the licenses the work requires.',
+    // How someone gets started, in order. Shown above the financial roles.
+    path: [
+      { title: 'Inquire and talk', text: 'Tell us about you below. If it fits, we sit down and walk through the work, the standard, and how the business runs.' },
+      { title: 'Join and clear a background check', text: 'Joining is part of onboarding with the national financial services firm our team is affiliated with. Any onboarding fee is explained in writing before you commit.' },
+      { title: 'Earn your life license', text: 'An online pre-licensing course, then your state\'s life insurance licensing exam. You study at your own pace, with the team helping you prepare.' },
+      { title: 'Train in the field', text: 'Your first client appointments run alongside a licensed field trainer, until you are ready to run them on your own.' },
+      { title: 'Add securities, if you choose', text: 'Once you are life licensed, you can pursue the SIE, Series 6, and Series 63 exams. The Series 6 and 63 require a sponsoring broker-dealer, which comes through the firm after you join.' },
+      { title: 'Grow into leadership', text: 'Promotions are earned, not bought: by your licensed client work, and by training and developing licensed people on your own team.' }
+    ],
+    disclaimer: 'Aligned Wealth is a separate company from The One Percent Nation. Financial representatives are independent contractors who contract with the affiliated national financial services firm. They are not employees of Aligned Wealth or The One Percent Nation. Earnings are based entirely on the work you do: there is no salary, no guaranteed income, and results vary. Representatives offer products only where they are properly licensed. This page is not an offer of employment or a contract, and nothing here offers or recommends any insurance or securities product.'
   }
 ];
 
@@ -50,36 +62,38 @@ export const ROLES = [
     key: 'life-insurance',
     team: 'financial',
     open: true,
-    title: 'Life Insurance Professional',
-    meta: ['Aligned Wealth', 'Building now'],
-    summary: 'Help families and business owners protect what they are building, with a team that trains together and holds a standard.',
+    title: 'Financial Representative',
+    meta: ['Aligned Wealth', 'Part-time or full-time', 'Independent contractor'],
+    summary: 'The starting role on the team. Help families protect the people who depend on them and get a clear picture of their money, beginning with your life license.',
     does: [
-      'Meet with clients to understand what they need to protect and why',
-      'Build coverage recommendations around the client\'s goals',
-      'Grow a long-term practice with the support of the team'
+      'Sit down with families to understand their protection, debt, and savings, and what they want for the people they love',
+      'Help them put life insurance in place that fits their real needs and budget',
+      'Run your first appointments alongside a licensed field trainer until you lead them yourself',
+      'Build a client base you serve for years, on a schedule you set'
     ],
     fits: [
-      'Holds a life and health license, or is ready to earn one',
-      'Wants to build a lasting practice, not chase quick wins',
-      'Leads with service, integrity, and follow-through'
+      '18 or older and able to pass a background check',
+      'Holds a state life insurance license, or is ready to earn one with the team\'s help',
+      'Coachable: shows up to training, follows the process, and does the reps',
+      'Starting part-time around a current job is welcome'
     ]
   },
   {
     key: 'securities',
     team: 'financial',
     open: true,
-    title: 'Investment and Securities Professional',
-    meta: ['Aligned Wealth', 'Building now'],
-    summary: 'Help clients plan for the long term, as part of a financial team built on alignment and discipline.',
+    title: 'Investment and Securities Representative',
+    meta: ['Aligned Wealth', 'Next step after life licensing', 'Independent contractor'],
+    summary: 'For representatives ready to help families plan for the long term, from retirement to college savings, inside the rules that govern the work.',
     does: [
-      'Work with clients on long-term planning goals',
-      'Translate a client\'s priorities into a plan they understand and own',
-      'Do the work the right way, inside the rules that govern it'
+      'Help clients set long-term goals and understand the plan they are building toward',
+      'Work with families on retirement and education savings once you hold the registrations it requires',
+      'Treat suitability, documentation, and supervision as part of doing the work right'
     ],
     fits: [
-      'Holds the securities registrations the role requires, or is committed to earning them',
-      'Treats compliance as part of the craft, not an obstacle',
-      'Thinks in decades, not quarters'
+      'Life licensed first, or on the way there',
+      'Holds or is committed to passing the SIE, Series 6, and Series 63 (Series 63 where your state requires it)',
+      'Thinks in decades, not quarters, and treats compliance as part of the craft'
     ]
   }
 ];
