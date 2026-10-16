@@ -25,7 +25,8 @@
     "test:beta": "node beta-cohort.test.cjs && node beta-progress.test.mjs",
     "test:commitment": "node commitment.test.mjs",
     "test:assessments": "node assessments.test.mjs",
-    "test:tools": "node focus-tax.test.mjs && node scorecard.test.mjs && node careers.test.mjs && node agreement.test.mjs && node membership.test.mjs"
+    "test:tools": "node focus-tax.test.mjs && node scorecard.test.mjs && node careers.test.mjs && node agreement.test.mjs && node membership.test.mjs && node drive-sync.test.mjs",
+    "e2e:drive-sync": "cd .. && tests/node_modules/.bin/firebase emulators:exec --only firestore --project demo-1p \"node tests/drive-sync-e2e.test.mjs\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",

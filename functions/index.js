@@ -9616,8 +9616,13 @@ exports.voicemailAudio = onRequest({ cors: false, invoker: 'public' }, async (re
 // sees hash == content and does nothing. No flags to clear, no bouncing.
 // ════════════════════════════════════════════════════════════════
 
+// drive.file lets scripts/drive-sync.mjs upload the social media files in
+// this repo to the owner's Drive. It reaches only files this app creates,
+// never the rest of the owner's Drive.
+const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
+  DRIVE_FILE_SCOPE,
   'openid', 'email'
 ].join(' ');
 
@@ -9823,6 +9828,7 @@ exports.googleOAuthCallback = onRequest({ cors: false, invoker: 'public' }, asyn
       accessTokenExpiry: Date.now() + (Number(tok.expires_in) || 3600) * 1000,
       calendarId: 'primary',
       googleEmail: email,
+      scopes: tok.scope || null,
       connectedBy: st.uid,
       syncToken: null,
       watchChannelId: null, watchResourceId: null, watchExpiry: null,
@@ -9831,6 +9837,7 @@ exports.googleOAuthCallback = onRequest({ cors: false, invoker: 'public' }, asyn
 
     await googleStatusRef(db, st.companyId).set({
       connected: true, googleEmail: email, calendarId: 'primary', error: null,
+      driveSync: String(tok.scope || '').split(/\s+/).includes(DRIVE_FILE_SCOPE),
       connectedAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp()
     }, { merge: true });
 
@@ -9873,7 +9880,7 @@ exports.googleDisconnect = onCall(async (request) => {
   }
   await googleStatusRef(db, companyId).set({
     connected: false, googleEmail: null, error: null,
-    watchExpiry: null, lastSyncAt: null,
+    watchExpiry: null, lastSyncAt: null, driveSync: false,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
   return { ok: true };

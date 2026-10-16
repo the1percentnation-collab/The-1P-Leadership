@@ -1,0 +1,66 @@
+# Uploads everything under social/ to the owner's Google Drive, under
+# "Social Media - Ready to Post", keeping the folder names. See
+# scripts/drive-sync.mjs for how it authenticates and what it remembers.
+#
+# SETUP, once: CRM Settings → Google → Reconnect Google, and approve the Drive
+# permission. Until then this workflow passes and its summary says it is
+# waiting. If the summary says the Drive API is off, open the link it prints,
+# click Enable, and re-run.
+name: Sync social media files to Google Drive
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'social/**'
+      - 'scripts/drive-sync.mjs'
+      - 'scripts/drive-sync-core.mjs'
+      - '.github/workflows/drive-sync.yml'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'List what would upload, without uploading'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drive-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install firebase-admin
+        working-directory: functions
+        run: npm ci --omit=dev --no-audit --no-fund
+
+      - name: Write service account key
+        id: sa
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP }}
+        run: |
+          echo "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+          echo "path=$RUNNER_TEMP/sa.json" >> "$GITHUB_OUTPUT"
+
+      - name: Sync social/ to Drive
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.sa.outputs.path }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          DRIVE_SYNC_DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: node scripts/drive-sync.mjs
+
+      - name: Remove service account key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa.json"
