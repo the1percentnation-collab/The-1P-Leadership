@@ -1,6 +1,6 @@
 // The One Percent Membership: one monthly or annual subscription that opens
-// every self-paced course in the membership, the ebook library, and the
-// members-only live sessions. Certifications are never part of it.
+// every self-paced course in the membership. Certifications, books (the
+// ebook library included), and live sessions are never part of it.
 //
 // Pure: no imports, no DOM. The membership page, the course gates, and the
 // server (functions/membership-core.js, a generated CommonJS copy) all use

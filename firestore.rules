@@ -1400,5 +1400,14 @@ service cloud.firestore {
     match /oauthStates/{state} {
       allow read, write: if false;
     }
+
+    // Drive sync bookkeeping (scripts/drive-sync.mjs, Admin SDK only): which
+    // repo file is which Drive file. No client reads or writes.
+    match /driveSyncFiles/{key} {
+      allow read, write: if false;
+    }
+    match /driveSyncFolders/{key} {
+      allow read, write: if false;
+    }
   }
 }

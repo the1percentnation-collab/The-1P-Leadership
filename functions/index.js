@@ -2669,15 +2669,6 @@ exports.registerForEvent = onCall(async (request) => {
   if (!eventSnap.exists) throw new HttpsError('not-found', 'Event not found.');
   const event = { id: eventId, ...eventSnap.data() };
 
-  // Members-only live sessions: the join link goes to active members only.
-  if (event.membersOnly === true) {
-    const u = uid ? ((await db.collection('users').doc(uid).get()).data() || {}) : null;
-    const staff = request.auth && request.auth.token && request.auth.token.role === 'owner';
-    if (!staff && !membershipCore.isActiveMember(u)) {
-      throw new HttpsError('permission-denied', 'This live session is for members of The One Percent Membership.');
-    }
-  }
-
   // Dedup key: uid for members, hashed email for the public.
   const regId = uid || ('e_' + crypto.createHash('sha256').update(email).digest('hex').slice(0, 24));
   const regRef = eventRef.collection('registrations').doc(regId);
@@ -7770,8 +7761,7 @@ exports.bookFile = onRequest({ cors: false, invoker: 'public', memory: '512MiB',
     const userSnap = await db.collection('users').doc(token.uid).get();
     const u = userSnap.exists ? (userSnap.data() || {}) : {};
     const isAdmin = token.role === 'owner' || u.role === 'admin' || u.role === 'owner';
-    // Active members read the whole library.
-    const owns = (Array.isArray(u.ownedBookIds) && u.ownedBookIds.includes(bookId)) || membershipCore.isActiveMember(u);
+    const owns = Array.isArray(u.ownedBookIds) && u.ownedBookIds.includes(bookId);
     if (!isAdmin && (!owns || book.status === 'hidden')) { res.status(403).send('not in your library'); return; }
   }
 
@@ -9635,8 +9625,13 @@ exports.voicemailAudio = onRequest({ cors: false, invoker: 'public' }, async (re
 // sees hash == content and does nothing. No flags to clear, no bouncing.
 // ════════════════════════════════════════════════════════════════
 
+// drive.file lets scripts/drive-sync.mjs upload the social media files in
+// this repo to the owner's Drive. It reaches only files this app creates,
+// never the rest of the owner's Drive.
+const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
+  DRIVE_FILE_SCOPE,
   'openid', 'email'
 ].join(' ');
 
@@ -9842,6 +9837,7 @@ exports.googleOAuthCallback = onRequest({ cors: false, invoker: 'public' }, asyn
       accessTokenExpiry: Date.now() + (Number(tok.expires_in) || 3600) * 1000,
       calendarId: 'primary',
       googleEmail: email,
+      scopes: tok.scope || null,
       connectedBy: st.uid,
       syncToken: null,
       watchChannelId: null, watchResourceId: null, watchExpiry: null,
@@ -9850,6 +9846,7 @@ exports.googleOAuthCallback = onRequest({ cors: false, invoker: 'public' }, asyn
 
     await googleStatusRef(db, st.companyId).set({
       connected: true, googleEmail: email, calendarId: 'primary', error: null,
+      driveSync: String(tok.scope || '').split(/\s+/).includes(DRIVE_FILE_SCOPE),
       connectedAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp()
     }, { merge: true });
 
@@ -9892,7 +9889,7 @@ exports.googleDisconnect = onCall(async (request) => {
   }
   await googleStatusRef(db, companyId).set({
     connected: false, googleEmail: null, error: null,
-    watchExpiry: null, lastSyncAt: null,
+    watchExpiry: null, lastSyncAt: null, driveSync: false,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
   return { ok: true };
@@ -15255,7 +15252,7 @@ exports.voidAgreement = onCall(async (request) => {
 // The One Percent Membership.
 //
 // One Stripe subscription (monthly or annual) that opens every course on the
-// membership list, the ebook library, and members-only live sessions. The
+// membership list. Books and live sessions are not part of it. The
 // rules live in functions/membership-core.js (generated from
 // public/js/membership-core.js). Membership is its own flag on the user,
 // users/{uid}.membershipActive plus a users/{uid}.membership record, written
@@ -15460,11 +15457,11 @@ async function handleMembershipCheckout(db, stripe, session) {
         from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
         replyTo: REPLY_TO,
         subject: `Welcome to ${membershipCore.MEMBERSHIP_NAME}`,
-        text: `Welcome in.\n\nYour membership is active. Every course in the membership, the ebook library, and the monthly members-only live session are open to you now:\n\n${url}\n\nAnthony Brown Sr.\nThe One Percent Nation`,
+        text: `Welcome in.\n\nYour membership is active. Every course in the membership, The One Percent Brief, and the member toolkit are open to you now:\n\n${url}\n\nAnthony Brown Sr.\nThe One Percent Nation`,
         html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;">
           <div style="border-bottom:3px solid #111;padding-bottom:10px;margin-bottom:18px;font-weight:700;letter-spacing:1px;">THE ONE PERCENT NATION</div>
           <h2 style="font-size:20px;margin:0 0 12px;">Welcome in.</h2>
-          <p style="font-size:15px;line-height:1.55;">Your membership is active${plan === 'founding' ? ', at the founding rate you keep for as long as you stay' : ''}. Every course in the membership, the ebook library, and the monthly members-only live session are open to you now.</p>
+          <p style="font-size:15px;line-height:1.55;">Your membership is active${plan === 'founding' ? ', at the founding rate you keep for as long as you stay' : ''}. Every course in the membership, The One Percent Brief, and the member toolkit are open to you now.</p>
           <p style="margin:22px 0;"><a href="${url}" style="display:inline-block;background:#E60306;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">Start with your membership</a></p>
           <p style="font-size:15px;line-height:1.55;">One percent better, every day.<br>Anthony Brown Sr.</p>
         </div>`,

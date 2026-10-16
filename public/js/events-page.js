@@ -112,7 +112,6 @@ function eventCardHtml(e) {
         </div>
         <div class="c-event-body">
           <div class="c-event-title">${escapeHtml(e.title || 'Untitled event')}</div>
-          ${e.membersOnly ? '<div class="c-event-host" style="color:#E60306;font-weight:600;letter-spacing:.04em;">Members only · <a href="/membership" style="color:inherit;">The One Percent Membership</a></div>' : ''}
           <div class="c-event-when">${escapeHtml(fmtEventDate(e.startsAt, e.endsAt))}</div>
           ${e.location ? `<div class="c-event-loc"><span class="c-event-meta-ic">📍</span>${escapeHtml(e.location)}</div>` : ''}
           ${e.hostName ? `<div class="c-event-host">Hosted by ${escapeHtml(e.hostName)}</div>` : ''}
@@ -235,10 +234,6 @@ function openEventModal(prefill = null) {
       <div class="c-modal-body">
         <label class="c-invite-label" for="c-ev-title">Title</label>
         <input id="c-ev-title" class="c-ch-input" type="text" maxlength="80" value="${escapeHtml(prefill ? prefill.title : '')}">
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:8px 0 4px;cursor:pointer;">
-          <input type="checkbox" id="c-ev-members"${prefill && prefill.membersOnly ? ' checked' : ''}>
-          Members only: the join link goes to active members of The One Percent Membership
-        </label>
 
         <label class="c-invite-label">Flyer / cover image (optional)</label>
         <div class="c-ev-image-field">
@@ -561,7 +556,6 @@ function openEventModal(prefill = null) {
         link: link || null,
         location: loc || null,
         description: desc || null,
-        membersOnly: !!($('c-ev-members') && $('c-ev-members').checked),
         ...(state.companyId ? { companyId: state.companyId } : {}),
         updatedAt: serverTimestamp(),
         ...(prefill ? {} : { createdAt: serverTimestamp(), createdByUid: state.me ? state.me.uid : null })

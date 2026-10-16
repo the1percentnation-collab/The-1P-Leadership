@@ -95,15 +95,13 @@ await t('admin CANNOT upload a scorecard logo',
 await t('member CANNOT read a scorecard logo',
   () => assertFails(getBytes(ref(reader, 'auditScorecards/sc1/logo-1.png'))));
 
-// The One Percent Membership: active members read the whole library.
+// The One Percent Membership does not include books: an active member reads
+// only the books they own, like anyone else.
 await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(ctx.firestore(), 'users/memb'), { email: 'memb@x.com', role: 'user', membershipActive: true });
-  await setDoc(doc(ctx.firestore(), 'users/lapsed'), { email: 'lapsed@x.com', role: 'user', membershipActive: false });
 });
-await t('active member CAN download a book they did not buy',
-  () => assertSucceeds(getBytes(ref(env.authenticatedContext('memb').storage(), 'books/i-cant/book.epub'))));
-await t('lapsed member CANNOT download it',
-  () => assertFails(getBytes(ref(env.authenticatedContext('lapsed').storage(), 'books/i-cant/book.epub'))));
+await t('active member CANNOT download a book they did not buy',
+  () => assertFails(getBytes(ref(env.authenticatedContext('memb').storage(), 'books/i-cant/book.epub'))));
 
 await env.cleanup();
 

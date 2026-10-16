@@ -83,7 +83,6 @@ function renderMember() {
         : until ? `Renews on ${esc(day(until))}.` : ''}</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
       <a class="btn btn-red" href="/courses.html">Go to your courses &rarr;</a>
-      <a class="btn btn-ghost" href="/library.html">Open the library</a>
     </div>
     <p class="mb-fine" style="margin-top:14px">${canceling
       ? '<button class="btn btn-ghost btn-sm" type="button" id="btn-resume">Keep my membership</button>'

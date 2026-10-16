@@ -4,8 +4,8 @@
 // It pins the business rules that matter: a founding spot is counted once,
 // paid months are counted for the certification credit, a cancel keeps
 // access to the end of the period, ending the membership never takes a
-// course the member bought outright, a certification can never be added,
-// and the members-only live session is closed to everyone else.
+// course the member bought outright, and a certification can never be added.
+// Books and live sessions are not part of the membership.
 //
 // Run: `npm run e2e:membership` in tests/ (writes fake secrets and removes them).
 import fs from 'node:fs';
@@ -96,15 +96,12 @@ const admin = async (fn) => { let out; await env.withSecurityRulesDisabled(async
 const read = (p) => admin(async (db) => { const s = await getDoc(doc(db, p)); return s.exists() ? s.data() : null; });
 
 const member = await account('member@e2e.test');
-const outsider = await account('outsider@e2e.test');
 const owner = await account('owner@e2e.test', { role: 'owner' });
 
 await admin(async (db) => {
   // The member already bought one course outright, before joining.
   await setDoc(doc(db, `users/${member.uid}`), { email: 'member@e2e.test', displayName: 'Morgan Member', role: 'user', enrolledCourseSlugs: ['the-focus-tax'] });
-  await setDoc(doc(db, `users/${outsider.uid}`), { email: 'outsider@e2e.test', displayName: 'Riley Outside', role: 'user' });
   await setDoc(doc(db, 'config/membership'), { includedSlugs: ['icant', 'mindset-foundations'], foundingCount: 4 });
-  await setDoc(doc(db, 'events/monthly-live'), { title: 'Members Live: October', status: 'published', membersOnly: true, startsAt: Date.now() + 86400000 });
 });
 
 // ── A signed event, as Stripe would send it ───────────────────────────────
@@ -181,18 +178,6 @@ await t('invoice.paid: each paid month is counted', async () => {
   assert(u.membership.currentPeriodEnd, 'currentPeriodEnd missing');
 });
 
-await t('members-only live session: refused for a non-member', async () => {
-  const j = await call('registerForEvent', { eventId: 'monthly-live', name: 'Riley Outside', email: 'outsider@e2e.test' }, outsider.token);
-  assert(j.error && j.error.status === 'PERMISSION_DENIED', JSON.stringify(j));
-});
-
-await t('members-only live session: open to an active member', async () => {
-  const j = await call('registerForEvent', { eventId: 'monthly-live', name: 'Morgan Member', email: 'member@e2e.test' }, member.token);
-  assert(!j.error, JSON.stringify(j));
-  const reg = await read(`events/monthly-live/registrations/${member.uid}`);
-  assert(reg && reg.uid === member.uid, JSON.stringify(reg));
-});
-
 await t('course console: the owner can add a course', async () => {
   const j = await call('setMembershipCourse', { slug: 'business-alignment', included: true }, owner.token);
   assert(!j.error, JSON.stringify(j));
@@ -259,11 +244,6 @@ await t('ended: the membership switches off', async () => {
 await t('ended: the course bought outright is still theirs', async () => {
   const u = await read(`users/${member.uid}`);
   assert(u.enrolledCourseSlugs.includes('the-focus-tax'), JSON.stringify(u.enrolledCourseSlugs));
-});
-
-await t('ended: the members-only live session closes again', async () => {
-  const j = await call('registerForEvent', { eventId: 'monthly-live', name: 'Morgan Member', email: 'member@e2e.test' }, member.token);
-  assert(j.error && j.error.status === 'PERMISSION_DENIED', JSON.stringify(j));
 });
 
 capture.close();

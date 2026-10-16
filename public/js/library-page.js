@@ -67,13 +67,9 @@ function shelfItem(book, pos) {
 }
 
 async function loadShelf() {
-  const { ids, admin, member } = await libraryAccess({ fresh: true });
+  const { ids, admin } = await libraryAccess({ fresh: true });
   let books;
-  if (member && !admin) {
-    // Members hold the whole published library.
-    const snap = await getDocs(collection(db, 'books'));
-    books = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((b) => b.status === 'live' || ids.includes(b.id));
-  } else if (admin) {
+  if (admin) {
     // Owners and admins see every book, including drafts, to proof uploads.
     const snap = await getDocs(collection(db, 'books'));
     books = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
