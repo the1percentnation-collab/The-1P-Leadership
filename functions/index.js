@@ -10420,17 +10420,44 @@ async function executeSequenceStep(db, companyId, enrollment, step, seq) {
 
   if (step.channel === 'email') {
     if (!contact.email) return 'skipped: no email';
-    if (contact.emailUnsubscribed === true || contact.unsubscribed === true) return 'skipped: unsubscribed';
+    // The flags this used to read (`emailUnsubscribed`, `unsubscribed`) are
+    // written by nothing in this codebase, so the guard never fired and an
+    // unsubscribe was ignored for the rest of a cadence. isEmailSuppressed
+    // reads what the unsubscribe endpoint and the email event webhook set,
+    // the same check campaigns and 1:1 email use.
+    if (isEmailSuppressed(contact)) return 'skipped: unsubscribed';
     if (!body) return 'skipped: empty body';
     if (!emailConfigured()) return 'skipped: email not configured';
     const fromName = (ownerDoc && (ownerDoc.displayName || ownerDoc.name)) || FROM_NAME_DEFAULT;
+
+    // Cadence mail is marketing, so it carries the same opt-out a campaign
+    // does: a visible footer link plus the one-click header mail clients show.
+    let unsubLink = null;
+    try { unsubLink = unsubscribeUrl(companyId, contact.id, await ensureUnsubToken(cRef, contact.unsubToken)); }
+    catch (e) { console.warn('[sequence] unsub token failed:', e && e.message); }
+    const footerHtml = unsubLink
+      ? `<hr style="margin:28px 0 14px;border:none;border-top:1px solid #ddd;"><p style="font-size:12px;color:#777;line-height:1.6;"><a href="${unsubLink}" style="color:#777;">Unsubscribe from these emails</a>.</p>`
+      : '';
+    const footerText = unsubLink ? `\n\n--\nUnsubscribe: ${unsubLink}` : '';
+
     await sendEmail({
       to: contact.email,
       from: { email: FROM_EMAIL, name: fromName },
       replyTo: (ownerDoc && ownerDoc.email) || REPLY_TO,
       subject: subject || `A note from ${fromName}`,
-      text: body,
-      html: textToHtml(body)
+      text: body + footerText,
+      html: textToHtml(body) + footerHtml,
+      ...(unsubLink ? { headers: {
+        'List-Unsubscribe': `<${unsubLink}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+      } } : {}),
+      // Lets the email event webhook attribute opens, clicks and bounces.
+      customArgs: {
+        type: 'sequence',
+        companyId,
+        sequenceId: String(enrollment.sequenceId || ''),
+        contactId: String(contact.id || '')
+      }
     });
     await cRef.collection('activities').add({
       type: 'manual_email', description: `Sequence email (${seq.name}): ${subject || body.slice(0, 80)}`,
