@@ -67,6 +67,30 @@ ok('financial roles carry the disclaimer and make no pay or product claims', () 
   assert.ok(!/\$|commission|salary|income|guarantee|unlimited|six.figure/i.test(text), 'pay or guarantee language found');
 });
 
+ok('the financial team shows the licensing path and the contractor disclosure', () => {
+  const fin = TEAMS.find((t) => t.key === 'financial');
+  const path = JSON.stringify(fin.path);
+  assert.ok(Array.isArray(fin.path) && fin.path.length >= 4, 'path steps');
+  for (const exam of ['life and health', 'SIE', 'Series 6', 'Series 63']) assert.ok(path.includes(exam), `path names ${exam}`);
+  assert.ok(/independent contractors/i.test(fin.disclaimer));
+  assert.ok(/no salary, no guaranteed income/i.test(fin.disclaimer));
+  assert.ok(!/\$\d/.test(path + fin.disclaimer), 'no dollar figures on the financial team');
+});
+
+ok('the affiliated firm is never named anywhere on the site', () => {
+  const hits = [];
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const f = new URL(e.name + (e.isDirectory() ? '/' : ''), dir);
+      if (e.isDirectory()) walk(f);
+      else if (/\.(html|js|json|txt|xml|md)$/.test(e.name) && /primerica|pfs investments/i.test(fs.readFileSync(f, 'utf8'))) hits.push(f.pathname);
+    }
+  };
+  walk(new URL('../public/', import.meta.url));
+  if (/primerica|pfs investments/i.test(fs.readFileSync(new URL('../functions/careers.js', import.meta.url), 'utf8'))) hits.push('functions/careers.js');
+  assert.deepStrictEqual(hits, []);
+});
+
 ok('no em dashes in the posted copy', () => {
   assert.ok(!/—/.test(JSON.stringify({ TEAMS, ROLES })));
   assert.ok(!/—/.test(fs.readFileSync(new URL('../public/join.html', import.meta.url), 'utf8').replace(/<style>[\s\S]*?<\/style>/, '')));
