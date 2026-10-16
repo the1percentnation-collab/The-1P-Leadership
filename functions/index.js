@@ -11706,14 +11706,19 @@ exports.courseAdvisorChat = onCall({ secrets: [anthropicKey] }, async (request) 
   }
   const client = new Anthropic.default({ apiKey });
 
+  // Haiku 5.5: a member-facing Q&A chat at a small fraction of Opus's cost.
+  // It thinks by default, so the reply is read from the text blocks rather
+  // than content[0] (which can be a thinking block), and low effort keeps
+  // answers quick for chat.
   const response = await client.messages.create({
-    model: 'claude-opus-4-8',
-    max_tokens: 1024,
+    model: 'claude-haiku-5-5',
+    max_tokens: 2048,
+    output_config: { effort: 'low' },
     system: systemPrompt,
     messages
   });
 
-  const rawReply = (response.content && response.content[0] && response.content[0].text) || '';
+  const rawReply = (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
 
   // Detect and extract course suggestion signal.
   let replyText = rawReply;
@@ -11978,16 +11983,16 @@ exports.reportBug = onCall({ secrets: [sendgridKey, anthropicKey] }, async (requ
 //     approves; the apply path runs with no LLM in it at all.
 // ════════════════════════════════════════════════════════════════
 
-// Haiku 4.5, not Opus, because the expensive questions are answered for free
+// Haiku, not Opus, because the expensive questions are answered for free
 // by the deterministic reports on the CRM dashboard. What is left for the
-// model is ad-hoc phrasing, which Haiku handles at roughly a fifth of the
-// cost (~$1/$5 per MTok against $5/$25).
+// model is ad-hoc phrasing, which Haiku handles at a small fraction of the
+// cost (Haiku 5.5: ~$0.10/$0.50 per MTok against Opus at $5/$25).
 //
 // Switching this constant is not just a string swap: thinking is configured
 // differently per model family, so use crmThinkingConfig() below rather than
 // hardcoding a thinking block. Opus 5 / Sonnet 5 take adaptive thinking and
 // reject budget_tokens with a 400; Haiku 4.5 is the reverse.
-const CRM_MODEL = 'claude-haiku-4-5';
+const CRM_MODEL = 'claude-haiku-5-5';
 
 /**
  * The right `thinking` parameter for whichever model CRM_MODEL names.
@@ -11998,8 +12003,9 @@ const CRM_MODEL = 'claude-haiku-4-5';
 function crmThinkingConfig(model) {
   // Haiku 4.5 and older models: an explicit token budget, which must be below
   // max_tokens. Adaptive is rejected.
-  if (/haiku/.test(model)) return { type: 'enabled', budget_tokens: 2048 };
-  // Opus 5 / Sonnet 5 / the 4.6+ family: adaptive. budget_tokens is a 400.
+  if (/haiku-4|haiku-3|claude-3/.test(model)) return { type: 'enabled', budget_tokens: 2048 };
+  // Haiku 5.5 / Opus 5 / Sonnet 5 / the 4.6+ family: adaptive. budget_tokens
+  // is a 400.
   return { type: 'adaptive' };
 }
 const CRM_MAX_ITERATIONS = 6;        // model turns before we force an answer
@@ -12960,10 +12966,7 @@ exports.crmAssistantChat = onCall(
       } catch (err) {
         const status = err && err.status;
         console.error('[crmAssistant] model call failed', status, err && err.message);
-        if (status === 429 || (status >= 500 && status < 600)) {
-          throw new HttpsError('unavailable', 'The assistant is busy right now. Try again in a moment.');
-        }
-        throw new HttpsError('internal', 'The assistant could not complete that request.');
+        throw anthropicFailure(err);
       }
 
       if (outOfBudget) { complete = false; break; }
@@ -13338,6 +13341,27 @@ exports.crmAssistantRevert = onCall({ timeoutSeconds: 120 }, async (request) => 
   };
 });
 
+
+// Turns an Anthropic API error into a message an admin can act on. Only
+// admins reach the CRM assistant, and these name a setting to fix, never a
+// key or other secret, so they are safe to show in the chat.
+function anthropicFailure(err) {
+  const status = err && err.status;
+  const raw = String((err && err.message) || '');
+  if (/credit balance|billing|purchase credits/i.test(raw)) {
+    return new HttpsError('failed-precondition', 'The AI account is out of credits. Add credits in the Anthropic Console (Plans & Billing), then try again.');
+  }
+  if (status === 401 || status === 403) {
+    return new HttpsError('failed-precondition', 'The AI key was rejected. Check ANTHROPIC_API_KEY in Google Cloud Secret Manager and redeploy the functions.');
+  }
+  if (status === 404 || (status === 400 && /model/i.test(raw))) {
+    return new HttpsError('failed-precondition', 'The AI model this assistant uses is not available. Update CRM_MODEL in functions/index.js.');
+  }
+  if (status === 429 || status === 529 || (status >= 500 && status < 600)) {
+    return new HttpsError('unavailable', 'The AI service is busy right now. Try again in a moment.');
+  }
+  return new HttpsError('internal', 'The assistant could not complete that request.');
+}
 
 function getAnthropicClient() {
   let Anthropic;
