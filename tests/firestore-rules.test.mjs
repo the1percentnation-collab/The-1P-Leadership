@@ -17,7 +17,7 @@ import {
   initializeTestEnvironment, assertSucceeds, assertFails
 } from '@firebase/rules-unit-testing';
 import {
-  doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, getDocs, serverTimestamp,
+  doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, getDocs, serverTimestamp,
   arrayUnion, arrayRemove
 } from 'firebase/firestore';
 
@@ -441,6 +441,29 @@ await t('company admin CANNOT write an audit scorecard',
   () => assertFails(setDoc(doc(adm, 'auditScorecards/sc2'), { orgName: 'Sneaky' })));
 await t('signed-out visitor CANNOT read an audit scorecard',
   () => assertFails(getDoc(doc(anon, 'auditScorecards/sc1'))));
+
+// ── Speaking agreements (owner drafts; server-only once sent) ─────────────
+await t('owner CAN create a draft agreement',
+  () => assertSucceeds(setDoc(doc(owner, 'agreements/ag1'), { status: 'draft', client: { legalName: 'Acme' } })));
+await t('owner CAN edit a draft agreement',
+  () => assertSucceeds(updateDoc(doc(owner, 'agreements/ag1'), { 'client.legalName': 'Acme Corp' })));
+await t('owner CANNOT mark an agreement sent or signed from the browser',
+  () => assertFails(updateDoc(doc(owner, 'agreements/ag1'), { status: 'signed' })));
+await t('owner CANNOT create an agreement that is already signed',
+  () => assertFails(setDoc(doc(owner, 'agreements/ag2'), { status: 'signed' })));
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), 'agreements/agSigned'), { status: 'signed', token: 'secret' });
+});
+await t('owner CANNOT edit a signed agreement',
+  () => assertFails(updateDoc(doc(owner, 'agreements/agSigned'), { 'snapshot.total': 1 })));
+await t('owner CANNOT delete a signed agreement',
+  () => assertFails(deleteDoc(doc(owner, 'agreements/agSigned'))));
+await t('owner CAN delete a draft agreement',
+  () => assertSucceeds(deleteDoc(doc(owner, 'agreements/ag1'))));
+await t('company admin CANNOT read agreements',
+  () => assertFails(getDoc(doc(adm, 'agreements/agSigned'))));
+await t('signed-out visitor CANNOT read an agreement (or its token)',
+  () => assertFails(getDoc(doc(anon, 'agreements/agSigned'))));
 
 await env.cleanup();
 

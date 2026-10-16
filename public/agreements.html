@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Speaking Agreements | The One Percent Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Mrs+Saint+Delafield&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="/assets/agreement.css">
+  <style>
+    [hidden] { display: none !important; }
+    .ag-muted { font-size: 12px; color: var(--gray-light); }
+    .ag-head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+    .ag-head-row h2 { margin: 0; }
+    .ag-row-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .ag-pill { display: inline-block; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+    .ag-pill-draft { background: rgba(160,160,160,.15); color: #c9c9c9; }
+    .ag-pill-sent { background: rgba(212,175,55,.14); color: #E4C65B; }
+    .ag-pill-signed { background: rgba(74,222,128,.1); color: #4ade80; }
+    .ag-pill-void { background: rgba(120,120,120,.12); color: #8a8a8a; }
+
+    .ag-editor { display: grid; grid-template-columns: minmax(340px, 0.85fr) minmax(0, 1.15fr); gap: 24px; align-items: start; }
+    @media (max-width: 1150px) { .ag-editor { grid-template-columns: minmax(0, 1fr); } .ag-preview-wrap { position: static !important; } }
+    .ag-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+    .ag-toolbar .grow { flex: 1; }
+    .ag-save { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--gray-mid); }
+    .ag-form .card { margin-bottom: 16px; }
+    .ag-form h3 { font-family: var(--font-display); font-size: 20px; letter-spacing: .04em; margin: 0 0 12px; font-weight: 400; }
+    .ag-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 560px) { .ag-grid2 { grid-template-columns: 1fr; } .console-body { padding: 16px; } }
+    .ag-f { margin-bottom: 12px; }
+    .ag-f > label { display: block; font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--gray-light); margin-bottom: 6px; }
+    .ag-f input:not([type="checkbox"]), .ag-f select, .ag-f textarea {
+      width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--white); font-family: var(--font-body); font-size: 14px; padding: 9px 12px;
+    }
+    .ag-f textarea { min-height: 80px; resize: vertical; }
+    .ag-f select option { background: var(--charcoal); }
+    .ag-f input:focus, .ag-f select:focus, .ag-f textarea:focus { outline: none; border-color: rgba(204,27,27,0.5); }
+    .ag-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--gray-light); margin: 4px 0 12px; cursor: pointer; }
+    .ag-totals { margin-top: 6px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--gray-light); display: grid; gap: 4px; }
+    .ag-totals strong { color: var(--white); }
+    .ag-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+    .ag-form fieldset:disabled { opacity: .6; }
+    .ag-locked { font-size: 13px; color: var(--gray-light); background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; line-height: 1.55; }
+    .ag-link { display: flex; gap: 8px; margin-top: 8px; }
+    .ag-link input { flex: 1; min-width: 0; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px; color: var(--white); font-family: 'Space Mono', monospace; font-size: 11px; padding: 8px 10px; }
+    .ag-missing { font-size: 12px; color: var(--gray-light); margin-top: 10px; }
+    .ag-missing ul { margin: 6px 0 0; padding-left: 18px; }
+
+    .ag-preview-wrap { position: sticky; top: 84px; }
+    .ag-preview { max-height: calc(100vh - 120px); overflow: auto; border-radius: 8px; background: #fff; box-shadow: 0 10px 40px rgba(0,0,0,.45); }
+    .ag-preview .ag-doc { padding: 0.55in 0.6in 0.5in; }
+
+    #print-root { display: none; }
+    @media print {
+      body { background: #fff !important; }
+      .console-shell { display: none !important; }
+      #print-root { display: block; }
+    }
+  </style>
+</head>
+<body style="display:block; height:auto; overflow:auto;">
+  <div class="console-shell">
+    <div class="console-topbar">
+      <div class="console-topbar-left">
+        <a class="console-brand" href="/dashboard.html" aria-label="The One Percent Academy">
+          <img src="/assets/academy-logo.png" alt="" class="console-brand-mark">
+        </a>
+        <a class="back-to-main" href="/owner.html">&larr; Owner Console</a>
+      </div>
+      <div class="user-chip" id="user-chip"></div>
+    </div>
+
+    <div class="console-body">
+      <div id="gate-msg"></div>
+
+      <div id="view-list" style="display:none;">
+        <div class="card">
+          <div class="ag-head-row">
+            <h2>Speaking requests</h2>
+            <button class="btn btn-ghost btn-sm" type="button" id="btn-blank">New blank agreement</button>
+          </div>
+          <p class="ag-muted" style="margin-bottom:14px;">Requests from the speaking form that do not have an agreement yet. Starting one carries the organization and event details over.</p>
+          <table class="data-table">
+            <thead><tr><th>Requested by</th><th>Organization</th><th>Event</th><th>Format</th><th>Requested</th><th></th></tr></thead>
+            <tbody id="requests-body"><tr><td colspan="6" class="ag-muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="ag-head-row"><h2>Agreements</h2></div>
+          <table class="data-table">
+            <thead><tr><th>Agreement</th><th>Client</th><th>Event date</th><th>Total</th><th>Status</th><th></th></tr></thead>
+            <tbody id="agreements-body"><tr><td colspan="6" class="ag-muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="view-editor" style="display:none;">
+        <div class="ag-toolbar">
+          <a class="btn btn-ghost btn-sm" href="/agreements.html">&larr; All agreements</a>
+          <span id="status-pill"></span>
+          <span class="ag-save" id="save-state"></span>
+          <span class="grow"></span>
+          <button class="btn btn-ghost btn-sm" type="button" id="btn-delete" hidden>Delete</button>
+          <button class="btn btn-ghost btn-sm" type="button" id="btn-void" hidden>Void</button>
+          <button class="btn btn-ghost btn-sm" type="button" id="btn-resend" hidden>Resend email</button>
+          <button class="btn btn-ghost btn-sm" type="button" id="btn-print">Download PDF</button>
+          <button class="btn btn-primary btn-sm" type="button" id="btn-send" hidden>Send for signature</button>
+        </div>
+
+        <div class="ag-editor">
+          <div class="ag-form">
+            <div class="ag-locked" id="locked" hidden></div>
+            <form id="ag-form" novalidate autocomplete="off">
+              <fieldset id="ag-fields">
+                <div class="card">
+                  <h3>Client</h3>
+                  <div class="ag-f"><label for="f-legalName">Legal name</label><input id="f-legalName" data-k="client.legalName" placeholder="e.g. Northline Realty Group, LLC"></div>
+                  <div class="ag-f"><label for="f-address">Address</label><input id="f-address" data-k="client.address"></div>
+                  <div class="ag-grid2">
+                    <div class="ag-f"><label for="f-signerName">Signer name</label><input id="f-signerName" data-k="client.signerName"></div>
+                    <div class="ag-f"><label for="f-signerTitle">Signer title</label><input id="f-signerTitle" data-k="client.signerTitle"></div>
+                  </div>
+                  <div class="ag-f"><label for="f-signerEmail">Signer email (receives the signing link)</label><input id="f-signerEmail" type="email" data-k="client.signerEmail"></div>
+                </div>
+
+                <div class="card">
+                  <h3>Event</h3>
+                  <div class="ag-f"><label for="f-eventName">Event name</label><input id="f-eventName" data-k="event.name"></div>
+                  <div class="ag-grid2">
+                    <div class="ag-f"><label for="f-date">Event date</label><input id="f-date" type="date" data-k="event.date"></div>
+                    <div class="ag-f"><label for="f-start">Start time</label><input id="f-start" data-k="event.startTime" placeholder="e.g. 9:00 AM Central"></div>
+                  </div>
+                  <div class="ag-f"><label for="f-location">Venue and address</label><input id="f-location" data-k="event.location"></div>
+                  <label class="ag-check"><input type="checkbox" id="f-virtual" data-k="event.virtual"> Virtual delivery</label>
+                  <div class="ag-f"><label for="f-audience">Audience</label><input id="f-audience" data-k="event.audience" placeholder="e.g. Sales team, about 120 people"></div>
+                  <div class="ag-grid2">
+                    <div class="ag-f"><label for="f-format">Format</label><select id="f-format" data-k="event.format"></select></div>
+                    <div class="ag-f"><label for="f-planning">Planning call</label><input id="f-planning" type="date" data-k="event.planningCall"></div>
+                  </div>
+                  <div class="ag-f"><label for="f-module">Content module</label><input id="f-module" data-k="event.module" placeholder="e.g. The Aligned Producer"></div>
+                </div>
+
+                <div class="card">
+                  <h3>Fees</h3>
+                  <div class="ag-grid2">
+                    <div class="ag-f"><label for="f-fee">Session fee ($)</label><input id="f-fee" type="number" min="0" step="50" data-k="fees.session"></div>
+                    <div class="ag-f"><label for="f-workbooks">Workbooks (people)</label><input id="f-workbooks" type="number" min="0" step="1" data-k="fees.workbooks"></div>
+                  </div>
+                  <label class="ag-check"><input type="checkbox" id="f-travel" data-k="fees.travel"> Flat travel fee ($1,500, outside the OKC metro)</label>
+                  <label class="ag-check"><input type="checkbox" id="f-recording" data-k="fees.recording"> Recording license ($2,500)</label>
+                  <div class="ag-totals" id="totals"></div>
+                </div>
+
+                <div class="card">
+                  <h3>Special terms</h3>
+                  <div class="ag-f"><textarea id="f-special" data-k="specialTerms" placeholder="Anything agreed for this booking only. Leave blank for none."></textarea></div>
+                </div>
+              </fieldset>
+            </form>
+            <div class="ag-missing" id="missing"></div>
+          </div>
+
+          <div class="ag-preview-wrap">
+            <div class="ag-preview" id="preview"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="print-root" aria-hidden="true"></div>
+  <script type="module" src="js/agreements.js"></script>
+</body>
+</html>
