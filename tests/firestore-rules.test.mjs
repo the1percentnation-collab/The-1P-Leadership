@@ -499,6 +499,50 @@ await t('admin CANNOT edit the membership list directly',
 await t('owner CANNOT edit the membership list directly (server only)',
   () => assertFails(setDoc(doc(owner, 'config/membership'), { includedSlugs: ['1p-clc'] })));
 
+// ── Hand sales: orders, stock, invoice counter ─────────────────────────────
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'orders/stripe1'), { productName: 'Paperback', amountTotal: 30, status: 'new', shipping: null });
+  await setDoc(doc(db, 'orders/hand1'), { kind: 'manual', invoiceNumber: 'INV-1001', invoiceToken: 'tok', amountTotal: 20, status: 'new', payment: { status: 'unpaid' } });
+  await setDoc(doc(db, 'stock/book-i-cant'), { onHand: 12, name: "I Can't" });
+  await setDoc(doc(db, 'stock/book-i-cant/moves/m1'), { delta: 12, reason: 'adjust' });
+  await setDoc(doc(db, 'counters/handSalesInvoice'), { next: 1002 });
+});
+await t('admin CAN move a Stripe order through fulfillment',
+  () => assertSucceeds(updateDoc(doc(adm, 'orders/stripe1'), { status: 'shipped', updatedAt: serverTimestamp() })));
+await t('admin CANNOT rewrite the amount on a Stripe order',
+  () => assertFails(updateDoc(doc(adm, 'orders/stripe1'), { amountTotal: 0 })));
+await t('admin CAN read a hand-sale order',
+  () => assertSucceeds(getDoc(doc(adm, 'orders/hand1'))));
+await t('admin CANNOT change a hand sale from the client (callable only)',
+  () => assertFails(updateDoc(doc(adm, 'orders/hand1'), { status: 'shipped', updatedAt: serverTimestamp() })));
+await t('admin CANNOT create an order from the client',
+  () => assertFails(setDoc(doc(adm, 'orders/fake'), { kind: 'manual', amountTotal: 1, status: 'new' })));
+await t('nobody signed out CAN read a hand-sale order (the invoice goes through getInvoice)',
+  () => assertFails(getDoc(doc(anon, 'orders/hand1'))));
+await t('a member CANNOT read a hand-sale order',
+  () => assertFails(getDoc(doc(solo, 'orders/hand1'))));
+await t('admin CAN read the shelf count and its history',
+  () => Promise.all([
+    assertSucceeds(getDoc(doc(adm, 'stock/book-i-cant'))),
+    assertSucceeds(getDocs(collection(adm, 'stock/book-i-cant/moves')))
+  ]));
+await t('admin CANNOT set the shelf count from the client',
+  () => assertFails(updateDoc(doc(adm, 'stock/book-i-cant'), { onHand: 99 })));
+await t('owner CANNOT write a stock move from the client',
+  () => assertFails(addDoc(collection(owner, 'stock/book-i-cant/moves'), { delta: 5 })));
+await t('a member CANNOT read the shelf count',
+  () => assertFails(getDoc(doc(solo, 'stock/book-i-cant'))));
+await t('nobody CAN read or reset the invoice counter',
+  () => Promise.all([
+    assertFails(getDoc(doc(owner, 'counters/handSalesInvoice'))),
+    assertFails(setDoc(doc(owner, 'counters/handSalesInvoice'), { next: 1 }))
+  ]));
+await t('admin CAN save hand-sale settings',
+  () => assertSucceeds(setDoc(doc(adm, 'config/handSales'), { cashapp: '$One' }, { merge: true })));
+await t('anyone signed out CANNOT read hand-sale settings',
+  () => assertFails(getDoc(doc(anon, 'config/handSales'))));
+
 await env.cleanup();
 
 let failed = 0;

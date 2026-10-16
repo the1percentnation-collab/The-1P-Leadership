@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Invoice | The One Percent Nation</title>
+  <link rel="icon" type="image/jpeg" href="/assets/favicon.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/agreement.css">
+  <style>
+    :root { --red: #E60306; --ink: #111; --bg: #ececea; --line: #d9d9d6; --soft: #5b5c60; --ok: #1d7a3a; }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: 'Outfit', Arial, sans-serif; }
+    .bar { position: sticky; top: 0; z-index: 10; background: #0b0b0b; color: #fff; border-bottom: 3px solid var(--red); }
+    .bar-in { max-width: 1000px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .bar-brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; }
+    .bar-brand img { width: 30px; height: 30px; border-radius: 5px; }
+    .bar-brand span { font-family: 'Bebas Neue', Impact, sans-serif; font-size: 18px; letter-spacing: .06em; }
+    .bar-actions { display: flex; gap: 8px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: 'Outfit', Arial, sans-serif; font-weight: 600; font-size: 14px; border-radius: 6px; padding: 10px 18px; cursor: pointer; border: 1px solid transparent; text-decoration: none; }
+    .btn-red { background: var(--red); color: #fff; }
+    .btn-red:hover { background: #b30205; }
+    .btn-red:disabled { opacity: .55; cursor: wait; }
+    .btn-light { background: transparent; color: #fff; border-color: rgba(255,255,255,.3); }
+    .btn-light:hover { border-color: #fff; }
+    .btn-line { background: #fff; color: var(--ink); border-color: var(--line); }
+    .btn-line:hover { border-color: var(--ink); }
+    main { max-width: 1000px; margin: 0 auto; padding: 28px 20px 80px; }
+    .notice { max-width: 8.5in; margin: 0 auto 18px; background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--red); border-radius: 6px; padding: 14px 18px; font-size: 14.5px; line-height: 1.55; }
+    .notice.ok { border-left-color: var(--ok); }
+    .paper { max-width: 8.5in; margin: 0 auto; box-shadow: 0 2px 4px rgba(0,0,0,.06), 0 18px 50px rgba(0,0,0,.12); border-radius: 2px; }
+    .loading { text-align: center; padding: 80px 20px; color: var(--soft); }
+
+    /* Invoice body, inside .ag-doc so it shares the agreement letterhead. */
+    .iv-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin: 30px 0 26px; }
+    .iv-title h1 { font-family: 'Outfit', Arial, sans-serif; font-weight: 600; font-size: 26pt; letter-spacing: .02em; margin: 0; line-height: 1; }
+    .iv-meta { font-family: 'Outfit', Arial, sans-serif; font-size: 9pt; color: var(--ag-soft); margin-top: 10px; display: grid; grid-template-columns: auto auto; gap: 3px 14px; }
+    .iv-meta b { color: var(--ag-ink); font-weight: 600; }
+    .iv-stamp { font-family: 'Outfit', Arial, sans-serif; font-weight: 700; font-size: 11pt; letter-spacing: .2em; text-transform: uppercase; padding: 8px 14px; border: 2px solid currentColor; border-radius: 4px; transform: rotate(-4deg); white-space: nowrap; }
+    .iv-stamp.paid { color: var(--ok); }
+    .iv-stamp.due { color: var(--red); }
+    .iv-stamp.void { color: var(--ag-faint); }
+    .iv-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 26px; }
+    .iv-label { font-family: 'Outfit', Arial, sans-serif; font-size: 7.5pt; letter-spacing: .14em; text-transform: uppercase; color: var(--ag-faint); margin-bottom: 6px; }
+    .iv-party { font-size: 10.5pt; line-height: 1.5; }
+    .iv-party strong { font-weight: 600; }
+    table.iv-items { width: 100%; border-collapse: collapse; font-size: 10.5pt; }
+    .iv-items th { font-family: 'Outfit', Arial, sans-serif; font-weight: 600; font-size: 7.5pt; letter-spacing: .14em; text-transform: uppercase; color: var(--ag-ink); text-align: left; padding: 8px 6px; border-bottom: 1.5px solid var(--ag-ink); }
+    .iv-items td { padding: 10px 6px; border-bottom: 1px solid var(--ag-line); vertical-align: top; }
+    .iv-items .r { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .iv-items .sub { color: var(--ag-soft); font-size: 9pt; margin-top: 2px; }
+    .iv-totals { margin: 12px 0 0 auto; width: min(280px, 100%); font-size: 10.5pt; }
+    .iv-totals div { display: flex; justify-content: space-between; padding: 4px 6px; font-variant-numeric: tabular-nums; }
+    .iv-totals .grand { border-top: 1.5px solid var(--ag-ink); margin-top: 6px; padding-top: 9px; font-family: 'Outfit', Arial, sans-serif; font-weight: 700; font-size: 13pt; }
+    .iv-sign { margin-top: 18px; font-size: 10pt; color: var(--ag-soft); font-style: italic; }
+    .iv-section { margin-top: 28px; }
+    .iv-section h2 { font-family: 'Outfit', Arial, sans-serif; font-weight: 600; font-size: 9pt; letter-spacing: .14em; text-transform: uppercase; padding-bottom: 6px; border-bottom: 1px solid var(--ag-line); margin: 0 0 12px; }
+    .iv-pay { display: grid; gap: 10px; }
+    .iv-card { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; background: #faf9f7; border: 1px solid var(--ag-line); border-radius: 6px; padding: 14px 16px; }
+    .iv-card .t { font-family: 'Outfit', Arial, sans-serif; font-weight: 600; font-size: 11pt; }
+    .iv-card .s { font-size: 9.5pt; color: var(--ag-soft); margin-top: 2px; }
+    .iv-alt { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+    .iv-opt { border: 1px solid var(--ag-line); border-radius: 6px; padding: 12px 14px; font-family: 'Outfit', Arial, sans-serif; text-decoration: none; color: var(--ag-ink); display: block; }
+    a.iv-opt:hover { border-color: var(--ag-ink); }
+    .iv-opt .k { font-size: 7.5pt; letter-spacing: .14em; text-transform: uppercase; color: var(--ag-faint); }
+    .iv-opt .v { font-size: 11.5pt; font-weight: 600; margin-top: 3px; word-break: break-all; }
+    .iv-hint { font-size: 9.5pt; color: var(--ag-soft); margin-top: 4px; }
+    .iv-msg { font-size: 10pt; color: #b3261e; }
+    .iv-foot { margin-top: 34px; padding-top: 14px; border-top: 1px solid var(--ag-line); font-size: 9.5pt; color: var(--ag-soft); line-height: 1.55; }
+
+    @media (max-width: 640px) {
+      .bar-brand span { display: none; }
+      .bar-actions .btn { padding: 9px 12px; font-size: 13px; white-space: nowrap; }
+      main { padding: 16px 10px 60px; }
+      .ag-doc { padding: 28px 20px 26px; }
+      .ag-letterhead { flex-direction: column; align-items: flex-start; gap: 10px; }
+      .ag-contact { text-align: left; }
+      .iv-title { flex-direction: column-reverse; gap: 14px; }
+      .iv-parties { grid-template-columns: 1fr; gap: 16px; }
+      .iv-card .btn { width: 100%; }
+    }
+    @media print {
+      body { background: #fff; }
+      .bar, .notice, .no-print { display: none !important; }
+      main { padding: 0; max-width: none; }
+      .paper { box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="bar">
+    <div class="bar-in">
+      <a class="bar-brand" href="https://the1pnation.com" rel="noopener"><img src="/assets/favicon.jpg" alt=""><span>The One Percent Nation</span></a>
+      <div class="bar-actions">
+        <button class="btn btn-light" type="button" id="btn-print" hidden>Download PDF</button>
+        <a class="btn btn-red" href="#pay" id="btn-jump" hidden>Pay now</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="notice"></div>
+    <div id="doc" class="loading">Loading your invoice…</div>
+  </main>
+
+  <script type="module" src="/js/invoice-page.js"></script>
+</body>
+</html>

@@ -1100,16 +1100,38 @@ service cloud.firestore {
       allow delete: if isAnyAdmin();
     }
 
-    // Product orders — written only by the Stripe webhook (Admin SDK) when a
-    // sellable product is bought. Admins fulfill manually from the store
-    // console: they may update fulfillment state, nothing else, so the money
-    // fields and the shipping address Stripe collected stay authoritative.
+    // Orders — written by the Stripe webhook (Admin SDK) when a sellable
+    // product or a paperback bundle is bought, and by the manageHandSale
+    // callable for hand sales (kind 'manual': Messenger, events). Admins
+    // fulfill Stripe orders from the store console: they may update
+    // fulfillment state, nothing else, so the money fields and the shipping
+    // address Stripe collected stay authoritative. Hand sales move only
+    // through the callable, which keeps the invoice, the stock count and the
+    // reminder tasks in step, so the client cannot touch them at all.
     match /orders/{orderId} {
       allow read: if isAnyAdmin();
       allow create, delete: if false;
       allow update: if isAnyAdmin()
+        && resource.data.get('kind', '') != 'manual'
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['status', 'fulfillmentNote', 'updatedAt']);
+    }
+
+    // Books on Anthony's shelf for hand sales, and every change to the count.
+    // Written only by manageHandSale / adjustStock (Admin SDK) so the count
+    // and its history cannot disagree.
+    match /stock/{productId} {
+      allow read: if isAnyAdmin();
+      allow write: if false;
+      match /moves/{moveId} {
+        allow read: if isAnyAdmin();
+        allow write: if false;
+      }
+    }
+
+    // Server-side sequences (the hand-sale invoice number). Never client-facing.
+    match /counters/{counterId} {
+      allow read, write: if false;
     }
 
     // ────────────────────────────────────────────────────────────────
