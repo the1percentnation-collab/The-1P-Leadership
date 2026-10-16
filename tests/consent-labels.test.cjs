@@ -49,7 +49,7 @@ const t = (name, cond, detail) => {
 
   // ── Callback-only pages: no SMS language on any checkbox label ──
   const SMS_WORDS = /\btext\b|\bSMS\b|\bSTOP\b|\bHELP\b|frequency may vary|data rates/;
-  for (const page of ['index.html', 'contact-us.html', 'book.html', 'matrix.html', 'class.html', 'join.html', 'speaking.html']) {
+  for (const page of ['index.html', 'contact-us.html', 'book.html', 'matrix.html', 'class.html', 'join.html', 'speaking.html', 'beta.html']) {
     const html = read(page);
     // Every label that wraps or follows a checkbox, plus the styled-div
     // consent pattern the class pages used.
