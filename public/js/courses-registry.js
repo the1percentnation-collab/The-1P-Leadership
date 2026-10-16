@@ -83,7 +83,7 @@ export const COURSES = [
     category: 'Leadership & Coaching',
     price: 3497,
     priceLabel: '$3,497',
-    priceNote: 'Includes your first-year A.L.I.G.N. Practitioner License',
+    priceNote: 'Includes your A.L.I.G.N. Practitioner License',
     contentSource: 'firestore',
     whatYoullLearn: [
       'Coach real clients through the A.L.I.G.N. framework: Awareness, Leadership, Identity, Growth, Navigation.',
@@ -105,7 +105,7 @@ export const COURSES = [
       'Coaching hour log with 25-hour certification requirement',
       'Written certification exam and published session rubric',
       'Certificate: 1P Certified Life Coach, with track designation',
-      'First-year A.L.I.G.N. Practitioner License included'
+      'A.L.I.G.N. Practitioner License included'
     ],
     description: [
       'Certified in 16 weeks. Four to five hours per week. Live weekly coaching, a certification exam, ' +
