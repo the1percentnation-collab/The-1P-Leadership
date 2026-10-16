@@ -12,15 +12,14 @@
 // so a signed agreement always records which wording it was signed under.
 // Agreements already sent keep the wording in their own snapshot.
 
-export const TERMS_VERSION = '2026-10-16';
+export const TERMS_VERSION = '2026-10-16.2';
 
 // Update the legal name and address here once the entity details are final.
 export const PROVIDER = {
-  legalName: 'The One Percent Nation',
+  legalName: 'The 1P Nation',
   shortName: 'The One Percent',
   speaker: 'Anthony Brown Sr.',
   signerTitle: 'Founder',
-  city: 'Oklahoma City, Oklahoma',
   email: 'anthonybrown@the1pnation.com',
   web: 'the1pnation.com'
 };
@@ -262,7 +261,7 @@ export function buildSnapshot(input) {
   return {
     termsVersion: TERMS_VERSION,
     agreementNo: a.agreementNo,
-    provider: { legalName: PROVIDER.legalName, speaker: PROVIDER.speaker, signerTitle: PROVIDER.signerTitle, city: PROVIDER.city, email: PROVIDER.email, web: PROVIDER.web },
+    provider: { legalName: PROVIDER.legalName, speaker: PROVIDER.speaker, signerTitle: PROVIDER.signerTitle, email: PROVIDER.email, web: PROVIDER.web },
     client: { legalName: a.client.legalName, signerName: a.client.signerName, signerTitle: a.client.signerTitle, signerEmail: a.client.signerEmail },
     eventDate: a.event.date,
     sections: buildSections(a),
