@@ -134,9 +134,9 @@ const APP_BASE_URL = 'https://the1pnation.com';
 // community's top ranks are earned by showing up or by mass-inviting.
 const REFERRAL_POINTS = 10;
 
-// Secret: SendGrid API key. Webhook verification key is optional and read
-// lazily at runtime via the Secret Manager client — this avoids requiring
-// SENDGRID_WEBHOOK_KEY to exist at deploy time.
+// Secret: SendGrid API key. The event webhook's verification key
+// (SENDGRID_WEBHOOK_KEY) is read from the runtime env, so a deploy never
+// needs it; without it the webhook refuses every event (fails closed).
 //
 // NOTE: `defineSecret` is different — it is resolved by the CLI at DEPLOY time,
 // so every functions deploy calls secretmanager.googleapis.com. That API needs
@@ -1410,7 +1410,31 @@ const USER_SUBCOLLECTIONS = [
  *
  * The bootstrap owner cannot self-delete here (that would orphan the platform).
  */
-exports.deleteMyAccount = onCall(async (request) => {
+// Every live Stripe subscription billed to this account: course installment
+// plans and the membership, indexed in stripeSubscriptions by uid, plus the
+// membership id on the user doc in case its index row is missing.
+async function cancelSubscriptionsForUser(db, uid, userData) {
+  const ids = new Set();
+  const snap = await db.collection('stripeSubscriptions').where('uid', '==', uid).get();
+  snap.docs.forEach((d) => ids.add(d.id));
+  const memberSub = userData && userData.membership && userData.membership.subscriptionId;
+  if (memberSub) ids.add(String(memberSub));
+  if (!ids.size) return 0;
+  const stripe = getStripe();
+  if (!stripe) throw new Error('billing is not configured');
+  let canceled = 0;
+  for (const id of ids) {
+    let sub = null;
+    try { sub = await stripe.subscriptions.retrieve(id); }
+    catch (e) { if (e && e.code === 'resource_missing') continue; throw e; }
+    if (['canceled', 'incomplete_expired'].includes(sub.status)) continue;
+    await stripe.subscriptions.cancel(id);
+    canceled++;
+  }
+  return canceled;
+}
+
+exports.deleteMyAccount = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
 
@@ -1423,6 +1447,18 @@ exports.deleteMyAccount = onCall(async (request) => {
   if (email && email === OWNER_EMAIL.toLowerCase()) {
     throw new HttpsError('failed-precondition',
       'The owner account cannot be self-deleted. Contact support to transfer ownership first.');
+  }
+
+  // Stop billing before anything is deleted. Otherwise a deleted member keeps
+  // being charged, and each renewal webhook recreates users/{uid}. If a
+  // cancel fails, nothing is deleted, so the account can be retried.
+  try {
+    const canceled = await cancelSubscriptionsForUser(db, uid, data);
+    if (canceled) console.log(`[deleteMyAccount] canceled ${canceled} subscription(s) for ${uid}`);
+  } catch (e) {
+    console.error('[deleteMyAccount] subscription cancel failed:', e && e.message);
+    throw new HttpsError('failed-precondition',
+      `We could not cancel your subscription, so your account was not deleted. Please try again, or email ${REPLY_TO} and we will close it for you.`);
   }
 
   // Wipe every per-user subcollection that holds their data.
@@ -2519,6 +2555,7 @@ exports.shareEventToContacts = onCall(
   { secrets: [sendgridKey], timeoutSeconds: 540 },
   async (request) => {
     const db = admin.firestore();
+    await rateLimitCaller(db, request, { action: 'shareEventToContacts', max: 10, windowSec: 3600 });
     const data = request.data || {};
     const companyId = (data.companyId || '').toString().trim();
     const eventId = (data.eventId || '').toString().trim();
@@ -2650,6 +2687,7 @@ async function upsertEventContact(db, companyId, event, name, email, ownerUid, e
 
 exports.registerForEvent = onCall(async (request) => {
   const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'registerForEvent', max: 20, windowSec: 600 });
   const data = request.data || {};
   const eventId = (data.eventId || '').toString().trim();
   const name = (data.name || '').toString().trim().slice(0, 120);
@@ -3505,20 +3543,24 @@ exports.sendgridEventWebhook = onRequest(
       // Get raw body for signature verification. Firebase Functions v2 provides req.rawBody.
       const rawBody = req.rawBody ? Buffer.from(req.rawBody) : Buffer.from(JSON.stringify(req.body || []));
 
-      // Webhook signing is optional. Read from env if set; otherwise accept unsigned.
+      // Fail closed. This endpoint is public and its payload names a company
+      // and contacts, so an unsigned request could forge campaign stats and
+      // opt out any company's contacts in bulk. Without the verification key
+      // nothing is accepted (503, so SendGrid retries once the key is set);
+      // a bad signature is refused outright. The Telnyx email and SMS
+      // webhooks already fail closed the same way.
       const webhookKey = (process.env.SENDGRID_WEBHOOK_KEY || '').trim();
-
-      if (webhookKey && webhookKey.trim()) {
-        const signature = req.get('X-Twilio-Email-Event-Webhook-Signature');
-        const timestamp = req.get('X-Twilio-Email-Event-Webhook-Timestamp');
-        const ok = verifySignature(webhookKey, rawBody, signature, timestamp);
-        if (!ok) {
-          console.warn('[webhook] signature invalid — ignoring payload');
-          res.status(200).send('ok');
-          return;
-        }
-      } else {
-        console.warn('[webhook] SENDGRID_WEBHOOK_KEY not set — accepting without signature verification');
+      if (!webhookKey) {
+        console.error('[webhook] SENDGRID_WEBHOOK_KEY not set — refusing unsigned event webhook');
+        res.status(503).send('webhook verification not configured');
+        return;
+      }
+      const signature = req.get('X-Twilio-Email-Event-Webhook-Signature');
+      const timestamp = req.get('X-Twilio-Email-Event-Webhook-Timestamp');
+      if (!verifySignature(webhookKey, rawBody, signature, timestamp)) {
+        console.warn('[webhook] signature invalid — refusing payload');
+        res.status(403).send('invalid signature');
+        return;
       }
 
       const events = Array.isArray(req.body) ? req.body : [];
@@ -3837,7 +3879,8 @@ exports.getLeaderboard = onCall(async (request) => {
     const u = d.data() || {};
     return {
       uid: d.id,
-      displayName: u.displayName || u.email || 'Unknown',
+      // Shown to every member: never fall back to the email address.
+      displayName: u.displayName || 'Member',
       avatarUrl: u.avatarUrl || null,
       statsPoints: Number(u.statsPoints || 0),
       statsWeekPoints: Number(u.statsWeekPoints || 0)
@@ -4680,6 +4723,7 @@ exports.onPrivateLikeWritten = onDocumentWritten(
 exports.searchMembers = onCall(async (request) => {
   const callerUid = request.auth && request.auth.uid;
   if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  await rateLimitCaller(admin.firestore(), request, { action: 'searchMembers', max: 60, windowSec: 60 });
 
   const data = request.data || {};
   const q = (data.query || '').toString().trim().toLowerCase();
@@ -4704,7 +4748,8 @@ exports.searchMembers = onCall(async (request) => {
     const u = doc || {};
     pool.set(uid, {
       uid,
-      displayName: u.displayName || u.email || 'Unknown',
+      // Shown to other members: never fall back to the email address.
+      displayName: u.displayName || 'Member',
       avatarUrl: u.avatarUrl || null
     });
   }
@@ -5282,6 +5327,7 @@ const SEARCH_POSTS_RESULTS = 10;     // results returned
 exports.searchPosts = onCall(async (request) => {
   const callerUid = request.auth && request.auth.uid;
   if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  await rateLimitCaller(admin.firestore(), request, { action: 'searchPosts', max: 60, windowSec: 60 });
 
   const data = request.data || {};
   const q = (data.query || '').toString().trim().toLowerCase();
@@ -11130,6 +11176,7 @@ exports.onCallWrittenForSequences = onDocumentWritten(
 // registerProductInterest({ productId, name, email, phone, consent })
 exports.registerProductInterest = onCall(async (request) => {
   const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'registerProductInterest', max: 20, windowSec: 600 });
   const data = request.data || {};
   const productId = (data.productId || '').toString().trim();
   const name = (data.name || '').toString().trim().slice(0, 120);
@@ -11187,6 +11234,7 @@ exports.registerProductInterest = onCall(async (request) => {
 // joinEarlyAccess({ name, email, consent }) — general "future products" list.
 exports.joinEarlyAccess = onCall(async (request) => {
   const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'joinEarlyAccess', max: 20, windowSec: 600 });
   const data = request.data || {};
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);
