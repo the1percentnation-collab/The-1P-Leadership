@@ -501,7 +501,7 @@ function renderFull(r, profile, status, answers) {
     ? `<div class="panel cta-panel">
         <div class="eyebrow">For leaders</div>
         <h3>Your team is likely feeling this too.</h3>
-        <p>Anthony offers a free 45-minute Alignment Audit for leaders, with a one-page written scorecard within 48 hours.</p>
+        <p>Anthony offers a free 45-minute Alignment Audit on Zoom, with your whole team or with you one-on-one, and a one-page written scorecard within 48 hours.</p>
         <a class="btn btn-red" href="/corporate#audit">Request an Alignment Audit</a>
       </div>` : '';
 

@@ -1,0 +1,227 @@
+// Hand sales: the books Anthony sells himself (Messenger, events, texts).
+//
+// The store console, the invoice page and the server each run a copy of
+// hand-sales-core. If they drift, the console could show one total and the
+// invoice charge another, or the reminders could fire for an order that is
+// already handled. These pin the money math, the work queue, the stock
+// count, and which reminder tasks an order should have open.
+//
+// Run: node tests/hand-sales.test.mjs
+import assert from 'node:assert';
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
+import { loadPure } from './_load-pure.mjs';
+
+const core = await loadPure('hand-sales-core.js');
+const server = createRequire(import.meta.url)('../functions/hand-sales-core.js');
+const {
+  computeTotals, normalizeOrder, deliveryStatus, orderBucket, stockDelta, taskPlan, parseAddress,
+  paymentOptions, invoiceMessage, summarize, invoiceNumber, isPaid, lowStock, mergeSettings
+} = core;
+
+let passed = 0;
+function ok(name, run) {
+  try { run(); passed++; console.log('  ✓ ' + name); }
+  catch (e) { console.error('  ✗ ' + name + '\n    ' + (e && e.message)); process.exitCode = 1; }
+}
+
+const products = { 'book-i-cant': { name: "I Can't: Is Not A Strategy" } };
+const addr = { name: 'Jane Doe', address: { line1: '123 Main St', city: 'Dallas', state: 'tx', postal_code: '75201' } };
+const input = (extra = {}) => ({
+  channel: 'facebook',
+  buyer: { name: 'Jane Doe', email: 'JANE@x.com ' },
+  items: [{ productId: 'book-i-cant', qty: 2, unitPrice: 19.99 }],
+  delivery: 'ship',
+  shipping: addr,
+  shippingFee: 5,
+  ...extra
+});
+const manual = (extra = {}) => ({ kind: 'manual', ...normalizeOrder(input(), { products }), status: 'new', ...extra });
+
+console.log('hand sales — server copy');
+
+ok('the server copy is the generated copy of the browser module', () => {
+  const src = fs.readFileSync(new URL('../public/js/hand-sales-core.js', import.meta.url), 'utf8');
+  const gen = fs.readFileSync(new URL('../functions/hand-sales-core.js', import.meta.url), 'utf8');
+  const body = src.slice(0, src.lastIndexOf('\nexport {') + 1);
+  assert.ok(gen.includes(body), 'functions/hand-sales-core.js is stale: run node scripts/build-hand-sales-server.cjs');
+  assert.deepStrictEqual(Object.keys(server).sort(), Object.keys(core).sort());
+});
+
+ok('the server wires every hand-sale entry point', () => {
+  const src = fs.readFileSync(new URL('../functions/index.js', import.meta.url), 'utf8');
+  ['manageHandSale', 'adjustStock', 'getInvoice', 'payInvoice'].forEach((n) => {
+    assert.ok(src.includes(`exports.${n} = onCall(`), `${n} is not exported`);
+  });
+  assert.ok(/metadata\.kind === 'invoice'\)\s*\{\s*await handleInvoiceCheckout/.test(src), 'the webhook does not mark invoices paid');
+});
+
+console.log('hand sales — money');
+
+ok('totals add up in cents, not floats', () => {
+  const t = computeTotals({ items: [{ qty: 3, unitPrice: 0.1 }, { qty: 1, unitPrice: 19.99 }], shippingFee: 4.99, discount: 1, tax: 1.65 });
+  assert.deepStrictEqual(t, { subtotal: 20.29, shippingFee: 4.99, discount: 1, tax: 1.65, total: 25.93 });
+});
+
+ok('a discount can bring an order to zero but never below', () => {
+  assert.strictEqual(computeTotals({ items: [{ qty: 1, unitPrice: 20 }], shippingFee: 5, discount: 100 }).total, 0);
+});
+
+ok('invoice numbers read INV-1001', () => {
+  assert.strictEqual(invoiceNumber(1001), 'INV-1001');
+  assert.strictEqual(invoiceNumber(7), 'INV-0007');
+});
+
+console.log('hand sales — taking an order');
+
+ok('a Messenger order normalizes: catalog name, lowercased email, uppercased state', () => {
+  const o = normalizeOrder(input(), { products });
+  assert.strictEqual(o.items[0].name, "I Can't: Is Not A Strategy");
+  assert.strictEqual(o.buyer.email, 'jane@x.com');
+  assert.strictEqual(o.shipping.address.state, 'TX');
+  assert.strictEqual(o.amountTotal, 44.98);
+  assert.strictEqual(o.payment.status, 'unpaid');
+});
+
+ok('it refuses an order with no buyer or no items, listing both', () => {
+  assert.throws(() => normalizeOrder({ items: [] }, { products }), (e) => e.errors.length === 2);
+});
+
+ok('a product id the catalog does not know becomes a custom line, not a stock hit', () => {
+  const o = normalizeOrder(input({ items: [{ productId: 'nope', name: 'Bookmark', qty: 1, unitPrice: 3 }] }), { products });
+  assert.strictEqual(o.items[0].productId, null);
+  assert.strictEqual(o.items[0].name, 'Bookmark');
+});
+
+ok('hand delivery drops the address and the shipping fee', () => {
+  const o = normalizeOrder(input({ delivery: 'hand' }), { products });
+  assert.strictEqual(o.shipping, null);
+  assert.strictEqual(o.shippingFee, 0);
+  assert.strictEqual(o.amountTotal, 39.98);
+});
+
+ok('a $0 order counts as a comp, and "paid" needs a method', () => {
+  assert.strictEqual(normalizeOrder(input({ items: [{ productId: 'book-i-cant', qty: 1, unitPrice: 0 }], shippingFee: 0 }), { products }).payment.status, 'comp');
+  assert.throws(() => normalizeOrder(input({ payment: { status: 'paid' } }), { products }), /how they paid/);
+});
+
+console.log('hand sales — the work queue');
+
+ok('no address yet parks a shipped order in needs-address; hand delivery never does', () => {
+  assert.strictEqual(deliveryStatus({ delivery: 'ship', shipping: null, status: 'new' }), 'needs-address');
+  assert.strictEqual(deliveryStatus({ delivery: 'ship', shipping: addr.address ? { address: { ...addr.address, state: 'TX' } } : null, status: 'needs-address' }), 'new');
+  assert.strictEqual(deliveryStatus({ delivery: 'hand', shipping: null, status: 'new' }), 'new');
+  assert.strictEqual(deliveryStatus({ delivery: 'ship', shipping: null, status: 'shipped' }), 'shipped');
+});
+
+ok('money comes first: an unpaid order is "collect" even if it already shipped', () => {
+  assert.strictEqual(orderBucket(manual()), 'collect');
+  assert.strictEqual(orderBucket(manual({ status: 'shipped' })), 'collect');
+  assert.strictEqual(orderBucket(manual({ payment: { status: 'paid' } })), 'ship');
+  assert.strictEqual(orderBucket(manual({ payment: { status: 'paid' }, status: 'needs-address' })), 'address');
+  assert.strictEqual(orderBucket(manual({ status: 'cancelled' })), 'cancelled');
+});
+
+ok('Stripe orders in the same list count as paid', () => {
+  assert.ok(isPaid({ status: 'new', amountTotal: 30 }));
+  assert.strictEqual(orderBucket({ status: 'needs-address' }), 'address');
+});
+
+console.log('hand sales — stock');
+
+ok('a new order takes its copies off the shelf; custom lines take none', () => {
+  const o = manual({ items: [{ productId: 'book-i-cant', qty: 2 }, { productId: null, name: 'Bookmark', qty: 5 }] });
+  assert.deepStrictEqual(stockDelta(null, o), { 'book-i-cant': -2 });
+});
+
+ok('editing the quantity moves only the difference', () => {
+  const before = manual();
+  const after = { ...before, items: [{ ...before.items[0], qty: 3 }] };
+  assert.deepStrictEqual(stockDelta(before, after), { 'book-i-cant': -1 });
+  assert.deepStrictEqual(stockDelta(before, before), {});
+});
+
+ok('cancelling puts the copies back, and reopening takes them again', () => {
+  const live = manual();
+  const dead = { ...live, status: 'cancelled' };
+  assert.deepStrictEqual(stockDelta(live, dead), { 'book-i-cant': 2 });
+  assert.deepStrictEqual(stockDelta(dead, live), { 'book-i-cant': -2 });
+});
+
+ok('low stock uses the product threshold before the default', () => {
+  assert.ok(lowStock(5, mergeSettings({})));
+  assert.ok(!lowStock(6, mergeSettings({})));
+  assert.ok(lowStock(10, mergeSettings({}), 10));
+});
+
+console.log('hand sales — reminders');
+
+const NOW = Date.UTC(2026, 9, 16);
+ok('an unpaid order gets a collect task due on the payment terms', () => {
+  const plan = taskPlan({ ...manual(), invoiceNumber: 'INV-1001' }, { dueDays: 3 }, NOW);
+  assert.deepStrictEqual(Object.keys(plan), ['collect']);
+  assert.match(plan.collect.title, /Collect \$44\.98 from Jane Doe \(INV-1001\)/);
+  assert.strictEqual(plan.collect.dueAt, NOW + 3 * 86400000);
+});
+
+ok('paid with an address → ship task; paid without one → address task', () => {
+  assert.deepStrictEqual(Object.keys(taskPlan(manual({ payment: { status: 'paid' } }), {}, NOW)), ['ship']);
+  assert.deepStrictEqual(Object.keys(taskPlan(manual({ payment: { status: 'paid' }, status: 'needs-address' }), {}, NOW)), ['address']);
+});
+
+ok('once it ships the only task is the review ask, and asking clears it', () => {
+  const shipped = manual({ payment: { status: 'paid' }, status: 'shipped' });
+  assert.deepStrictEqual(Object.keys(taskPlan(shipped, {}, NOW)), ['review']);
+  assert.deepStrictEqual(Object.keys(taskPlan({ ...shipped, reviewAskedAt: 1 }, {}, NOW)), []);
+});
+
+ok('a cancelled order has no open tasks', () => {
+  assert.deepStrictEqual(taskPlan(manual({ status: 'cancelled' }), {}, NOW), {});
+});
+
+console.log('hand sales — paste and pay');
+
+ok('addresses pasted from a chat split into fields', () => {
+  assert.deepStrictEqual(parseAddress('Jane Doe\n123 Main St Apt 4\nDallas, TX 75201'),
+    { name: 'Jane Doe', address: { line1: '123 Main St Apt 4', line2: '', city: 'Dallas', state: 'TX', postal_code: '75201', country: 'US' } });
+  const b = parseAddress('123 Main St, Apt 4, Dallas, Texas 75201-1234, USA');
+  assert.deepStrictEqual([b.address.line1, b.address.line2, b.address.city, b.address.state, b.address.postal_code], ['123 Main St', 'Apt 4', 'Dallas', 'TX', '75201']);
+  const c = parseAddress('Mike Brown, 55 Oak Ave, Houston TX 77002');
+  assert.deepStrictEqual([c.name, c.address.line1, c.address.city, c.address.state], ['Mike Brown', '55 Oak Ave', 'Houston', 'TX']);
+  const d = parseAddress('4410 W Elm, New York, new york 10001');
+  assert.deepStrictEqual([d.address.city, d.address.state], ['New York', 'NY']);
+});
+
+ok('payment options print only the handles that are set, with deep links', () => {
+  const opts = paymentOptions({ cashapp: '$OnePct', venmo: '@one-pct', paypal: 'https://paypal.me/onepct' }, { amountTotal: 24.99 });
+  assert.deepStrictEqual(opts.map((o) => o.key), ['card', 'cashapp', 'venmo', 'paypal']);
+  assert.strictEqual(opts[1].url, 'https://cash.app/$OnePct/24.99');
+  assert.strictEqual(opts[3].handle, 'paypal.me/onepct');
+  assert.deepStrictEqual(paymentOptions({}, null, { cardEnabled: false }), []);
+});
+
+ok('the Messenger message carries the link, the handles, and an address ask when needed', () => {
+  const o = { ...manual({ status: 'needs-address', shipping: null }), invoiceNumber: 'INV-1001' };
+  const msg = invoiceMessage(o, 'https://x/invoice?i=1&t=2', { cashapp: 'OnePct' });
+  assert.match(msg, /^Hey Jane!/);
+  assert.match(msg, /https:\/\/x\/invoice\?i=1&t=2/);
+  assert.match(msg, /Cash App \$OnePct/);
+  assert.match(msg, /INV-1001 in the note/);
+  assert.match(msg, /address you want it shipped to/);
+});
+
+ok('this month counts only paid, live orders; owed counts every unpaid one', () => {
+  const at = Date.UTC(2026, 9, 10);
+  const s = summarize([
+    manual({ createdAtMs: at }),
+    manual({ createdAtMs: at, payment: { status: 'paid' } }),
+    manual({ createdAtMs: at, payment: { status: 'paid' }, status: 'cancelled' }),
+    { status: 'new', amountTotal: 30, createdAtMs: at }
+  ], NOW);
+  assert.strictEqual(s.owed, 44.98);
+  assert.strictEqual(s.owedCount, 1);
+  assert.strictEqual(s.monthRevenue, 74.98);
+  assert.strictEqual(s.toShip, 2);
+});
+
+console.log(`\n${passed} passed`);

@@ -17,7 +17,7 @@ import {
   initializeTestEnvironment, assertSucceeds, assertFails
 } from '@firebase/rules-unit-testing';
 import {
-  doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, getDocs, serverTimestamp,
+  doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, getDocs, serverTimestamp,
   arrayUnion, arrayRemove
 } from 'firebase/firestore';
 
@@ -444,6 +444,120 @@ await t('a member CANNOT write an essay',
   () => assertFails(setDoc(doc(solo, 'reads/the-focus-tax/essays/e1'), { html: '<p>x</p>' })));
 await t('an admin CANNOT write the series from the browser (seed only)',
   () => assertFails(setDoc(doc(adm, 'reads/the-focus-tax'), { title: 'x' })));
+// ── Alignment Audit scorecards (owner's builder only) ─────────────────────
+await t('owner CAN create an audit scorecard',
+  () => assertSucceeds(setDoc(doc(owner, 'auditScorecards/sc1'), { orgName: 'Acme', status: 'draft' })));
+await t('owner CAN read and list audit scorecards',
+  () => assertSucceeds(getDocs(collection(owner, 'auditScorecards'))));
+await t('company admin CANNOT read an audit scorecard',
+  () => assertFails(getDoc(doc(adm, 'auditScorecards/sc1'))));
+await t('member CANNOT read an audit scorecard',
+  () => assertFails(getDoc(doc(solo, 'auditScorecards/sc1'))));
+await t('company admin CANNOT write an audit scorecard',
+  () => assertFails(setDoc(doc(adm, 'auditScorecards/sc2'), { orgName: 'Sneaky' })));
+await t('signed-out visitor CANNOT read an audit scorecard',
+  () => assertFails(getDoc(doc(anon, 'auditScorecards/sc1'))));
+
+// ── Speaking agreements (owner drafts; server-only once sent) ─────────────
+await t('owner CAN create a draft agreement',
+  () => assertSucceeds(setDoc(doc(owner, 'agreements/ag1'), { status: 'draft', client: { legalName: 'Acme' } })));
+await t('owner CAN edit a draft agreement',
+  () => assertSucceeds(updateDoc(doc(owner, 'agreements/ag1'), { 'client.legalName': 'Acme Corp' })));
+await t('owner CANNOT mark an agreement sent or signed from the browser',
+  () => assertFails(updateDoc(doc(owner, 'agreements/ag1'), { status: 'signed' })));
+await t('owner CANNOT create an agreement that is already signed',
+  () => assertFails(setDoc(doc(owner, 'agreements/ag2'), { status: 'signed' })));
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), 'agreements/agSigned'), { status: 'signed', token: 'secret' });
+});
+await t('owner CANNOT edit a signed agreement',
+  () => assertFails(updateDoc(doc(owner, 'agreements/agSigned'), { 'snapshot.total': 1 })));
+await t('owner CANNOT delete a signed agreement',
+  () => assertFails(deleteDoc(doc(owner, 'agreements/agSigned'))));
+await t('owner CAN delete a draft agreement',
+  () => assertSucceeds(deleteDoc(doc(owner, 'agreements/ag1'))));
+await t('company admin CANNOT read agreements',
+  () => assertFails(getDoc(doc(adm, 'agreements/agSigned'))));
+await t('signed-out visitor CANNOT read an agreement (or its token)',
+  () => assertFails(getDoc(doc(anon, 'agreements/agSigned'))));
+
+// ── The One Percent Membership ───────────────────────────────────────────
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'users/memb'), { email: 'memb@x.com', role: 'user', membershipActive: true, membership: { status: 'active', plan: 'founding' } });
+  await setDoc(doc(db, 'users/lapsed'), { email: 'lapsed@x.com', role: 'user', membershipActive: false });
+  // The list deliberately includes a certification: the rules must still refuse it.
+  await setDoc(doc(db, 'config/membership'), { includedSlugs: ['icant', '1p-clc'], foundingCount: 3 });
+  await setDoc(doc(db, 'courses/icant/modules/m1'), { title: 'Lesson 1', html: '<p>paid</p>' });
+  await setDoc(doc(db, 'courses/mindset-foundations/modules/m1'), { title: 'Lesson 1' });
+  await setDoc(doc(db, 'courses/1p-clc/modules/m1'), { title: 'Certification lesson' });
+});
+const memb = env.authenticatedContext('memb').firestore();
+const lapsed = env.authenticatedContext('lapsed').firestore();
+await t('active member CAN read lessons of a course in the membership',
+  () => assertSucceeds(getDoc(doc(memb, 'courses/icant/modules/m1'))));
+await t('active member CANNOT read lessons of a course outside the membership',
+  () => assertFails(getDoc(doc(memb, 'courses/mindset-foundations/modules/m1'))));
+await t('active member CANNOT read certification lessons, even if listed',
+  () => assertFails(getDoc(doc(memb, 'courses/1p-clc/modules/m1'))));
+await t('lapsed member CANNOT read membership lessons',
+  () => assertFails(getDoc(doc(lapsed, 'courses/icant/modules/m1'))));
+await t('member CANNOT switch their own membership on',
+  () => assertFails(updateDoc(doc(lapsed, 'users/lapsed'), { membershipActive: true })));
+await t('member CANNOT rewrite their membership record',
+  () => assertFails(updateDoc(doc(memb, 'users/memb'), { 'membership.plan': 'founding', 'membership.paidMonths': 99 })));
+await t('a new account CANNOT start with a membership',
+  () => assertFails(setDoc(doc(env.authenticatedContext('newbie').firestore(), 'users/newbie'), { email: 'n@x.com', role: 'user', membershipActive: true })));
+await t('anyone CAN read the membership course list and founding count',
+  () => assertSucceeds(getDoc(doc(anon, 'config/membership'))));
+await t('admin CANNOT edit the membership list directly',
+  () => assertFails(setDoc(doc(adm, 'config/membership'), { includedSlugs: ['1p-clc'] })));
+await t('owner CANNOT edit the membership list directly (server only)',
+  () => assertFails(setDoc(doc(owner, 'config/membership'), { includedSlugs: ['1p-clc'] })));
+
+// ── Hand sales: orders, stock, invoice counter ─────────────────────────────
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'orders/stripe1'), { productName: 'Paperback', amountTotal: 30, status: 'new', shipping: null });
+  await setDoc(doc(db, 'orders/hand1'), { kind: 'manual', invoiceNumber: 'INV-1001', invoiceToken: 'tok', amountTotal: 20, status: 'new', payment: { status: 'unpaid' } });
+  await setDoc(doc(db, 'stock/book-i-cant'), { onHand: 12, name: "I Can't" });
+  await setDoc(doc(db, 'stock/book-i-cant/moves/m1'), { delta: 12, reason: 'adjust' });
+  await setDoc(doc(db, 'counters/handSalesInvoice'), { next: 1002 });
+});
+await t('admin CAN move a Stripe order through fulfillment',
+  () => assertSucceeds(updateDoc(doc(adm, 'orders/stripe1'), { status: 'shipped', updatedAt: serverTimestamp() })));
+await t('admin CANNOT rewrite the amount on a Stripe order',
+  () => assertFails(updateDoc(doc(adm, 'orders/stripe1'), { amountTotal: 0 })));
+await t('admin CAN read a hand-sale order',
+  () => assertSucceeds(getDoc(doc(adm, 'orders/hand1'))));
+await t('admin CANNOT change a hand sale from the client (callable only)',
+  () => assertFails(updateDoc(doc(adm, 'orders/hand1'), { status: 'shipped', updatedAt: serverTimestamp() })));
+await t('admin CANNOT create an order from the client',
+  () => assertFails(setDoc(doc(adm, 'orders/fake'), { kind: 'manual', amountTotal: 1, status: 'new' })));
+await t('nobody signed out CAN read a hand-sale order (the invoice goes through getInvoice)',
+  () => assertFails(getDoc(doc(anon, 'orders/hand1'))));
+await t('a member CANNOT read a hand-sale order',
+  () => assertFails(getDoc(doc(solo, 'orders/hand1'))));
+await t('admin CAN read the shelf count and its history',
+  () => Promise.all([
+    assertSucceeds(getDoc(doc(adm, 'stock/book-i-cant'))),
+    assertSucceeds(getDocs(collection(adm, 'stock/book-i-cant/moves')))
+  ]));
+await t('admin CANNOT set the shelf count from the client',
+  () => assertFails(updateDoc(doc(adm, 'stock/book-i-cant'), { onHand: 99 })));
+await t('owner CANNOT write a stock move from the client',
+  () => assertFails(addDoc(collection(owner, 'stock/book-i-cant/moves'), { delta: 5 })));
+await t('a member CANNOT read the shelf count',
+  () => assertFails(getDoc(doc(solo, 'stock/book-i-cant'))));
+await t('nobody CAN read or reset the invoice counter',
+  () => Promise.all([
+    assertFails(getDoc(doc(owner, 'counters/handSalesInvoice'))),
+    assertFails(setDoc(doc(owner, 'counters/handSalesInvoice'), { next: 1 }))
+  ]));
+await t('admin CAN save hand-sale settings',
+  () => assertSucceeds(setDoc(doc(adm, 'config/handSales'), { cashapp: '$One' }, { merge: true })));
+await t('anyone signed out CANNOT read hand-sale settings',
+  () => assertFails(getDoc(doc(anon, 'config/handSales'))));
 
 await env.cleanup();
 

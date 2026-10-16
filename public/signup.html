@@ -61,6 +61,12 @@
     import { firebaseReady } from './js/firebase.js';
 
     const $ = (id) => document.getElementById(id);
+    // Where to land after onboarding, e.g. back to /membership checkout. Same
+    // same-site-path check as login's nextUrl, so `next` is never an open redirect.
+    function onboardingUrl() {
+      const n = new URLSearchParams(location.search).get('next');
+      return n && n.startsWith('/') && !n.startsWith('//') ? '/onboarding?next=' + encodeURIComponent(n) : '/onboarding';
+    }
     const msg = $('auth-msg');
     function showErr(txt) { msg.innerHTML = `<div class="auth-error">${txt}</div>`; }
     function showOk(txt) { msg.innerHTML = `<div class="auth-ok">${txt}</div>`; }
@@ -101,10 +107,10 @@
         // applied is worth saying out loud, but it must not block entry.
         if (user && user.inviteWarning) {
           showErr(user.inviteWarning + ' Continuing to your profile setup…');
-          setTimeout(() => location.replace('/onboarding'), 2500);
+          setTimeout(() => location.replace(onboardingUrl()), 2500);
           return;
         }
-        location.replace('/onboarding');
+        location.replace(onboardingUrl());
       } catch (err) {
         showErr(err.message || 'Sign-up failed.');
       } finally {
@@ -123,7 +129,7 @@
         if (communityInviteToken) {
           try { await acceptCommunityInvite(communityInviteToken); } catch (err) { /* tolerated */ }
         }
-        location.replace('/onboarding');
+        location.replace(onboardingUrl());
       } catch (err) {
         showErr(err.message || 'Google sign-in failed.');
       }

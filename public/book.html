@@ -246,7 +246,7 @@
         <span class="l2">NATION</span>
       </div>
     </a>
-    <a href="/#impact" class="nav-back">← Back to Programs</a>
+    <a href="/corporate#programs" class="nav-back">← Back to Programs</a>
   </div>
 </nav>
 
@@ -279,13 +279,13 @@
   <div class="form-panel fade-up">
     <div class="form-panel-header">
       <div class="form-panel-title">REQUEST THIS EXPERIENCE</div>
-      <div class="form-panel-sub">Tell us about your team and we'll tailor a proposal — no generic webinar, a real plan for you.</div>
+      <div class="form-panel-sub">Tell us about your team and we'll tailor a proposal. No generic webinar, a real plan for you.</div>
     </div>
 
     <div class="form-success" id="form-success">
       <div class="success-icon">✅</div>
       <div class="success-title">REQUEST <span class="red">SENT.</span></div>
-      <p class="success-desc">Thanks — your booking request is in. A member of the One Percent Nation team will reach out within one business day to confirm dates and tailor the experience.</p>
+      <p class="success-desc">Thanks, your booking request is in. A member of the One Percent Nation team will reach out within one business day to confirm dates and tailor the experience.</p>
       <div class="success-next">Check your inbox · We'll be in touch shortly</div>
     </div>
 
@@ -348,7 +348,7 @@
           <label class="field-label">Budget Range</label>
           <select class="field-select" name="budget">
             <option value="" disabled selected>Select range</option>
-            <option>Under $3,000</option><option>$3,000–$7,500</option><option>$7,500–$15,000</option><option>$15,000+</option><option>Annual / Subscription</option><option>Not sure yet</option>
+            <option>Under $5,000</option><option>$5,000 to $12,000</option><option>$12,000 to $30,000</option><option>$30,000+</option><option>12-month annual program</option><option>Not sure yet</option>
           </select>
         </div>
       </div>
@@ -376,52 +376,48 @@
   <div class="footer-copy">© 2025 The One Percent Nation. All rights reserved.</div>
   <div class="footer-links">
     <a href="/">Back to Site</a>
-    <a href="/#impact">All Programs</a>
+    <a href="/corporate#programs">All Programs</a>
     <a href="/webinar.html">Join a Webinar</a>
   </div>
 </footer>
 
 <script>
-  // ─── Program catalog (sourced from the Corporate Seminar Series Framework + rate sheet) ───
+  // ─── Program catalog ───
+  // Prices follow the current Corporate & Speaking rate card. Every program
+  // runs in any format (the corporate page says the same), so the formats and
+  // their starting prices are shared and only the program copy changes.
+  // Update FORMATS and RATE_NOTES here when the rate card changes.
+  const FORMATS = [
+    { name: 'Keynote', meta: 'Any size room · One idea the room can run', price: '$3,500' },
+    { name: 'Workshop or Breakout', meta: 'Hands-on with your team · Leave with it written', price: '$6,500' },
+    { name: 'Retreat', meta: 'Offsite · Built around your leadership team', price: '$22,000' }
+  ];
+  const RATE_NOTES = 'Headlining a conference? Headline keynotes start at $5,000. Virtual keynotes and workshops are 20% less. Travel outside the Oklahoma City metro is a flat $1,500.';
+
   const PROGRAMS = {
     'mindset-reset': {
       tag: 'Program 01 · Mindset',
       icon: '🧠',
       titleHTML: 'THE <span class="red">MINDSET RESET</span>',
-      sub: 'A high-impact experience that breaks through the internal barriers holding teams back — replacing burnout, fear, and disengagement with ownership, resilience, and renewed momentum.',
-      formats: [
-        { name: 'Motivational Keynote', meta: '60–90 min · Unlimited audience', price: '$4,000' },
-        { name: 'Mastermind Session', meta: '60–90 min · 5–15 participants', price: '$3,000' },
-        { name: 'Professional Development Session', meta: '60–90 min · 10–30 participants', price: '$2,500' },
-        { name: 'Virtual Session', meta: 'Live online · Flexible group', price: '$2,000' }
-      ],
-      upsell: 'Want it ongoing? Add <strong>1:1 coaching</strong> at $300/participant per session, or roll this into a <strong>Customized Corporate Package</strong> from $10,000.'
+      sub: 'A high-impact experience that breaks through the internal barriers holding teams back. It replaces burnout, fear, and disengagement with ownership, resilience, and renewed momentum.',
+      formats: FORMATS,
+      upsell: 'Want it to hold past the event? The <strong>12-month annual program</strong> starts at $45,000 and builds the work into your calendar. Add <strong>1:1 executive coaching</strong> at $600 a session, or six sessions for $3,000.'
     },
     'purpose-pathways': {
       tag: 'Program 02 · Alignment',
       icon: '🧭',
       titleHTML: '<span class="red">PURPOSE</span> PATHWAYS',
       sub: 'Designed for teams that are busy but misaligned. Brings clarity to priorities, connects individual purpose to company goals, and turns effort into intentional execution.',
-      formats: [
-        { name: 'Workshop / Breakout', meta: '60–90 min · 10–20 participants', price: '$3,500' },
-        { name: 'Corporate Training — Half-Day', meta: '60–90 min · 10–30 participants', price: '$4,500' },
-        { name: 'Corporate Training — Full-Day', meta: '60–90 min · 10–30 participants', price: '$7,500' },
-        { name: 'Professional Development Session', meta: '60–90 min · 10–30 participants', price: '$2,500' }
-      ],
-      upsell: 'Aligning multiple teams? A <strong>Customized Corporate Package</strong> (from $10,000) or an <strong>Annual Subscription</strong> ($50,000/company) keeps everyone on the same pathway year-round.'
+      formats: FORMATS,
+      upsell: 'Aligning more than one team? The <strong>12-month annual program</strong> starts at $45,000 and keeps every team on the same pathway all year, with <strong>team coaching</strong> at $1,500 a session between events.'
     },
     'leadership-ascension': {
       tag: 'Program 03 · Leadership',
       icon: '⚡',
       titleHTML: 'LEADERSHIP <span class="red">ASCENSION</span>',
       sub: 'Equips leaders with the mindset, tools, and accountability frameworks needed to lead confidently and build cultures where people and performance thrive.',
-      formats: [
-        { name: 'Leadership Development Seminar — Half-Day', meta: '60–90 min · 10–50 participants', price: '$3,500' },
-        { name: 'Leadership Development Seminar — Full-Day', meta: '60–90 min · 10–50 participants', price: '$6,500' },
-        { name: 'Multi-Day Conference Facilitation', meta: '60–90 min · Leadership team', price: '$15,000+' },
-        { name: 'Add-on 1:1 Leadership Coaching', meta: '60–90 min · Per participant', price: '$300' }
-      ],
-      upsell: 'For sustained culture change, an <strong>Annual Subscription</strong> ($50,000/company) or a <strong>Customized Corporate Package</strong> (from $10,000) builds accountability across the whole leadership bench.'
+      formats: FORMATS,
+      upsell: 'For a leadership bench that holds the standard, pair this with <strong>1:1 executive coaching</strong> at $600 a session (six for $3,000), or build it into the <strong>12-month annual program</strong> from $45,000.'
     }
   };
 
@@ -460,7 +456,7 @@
   const listEl = document.getElementById('format-list');
   const selectEl = document.getElementById('f-format');
   prog.formats.forEach(f => {
-    const label = f.name + ' — ' + f.price;
+    const label = f.name + ' · ' + f.price;
 
     const card = document.createElement('div');
     card.className = 'format-card';
@@ -484,11 +480,11 @@
   // Keep cards in sync if user picks from the dropdown
   selectEl.addEventListener('change', () => {
     document.querySelectorAll('.format-card').forEach((c, i) => {
-      c.classList.toggle('selected', (prog.formats[i].name + ' — ' + prog.formats[i].price) === selectEl.value);
+      c.classList.toggle('selected', (prog.formats[i].name + ' · ' + prog.formats[i].price) === selectEl.value);
     });
   });
 
-  document.getElementById('upsell-note').innerHTML = prog.upsell;
+  document.getElementById('upsell-note').innerHTML = prog.upsell + '<br><span style="opacity:.75">' + RATE_NOTES + '</span>';
 
   // Consent toggle
   let consentChecked = false;

@@ -14,6 +14,16 @@
                                     "type": 302
                         },
                         {
+                                    "source": "/resources",
+                                    "destination": "/toolkit",
+                                    "type": 301
+                        },
+                        {
+                                    "source": "/resources.html",
+                                    "destination": "/toolkit",
+                                    "type": 301
+                        },
+                        {
                                     "source": "/studio",
                                     "destination": "https://onepstudio-9a3ef.web.app",
                                     "type": 301

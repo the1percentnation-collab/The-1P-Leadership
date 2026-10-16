@@ -641,15 +641,21 @@ function googleCardHtml() {
           ${g.lastSyncAt ? `<br>Last sync ${fmtDateTime(g.lastSyncAt)}.` : ''}
           ${g.watchExpiry ? `<br>Live updates active until ${fmtDateTime(g.watchExpiry)} (renewed automatically).` : ''}
         </div>
+        <div class="crm-import-note" style="margin-top:12px;">
+          ${g.driveSync
+            ? '<strong>Drive sync is on.</strong> Social media files added to the site land in your Drive under "Social Media - Ready to Post." This permission reaches only the files the site creates.'
+            : '<strong>Drive sync is off.</strong> Reconnect once and approve the Drive permission so social media files added to the site upload to your Drive automatically. It reaches only the files the site creates, never the rest of your Drive.'}
+        </div>
         <div class="crm-save-row" style="margin-top:16px;">
           <span id="set-google-status" class="crm-save-status"></span>
+          ${g.driveSync ? '' : '<button class="btn btn-primary" id="google-connect">Reconnect Google</button>'}
           <button class="btn btn-ghost" id="google-disconnect">Disconnect</button>
         </div>
       ` : `
         <div class="crm-import-note" style="margin-top:0;">
           Connect your Google account so appointments booked from a contact card land on your real
           calendar with a Meet link, and so bookings made in Google show up here. You will be asked to
-          allow calendar access once.
+          allow calendar access, and Drive access for the files the site creates, once.
         </div>
         <div class="crm-save-row" style="margin-top:16px;">
           <span id="set-google-status" class="crm-save-status"></span>

@@ -1,0 +1,126 @@
+/* Speaking Engagement Agreement on One Percent letterhead.
+ *
+ * Paper-white document, black ink, red used only for the letterhead rule and
+ * section numerals. Serif body for the clauses, so it reads like a contract
+ * rather than a web page. Rendered by js/agreement-render.js; the builder
+ * (agreements.html) and the signing page (sign.html) both use it, and
+ * printing either page saves the agreement as a PDF.
+ *
+ * Fonts (loaded by the pages): Bebas Neue (wordmark), Outfit (headings and
+ * labels), Source Serif 4 (clauses), Mrs Saint Delafield (signatures).
+ */
+.ag-doc {
+  --ag-ink: #111111;
+  --ag-soft: #55565a;
+  --ag-faint: #8a8b8f;
+  --ag-line: #dedede;
+  --ag-red: #E60306;
+  box-sizing: border-box;
+  max-width: 8.5in;
+  margin: 0 auto;
+  background: #ffffff;
+  color: var(--ag-ink);
+  padding: 0.7in 0.85in 0.6in;
+  font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  font-size: 10.5pt;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+.ag-doc *, .ag-doc *::before, .ag-doc *::after { box-sizing: border-box; }
+.ag-doc h1, .ag-doc h2, .ag-doc p, .ag-doc ol, .ag-doc dl, .ag-doc dd { margin: 0; padding: 0; }
+
+/* Letterhead */
+.ag-letterhead { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
+.ag-brand { display: flex; align-items: center; gap: 12px; }
+.ag-mark { width: 44px; height: 44px; border-radius: 6px; display: block; }
+.ag-word { display: flex; flex-direction: column; font-family: 'Bebas Neue', Impact, sans-serif; line-height: 0.95; letter-spacing: 0.06em; }
+.ag-word-1 { font-size: 13px; color: var(--ag-soft); }
+.ag-word-2 { font-size: 24px; color: var(--ag-ink); }
+.ag-contact { text-align: right; font-family: 'Outfit', Arial, sans-serif; font-size: 8pt; line-height: 1.6; color: var(--ag-soft); letter-spacing: 0.02em; }
+.ag-rule { margin: 14px 0 0; height: 3px; background: var(--ag-ink); position: relative; }
+.ag-rule span { position: absolute; left: 0; top: 0; width: 72px; height: 3px; background: var(--ag-red); }
+
+/* Title */
+.ag-titleblock { margin: 34px 0 26px; }
+.ag-kicker { display: flex; justify-content: space-between; gap: 16px; font-family: 'Outfit', Arial, sans-serif; font-size: 7.5pt; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ag-faint); }
+.ag-titleblock h1 { font-family: 'Outfit', Arial, sans-serif; font-weight: 600; font-size: 21pt; letter-spacing: -0.01em; line-height: 1.15; margin: 10px 0 14px; }
+.ag-preamble { color: var(--ag-ink); }
+
+/* Sections and clauses */
+.ag-section, .ag-schedule, .ag-execution, .ag-cert { margin-top: 22px; }
+.ag-doc h2 {
+  font-family: 'Outfit', Arial, sans-serif; font-weight: 600; font-size: 9pt;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--ag-ink);
+  padding-bottom: 6px; border-bottom: 1px solid var(--ag-line); margin-bottom: 10px;
+  break-after: avoid;
+}
+.ag-sn { color: var(--ag-red); margin-right: 8px; }
+.ag-clauses { list-style: none; display: grid; gap: 7px; }
+.ag-clauses li { display: grid; grid-template-columns: 34px 1fr; align-items: baseline; break-inside: avoid; }
+.ag-cn { font-family: 'Outfit', Arial, sans-serif; font-size: 8.5pt; color: var(--ag-faint); font-variant-numeric: tabular-nums; }
+.ag-clauses p { text-align: left; hyphens: auto; }
+
+/* Schedule A */
+.ag-schedule { break-before: page; }
+.ag-sched-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+.ag-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; break-inside: avoid; }
+.ag-table caption { caption-side: top; text-align: left; font-family: 'Outfit', Arial, sans-serif; font-size: 7.5pt; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ag-faint); padding: 0 0 6px; }
+.ag-table th, .ag-table td { text-align: left; vertical-align: top; padding: 6px 0; border-bottom: 1px solid var(--ag-line); }
+.ag-table th { font-weight: 400; color: var(--ag-soft); width: 40%; padding-right: 12px; }
+.ag-fees { margin-top: 18px; }
+.ag-fees th { width: 70%; }
+.ag-fees td { text-align: right; font-variant-numeric: tabular-nums; }
+.ag-fees tr.ag-total th, .ag-fees tr.ag-total td { font-weight: 700; color: var(--ag-ink); border-top: 1.5px solid var(--ag-ink); border-bottom: 1px solid var(--ag-line); }
+.ag-fees tr.ag-sub th, .ag-fees tr.ag-sub td { color: var(--ag-soft); }
+.ag-blank { display: inline-block; min-width: 120px; border-bottom: 1px dotted var(--ag-faint); }
+.ag-special { margin-top: 16px; }
+.ag-special-k { font-family: 'Outfit', Arial, sans-serif; font-size: 7.5pt; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ag-faint); margin-bottom: 4px; }
+.ag-special p { white-space: pre-line; }
+
+/* Signatures */
+.ag-execution { break-inside: avoid; }
+.ag-exec-lead { color: var(--ag-soft); font-size: 9.5pt; margin-bottom: 20px !important; }
+.ag-sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.ag-sig-party { font-family: 'Outfit', Arial, sans-serif; font-weight: 600; font-size: 9pt; margin-bottom: 6px; }
+.ag-sig-line { height: 54px; border-bottom: 1px solid var(--ag-ink); display: flex; align-items: flex-end; padding-bottom: 2px; }
+.ag-sig-script { font-family: 'Mrs Saint Delafield', 'Brush Script MT', cursive; font-size: 34px; line-height: 1; color: #0d2a6b; }
+.ag-sig-pending { font-family: 'Outfit', Arial, sans-serif; font-size: 8pt; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ag-faint); padding-bottom: 6px; }
+.ag-sig-meta { display: grid; gap: 2px; margin-top: 8px; font-size: 9pt; }
+.ag-sig-meta div { display: grid; grid-template-columns: 44px 1fr; }
+.ag-sig-meta dt { font-family: 'Outfit', Arial, sans-serif; font-size: 7.5pt; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ag-faint); padding-top: 2px; }
+.ag-sig-e { margin-top: 6px; font-family: 'Outfit', Arial, sans-serif; font-size: 7.5pt; letter-spacing: 0.08em; color: #1d7a3a; }
+.ag-sig-e::before { content: '\2713'; margin-right: 6px; }
+
+/* Certificate */
+.ag-cert { break-before: page; }
+.ag-cert-lead, .ag-cert-note { color: var(--ag-soft); font-size: 9pt; }
+.ag-cert-lead { margin-bottom: 10px; }
+.ag-cert-note { margin-top: 10px; }
+.ag-cert-table th { width: 34%; }
+.ag-cert-table td { word-break: break-all; font-size: 9pt; }
+
+.ag-foot { display: flex; justify-content: space-between; margin-top: 34px; padding-top: 10px; border-top: 1px solid var(--ag-line); font-family: 'Outfit', Arial, sans-serif; font-size: 7.5pt; letter-spacing: 0.06em; color: var(--ag-faint); }
+
+.ag-doc.is-draft { position: relative; }
+.ag-doc.is-draft::after {
+  content: 'DRAFT'; position: absolute; top: 18px; right: 0.85in;
+  font-family: 'Outfit', Arial, sans-serif; font-size: 8pt; font-weight: 600; letter-spacing: 0.2em;
+  color: var(--ag-red); border: 1px solid var(--ag-red); padding: 3px 8px; border-radius: 3px;
+}
+
+@media (max-width: 700px) {
+  .ag-doc { padding: 28px 20px 24px; font-size: 15px; }
+  .ag-letterhead { flex-direction: column; align-items: flex-start; }
+  .ag-contact { text-align: left; }
+  .ag-kicker { flex-direction: column; gap: 2px; }
+  .ag-titleblock h1 { font-size: 24px; }
+  .ag-sched-grid, .ag-sig-grid { grid-template-columns: 1fr; }
+  .ag-clauses li { grid-template-columns: 30px 1fr; }
+  .ag-doc.is-draft::after { right: 20px; }
+}
+
+@media print {
+  @page { size: letter; margin: 0.6in 0.75in 0.7in; @bottom-right { content: 'Page ' counter(page) ' of ' counter(pages); font-family: 'Outfit', Arial, sans-serif; font-size: 7.5pt; color: #8a8b8f; } }
+  .ag-doc { max-width: none; padding: 0; box-shadow: none !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ag-doc.is-draft::after { right: 0; }
+}

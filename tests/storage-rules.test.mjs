@@ -82,6 +82,27 @@ await t('site owner CAN upload a new edition',
 await t('site owner CANNOT upload a non-EPUB as the book',
   () => assertFails(uploadBytes(ref(owner, 'books/i-cant/book.epub'), EPUB, { contentType: 'application/pdf' })));
 
+// Alignment Audit scorecard logos: the owner's builder only.
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+await t('site owner CAN upload a client logo for a scorecard',
+  () => assertSucceeds(uploadBytes(ref(owner, 'auditScorecards/sc1/logo-1.png'), PNG, { contentType: 'image/png' })));
+await t('site owner CAN read a scorecard logo',
+  () => assertSucceeds(getBytes(ref(owner, 'auditScorecards/sc1/logo-1.png'))));
+await t('site owner CANNOT upload a non-image as a scorecard logo',
+  () => assertFails(uploadBytes(ref(owner, 'auditScorecards/sc1/logo-2.pdf'), PNG, { contentType: 'application/pdf' })));
+await t('admin CANNOT upload a scorecard logo',
+  () => assertFails(uploadBytes(ref(adm, 'auditScorecards/sc1/logo-3.png'), PNG, { contentType: 'image/png' })));
+await t('member CANNOT read a scorecard logo',
+  () => assertFails(getBytes(ref(reader, 'auditScorecards/sc1/logo-1.png'))));
+
+// The One Percent Membership does not include books: an active member reads
+// only the books they own, like anyone else.
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), 'users/memb'), { email: 'memb@x.com', role: 'user', membershipActive: true });
+});
+await t('active member CANNOT download a book they did not buy',
+  () => assertFails(getBytes(ref(env.authenticatedContext('memb').storage(), 'books/i-cant/book.epub'))));
+
 await env.cleanup();
 
 let failed = 0;

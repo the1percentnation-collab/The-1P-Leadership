@@ -146,5 +146,5 @@ export default {
     }
   ],
   related: ['find-your-why', 'success-on-paper', 'burnout-check'],
-  cta: { label: 'Book a free Alignment Audit', href: '/book-a-call' }
+  cta: { label: 'Request a free Alignment Audit', href: '/corporate#audit' }
 };

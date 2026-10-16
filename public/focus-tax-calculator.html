@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Focus Tax Calculator | The One Percent Nation</title>
+  <meta name="description" content="Put a dollar figure on interruptions, task switching, meetings and drift, then see what the time blocking system from How to Work Less and Gain More gives back. Free, three minutes.">
+  <meta property="og:title" content="What is your day really costing you? | Focus Tax Calculator">
+  <meta property="og:description" content="Interruptions, switching, meetings with no outcome and unplanned time all take a cut. Put a number on yours in three minutes.">
+  <meta property="og:image" content="https://the1pnation.com/assets/work-less-gain-more-poster.jpg">
+  <link rel="canonical" href="https://the1pnation.com/focus-tax-calculator">
+  <link rel="icon" href="/assets/favicon.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/assessment.css">
+  <link rel="stylesheet" href="/assets/focus-tax.css">
+</head>
+<body class="ft-solo">
+  <nav class="a-nav">
+    <div class="wrap">
+      <a class="a-logo" href="/"><img src="/assets/academy-logo.png" alt=""><span>The One Percent</span></a>
+      <div class="a-nav-links">
+        <a class="a-link hide-sm" href="/assessments">Free Assessments</a>
+        <a class="a-link hide-sm" href="/toolkit">Toolkit</a>
+        <a class="a-link" id="nav-account" href="/login?next=%2Ffocus-tax-calculator">Member Login</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <header class="ft-hero">
+      <div class="eyebrow">Free Tool · From <em>How to Work Less and Gain More</em></div>
+      <h1 class="display">What is your day <span>really costing you?</span></h1>
+      <p>Every interruption, every switch, every meeting with no outcome takes a cut. Put a number on yours in three minutes, then see what the time blocking system gives back.</p>
+      <blockquote class="ft-quote">“Ambition without allocation is an illusion.”</blockquote>
+    </header>
+
+    <div class="ft-grid">
+      <form class="ft-inputs" id="ft-form" autocomplete="off" novalidate>
+        <fieldset class="ft-field">
+          <legend class="ft-label">Who is this for?</legend>
+          <div class="ft-chips">
+            <label class="ft-chip"><input type="radio" name="mode" value="solo" checked><span>Just me</span></label>
+            <label class="ft-chip"><input type="radio" name="mode" value="team"><span>My team</span></label>
+          </div>
+        </fieldset>
+
+        <div class="ft-field ft-only-solo">
+          <label class="ft-label" for="income">What you earn a year <output for="income" id="out-income"></output></label>
+          <input type="range" id="income" name="income" min="20000" max="1000000" step="5000" value="100000">
+          <p class="ft-help">Salary, commission and business income. This sets what one hour of your time is worth.</p>
+        </div>
+
+        <div class="ft-field ft-only-team">
+          <label class="ft-label" for="teamSize">People on the team <output for="teamSize" id="out-teamSize"></output></label>
+          <input type="range" id="teamSize" name="teamSize" min="2" max="250" step="1" value="10">
+        </div>
+        <div class="ft-field ft-only-team">
+          <label class="ft-label" for="avgSalary">Average salary <output for="avgSalary" id="out-avgSalary"></output></label>
+          <input type="range" id="avgSalary" name="avgSalary" min="20000" max="300000" step="5000" value="75000">
+          <p class="ft-help">Answer the rest for a typical day on your team.</p>
+        </div>
+
+        <div class="ft-field">
+          <label class="ft-label" for="hoursPerWeek">Hours worked a week <output for="hoursPerWeek" id="out-hoursPerWeek"></output></label>
+          <input type="range" id="hoursPerWeek" name="hoursPerWeek" min="20" max="80" step="1" value="45">
+        </div>
+
+        <div class="ft-field">
+          <label class="ft-label" for="interruptionsPerDay">Interruptions a day <output for="interruptionsPerDay" id="out-interruptionsPerDay"></output></label>
+          <input type="range" id="interruptionsPerDay" name="interruptionsPerDay" min="0" max="30" step="1" value="5">
+          <p class="ft-help">Pings, calls, drop-ins, the inbox you checked between tasks. Each one costs about 23 minutes to fully refocus.</p>
+        </div>
+
+        <div class="ft-field">
+          <label class="ft-label" for="switchesPerDay">Switches between different kinds of work <output for="switchesPerDay" id="out-switchesPerDay"></output></label>
+          <input type="range" id="switchesPerDay" name="switchesPerDay" min="0" max="20" step="1" value="2">
+          <p class="ft-help">Email to a proposal to a call and back. Every change of context is a tax, about 20 minutes each.</p>
+        </div>
+
+        <div class="ft-field">
+          <label class="ft-label" for="meetingHoursPerWeek">Hours in meetings a week <output for="meetingHoursPerWeek" id="out-meetingHoursPerWeek"></output></label>
+          <input type="range" id="meetingHoursPerWeek" name="meetingHoursPerWeek" min="0" max="40" step="1" value="8">
+          <p class="ft-help">Attendees call 37% of meetings unnecessary. That share is what counts here.</p>
+        </div>
+
+        <fieldset class="ft-field">
+          <legend class="ft-label">Do you plan your week before it starts?</legend>
+          <div class="ft-chips">
+            <label class="ft-chip"><input type="radio" name="planning" value="never"><span>Rarely</span></label>
+            <label class="ft-chip"><input type="radio" name="planning" value="sometimes" checked><span>Sometimes</span></label>
+            <label class="ft-chip"><input type="radio" name="planning" value="weekly"><span>Every week</span></label>
+          </div>
+          <p class="ft-help">Unplanned weeks lose five or more hours to work that could have been delegated, delayed or dropped.</p>
+        </fieldset>
+      </form>
+
+      <aside class="ft-result" id="ft-result" aria-live="polite">
+        <div class="eyebrow" id="ft-result-eyebrow">Your Focus Tax</div>
+        <div class="ft-big"><span id="ft-yearly">$0</span><small>a year</small></div>
+        <p class="ft-sub" id="ft-sub"></p>
+        <div class="ft-lines" id="ft-lines"></div>
+        <div class="ft-biggest" id="ft-biggest" hidden></div>
+      </aside>
+    </div>
+
+    <!-- Phones: the result sits below the form, so keep the number in view
+         while the sliders move. Hidden once the full result is on screen. -->
+    <a class="ft-mini" id="ft-mini" href="#ft-result" aria-hidden="true" tabindex="-1">
+      <span class="ft-mini-k" id="ft-mini-k">Your Focus Tax</span>
+      <span class="ft-mini-v" id="ft-mini-v">$0</span>
+      <span class="ft-mini-go">See breakdown ↓</span>
+    </a>
+
+    <section class="ft-gain" aria-labelledby="ft-gain-title">
+      <div class="eyebrow">The time blocking system, applied</div>
+      <h2 class="display" id="ft-gain-title">Work less. <span>Gain more.</span></h2>
+      <p class="ft-gain-lead">Two communication windows, work batched by type, a thirty-minute meeting default and fifteen minutes of planning on Sunday. Here is what that hands back.</p>
+      <div class="ft-gain-grid">
+        <div class="ft-gain-card">
+          <div class="ft-gain-k">Work less</div>
+          <div class="ft-gain-v" id="ft-workless"></div>
+          <p id="ft-workless-sub"></p>
+        </div>
+        <div class="ft-gain-card">
+          <div class="ft-gain-k">Gain more</div>
+          <div class="ft-gain-v" id="ft-gainmore"></div>
+          <p id="ft-gainmore-sub"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="ft-cta">
+      <div class="ft-book">
+        <img class="ft-book-cover" src="/assets/work-less-gain-more-poster.jpg" alt="How to Work Less and Gain More by Anthony Brown" loading="lazy">
+        <div class="ft-book-body">
+          <div class="eyebrow">The system behind the numbers</div>
+          <h2 class="display">How to Work Less <span>and Gain More</span></h2>
+          <p>The Time Blocking Blueprint for Predictable Success. Fifteen short chapters on building a week that protects what matters: deep work first, communication windows, batching, meetings with an outcome, and the weekly audit that finds the hours you did not know you were losing.</p>
+          <div class="ft-book-btns">
+            <a class="btn btn-red ft-only-team" id="ft-audit-btn" href="/corporate#audit">Book a free Alignment Audit</a>
+            <a class="btn btn-red" id="ft-book-btn" href="/books">Get the book</a>
+            <a class="btn btn-ghost ft-only-solo" href="/course.html?course=the-focus-tax">Read The Focus Tax free</a>
+          </div>
+          <p class="ft-team-note ft-only-team">The Alignment Audit is a free 45-minute session with Anthony, followed by a one-page written scorecard for your team within 48 hours.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="ft-report" aria-labelledby="ft-report-title">
+      <div class="ft-report-copy">
+        <div class="eyebrow">Keep the numbers</div>
+        <h2 class="display" id="ft-report-title">Email me my <span>Focus Tax report</span></h2>
+        <p>Your breakdown, the one fix to run first, the book's fifteen-minute weekly plan and the five-question weekly audit. One email, no spam.</p>
+      </div>
+      <form class="ft-report-form" id="ft-report-form" novalidate>
+        <div class="ft-row">
+          <label class="ft-label" for="rf-name">First name</label>
+          <input class="ft-input" id="rf-name" name="name" type="text" autocomplete="given-name" maxlength="80" required>
+        </div>
+        <div class="ft-row">
+          <label class="ft-label" for="rf-email">Email</label>
+          <input class="ft-input" id="rf-email" name="email" type="email" autocomplete="email" maxlength="160" required>
+          <p class="ft-help" id="rf-suggest" hidden></p>
+        </div>
+        <div class="ft-hp" aria-hidden="true">
+          <label for="rf-company">Company</label>
+          <input id="rf-company" name="company" type="text" tabindex="-1" autocomplete="off">
+        </div>
+        <button class="btn btn-red btn-block" type="submit" id="rf-submit">Send my report</button>
+        <p class="ft-status" id="rf-status" role="status"></p>
+      </form>
+    </section>
+
+    <details class="ft-method">
+      <summary>How this is calculated</summary>
+      <ul>
+        <li><b>Interruptions.</b> 23 minutes to regain deep focus after each one, five workdays a week. <em>Phase One: Why Structure Outperforms Motivation.</em></li>
+        <li><b>Task switching.</b> 20 minutes lost each time you move between fundamentally different kinds of work. <em>Phase Twelve: The Power of Batching.</em></li>
+        <li><b>Meetings.</b> 37% of meeting hours, the share attendees consider unnecessary. <em>Phase Thirteen: How to Handle Meetings Without Letting Them Run Your Life.</em></li>
+        <li><b>Drift.</b> Five hours a week if you rarely plan, two and a half if you sometimes do, one if you plan every week. <em>Phase Ten: The Weekly Audit.</em></li>
+        <li><b>Your hour.</b> Yearly earnings divided by your weekly hours across fifty working weeks. Team mode uses the average salary for every person.</li>
+        <li><b>Caps.</b> Refocusing and switching together never count for more than 40% of a workday, and the whole tax never more than half your week, so heavy inputs cannot stack past what a real day holds.</li>
+        <li><b>The system.</b> Two communication windows (two interruptions a day), batching (two switches), a thirty-minute meeting default with no meetings that lack an outcome, and fifteen minutes of weekly planning. <em>Phases Six, Twelve and Thirteen.</em></li>
+      </ul>
+      <p class="muted">An estimate built from your own inputs and the research cited in the book, not a guarantee.</p>
+    </details>
+  </main>
+
+  <footer class="ft-foot">
+    <div class="wrap">
+      <span>© 2026 The One Percent Nation</span>
+      <a href="/privacy.html">Privacy</a>
+      <a href="/terms.html">Terms</a>
+      <a href="/">Main site</a>
+    </div>
+  </footer>
+
+  <script type="module" src="/js/focus-tax-page.js"></script>
+  <script src="/js/consent-banner.js" defer></script>
+</body>
+</html>

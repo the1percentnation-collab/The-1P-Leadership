@@ -3865,145 +3865,6 @@ textarea.mc-lines:focus { outline: none; border-color: rgba(204,27,27,0.5); }
 }
 
 /* ============================================================
-   ACADEMY HUB — module map widget ("Your course arc")
-   Horizontal row of module cards showing done/current/todo
-   ============================================================ */
-
-.hub-progress {
-  margin-bottom: 48px;
-}
-
-.hub-module-map {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 10px;
-  padding: 16px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  position: relative;
-}
-
-.hub-module-map::before {
-  content: '';
-  position: absolute;
-  left: 36px;
-  right: 36px;
-  top: 44px;
-  height: 2px;
-  background: var(--border);
-  z-index: 0;
-}
-
-.hub-mm-cell {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 8px;
-  border-radius: 10px;
-  text-decoration: none;
-  color: var(--white);
-  transition: background 0.15s, transform 0.15s;
-  min-width: 0;
-}
-
-.hub-mm-cell:hover { background: var(--surface2); transform: translateY(-2px); }
-
-.hub-mm-marker {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 13px;
-  letter-spacing: 0.02em;
-  border: 2px solid var(--border);
-  background: var(--black);
-  color: var(--gray-light);
-  transition: all 0.15s;
-  flex-shrink: 0;
-}
-
-.hub-mm-cell.is-done .hub-mm-marker {
-  background: var(--white);
-  border-color: var(--white);
-  color: var(--black);
-}
-
-.hub-mm-cell.is-current .hub-mm-marker {
-  background: var(--red);
-  border-color: var(--red);
-  color: #fff;
-  box-shadow: 0 0 0 4px rgba(230,3,6,0.18);
-  animation: hub-mm-pulse 1.8s ease-in-out infinite;
-}
-
-@keyframes hub-mm-pulse {
-  0%, 100% { box-shadow: 0 0 0 4px rgba(230,3,6,0.18); }
-  50%      { box-shadow: 0 0 0 7px rgba(230,3,6,0.08); }
-}
-
-.hub-mm-cell.is-todo .hub-mm-marker {
-  /* Default style is the todo state */
-}
-
-.hub-mm-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  align-items: center;
-  text-align: center;
-  min-width: 0;
-  width: 100%;
-}
-
-.hub-mm-pillar {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--gray-mid);
-}
-
-.hub-mm-cell.is-current .hub-mm-pillar { color: var(--red); }
-.hub-mm-cell.is-done .hub-mm-pillar { color: var(--gray-light); }
-
-.hub-mm-title {
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.25;
-  color: var(--white);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.hub-mm-cell.is-todo .hub-mm-title { color: var(--white-dim); }
-
-.hub-mm-duration {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  color: var(--gray-mid);
-}
-
-@media (max-width: 900px) {
-  .hub-module-map {
-    grid-template-columns: repeat(7, 140px);
-    overflow-x: auto;
-    scrollbar-width: thin;
-  }
-  .hub-module-map::before { display: none; }
-}
-
-/* ============================================================
    THE ONE PERCENT ACADEMY — HUB SHELL
    The post-login landing wraps the existing app with a shared
    Academy header + tab bar. Course/community/admin pages keep
@@ -11548,42 +11409,6 @@ a.cp-crumb:hover { color: var(--white); }
 
 .hub-rail { min-width: 0; }
 
-/* ── Course switcher ───────────────────────────────────────────── */
-.hub-course-switch {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 18px;
-}
-
-.hub-course-pill {
-  font-size: 12px;
-  color: var(--gray-light);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 7px 14px;
-  cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
-}
-
-.hub-course-pill em {
-  font-style: normal;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--gray-mid);
-  margin-left: 6px;
-}
-
-.hub-course-pill:hover { color: var(--white); }
-
-.hub-course-pill.is-active {
-  color: var(--white);
-  border-color: var(--border-red);
-}
-
-.hub-course-pill.is-active em { color: var(--red); }
-
 /* ── Explore next ──────────────────────────────────────────────── */
 /* A scroll row rather than a grid: this is a browsing shelf, and it
    should read as secondary to the work above it. */
@@ -12366,7 +12191,7 @@ a.cp-crumb:hover { color: var(--white); }
   padding: 0 14px;
 }
 
-.hub-watch-body { display: flex; flex-direction: column; gap: 9px; padding: 16px; }
+.hub-watch-body { display: flex; flex-direction: column; gap: 9px; padding: 16px; flex: 1; }
 
 .hub-watch-title {
   font-size: 14px;
@@ -12383,6 +12208,45 @@ a.cp-crumb:hover { color: var(--white); }
   letter-spacing: 0.08em;
   color: var(--gray-mid);
 }
+
+/* The continue prompt: which module is next, then the action. The CTA is
+   pushed to the bottom so it lines up across cards of different heights. */
+.hub-watch-next {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.hub-watch-next-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+.hub-watch-next-title {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--white);
+}
+
+.hub-watch-cta {
+  margin-top: auto;
+  padding-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+  transition: color 0.2s;
+}
+
+.hub-watch-card:hover .hub-watch-cta { color: var(--red); }
 
 /* ── Pill ── */
 .hub-pill {
@@ -13430,4 +13294,88 @@ body.tour-open { overflow: hidden; }
     display: flex; width: 100%; background: none; border: 0; cursor: pointer;
     font-family: inherit; text-align: left;
   }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Toolkit (/toolkit) — assessments, free reads, calculators and
+   planners, one section each. Cards share one shape across sections.
+   ════════════════════════════════════════════════════════════════ */
+.tk-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 24px;
+}
+.tk-jump-link {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--white-dim);
+  text-decoration: none;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: border-color 0.2s, color 0.2s;
+}
+.tk-jump-link:hover { border-color: var(--border-red); color: var(--white); }
+
+.tk-section { margin-bottom: 56px; scroll-margin-top: 80px; }
+.tk-blurb {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--white-dim);
+  max-width: 640px;
+  margin: -6px 0 20px;
+}
+.tk-see-all { text-decoration: none; }
+.tk-see-all:hover { color: var(--white); }
+
+.tk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.tk-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-decoration: none;
+  transition: border-color 0.2s, transform 0.2s;
+}
+a.tk-card:hover { border-color: var(--border-red); transform: translateY(-2px); }
+.tk-card--wide { grid-column: span 2; }
+.tk-card.is-soon { opacity: 0.6; }
+
+.tk-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+.tk-title { font-size: 17px; font-weight: 600; color: var(--white); line-height: 1.3; }
+.tk-body { font-size: 13px; line-height: 1.55; color: var(--white-dim); flex: 1; }
+.tk-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+.tk-meta { font-size: 12px; color: var(--gray-light); }
+.tk-cta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--white);
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .tk-card--wide { grid-column: auto; }
 }

@@ -21,6 +21,7 @@ import {
   initBuilder, openBuilder, builderHasUnsavedChanges, builderDiscardChanges, CODE_CONTENT_SLUGS
 } from './course-builder.js';
 import { initCoupons } from './manage-coupons.js';
+import { includedSlugs, isCertification } from './membership-core.js';
 import { openAiGeneratorModal } from './course-ai.js';
 
 const $ = (id) => document.getElementById(id);
@@ -193,6 +194,9 @@ function courseCardHtml(c) {
           <span class="mc-switch-track"></span>
           <span>Buyable</span>
         </label>
+        ${isCertification(slug, c)
+          ? `<label class="mc-switch" title="Certifications are paid programs and are never part of the membership"><input type="checkbox" disabled><span class="mc-switch-track"></span><span>Membership (never)</span></label>`
+          : `<label class="mc-switch" title="On = active members of The One Percent Membership get this course"><input type="checkbox" data-membership="${slug}"${_membershipSlugs.has(c.slug) ? ' checked' : ''}><span class="mc-switch-track"></span><span>Membership</span></label>`}
         ${note ? `<div class="mc-reach-note">${escapeHtml(note)}</div>` : ''}
         <button class="btn btn-primary" data-open="${slug}" style="font-size:12px; padding:7px 14px;">Edit</button>
         <button class="btn btn-ghost" data-preview="${slug}" style="font-size:12px; padding:7px 12px;">Preview</button>
@@ -237,6 +241,8 @@ function renderDashboard() {
     cb.addEventListener('change', () => setCourseChannel(cb.dataset.ondash, 'showInDashboard', cb.checked, cb)));
   // Re-render after this one: it is the field the reachability note is about,
   // so the warning has to appear and clear with the switch.
+  grid.querySelectorAll('[data-membership]').forEach((cb) =>
+    cb.addEventListener('change', () => setMembershipCourse(cb.dataset.membership, cb.checked, cb)));
   grid.querySelectorAll('[data-sellable]').forEach((cb) =>
     cb.addEventListener('change', async () => {
       await setCourseChannel(cb.dataset.sellable, 'sellable', cb.checked, cb);
@@ -252,8 +258,28 @@ function renderDashboard() {
     }));
 }
 
+// The One Percent Membership's course list (config/membership). Changed only
+// through setMembershipCourse, which, like the rules, refuses certifications.
+let _membershipSlugs = new Set(includedSlugs(null));
+async function loadMembershipList() {
+  try {
+    const snap = await getDoc(doc(db, 'config', 'membership'));
+    _membershipSlugs = new Set(includedSlugs(snap.exists() ? snap.data() : null));
+  } catch (e) { console.warn('[manage-courses] membership list', e); }
+}
+
+async function setMembershipCourse(slug, included, cb) {
+  try {
+    const res = await httpsCallable(functions, 'setMembershipCourse')({ slug, included });
+    _membershipSlugs = new Set(res.data.includedSlugs || []);
+  } catch (e) {
+    if (cb) cb.checked = !included;
+    alert(e && e.message ? e.message : 'Could not update the membership.');
+  }
+}
+
 async function refreshCourses() {
-  await loadCourses({ force: true });
+  await Promise.all([loadCourses({ force: true }), loadMembershipList()]);
   renderDashboard();
 }
 

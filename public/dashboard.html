@@ -78,25 +78,17 @@
 
       <section id="hub-continue-slot"></section>
 
-      <!-- Continue watching: one card per enrolled course, with its real
-           progress. Horizontally scrolled rather than wrapped, so the row
-           reads as a shelf and never pushes the sections below it down. -->
+      <!-- Your courses: one continue prompt per enrolled course, naming the
+           next module and linking straight into it. Horizontally scrolled
+           rather than wrapped, so the row reads as a shelf and never pushes
+           the sections below it down. The full module map lives on the
+           course page; the dashboard only needs the next step. -->
       <section id="hub-watching" hidden>
         <div class="academy-section-head">
-          <h2>Continue watching</h2>
+          <h2>Your courses</h2>
           <a class="academy-section-meta" href="/courses.html" style="text-decoration:none;">All courses →</a>
         </div>
         <div class="hub-watch-row" id="hub-watch-list"></div>
-      </section>
-
-      <section id="hub-progress" class="hub-progress" hidden>
-        <div class="academy-section-head">
-          <h2>Your course arc</h2>
-          <a class="academy-section-meta" id="hub-progress-link" href="/courses.html" style="text-decoration:none;">Open course →</a>
-        </div>
-        <!-- Course switcher, shown only when enrolled in more than one course. -->
-        <div class="hub-course-switch" id="hub-course-switch" hidden></div>
-        <div id="hub-module-map" class="hub-module-map"></div>
       </section>
 
       <section>

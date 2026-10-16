@@ -36,6 +36,11 @@ const admin = new Proxy(_adminModule, {
 });
 const crypto = require('crypto');
 const sgMail = require('@sendgrid/mail');
+// The Focus Tax calculator's math, shared with the page (generated from
+// public/js/focus-tax-core.js by scripts/build-focus-tax-server.cjs).
+const { computeFocusTax, WORK_WEEKS: FOCUS_TAX_WEEKS } = require('./focus-tax.js');
+const { careerTags } = require('./careers.js');
+const handSales = require('./hand-sales-core.js');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
@@ -3998,7 +4003,10 @@ exports.getOwnerPulse = onCall(async (request) => {
   ]);
 
   const unanswered = recentPosts.filter((p) => !Number(p.commentCount || 0)).length;
-  const grossCents = recentOrders.reduce((sum, o) => sum + Number(o.amountTotal || 0), 0);
+  // Hand sales count once the money is in; an open invoice is not revenue.
+  const grossCents = recentOrders
+    .filter((o) => o.kind !== 'manual' || (o.status !== 'cancelled' && handSales.isPaid(o)))
+    .reduce((sum, o) => sum + Number(o.amountTotal || 0), 0);
   const nextEvent = nextEvents[0] || null;
 
   const payload = {
@@ -5488,7 +5496,8 @@ exports.saveCourseCommitment = onCall(async (request) => {
   const userRef = db.collection('users').doc(uid);
   const userSnap = await userRef.get();
   const slugs = (userSnap.exists && userSnap.data().enrolledCourseSlugs) || [];
-  if (!Array.isArray(slugs) || !slugs.includes(slug)) {
+  const enrolledHere = Array.isArray(slugs) && slugs.includes(slug);
+  if (!enrolledHere && !(await memberCourseAccess(db, userSnap.exists ? userSnap.data() : {}, slug, null))) {
     throw new HttpsError('permission-denied', 'Enroll in this course first.');
   }
 
@@ -6977,7 +6986,9 @@ exports.recordCourseCompletion = onCall({ secrets: [sendgridKey] }, async (reque
 
   const u = userSnap.exists ? userSnap.data() : {};
   const enrolled = Array.isArray(u.enrolledCourseSlugs) && u.enrolledCourseSlugs.includes(slug);
-  if (!enrolled) throw new HttpsError('permission-denied', 'Not enrolled in this course.');
+  if (!enrolled && !(await memberCourseAccess(db, u, slug, courseSnap.exists ? courseSnap.data() : null))) {
+    throw new HttpsError('permission-denied', 'Not enrolled in this course.');
+  }
 
   const course = courseSnap.exists ? courseSnap.data() : null;
   const total = await courseModuleTotal(db, slug, course);
@@ -7562,6 +7573,15 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
     appliedCoupon = resolved.code;
   }
 
+  // ── Member credit toward a certification ───────────────────────────
+  // An active member gets up to three months of dues off a certification
+  // paid in full, once. Not combined with promo codes or payment plans.
+  let memberCredit = 0;
+  if (!plan && !appliedCoupon && !isSubscription && membershipCore.isCertification(slug, course)) {
+    memberCredit = membershipCore.certificationCredit(userSnap.exists ? userSnap.data() : {}, slug, course);
+    if (memberCredit > 0) chargeDollars = Math.max(1, chargeDollars - memberCredit);
+  }
+
   // Affiliate attribution — validate the referral code server-side and lock
   // the commission rate into the session metadata at purchase time.
   let refCode = String((request.data && request.data.refCode) || '').trim().toUpperCase();
@@ -7587,6 +7607,7 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
     metadata.refPercent = String(refPercent);
   }
   if (appliedCoupon) metadata.couponCode = appliedCoupon;
+  if (memberCredit > 0) metadata.memberCredit = String(memberCredit);
   if (fulfil.shipsBook) metadata.shipsBook = '1';
   if (fulfil.enrollsAlso.length) metadata.enrollsAlso = fulfil.enrollsAlso.join(',');
   const grantsBooks = booksForCourse(slug, course, await fulfillmentDocs(db, slug, course));
@@ -7848,6 +7869,16 @@ exports.stripeWebhook = onRequest(
         const couponCode = session.metadata && session.metadata.couponCode;
         const licenseRenewal = session.metadata && session.metadata.licenseRenewal;
 
+        // ── Membership ───────────────────────────────────────────────
+        if (session.metadata && session.metadata.kind === 'membership') {
+          await handleMembershipCheckout(db, stripe, session);
+        }
+
+        // ── Hand-sale invoice paid by card (see manageHandSale) ─────
+        if (session.metadata && session.metadata.kind === 'invoice') {
+          await handleInvoiceCheckout(db, session);
+        }
+
         // ── License renewal ──────────────────────────────────────────
         // Extends the A.L.I.G.N. Practitioner License one year from its
         // current expiry (or from today if it already lapsed) and
@@ -7965,6 +7996,10 @@ exports.stripeWebhook = onRequest(
             enrolledCourseSlugs: admin.firestore.FieldValue.arrayUnion(courseSlug, ...enrollsAlso),
             ...(grantsBooks.length
               ? { ownedBookIds: admin.firestore.FieldValue.arrayUnion(...grantsBooks) }
+              : {}),
+            // The member credit toward a certification is used once.
+            ...(session.metadata && session.metadata.memberCredit
+              ? { membership: { certCreditUsedAt: admin.firestore.FieldValue.serverTimestamp(), certCreditAmount: Number(session.metadata.memberCredit) || 0 } }
               : {})
           }, { merge: true });
 
@@ -8103,7 +8138,7 @@ exports.stripeWebhook = onRequest(
               }
             }
           } catch (e) { console.warn('[stripeWebhook] deal tie-in skipped:', e && e.message); }
-        } else {
+        } else if (!(session.metadata && ['membership', 'invoice'].includes(session.metadata.kind))) {
           console.warn('[stripeWebhook] session missing uid/courseSlug metadata', session.id);
         }
       } else if (event.type === 'invoice.paid') {
@@ -8117,6 +8152,12 @@ exports.stripeWebhook = onRequest(
           const idxRef = db.collection('stripeSubscriptions').doc(String(subId));
           const idx = await idxRef.get();
           const meta = idx.exists ? idx.data() : null;
+          // A membership invoice can arrive before its checkout event, so the
+          // subscription's own metadata stands in until the index exists.
+          const subMeta = (invoice.subscription_details && invoice.subscription_details.metadata) || null;
+          if ((meta && meta.kind === 'membership') || (!meta && subMeta && subMeta.kind === 'membership')) {
+            await handleMembershipInvoicePaid(db, invoice, meta || subMeta);
+          }
           if (meta && meta.installments) {
             const paidCount = (Number(meta.paidCount) || 0) + 1;
             await idxRef.set({ paidCount }, { merge: true });
@@ -8142,7 +8183,9 @@ exports.stripeWebhook = onRequest(
         const sub = event.data.object;
         const idx = await db.collection('stripeSubscriptions').doc(String(sub.id)).get();
         const meta = idx.exists ? idx.data() : null;
-        if (meta && meta.uid && meta.sessionId && !meta.installments
+        if (meta && meta.kind === 'membership') {
+          await handleMembershipUpdated(db, sub, meta);
+        } else if (meta && meta.uid && meta.sessionId && !meta.installments
             && sub.status !== 'canceled' && sub.status !== 'incomplete_expired') {
           const accessUntil = sub.cancel_at_period_end ? subscriptionPeriodEndMs(sub) : null;
           await db.collection('users').doc(meta.uid).collection('purchases').doc(meta.sessionId).set({
@@ -8155,7 +8198,9 @@ exports.stripeWebhook = onRequest(
         const sub = event.data.object;
         const idx = await db.collection('stripeSubscriptions').doc(String(sub.id)).get();
         const meta = idx.exists ? idx.data() : (sub.metadata && sub.metadata.uid ? sub.metadata : null);
-        if (meta && meta.installmentsComplete === true) {
+        if (meta && meta.kind === 'membership') {
+          await handleMembershipEnded(db, sub, meta);
+        } else if (meta && meta.installmentsComplete === true) {
           // A completed installment plan ending is not a cancellation —
           // the buyer paid in full and keeps access.
         } else if (meta && meta.uid && meta.courseSlug) {
@@ -8172,6 +8217,11 @@ exports.stripeWebhook = onRequest(
         const subId = invoice.subscription;
         if (subId) {
           const idx = await db.collection('stripeSubscriptions').doc(String(subId)).get();
+          if (idx.exists && idx.data().kind === 'membership' && idx.data().uid) {
+            await db.collection('users').doc(idx.data().uid).set({
+              membership: { status: 'past_due', updatedAt: admin.firestore.FieldValue.serverTimestamp() }
+            }, { merge: true });
+          }
           if (idx.exists && idx.data().sessionId) {
             const meta = idx.data();
             await db.collection('users').doc(meta.uid).collection('purchases').doc(meta.sessionId)
@@ -9575,8 +9625,13 @@ exports.voicemailAudio = onRequest({ cors: false, invoker: 'public' }, async (re
 // sees hash == content and does nothing. No flags to clear, no bouncing.
 // ════════════════════════════════════════════════════════════════
 
+// drive.file lets scripts/drive-sync.mjs upload the social media files in
+// this repo to the owner's Drive. It reaches only files this app creates,
+// never the rest of the owner's Drive.
+const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
+  DRIVE_FILE_SCOPE,
   'openid', 'email'
 ].join(' ');
 
@@ -9782,6 +9837,7 @@ exports.googleOAuthCallback = onRequest({ cors: false, invoker: 'public' }, asyn
       accessTokenExpiry: Date.now() + (Number(tok.expires_in) || 3600) * 1000,
       calendarId: 'primary',
       googleEmail: email,
+      scopes: tok.scope || null,
       connectedBy: st.uid,
       syncToken: null,
       watchChannelId: null, watchResourceId: null, watchExpiry: null,
@@ -9790,6 +9846,7 @@ exports.googleOAuthCallback = onRequest({ cors: false, invoker: 'public' }, asyn
 
     await googleStatusRef(db, st.companyId).set({
       connected: true, googleEmail: email, calendarId: 'primary', error: null,
+      driveSync: String(tok.scope || '').split(/\s+/).includes(DRIVE_FILE_SCOPE),
       connectedAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp()
     }, { merge: true });
 
@@ -9832,7 +9889,7 @@ exports.googleDisconnect = onCall(async (request) => {
   }
   await googleStatusRef(db, companyId).set({
     connected: false, googleEmail: null, error: null,
-    watchExpiry: null, lastSyncAt: null,
+    watchExpiry: null, lastSyncAt: null, driveSync: false,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
   return { ok: true };
@@ -14183,7 +14240,15 @@ const LEAD_FORMS = {
   'book-bonus': { source: 'Book Bonus', tags: ['Book Bonus', 'Book Reader'] },
   // /contact-us — the public "get in touch" form. Someone who writes in
   // unprompted is asking for a reply, so this type always notifies.
-  'contact': { source: 'Contact Form', tags: ['Contact Form'], urgent: true }
+  'contact': { source: 'Contact Form', tags: ['Contact Form'], urgent: true },
+  // /focus-tax-calculator — someone asked for their Focus Tax report. Tagged
+  // with the book it is built on, so calculator leads are the launch list.
+  // Team-mode requests also join the corporate pipeline (see submitLeadForm).
+  'focus-tax': { source: 'Focus Tax Calculator', tags: ['Focus Tax Calculator', 'Work Less Gain More'] },
+  // /join — someone asking about a coaching or financial team role. Tagged
+  // "Recruiting" plus one tag per role (functions/careers.js), so each hiring
+  // track is its own CRM filter. A recruit is not a buyer, so no sales tags.
+  'careers': { source: 'Join the Team', tags: [] }
 };
 
 /**
@@ -14410,6 +14475,11 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
 
   const tags = form.tags.slice();
   if (consent) tags.push('Opt-In: Calls/SMS/Email');
+  // A leader pricing their team's Focus Tax is a corporate lead: the same
+  // buyer-input math the annual program conversation starts from.
+  if (formType === 'focus-tax' && fields.mode === 'team') tags.push('Corporate', 'Focus Tax: Team');
+  // The page sends a role key, never a tag; careerTags maps it to a fixed set.
+  if (formType === 'careers') tags.push(...careerTags(fields.role_key));
   const ref = await upsertCrmContact(db, companyId, {
     name, email, phone, source: form.source, tags
   });
@@ -14446,8 +14516,116 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
     contactUrl: `${APP_BASE_URL}/contact.html?id=${encodeURIComponent(ref.id)}`
   });
 
+  // The calculator promised a report, so send it. Recomputed here from the
+  // submitted inputs (clamped by computeFocusTax), never from totals the page
+  // sent, and rendered from a fixed template, so the form cannot be used to
+  // mail arbitrary text. Best-effort: the lead is already saved.
+  if (formType === 'focus-tax' && emailConfigured()) {
+    try {
+      const msg = focusTaxReportEmail({ firstName: name.split(/\s+/)[0], result: computeFocusTax(fields) });
+      await sendEmail({
+        to: email,
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject: msg.subject,
+        text: msg.text,
+        html: msg.html,
+        customArgs: { type: 'focus_tax_report' }
+      });
+    } catch (e) {
+      console.warn('[submitLeadForm] focus tax report failed:', e && e.message);
+    }
+  }
+
   return { ok: true };
 });
+
+// The Focus Tax report: the visitor's numbers, the one fix to run first, and
+// the two tools from How to Work Less and Gain More that make the fix stick
+// (the fifteen-minute weekly plan, Phase Six, and the weekly audit, Phase Ten).
+function focusTaxReportEmail({ firstName, result: r }) {
+  const usd = (n) => '$' + Math.round(n).toLocaleString('en-US');
+  const h = (n) => `${(Math.round(n * 10) / 10).toString()} hrs`;
+  const team = r.input.mode === 'team';
+  const hi = firstName ? `Hi ${firstName},` : 'Hi,';
+  const who = team ? `your team of ${r.people}` : 'you';
+  const headline = `${usd(r.yearlyCost)} a year`;
+  const perWeek = team
+    ? `${h(r.weeklyHours)} a week per person, ${Math.round(r.pctOfWeek * 100)}% of every working week.`
+    : `${h(r.weeklyHours)} a week, ${Math.round(r.pctOfWeek * 100)}% of your working week.`;
+  const lineRows = r.lines.map((l) => ({
+    label: l.label, hours: h(l.hours), cost: usd(l.hours * r.hourly * r.people * FOCUS_TAX_WEEKS), chapter: l.chapter
+  }));
+  const plan = [
+    'Block deep work first: your highest-value work in the first two to three hours of the morning.',
+    'Set two communication windows, one mid-morning and one mid-afternoon. Outside them the inbox stays closed.',
+    'Put admin in the early to mid-afternoon, when energy is naturally lower.',
+    'Leave a thirty-minute buffer block in the morning and one in the afternoon.'
+  ];
+  const audit = [
+    'What did I actually spend most of my time on this week?',
+    'Which activities produced the most real results?',
+    'What consumed time without producing meaningful results?',
+    'Was my most important work protected, or did it keep getting pushed back?',
+    'What one thing will I do differently next week?'
+  ];
+  const back = r.reclaimedHours > 0
+    ? `Run the system from the book and ${who} get back about ${h(r.reclaimedHours)} a week${team ? ' per person' : ''}, worth ${usd(r.reclaimedYearlyCost)} a year.`
+    : 'Your answers already match the system. Keep auditing weekly so it stays that way.';
+  const bookUrl = `${APP_BASE_URL}/#shop`;
+  const auditUrl = `${APP_BASE_URL}/corporate#audit`;
+  const calcUrl = `${APP_BASE_URL}/focus-tax-calculator`;
+
+  const subject = team ? `Your team's Focus Tax: ${headline}` : `Your Focus Tax: ${headline}`;
+  const text = [
+    hi, '',
+    `Here is the Focus Tax you calculated for ${who}: ${headline}.`,
+    perWeek, '',
+    ...lineRows.map((l) => `${l.label}: ${l.hours} a week, ${l.cost} a year (${l.chapter})`),
+    '',
+    r.biggest ? `Your biggest tax is ${r.biggest.label.toLowerCase()}. Run this first: ${r.biggest.fix}` : '',
+    '', back, '',
+    'The fifteen-minute weekly plan (Phase Six):',
+    ...plan.map((p, n) => `${n + 1}. ${p}`),
+    '',
+    'The weekly audit, ten minutes every Friday (Phase Ten):',
+    ...audit.map((q, n) => `${n + 1}. ${q}`),
+    '',
+    `The whole system is in How to Work Less and Gain More: ${bookUrl}`,
+    team ? `To walk through these numbers with your leadership team, book a free Alignment Audit: ${auditUrl}` : '',
+    `Run the numbers again any time: ${calcUrl}`,
+    '', 'Anthony Brown Sr.', 'The One Percent'
+  ].join('\n');
+
+  const li = (items, ordered) => `<${ordered ? 'ol' : 'ul'} style="font-size:14px;color:#333;padding-left:20px;margin:8px 0 0;">${items.map((x) => `<li style="margin:4px 0;">${textToHtml(x)}</li>`).join('')}</${ordered ? 'ol' : 'ul'}>`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;">
+    <p style="font-size:15px;">${textToHtml(hi)}</p>
+    <p style="font-size:15px;">Here is the Focus Tax you calculated for ${textToHtml(who)}.</p>
+    <div style="border:1px solid #eee;border-left:4px solid #E60306;border-radius:8px;padding:16px 18px;margin:18px 0;">
+      <div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#888;">${team ? "Your team's Focus Tax" : 'Your Focus Tax'}</div>
+      <div style="font-size:26px;font-weight:700;margin-top:4px;">${textToHtml(headline)}</div>
+      <p style="font-size:14px;color:#444;margin:6px 0 0;">${textToHtml(perWeek)}</p>
+    </div>
+    <table style="width:100%;font-size:14px;border-collapse:collapse;">
+      ${lineRows.map((l) => `<tr>
+        <td style="padding:8px 0;border-bottom:1px solid #eee;"><strong>${textToHtml(l.label)}</strong><br><span style="font-size:12px;color:#888;">${textToHtml(l.chapter)}</span></td>
+        <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;">${textToHtml(l.hours)} / wk<br><span style="color:#666;">${textToHtml(l.cost)} / yr</span></td>
+      </tr>`).join('')}
+    </table>
+    ${r.biggest ? `<p style="font-size:15px;margin-top:20px;"><strong>Your biggest tax is ${textToHtml(r.biggest.label.toLowerCase())}.</strong> Run this first: ${textToHtml(r.biggest.fix)}</p>` : ''}
+    <p style="font-size:15px;">${textToHtml(back)}</p>
+    <h3 style="font-size:16px;margin:24px 0 0;">The fifteen-minute weekly plan</h3>
+    ${li(plan, true)}
+    <h3 style="font-size:16px;margin:24px 0 0;">The weekly audit, ten minutes every Friday</h3>
+    ${li(audit, true)}
+    <p style="font-size:15px;margin-top:24px;">The whole system is in <em>How to Work Less and Gain More</em>.</p>
+    <p style="margin:18px 0;"><a href="${bookUrl}" style="background:#E60306;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;">Get the book</a></p>
+    ${team ? `<p style="font-size:14px;">Want to walk through these numbers with your leadership team? <a href="${auditUrl}" style="color:#E60306;">Book a free Alignment Audit</a>: 45 minutes with Anthony and a one-page scorecard within 48 hours.</p>` : ''}
+    <p style="font-size:13px;color:#888;">Run the numbers again any time at <a href="${calcUrl}" style="color:#888;">the1pnation.com/focus-tax-calculator</a>. An estimate from your own inputs and the research cited in the book, not a guarantee.</p>
+    <p style="font-size:14px;margin-top:24px;">Anthony Brown Sr.<br>The One Percent</p>
+  </div>`;
+  return { subject, text, html };
+}
 
 // ────────────────────────────────────────────────────────────────
 // submitAssessment — callable (signed-in members)
@@ -14986,3 +15164,1180 @@ exports.ASSESSMENT_SLUGS = ASSESSMENT_SLUGS;
 // that carry an endpoint definition, so this deploys nothing.
 // ────────────────────────────────────────────────────────────────
 exports.promoteLaunchedItems = promoteLaunchedItems;
+
+// ════════════════════════════════════════════════════════════════
+// Speaking Engagement Agreements: digital signing.
+//
+// The owner prepares an agreement in /agreements (agreements/{id}, owner-only
+// in firestore.rules while it is a draft). sendAgreement freezes it: it builds
+// the snapshot the client will sign from the shared terms module
+// (functions/agreement-terms.js, generated from public/js/agreement-terms.js),
+// fingerprints it with SHA-256, applies the owner's signature, and emails the
+// client a private signing link. The client never reads Firestore: the
+// signing page goes through getAgreementForSigning and signAgreement, which
+// check the link's token. Signing records name, title, email, time, IP, and
+// browser, re-checks the fingerprint, and emails both parties the executed
+// copy. Nothing about a sent agreement can be changed from the browser.
+// ════════════════════════════════════════════════════════════════
+
+const agreementTerms = require('./agreement-terms.js');
+
+function agreementHash(snapshot) {
+  return crypto.createHash('sha256').update(agreementTerms.canonicalJson(snapshot)).digest('hex');
+}
+
+function sameToken(a, b) {
+  const x = Buffer.from(String(a || ''));
+  const y = Buffer.from(String(b || ''));
+  return x.length > 0 && x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
+function agreementLink(id, token) {
+  return `${APP_BASE_URL}/sign?a=${encodeURIComponent(id)}&t=${encodeURIComponent(token)}`;
+}
+
+function assertOwnerCall(request) {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  if (!(request.auth.token && request.auth.token.role === 'owner')) {
+    throw new HttpsError('permission-denied', 'Owner access required.');
+  }
+}
+
+const tsMs = (t) => (t && typeof t.toMillis === 'function' ? t.toMillis() : null);
+
+async function agreementCrmNote(db, contactId, description, tag) {
+  if (!contactId) return;
+  try {
+    const companyId = await resolveAcademyCompanyId(db);
+    if (!companyId) return;
+    const ref = db.collection('companies').doc(companyId).collection('contacts').doc(contactId);
+    if (!(await ref.get()).exists) return;
+    await ref.collection('activities').add({
+      type: 'agreement',
+      description,
+      actorUid: 'system',
+      actorName: 'Agreements',
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    if (tag) await ref.set({ tags: admin.firestore.FieldValue.arrayUnion(tag) }, { merge: true });
+  } catch (e) {
+    console.warn('[agreements] CRM note failed:', e && e.message);
+  }
+}
+
+function agreementEmailHtml({ heading, lines, url, button }) {
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;">
+    <div style="border-bottom:3px solid #111;padding-bottom:10px;margin-bottom:18px;font-weight:700;letter-spacing:1px;">THE ONE PERCENT NATION</div>
+    <h2 style="font-size:18px;margin:0 0 12px;">${escapeHtmlBasic(heading)}</h2>
+    ${lines.map((l) => `<p style="font-size:15px;line-height:1.55;margin:0 0 12px;">${escapeHtmlBasic(l)}</p>`).join('')}
+    <p style="margin:22px 0;"><a href="${url}" style="display:inline-block;background:#E60306;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">${escapeHtmlBasic(button)}</a></p>
+    <p style="font-size:12px;color:#888;">If the button does not work, open this link: ${escapeHtmlBasic(url)}</p>
+  </div>`;
+}
+
+/**
+ * sendAgreement({ id, resend }) — owner only. Freezes a draft and emails the
+ * client the signing link, or (resend) emails the same link again.
+ */
+exports.sendAgreement = onCall({ secrets: [sendgridKey] }, async (request) => {
+  assertOwnerCall(request);
+  const db = admin.firestore();
+  const id = String((request.data && request.data.id) || '');
+  if (!id) throw new HttpsError('invalid-argument', 'Missing agreement.');
+  const ref = db.collection('agreements').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Agreement not found.');
+  let doc = snap.data();
+
+  if (doc.status === 'draft') {
+    const missing = agreementTerms.missingForSend(doc);
+    if (missing.length) throw new HttpsError('failed-precondition', `Fill in before sending: ${missing.join(', ')}.`);
+    const now = admin.firestore.Timestamp.now();
+    const snapshot = agreementTerms.buildSnapshot(doc);
+    const update = {
+      status: 'sent',
+      snapshot,
+      hash: agreementHash(snapshot),
+      token: crypto.randomBytes(24).toString('hex'),
+      sentAt: now,
+      provider: { name: agreementTerms.PROVIDER.speaker, title: agreementTerms.PROVIDER.signerTitle, signedAt: now, uid: request.auth.uid },
+      sendCount: 1,
+      updatedAt: now
+    };
+    await ref.update(update);
+    doc = { ...doc, ...update };
+    await agreementCrmNote(db, doc.contactId, `Speaking agreement ${snapshot.agreementNo} sent for signature`, 'Speaking Agreement Sent');
+  } else if (doc.status === 'sent') {
+    if (!(request.data && request.data.resend)) throw new HttpsError('failed-precondition', 'Already sent.');
+    await ref.update({ sendCount: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  } else {
+    throw new HttpsError('failed-precondition', `This agreement is ${doc.status}.`);
+  }
+
+  const url = agreementLink(id, doc.token);
+  let emailed = false;
+  if (emailConfigured()) {
+    const s = doc.snapshot;
+    const first = (s.client.signerName || '').split(/\s+/)[0];
+    try {
+      await sendEmail({
+        to: s.client.signerEmail,
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject: `Please sign: Speaking Engagement Agreement ${s.agreementNo}`,
+        text: `${first ? `Hi ${first},` : 'Hello,'}\n\nYour Speaking Engagement Agreement with The One Percent Nation is ready to review and sign:\n\n${url}\n\nThe event date is reserved once the agreement is signed and the deposit is received.\n\nAnthony Brown Sr.\nThe One Percent Nation`,
+        html: agreementEmailHtml({
+          heading: 'Your Speaking Engagement Agreement is ready',
+          lines: [first ? `Hi ${first},` : 'Hello,', `The agreement for ${(s.schedule.event.find((r) => r.k === 'Event') || {}).v || 'your event'} is ready to review and sign. It takes about five minutes.`, 'The event date is reserved once the agreement is signed and the deposit is received.'],
+          url, button: 'Review and sign'
+        }),
+        customArgs: { type: 'agreement_sent' }
+      });
+      emailed = true;
+    } catch (e) {
+      console.warn('[sendAgreement] email failed:', e && e.message);
+    }
+  }
+  return { ok: true, url, emailed };
+});
+
+/**
+ * getAgreementForSigning({ id, token }) — public, by private link. Returns
+ * the frozen snapshot and its signing state, and records the first open.
+ */
+exports.getAgreementForSigning = onCall(async (request) => {
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'getAgreementForSigning', max: 60, windowSec: 600 });
+  const id = String((request.data && request.data.id) || '');
+  const token = String((request.data && request.data.token) || '');
+  if (!id || !token) throw new HttpsError('invalid-argument', 'This link is incomplete.');
+  const ref = db.collection('agreements').doc(id);
+  const snap = await ref.get();
+  const doc = snap.exists ? snap.data() : null;
+  if (!doc || !sameToken(doc.token, token) || doc.status === 'draft') {
+    throw new HttpsError('not-found', 'This agreement link is not valid.');
+  }
+  let viewedAt = tsMs(doc.viewedAt);
+  if (!viewedAt && doc.status === 'sent') {
+    viewedAt = Date.now();
+    await ref.update({ viewedAt: admin.firestore.Timestamp.fromMillis(viewedAt) });
+  }
+  const sig = doc.signature || null;
+  return {
+    status: doc.status,
+    snapshot: doc.snapshot,
+    hash: doc.hash,
+    provider: doc.provider ? { name: doc.provider.name, title: doc.provider.title, signedAt: tsMs(doc.provider.signedAt) } : null,
+    client: sig ? { name: sig.name, title: sig.title, email: sig.email, signedAt: tsMs(sig.signedAt), ip: sig.ip } : null,
+    audit: { sentAt: tsMs(doc.sentAt), viewedAt, hash: doc.hash }
+  };
+});
+
+/**
+ * signAgreement({ id, token, name, title, agreeTerms, agreeElectronic }) —
+ * public, by private link. Records the client's electronic signature.
+ */
+exports.signAgreement = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'signAgreement', max: 10, windowSec: 600 });
+  const d = request.data || {};
+  const id = String(d.id || '');
+  const token = String(d.token || '');
+  const name = String(d.name || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  const title = String(d.title || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  if (!id || !token) throw new HttpsError('invalid-argument', 'This link is incomplete.');
+  if (name.length < 2) throw new HttpsError('invalid-argument', 'Type your full name to sign.');
+  if (!title) throw new HttpsError('invalid-argument', 'Add your title.');
+  if (d.agreeTerms !== true || d.agreeElectronic !== true) {
+    throw new HttpsError('invalid-argument', 'Confirm both statements to sign.');
+  }
+
+  const ref = db.collection('agreements').doc(id);
+  const raw = request.rawRequest;
+  const userAgent = String((raw && raw.headers && raw.headers['user-agent']) || '').slice(0, 300);
+  const ip = clientIp(request);
+  const signedAt = admin.firestore.Timestamp.now();
+
+  const doc = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const cur = snap.exists ? snap.data() : null;
+    if (!cur || !sameToken(cur.token, token) || cur.status === 'draft') {
+      throw new HttpsError('not-found', 'This agreement link is not valid.');
+    }
+    if (cur.status === 'signed') throw new HttpsError('failed-precondition', 'This agreement is already signed.');
+    if (cur.status !== 'sent') throw new HttpsError('failed-precondition', `This agreement is ${cur.status} and can no longer be signed.`);
+    // The fingerprint taken at send must still match what is stored.
+    if (agreementHash(cur.snapshot) !== cur.hash) {
+      throw new HttpsError('data-loss', 'This agreement could not be verified. Contact The One Percent for a new link.');
+    }
+    const signature = { name, title, email: cur.snapshot.client.signerEmail, signedAt, ip, userAgent };
+    tx.update(ref, { status: 'signed', signature, signedAt, updatedAt: signedAt });
+    return { ...cur, signature };
+  });
+
+  const s = doc.snapshot;
+  const url = agreementLink(id, doc.token);
+  await agreementCrmNote(db, doc.contactId, `Speaking agreement ${s.agreementNo} signed by ${name}, ${title}`, 'Speaking Agreement Signed');
+
+  if (emailConfigured()) {
+    const recipients = [
+      { to: s.client.signerEmail, hello: `Hi ${name.split(' ')[0]},` },
+      { to: NOTIFY_EMAIL, hello: 'Signed and returned:' }
+    ];
+    for (const r of recipients) {
+      try {
+        await sendEmail({
+          to: r.to,
+          from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+          replyTo: REPLY_TO,
+          subject: `Signed: Speaking Engagement Agreement ${s.agreementNo}`,
+          text: `${r.hello}\n\nThe Speaking Engagement Agreement ${s.agreementNo} between The One Percent Nation and ${s.client.legalName} is fully signed. View or download the executed copy:\n\n${url}\n\nThe One Percent Nation`,
+          html: agreementEmailHtml({
+            heading: 'Agreement signed',
+            lines: [r.hello, `The Speaking Engagement Agreement ${s.agreementNo} between The One Percent Nation and ${s.client.legalName} is fully signed. Keep this link for your records; it opens the executed copy with its certificate of completion.`],
+            url, button: 'View the executed agreement'
+          }),
+          customArgs: { type: 'agreement_signed' }
+        });
+      } catch (e) {
+        console.warn('[signAgreement] email failed:', e && e.message);
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    client: { name, title, email: s.client.signerEmail, signedAt: signedAt.toMillis(), ip }
+  };
+});
+
+/** voidAgreement({ id }) — owner only. Cancels an unsigned agreement's link. */
+exports.voidAgreement = onCall(async (request) => {
+  assertOwnerCall(request);
+  const db = admin.firestore();
+  const id = String((request.data && request.data.id) || '');
+  const ref = db.collection('agreements').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Agreement not found.');
+  if (snap.data().status !== 'sent') throw new HttpsError('failed-precondition', 'Only a sent, unsigned agreement can be voided.');
+  await ref.update({ status: 'void', voidedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  return { ok: true };
+});
+
+// ════════════════════════════════════════════════════════════════
+// The One Percent Membership.
+//
+// One Stripe subscription (monthly or annual) that opens every course on the
+// membership list. Books and live sessions are not part of it. The
+// rules live in functions/membership-core.js (generated from
+// public/js/membership-core.js). Membership is its own flag on the user,
+// users/{uid}.membershipActive plus a users/{uid}.membership record, written
+// only here and in stripeWebhook. It is never mixed into enrolledCourseSlugs,
+// so ending a membership cannot remove a course someone bought.
+//
+// config/membership holds the included course list and the founding-member
+// count. It is publicly readable (the membership page shows spots left) and
+// server-written only. Certifications can never be added to the list.
+// ════════════════════════════════════════════════════════════════
+
+const membershipCore = require('./membership-core.js');
+
+async function membershipConfig(db) {
+  const ref = db.collection('config').doc('membership');
+  const snap = await ref.get();
+  if (snap.exists) return snap.data() || {};
+  const seed = {
+    includedSlugs: membershipCore.DEFAULT_INCLUDED,
+    foundingCount: 0,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+  await ref.set(seed, { merge: true });
+  return seed;
+}
+
+/** Does this user's active membership open this course? */
+async function memberCourseAccess(db, user, slug, course) {
+  if (!membershipCore.isActiveMember(user)) return false;
+  return membershipCore.memberHasCourse(user, await membershipConfig(db), slug, course);
+}
+
+async function tagMemberInCrm(db, { email, name, tags }) {
+  try {
+    const companyId = await resolveAcademyCompanyId(db);
+    if (!companyId || !email) return;
+    await upsertCrmContact(db, companyId, { name: name || '', email, source: 'Membership', tags });
+  } catch (e) {
+    console.warn('[membership] CRM tag failed:', e && e.message);
+  }
+}
+
+/**
+ * createMembershipCheckout({ billing }) — starts a Stripe Checkout session for
+ * the membership. The plan (founding or standard) is decided here from the
+ * live founding count, never by the browser.
+ */
+exports.createMembershipCheckout = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const billing = String((request.data && request.data.billing) || 'month');
+  if (billing !== 'month' && billing !== 'year') throw new HttpsError('invalid-argument', 'Unknown billing option.');
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'createMembershipCheckout', max: 10, windowSec: 600 });
+  const stripe = getStripe();
+  if (!stripe) throw new HttpsError('failed-precondition', 'Online checkout isn\'t available yet.');
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const user = userSnap.exists ? userSnap.data() : {};
+  if (membershipCore.isActiveMember(user)) {
+    throw new HttpsError('already-exists', 'You are already a member.');
+  }
+  const config = await membershipConfig(db);
+  const plan = membershipCore.planForSignup(config.foundingCount);
+  const dollars = membershipCore.priceFor(plan, billing);
+  const metadata = { kind: 'membership', uid, plan, billing };
+  const label = membershipCore.PLANS[plan].label;
+
+  const session = await stripe.checkout.sessions.create({
+    mode: 'subscription',
+    line_items: [{
+      price_data: {
+        currency: 'usd',
+        unit_amount: dollars * 100,
+        recurring: { interval: billing },
+        product_data: { name: `${membershipCore.MEMBERSHIP_NAME} (${label}, ${billing === 'year' ? 'annual' : 'monthly'})` }
+      },
+      quantity: 1
+    }],
+    customer_email: (request.auth.token && request.auth.token.email) || undefined,
+    client_reference_id: uid,
+    metadata,
+    subscription_data: { metadata },
+    success_url: `${APP_BASE_URL}/membership?welcome=1`,
+    cancel_url: `${APP_BASE_URL}/membership`
+  });
+  return { ok: true, url: session.url, plan, amount: dollars };
+});
+
+/** manageMembership({ action: 'cancel' | 'resume' }) — the member's own button. */
+exports.manageMembership = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
+  const action = String((request.data && request.data.action) || '');
+  if (action !== 'cancel' && action !== 'resume') throw new HttpsError('invalid-argument', 'action must be cancel or resume.');
+  const stripe = getStripe();
+  if (!stripe) throw new HttpsError('failed-precondition', 'Payments are not configured yet.');
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+  const user = (await userRef.get()).data() || {};
+  const subId = user.membership && user.membership.subscriptionId;
+  if (!subId || !membershipCore.isActiveMember(user)) throw new HttpsError('not-found', 'No active membership found.');
+  const sub = await stripe.subscriptions.update(subId, { cancel_at_period_end: action === 'cancel' });
+  const accessUntil = sub.cancel_at_period_end ? subscriptionPeriodEndMs(sub) : null;
+  await userRef.set({
+    membership: {
+      status: sub.cancel_at_period_end ? 'canceling' : 'active',
+      cancelAt: accessUntil ? admin.firestore.Timestamp.fromMillis(accessUntil) : null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }
+  }, { merge: true });
+  return { ok: true, status: sub.cancel_at_period_end ? 'canceling' : 'active', accessUntil };
+});
+
+/**
+ * setMembershipCourse({ slug, included }) — owner only. Adds a course to or
+ * removes it from the membership. Certifications are refused here, in the
+ * security rules, and in membership-core, whatever the request says.
+ */
+exports.setMembershipCourse = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  if (!(request.auth.token && request.auth.token.role === 'owner')) throw new HttpsError('permission-denied', 'Owner access required.');
+  const slug = String((request.data && request.data.slug) || '').trim();
+  const included = (request.data && request.data.included) === true;
+  if (!slug || slug.length > 120 || slug.includes('/')) throw new HttpsError('invalid-argument', 'slug is required.');
+  const db = admin.firestore();
+  const courseSnap = await db.collection('courses').doc(slug).get();
+  const course = courseSnap.exists ? courseSnap.data() : null;
+  if (included && membershipCore.isCertification(slug, course)) {
+    throw new HttpsError('failed-precondition', 'Certifications are paid programs and cannot be part of the membership.');
+  }
+  await membershipConfig(db);
+  const ref = db.collection('config').doc('membership');
+  await db.runTransaction(async (tx) => {
+    const cur = (await tx.get(ref)).data() || {};
+    const list = membershipCore.includedSlugs(cur).filter((s) => s !== slug);
+    if (included) list.push(slug);
+    tx.set(ref, { includedSlugs: list, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
+  return { ok: true, includedSlugs: membershipCore.includedSlugs((await ref.get()).data()) };
+});
+
+// ── Webhook handlers (called from stripeWebhook) ─────────────────────────
+
+async function handleMembershipCheckout(db, stripe, session) {
+  const meta = session.metadata || {};
+  const uid = meta.uid || session.client_reference_id;
+  if (!uid) return;
+  const subId = session.subscription ? String(session.subscription) : null;
+  const plan = membershipCore.PLANS[meta.plan] ? meta.plan : 'standard';
+  const billing = meta.billing === 'year' ? 'year' : 'month';
+  let periodEnd = null;
+  if (subId && stripe) {
+    try { periodEnd = subscriptionPeriodEndMs(await stripe.subscriptions.retrieve(subId)); } catch (e) { /* best-effort */ }
+  }
+  const userRef = db.collection('users').doc(uid);
+  const prior = ((await userRef.get()).data() || {}).membership || {};
+  await userRef.set({
+    membershipActive: true,
+    membership: {
+      status: 'active',
+      plan,
+      billing,
+      subscriptionId: subId,
+      customerId: session.customer ? String(session.customer) : null,
+      sessionId: session.id,
+      startedAt: prior.startedAt || admin.firestore.FieldValue.serverTimestamp(),
+      currentPeriodEnd: periodEnd ? admin.firestore.Timestamp.fromMillis(periodEnd) : null,
+      cancelAt: null,
+      endedAt: null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }
+  }, { merge: true });
+  if (subId) {
+    await db.collection('stripeSubscriptions').doc(subId).set({ uid, kind: 'membership', plan, billing, sessionId: session.id }, { merge: true });
+  }
+  await userRef.collection('purchases').doc(session.id).set({
+    kind: 'membership', mode: 'membership', plan, billing,
+    amount: typeof session.amount_total === 'number' ? session.amount_total / 100 : membershipCore.priceFor(plan, billing),
+    subscriptionId: subId, status: 'active',
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  // A founding spot is counted once per subscription, on the first checkout.
+  if (plan === 'founding' && subId) {
+    const cfgRef = db.collection('config').doc('membership');
+    const claimRef = cfgRef.collection('foundingClaims').doc(subId);
+    await db.runTransaction(async (tx) => {
+      if ((await tx.get(claimRef)).exists) return;
+      tx.set(claimRef, { uid, at: admin.firestore.FieldValue.serverTimestamp() });
+      tx.set(cfgRef, { foundingCount: admin.firestore.FieldValue.increment(1) }, { merge: true });
+    });
+  }
+
+  const email = (session.customer_details && session.customer_details.email) || session.customer_email;
+  await tagMemberInCrm(db, { email, name: session.customer_details && session.customer_details.name, tags: ['Member', `Member: ${membershipCore.PLANS[plan].label}`] });
+  if (email && emailConfigured()) {
+    try {
+      const url = `${APP_BASE_URL}/membership`;
+      await sendEmail({
+        to: email,
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject: `Welcome to ${membershipCore.MEMBERSHIP_NAME}`,
+        text: `Welcome in.\n\nYour membership is active. Every course in the membership, The One Percent Brief, and the member toolkit are open to you now:\n\n${url}\n\nAnthony Brown Sr.\nThe One Percent Nation`,
+        html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;">
+          <div style="border-bottom:3px solid #111;padding-bottom:10px;margin-bottom:18px;font-weight:700;letter-spacing:1px;">THE ONE PERCENT NATION</div>
+          <h2 style="font-size:20px;margin:0 0 12px;">Welcome in.</h2>
+          <p style="font-size:15px;line-height:1.55;">Your membership is active${plan === 'founding' ? ', at the founding rate you keep for as long as you stay' : ''}. Every course in the membership, The One Percent Brief, and the member toolkit are open to you now.</p>
+          <p style="margin:22px 0;"><a href="${url}" style="display:inline-block;background:#E60306;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">Start with your membership</a></p>
+          <p style="font-size:15px;line-height:1.55;">One percent better, every day.<br>Anthony Brown Sr.</p>
+        </div>`,
+        customArgs: { type: 'membership_welcome' }
+      });
+    } catch (e) {
+      console.warn('[membership] welcome email failed:', e && e.message);
+    }
+  }
+}
+
+/** invoice.paid on a membership: count paid months and keep access current. */
+async function handleMembershipInvoicePaid(db, invoice, meta) {
+  const uid = meta && meta.uid;
+  if (!uid) return;
+  const line = invoice.lines && invoice.lines.data && invoice.lines.data[0];
+  const periodEnd = line && line.period && line.period.end ? line.period.end * 1000 : null;
+  const months = meta.billing === 'year' ? 12 : 1;
+  await db.collection('users').doc(uid).set({
+    membershipActive: true,
+    membership: {
+      status: 'active',
+      ...(meta.plan ? { plan: meta.plan } : {}),
+      ...(meta.billing ? { billing: meta.billing } : {}),
+      ...(invoice.subscription ? { subscriptionId: String(invoice.subscription) } : {}),
+      paidMonths: admin.firestore.FieldValue.increment(months),
+      ...(periodEnd ? { currentPeriodEnd: admin.firestore.Timestamp.fromMillis(periodEnd) } : {}),
+      lastPaidAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }
+  }, { merge: true });
+}
+
+/** customer.subscription.updated on a membership. A failed payment keeps access while Stripe retries. */
+async function handleMembershipUpdated(db, sub, meta) {
+  if (!meta || !meta.uid) return;
+  const ended = sub.status === 'canceled' || sub.status === 'incomplete_expired' || sub.status === 'unpaid';
+  const accessUntil = sub.cancel_at_period_end ? subscriptionPeriodEndMs(sub) : null;
+  await db.collection('users').doc(meta.uid).set({
+    membershipActive: !ended,
+    membership: {
+      status: ended ? 'canceled' : sub.cancel_at_period_end ? 'canceling' : (sub.status === 'past_due' ? 'past_due' : 'active'),
+      cancelAt: accessUntil ? admin.firestore.Timestamp.fromMillis(accessUntil) : null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }
+  }, { merge: true });
+}
+
+/** customer.subscription.deleted on a membership: access ends; purchases are untouched. */
+async function handleMembershipEnded(db, sub, meta) {
+  if (!meta || !meta.uid) return;
+  const userRef = db.collection('users').doc(meta.uid);
+  const u = (await userRef.get()).data() || {};
+  // Only the subscription on record ends the membership, so an old ended
+  // subscription can never switch off a newer one.
+  if (u.membership && u.membership.subscriptionId && u.membership.subscriptionId !== String(sub.id)) return;
+  await userRef.set({
+    membershipActive: false,
+    membership: { status: 'canceled', endedAt: admin.firestore.FieldValue.serverTimestamp(), cancelAt: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() }
+  }, { merge: true });
+  await tagMemberInCrm(db, { email: u.email, name: u.displayName, tags: ['Former Member'] });
+}
+
+// ════════════════════════════════════════════════════════════════
+// Hand sales: orders Anthony takes himself (a Facebook Messenger DM, a table
+// at an event, a text) instead of through Amazon or site checkout.
+//
+// Every order lands in `orders` beside the Stripe-written ones, as
+// kind 'manual', so the store console works one list. The rules freeze
+// orders against client writes; everything here runs on the Admin SDK so
+// the invoice number, the stock count, the CRM contact and the reminder
+// tasks move together.
+//
+//   manageHandSale  (admin)  create / update / pay / ship / deliver / cancel …
+//   adjustStock     (admin)  count books in, out, or correct the count
+//   getInvoice      (public, by private link) the invoice the buyer sees
+//   payInvoice      (public, by private link) a Stripe Checkout for the total
+//   stripeWebhook   marks the order paid when that checkout completes
+//
+// Reminders are ordinary CRM tasks (companies/{cid}/tasks), so they show on
+// /tasks and the runAutomationTick sweep emails them when they come due.
+// The shared rules (totals, buckets, which tasks should be open) live in
+// public/js/hand-sales-core.js; functions/hand-sales-core.js is its
+// generated copy.
+// ════════════════════════════════════════════════════════════════
+
+function invoiceLink(id, token) {
+  return `${APP_BASE_URL}/invoice?i=${encodeURIComponent(id)}&t=${encodeURIComponent(token)}`;
+}
+
+async function assertAdminCall(db, request) {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admin access required.');
+}
+
+async function handSalesSettings(db) {
+  try {
+    const snap = await db.collection('config').doc('handSales').get();
+    return handSales.mergeSettings(snap.exists ? snap.data() : {});
+  } catch (e) {
+    return handSales.mergeSettings({});
+  }
+}
+
+async function handSaleProducts(db) {
+  const out = {};
+  const snap = await db.collection('products').get();
+  snap.docs.forEach((d) => { out[d.id] = { name: d.data().name || d.id }; });
+  return out;
+}
+
+const stockRef = (db, productId) => db.collection('stock').doc(productId);
+
+/**
+ * Applies the stock change between two versions of an order inside `tx`.
+ * Only products already being counted (a stock/{id} doc exists) move; an
+ * untracked product sells without a count. `snaps` are the stock reads the
+ * caller made before any write, as Firestore transactions require.
+ */
+function writeStockMoves(db, tx, snaps, delta, { orderId, invoiceNumber, byUid }) {
+  const now = admin.firestore.Timestamp.now();
+  const touched = [];
+  snaps.forEach((snap) => {
+    if (!snap.exists) return;
+    const id = snap.id;
+    const d = delta[id];
+    if (!d) return;
+    const onHand = Number(snap.data().onHand || 0) + d;
+    tx.set(snap.ref, { onHand, updatedAt: now }, { merge: true });
+    tx.set(snap.ref.collection('moves').doc(), {
+      delta: d,
+      reason: d < 0 ? 'sold' : 'returned',
+      orderId,
+      invoiceNumber: invoiceNumber || null,
+      note: '',
+      onHandAfter: onHand,
+      byUid: byUid || 'system',
+      at: now
+    });
+    touched.push({ id, onHand, data: snap.data() });
+  });
+  return touched;
+}
+
+/**
+ * Find or create the buyer's CRM contact. Messenger buyers often give only a
+ * name, so this matches on email, then phone, and otherwise makes a new
+ * contact tagged as a book buyer.
+ */
+async function handSaleContact(db, companyId, order, byUid) {
+  const col = db.collection('companies').doc(companyId).collection('contacts');
+  const FV = admin.firestore.FieldValue;
+  const b = order.buyer || {};
+  let ref = null;
+  if (order.contactId) {
+    const hinted = await col.doc(order.contactId).get().catch(() => null);
+    if (hinted && hinted.exists) ref = hinted.ref;
+  }
+  if (!ref && b.email) {
+    const s = await col.where('email', '==', b.email).limit(1).get().catch(() => null);
+    if (s && !s.empty) ref = s.docs[0].ref;
+  }
+  if (!ref && b.phone) {
+    const s = await col.where('phone', '==', b.phone).limit(1).get().catch(() => null);
+    if (s && !s.empty) ref = s.docs[0].ref;
+  }
+  const channel = handSales.labelFor(handSales.CHANNELS, order.channel);
+  if (ref) {
+    const patch = { tags: FV.arrayUnion('Book Buyer'), updatedAt: FV.serverTimestamp(), lastActivityAt: FV.serverTimestamp() };
+    if (b.email) patch.email = b.email;
+    if (b.phone) patch.phone = b.phone;
+    await ref.set(patch, { merge: true });
+  } else {
+    ref = await col.add({
+      name: b.name || 'Book buyer',
+      email: b.email || null,
+      phone: b.phone || null,
+      companyName: null,
+      source: 'Book Sale',
+      sourceDetail: [channel, b.handle].filter(Boolean).join(' · ') || null,
+      stage: 'new',
+      tags: ['Book Buyer'],
+      ownerUid: byUid || null,
+      createdAt: FV.serverTimestamp(),
+      updatedAt: FV.serverTimestamp(),
+      createdBy: byUid || 'system',
+      lastActivityAt: FV.serverTimestamp(),
+      lastContactedAt: null,
+      lastContactChannel: null,
+      lastContactDirection: null
+    });
+  }
+  return ref;
+}
+
+async function handSaleActivity(db, order, description, type = 'book_order') {
+  if (!order.companyId || !order.contactId) return;
+  try {
+    const ref = db.collection('companies').doc(order.companyId).collection('contacts').doc(order.contactId);
+    await ref.collection('activities').add({
+      type,
+      description,
+      actorUid: 'system',
+      actorName: 'Hand sales',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      meta: { orderId: order.id || null, invoiceNumber: order.invoiceNumber || null }
+    });
+    await ref.set({ lastActivityAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  } catch (e) {
+    console.warn('[handSales] CRM activity failed:', e && e.message);
+  }
+}
+
+/**
+ * Makes the open CRM tasks match handSales.taskPlan(order): creates the
+ * missing ones, completes the ones the order has moved past. A task Anthony
+ * already ticked off by hand is left alone and not recreated. Returns the
+ * order's new { kind: taskId } map.
+ */
+async function syncHandSaleTasks(db, order, settings) {
+  if (!order.companyId) return order.tasks || {};
+  const col = db.collection('companies').doc(order.companyId).collection('tasks');
+  const FV = admin.firestore.FieldValue;
+  const plan = handSales.taskPlan(order, settings);
+  const tasks = { ...(order.tasks || {}) };
+
+  for (const [kind, id] of Object.entries(tasks)) {
+    if (plan[kind] || !id) continue;
+    try {
+      const ref = col.doc(id);
+      const snap = await ref.get();
+      if (snap.exists && snap.data().status === 'open') {
+        await ref.set({ status: 'done', completedAt: FV.serverTimestamp(), completedByUid: 'system', updatedAt: FV.serverTimestamp() }, { merge: true });
+      }
+    } catch (e) { console.warn('[handSales] task close failed:', e && e.message); }
+    delete tasks[kind];
+  }
+
+  for (const [kind, p] of Object.entries(plan)) {
+    if (tasks[kind]) continue;
+    try {
+      const ref = await col.add({
+        title: p.title,
+        contactId: order.contactId || null,
+        contactName: (order.buyer && order.buyer.name) || null,
+        opportunityId: null,
+        orderId: order.id,
+        assigneeUid: order.ownerUid || null,
+        dueAt: admin.firestore.Timestamp.fromMillis(p.dueAt),
+        status: 'open',
+        priority: p.priority || 'normal',
+        completedAt: null,
+        completedByUid: null,
+        remindedAt: null,
+        createdAt: FV.serverTimestamp(),
+        updatedAt: FV.serverTimestamp(),
+        createdBy: 'system'
+      });
+      tasks[kind] = ref.id;
+    } catch (e) { console.warn('[handSales] task create failed:', e && e.message); }
+  }
+  return tasks;
+}
+
+/**
+ * One reorder task per product while it sits at or under its threshold;
+ * restocking past the line closes it.
+ */
+async function syncLowStockTask(db, stockId, onHand, stock, settings, assigneeUid) {
+  const low = handSales.lowStock(onHand, settings, stock.reorderAt);
+  const FV = admin.firestore.FieldValue;
+  const companyId = await resolveAcademyCompanyId(db);
+  if (!companyId) return;
+  const col = db.collection('companies').doc(companyId).collection('tasks');
+  if (low && !stock.lowStockTaskId) {
+    const ref = await col.add({
+      title: `Reorder ${stock.name || stockId}: ${onHand} left on the shelf`,
+      contactId: null, contactName: null, opportunityId: null,
+      assigneeUid: assigneeUid || null,
+      dueAt: admin.firestore.Timestamp.fromMillis(Date.now() + 2 * 86400000),
+      status: 'open', priority: 'high',
+      completedAt: null, completedByUid: null, remindedAt: null,
+      createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp(), createdBy: 'system'
+    });
+    await stockRef(db, stockId).set({ lowStockTaskId: ref.id }, { merge: true });
+  } else if (!low && stock.lowStockTaskId) {
+    await col.doc(stock.lowStockTaskId).set({ status: 'done', completedAt: FV.serverTimestamp(), completedByUid: 'system', updatedAt: FV.serverTimestamp() }, { merge: true }).catch(() => {});
+    await stockRef(db, stockId).set({ lowStockTaskId: null }, { merge: true });
+  }
+}
+
+/**
+ * Read an order, let `mutate` produce the next version, and write it with
+ * its stock moves in one transaction. Then sync the CRM tasks and any
+ * low-stock reorder task. `mutate` gets a copy and returns it (or throws an
+ * HttpsError to refuse the change).
+ */
+async function applyHandSale(db, orderId, mutate, { byUid = 'system', what = 'updated' } = {}) {
+  const ref = db.collection('orders').doc(orderId);
+  const now = admin.firestore.Timestamp.now();
+  let next = null;
+  let touched = [];
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
+    const before = { id: snap.id, ...snap.data() };
+    // Shallow copy: every mutate spreads the nested maps it changes, so the
+    // stored Timestamps (createdAt, paidAt, history) pass through untouched.
+    const after = mutate({ ...before }, before);
+    after.status = handSales.deliveryStatus(after);
+    const delta = handSales.stockDelta(before, after);
+    const stockSnaps = await Promise.all(Object.keys(delta).map((id) => tx.get(stockRef(db, id))));
+    touched = writeStockMoves(db, tx, stockSnaps, delta, { orderId, invoiceNumber: before.invoiceNumber, byUid });
+    delete after.id;
+    after.updatedAt = now;
+    after.history = [...(before.history || []), { at: now, by: byUid, what }].slice(-50);
+    // Mirror fields the older console and the owner dashboard read.
+    after.email = (after.buyer && after.buyer.email) || null;
+    after.productName = handSales.itemSummary(after);
+    tx.set(ref, after, { merge: false });
+    next = { ...after, id: orderId, createdAt: before.createdAt };
+  });
+  const settings = await handSalesSettings(db);
+  const tasks = await syncHandSaleTasks(db, next, settings);
+  // update(), not set-merge: a merge keeps the keys of tasks that closed.
+  await ref.update({ tasks });
+  for (const t of touched) {
+    await syncLowStockTask(db, t.id, t.onHand, t.data, settings, next.ownerUid).catch((e) => console.warn('[handSales] low stock task failed:', e && e.message));
+  }
+  return { ...next, tasks };
+}
+
+/** What the console gets back: the order minus nothing, plus its link. */
+function handSaleResult(order) {
+  return { ok: true, id: order.id, invoiceNumber: order.invoiceNumber, url: invoiceLink(order.id, order.invoiceToken), status: order.status, payment: order.payment };
+}
+
+async function emailInvoice(db, order, settings) {
+  const to = order.buyer && order.buyer.email;
+  if (!to) throw new HttpsError('failed-precondition', 'This order has no buyer email. Copy the message and send it where they ordered.');
+  if (!emailConfigured()) throw new HttpsError('failed-precondition', 'Email is not configured.');
+  const url = invoiceLink(order.id, order.invoiceToken);
+  const first = handSales.firstName(order.buyer.name);
+  const total = handSales.formatMoney(order.amountTotal);
+  await sendEmail({
+    to,
+    from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+    replyTo: REPLY_TO,
+    subject: `Invoice ${order.invoiceNumber} from ${settings.businessName}: ${total}`,
+    text: `${first ? `Hi ${first},` : 'Hello,'}\n\nThank you for ordering ${handSales.itemSummary(order)}. Your invoice for ${total} is here:\n\n${url}\n\nYou can pay by card on that page.\n\nAnthony Brown Sr.\n${settings.businessName}`,
+    html: agreementEmailHtml({
+      heading: `Invoice ${order.invoiceNumber}: ${total}`,
+      lines: [first ? `Hi ${first},` : 'Hello,', `Thank you for ordering ${handSales.itemSummary(order)}. Your invoice is ready, and you can pay by card right on the page.`],
+      url, button: 'View and pay invoice'
+    }),
+    customArgs: { type: 'hand_sale_invoice' }
+  });
+}
+
+/**
+ * manageHandSale({ action, id?, order?, ... }) — admin only.
+ *   create   { order }                 → new order, invoice number, tasks
+ *   update   { id, order }             → edit buyer, items, address, price
+ *   pay      { id, method, reference } → mark paid
+ *   unpay    { id }                    → undo a payment marked by mistake
+ *   ship     { id, carrier, number }   → out the door (tracking optional)
+ *   deliver  { id }                    → delivered / handed over
+ *   reviewed { id }                    → the review ask went out
+ *   cancel   { id } / reopen { id }    → stock follows
+ *   email    { id }                    → email the invoice link to the buyer
+ *   note     { id, note }              → internal note
+ */
+exports.manageHandSale = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const db = admin.firestore();
+  await assertAdminCall(db, request);
+  const byUid = request.auth.uid;
+  const data = request.data || {};
+  const action = String(data.action || '');
+  const id = data.id ? String(data.id) : null;
+  const now = admin.firestore.Timestamp.now();
+
+  if (action === 'create') {
+    const products = await handSaleProducts(db);
+    let clean;
+    try { clean = handSales.normalizeOrder(data.order || {}, { products }); }
+    catch (e) { throw new HttpsError('invalid-argument', e.message); }
+    const ref = db.collection('orders').doc();
+    const token = crypto.randomBytes(24).toString('hex');
+    let order = null;
+    let touched = [];
+    await db.runTransaction(async (tx) => {
+      const counterRef = db.collection('counters').doc('handSalesInvoice');
+      const c = await tx.get(counterRef);
+      const n = c.exists && Number(c.data().next) ? Number(c.data().next) : 1001;
+      const draft = { ...clean, kind: 'manual', status: 'new' };
+      draft.status = handSales.deliveryStatus(draft);
+      const delta = handSales.stockDelta(null, draft);
+      const stockSnaps = await Promise.all(Object.keys(delta).map((pid) => tx.get(stockRef(db, pid))));
+      tx.set(counterRef, { next: n + 1, updatedAt: now }, { merge: true });
+      order = {
+        ...draft,
+        invoiceNumber: handSales.invoiceNumber(n),
+        invoiceToken: token,
+        currency: 'usd',
+        email: clean.buyer.email || null,
+        productName: handSales.itemSummary(clean),
+        productType: 'book',
+        payment: { ...clean.payment, paidAt: clean.payment.status === 'unpaid' ? null : now },
+        tracking: null,
+        ownerUid: byUid,
+        createdBy: byUid,
+        companyId: null,
+        contactId: null,
+        tasks: {},
+        history: [{ at: now, by: byUid, what: 'created' }],
+        createdAt: now,
+        updatedAt: now
+      };
+      touched = writeStockMoves(db, tx, stockSnaps, delta, { orderId: ref.id, invoiceNumber: order.invoiceNumber, byUid });
+      tx.set(ref, order);
+    });
+    order.id = ref.id;
+
+    const settings = await handSalesSettings(db);
+    const companyId = await resolveAcademyCompanyId(db);
+    if (companyId) {
+      try {
+        const contactRef = await handSaleContact(db, companyId, order, byUid);
+        order.companyId = companyId;
+        order.contactId = contactRef.id;
+        await handSaleActivity(db, order, `Ordered ${handSales.itemSummary(order)} via ${handSales.labelFor(handSales.CHANNELS, order.channel)}: ${order.invoiceNumber}, ${handSales.formatMoney(order.amountTotal)}`);
+      } catch (e) { console.warn('[handSales] contact failed:', e && e.message); }
+    }
+    order.tasks = await syncHandSaleTasks(db, order, settings);
+    await ref.update({ companyId: order.companyId, contactId: order.contactId, tasks: order.tasks });
+    for (const t of touched) {
+      await syncLowStockTask(db, t.id, t.onHand, t.data, settings, byUid).catch((e) => console.warn('[handSales] low stock task failed:', e && e.message));
+    }
+    let emailed = false;
+    if (data.sendEmail && order.buyer.email) {
+      try { await emailInvoice(db, order, settings); emailed = true; await ref.set({ invoiceSentAt: now }, { merge: true }); }
+      catch (e) { console.warn('[handSales] invoice email failed:', e && e.message); }
+    }
+    return { ...handSaleResult(order), emailed };
+  }
+
+  if (!id) throw new HttpsError('invalid-argument', 'Missing order.');
+
+  if (action === 'email') {
+    const snap = await db.collection('orders').doc(id).get();
+    if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
+    const order = { id, ...snap.data() };
+    await emailInvoice(db, order, await handSalesSettings(db));
+    await snap.ref.set({ invoiceSentAt: now }, { merge: true });
+    return { ...handSaleResult(order), emailed: true };
+  }
+
+  const refuseIfCancelled = (o) => {
+    if (o.status === 'cancelled') throw new HttpsError('failed-precondition', 'This order is cancelled. Reopen it first.');
+  };
+
+  let what = action;
+  let mutate;
+  switch (action) {
+    case 'update': {
+      const products = await handSaleProducts(db);
+      let clean;
+      try { clean = handSales.normalizeOrder(data.order || {}, { products }); }
+      catch (e) { throw new HttpsError('invalid-argument', e.message); }
+      mutate = (o) => {
+        refuseIfCancelled(o);
+        const wasPaid = o.payment && o.payment.status !== 'unpaid';
+        const payment = clean.payment.status === 'unpaid' && wasPaid && !(data.order && data.order.payment)
+          ? o.payment
+          : { ...clean.payment, paidAt: clean.payment.status === 'unpaid' ? null : (o.payment && o.payment.paidAt) || now };
+        return { ...o, ...clean, payment };
+      };
+      what = 'edited';
+      break;
+    }
+    case 'pay': {
+      const method = handSales.PAYMENT_METHODS.some((m) => m.key === data.method) ? data.method : 'other';
+      mutate = (o) => {
+        refuseIfCancelled(o);
+        return { ...o, payment: { ...(o.payment || {}), status: 'paid', method, reference: String(data.reference || '').slice(0, 160), paidAt: now } };
+      };
+      what = `paid (${handSales.labelFor(handSales.PAYMENT_METHODS, method)})`;
+      break;
+    }
+    case 'unpay':
+      mutate = (o) => ({ ...o, payment: { ...(o.payment || {}), status: 'unpaid', paidAt: null } });
+      what = 'marked unpaid';
+      break;
+    case 'ship':
+      mutate = (o) => {
+        refuseIfCancelled(o);
+        const carrier = String(data.carrier || '').slice(0, 40);
+        const number = String(data.number || '').slice(0, 80);
+        return { ...o, status: 'shipped', shippedAt: now, tracking: carrier || number ? { carrier, number } : (o.tracking || null) };
+      };
+      what = 'shipped';
+      break;
+    case 'deliver':
+      mutate = (o) => { refuseIfCancelled(o); return { ...o, status: 'done', deliveredAt: now }; };
+      what = 'delivered';
+      break;
+    case 'reviewed':
+      mutate = (o) => ({ ...o, reviewAskedAt: now });
+      what = 'review asked';
+      break;
+    case 'cancel':
+      mutate = (o) => ({ ...o, status: 'cancelled', cancelledAt: now });
+      what = 'cancelled';
+      break;
+    case 'reopen':
+      mutate = (o) => {
+        if (o.status !== 'cancelled') return o;
+        return { ...o, status: 'new', cancelledAt: null };
+      };
+      what = 'reopened';
+      break;
+    case 'note':
+      mutate = (o) => ({ ...o, notes: String(data.note || '').slice(0, 2000) });
+      what = 'note';
+      break;
+    default:
+      throw new HttpsError('invalid-argument', 'Unknown action.');
+  }
+
+  const order = await applyHandSale(db, id, mutate, { byUid, what });
+  if (action === 'pay') await handSaleActivity(db, order, `Paid ${handSales.formatMoney(order.amountTotal)} for ${order.invoiceNumber} (${handSales.labelFor(handSales.PAYMENT_METHODS, order.payment.method)})`);
+  if (action === 'ship') await handSaleActivity(db, order, `${order.invoiceNumber} shipped${order.tracking && order.tracking.number ? `: ${order.tracking.number}` : ''}`);
+  if (action === 'cancel') await handSaleActivity(db, order, `${order.invoiceNumber} cancelled`);
+  return handSaleResult(order);
+});
+
+/**
+ * adjustStock({ productId, delta?, setTo?, reason, note, reorderAt?, unitCost? })
+ * — admin only. Starts counting a product (setTo on a product with no
+ * stock doc yet), receives a box from the printer (+delta), or corrects the
+ * count. Every change is a row in stock/{id}/moves.
+ */
+exports.adjustStock = onCall(async (request) => {
+  const db = admin.firestore();
+  await assertAdminCall(db, request);
+  const d = request.data || {};
+  const productId = String(d.productId || '');
+  if (!productId) throw new HttpsError('invalid-argument', 'Pick a product.');
+  const prod = await db.collection('products').doc(productId).get();
+  if (!prod.exists) throw new HttpsError('not-found', 'Product not found.');
+  const reason = handSales.STOCK_REASONS.some((r) => r.key === d.reason) ? d.reason : 'adjust';
+  const hasSet = d.setTo !== undefined && d.setTo !== null && d.setTo !== '';
+  const delta = Math.trunc(Number(d.delta) || 0);
+  if (hasSet && !(Number(d.setTo) >= 0)) throw new HttpsError('invalid-argument', 'Count must be zero or more.');
+  if (!hasSet && !delta && d.reorderAt === undefined && d.unitCost === undefined) {
+    throw new HttpsError('invalid-argument', 'Nothing to change.');
+  }
+  const ref = stockRef(db, productId);
+  const now = admin.firestore.Timestamp.now();
+  let result = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const cur = snap.exists ? snap.data() : {};
+    const before = Number(cur.onHand || 0);
+    const onHand = hasSet ? Math.trunc(Number(d.setTo)) : before + delta;
+    const change = onHand - before;
+    const patch = { productId, name: prod.data().name || productId, onHand, updatedAt: now };
+    if (!snap.exists) patch.createdAt = now;
+    if (d.reorderAt !== undefined) patch.reorderAt = d.reorderAt === '' || d.reorderAt === null ? null : Math.max(0, Math.trunc(Number(d.reorderAt) || 0));
+    if (d.unitCost !== undefined) patch.unitCost = d.unitCost === '' || d.unitCost === null ? null : Math.max(0, Number(d.unitCost) || 0);
+    tx.set(ref, patch, { merge: true });
+    if (change || !snap.exists) {
+      tx.set(ref.collection('moves').doc(), {
+        delta: change, reason: snap.exists ? reason : 'adjust', orderId: null, invoiceNumber: null,
+        note: String(d.note || (snap.exists ? '' : 'Started counting')).slice(0, 300),
+        onHandAfter: onHand, byUid: request.auth.uid, at: now
+      });
+    }
+    result = { ...cur, ...patch };
+  });
+  const settings = await handSalesSettings(db);
+  await syncLowStockTask(db, productId, result.onHand, result, settings, request.auth.uid)
+    .catch((e) => console.warn('[adjustStock] low stock task failed:', e && e.message));
+  return { ok: true, onHand: result.onHand };
+});
+
+async function invoiceByToken(db, request) {
+  const id = String((request.data && request.data.id) || '');
+  const token = String((request.data && request.data.token) || '');
+  if (!id || !token) throw new HttpsError('invalid-argument', 'This invoice link is incomplete.');
+  const snap = await db.collection('orders').doc(id).get();
+  const order = snap.exists ? snap.data() : null;
+  if (!order || order.kind !== 'manual' || !sameToken(order.invoiceToken, token)) {
+    throw new HttpsError('not-found', 'This invoice link is not valid.');
+  }
+  return { ref: snap.ref, order: { id, ...order } };
+}
+
+/**
+ * getInvoice({ id, token }) — public, by private link. The buyer's view:
+ * no internal notes, tasks, CRM ids or history.
+ */
+exports.getInvoice = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'getInvoice', max: 60, windowSec: 600 });
+  const { ref, order } = await invoiceByToken(db, request);
+  const settings = await handSalesSettings(db);
+  const unpaid = !handSales.isPaid(order) && order.status !== 'cancelled';
+  if (!order.viewedAt) await ref.set({ viewedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  const created = tsMs(order.createdAt);
+  return {
+    invoiceNumber: order.invoiceNumber,
+    createdAt: created,
+    dueAt: created ? created + Number(settings.dueDays) * 86400000 : null,
+    status: order.status,
+    delivery: order.delivery,
+    payment: { status: (order.payment && order.payment.status) || 'unpaid', method: (order.payment && order.payment.method) || null, paidAt: tsMs(order.payment && order.payment.paidAt) },
+    buyer: { name: order.buyer && order.buyer.name, email: order.buyer && order.buyer.email },
+    shipping: order.shipping || null,
+    items: (order.items || []).map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.unitPrice, note: it.note || '' })),
+    subtotal: order.subtotal, shippingFee: order.shippingFee, discount: order.discount, tax: order.tax, total: order.amountTotal,
+    giftMessage: order.giftMessage || '',
+    tracking: order.status === 'shipped' || order.status === 'done' ? (order.tracking || null) : null,
+    seller: { name: settings.businessName, email: settings.fromEmail, web: settings.web, address: settings.returnAddress, note: settings.invoiceNote },
+    payOptions: unpaid ? handSales.paymentOptions(settings, { amountTotal: order.amountTotal }, { cardEnabled: !!getStripe() && Number(order.amountTotal) >= 0.5 }) : []
+  };
+});
+
+/**
+ * payInvoice({ id, token }) — public, by private link. Opens a Stripe
+ * Checkout for the invoice total; the webhook marks the order paid.
+ */
+exports.payInvoice = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'payInvoice', max: 20, windowSec: 600 });
+  const { order } = await invoiceByToken(db, request);
+  if (order.status === 'cancelled') throw new HttpsError('failed-precondition', 'This invoice was cancelled.');
+  if (handSales.isPaid(order)) throw new HttpsError('failed-precondition', 'This invoice is already paid. Thank you!');
+  const stripe = getStripe();
+  if (!stripe) throw new HttpsError('failed-precondition', 'Card payments are not available right now. Use one of the other options on the invoice.');
+  const amount = Math.round(Number(order.amountTotal || 0) * 100);
+  if (amount < 50) throw new HttpsError('failed-precondition', 'This invoice has nothing to pay.');
+  const settings = await handSalesSettings(db);
+  const url = invoiceLink(order.id, order.invoiceToken);
+  const session = await stripe.checkout.sessions.create({
+    mode: 'payment',
+    line_items: [{
+      quantity: 1,
+      price_data: {
+        currency: 'usd',
+        unit_amount: amount,
+        product_data: {
+          name: `${settings.businessName} — Invoice ${order.invoiceNumber}`,
+          description: (order.items || []).map((it) => `${it.qty} × ${it.name}`).join(', ').slice(0, 500) || undefined
+        }
+      }
+    }],
+    ...(order.buyer && order.buyer.email ? { customer_email: order.buyer.email } : {}),
+    metadata: { kind: 'invoice', orderId: order.id, invoiceNumber: order.invoiceNumber },
+    payment_intent_data: { metadata: { kind: 'invoice', orderId: order.id, invoiceNumber: order.invoiceNumber } },
+    success_url: `${url}&paid=1`,
+    cancel_url: url
+  });
+  return { url: session.url };
+});
+
+/** Webhook branch: the invoice's Stripe Checkout completed. */
+async function handleInvoiceCheckout(db, session) {
+  const orderId = session.metadata && session.metadata.orderId;
+  if (!orderId) return;
+  if (session.payment_status && session.payment_status !== 'paid') return;
+  const now = admin.firestore.Timestamp.now();
+  const order = await applyHandSale(db, orderId, (o) => ({
+    ...o,
+    payment: {
+      ...(o.payment || {}),
+      status: 'paid',
+      method: 'card',
+      reference: String(session.payment_intent || session.id),
+      amountPaid: (session.amount_total || 0) / 100,
+      paidAt: now
+    }
+  }), { what: 'paid (card, invoice link)' });
+  await handSaleActivity(db, order, `Paid ${handSales.formatMoney(order.amountTotal)} by card for ${order.invoiceNumber}`);
+  if (emailConfigured()) {
+    try {
+      const lines = handSales.addressLines(order.shipping);
+      await sendEmail({
+        to: OWNER_EMAIL,
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject: `Paid: ${order.invoiceNumber} — ${order.buyer && order.buyer.name} (${handSales.formatMoney(order.amountTotal)})`,
+        html: reminderHtml('Invoice paid by card', [
+          `<strong>${escapeHtmlBasic(order.invoiceNumber)}</strong>: ${escapeHtmlBasic(handSales.itemSummary(order))}`,
+          `From: ${escapeHtmlBasic(order.buyer && order.buyer.name)}`,
+          lines.length ? `Ship to:<br>${lines.map(escapeHtmlBasic).join('<br>')}` : (order.delivery === 'hand' ? 'Hand delivery' : '<strong>No address yet</strong> — ask for one.'),
+          `<a href="${APP_BASE_URL}/manage-store.html?tab=orders" style="color:#E60306;">Open Orders →</a>`
+        ]),
+        text: `${order.invoiceNumber} paid by card: ${handSales.formatMoney(order.amountTotal)} from ${order.buyer && order.buyer.name}.`
+      });
+    } catch (e) { console.warn('[handSales] paid notice failed:', e && e.message); }
+  }
+}
