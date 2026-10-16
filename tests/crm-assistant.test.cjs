@@ -250,6 +250,7 @@ ok('the thinking config matches whichever model is configured', () => {
     return crmThinkingConfig;
   `)();
   assert.deepStrictEqual(fn('claude-haiku-4-5'), { type: 'enabled', budget_tokens: 2048 });
+  assert.deepStrictEqual(fn('claude-haiku-5-5'), { type: 'adaptive' });
   assert.deepStrictEqual(fn('claude-opus-5'), { type: 'adaptive' });
   assert.deepStrictEqual(fn('claude-sonnet-5'), { type: 'adaptive' });
   // The configured model must get a config the API will accept.
