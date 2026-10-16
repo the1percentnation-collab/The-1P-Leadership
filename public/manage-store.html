@@ -40,12 +40,105 @@
     .store-addr { font-size: 12px; color: var(--gray-light, #a0a0a0); line-height: 1.5; }
     .data-table td { vertical-align: top; }
   
+    /* ─── Orders + Inventory (hand-sales-console.js) ─────────────── */
+    .hs-bar { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+    .hs-bar-actions { display: flex; gap: 8px; }
+    .hs-h { font-family: var(--font-display); font-size: 22px; letter-spacing: .06em; margin: 0 0 4px; color: var(--white); }
+    .hs-dim { color: var(--gray-light, #a0a0a0); font-size: 12.5px; line-height: 1.5; }
+    .hs-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .hs-tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+    .hs-tile.warn { border-color: rgba(230,165,3,.45); }
+    .hs-tile.hot { border-color: rgba(230,3,6,.5); }
+    .hs-tile-k { font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-light); }
+    .hs-tile-v { font-family: var(--font-display); font-size: 30px; letter-spacing: .03em; color: var(--white); margin: 4px 0 2px; }
+    .hs-tile-s { font-size: 12px; color: var(--gray-light); }
+    .hs-filters { margin-bottom: 14px; flex-wrap: wrap; }
+    .hs-count { opacity: .6; margin-left: 4px; }
+    .hs-empty { padding: 28px; text-align: center; color: var(--gray-light); border: 1px dashed var(--border); border-radius: 12px; font-size: 14px; }
+    .hs-order, .hs-inv { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; }
+    .hs-order.is-cancelled { opacity: .55; }
+    .hs-order-head { display: flex; justify-content: space-between; gap: 14px; }
+    .hs-order-no { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; color: var(--white); }
+    .hs-order-who { font-size: 16px; font-weight: 600; color: var(--white); margin-top: 4px; }
+    .hs-order-total { font-family: var(--font-display); font-size: 24px; letter-spacing: .03em; color: var(--white); text-align: right; white-space: nowrap; }
+    .hs-order-body { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; font-size: 13.5px; color: var(--white-dim); }
+    .hs-k { font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-light); margin-bottom: 4px; }
+    .hs-addr { font-size: 13px; line-height: 1.5; color: var(--white-dim); }
+    .hs-addr-box { background: var(--charcoal); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+    .hs-missing { color: var(--amber, #E6A503); font-size: 13px; }
+    .hs-sign { margin-top: 6px; font-size: 12.5px; color: var(--amber, #E6A503); }
+    .hs-note { margin-top: 10px; font-size: 12.5px; color: var(--gray-light); border-left: 2px solid var(--border); padding-left: 10px; white-space: pre-wrap; }
+    .hs-link { background: none; border: none; padding: 0; margin-top: 4px; color: var(--red); font-size: 12px; cursor: pointer; }
+    .hs-order-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+    .hs-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .hs-act { padding: 7px 12px; font-size: 12px; }
+    .hs-badge { display: inline-block; font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border); margin-top: 4px; }
+    .hs-badge.ok { color: var(--green, #1DB954); border-color: rgba(29,185,84,.35); }
+    .hs-badge.bad { color: #ff6b6b; border-color: rgba(255,107,107,.4); }
+    .hs-badge.warn { color: var(--amber, #E6A503); border-color: rgba(230,165,3,.4); }
+    .hs-badge.hot { color: var(--red); border-color: rgba(230,3,6,.45); }
+    .hs-badge.info { color: #7ab8ff; border-color: rgba(122,184,255,.35); }
+    .hs-badge.mute { color: var(--gray-light); }
+    .hs-more { position: relative; }
+    .hs-more summary { list-style: none; }
+    .hs-more summary::-webkit-details-marker { display: none; }
+    .hs-menu { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 20; min-width: 200px; background: var(--charcoal, #141414); border: 1px solid var(--border); border-radius: 10px; padding: 6px; box-shadow: 0 14px 40px rgba(0,0,0,.5); display: flex; flex-direction: column; }
+    .hs-menu button, .hs-menu a { background: none; border: none; text-align: left; padding: 9px 10px; border-radius: 6px; color: var(--white-dim); font-size: 13px; cursor: pointer; text-decoration: none; font-family: var(--font-body); }
+    .hs-menu button:hover, .hs-menu a:hover { background: rgba(255,255,255,.05); color: var(--white); }
+    .hs-menu .danger { color: #ff6b6b; }
+    .hs-inv { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .hs-inv.low { border-color: rgba(230,165,3,.45); }
+    .hs-inv.untracked { border-style: dashed; }
+    .hs-inv-main { display: flex; gap: 16px; align-items: center; }
+    .hs-inv-count { font-family: var(--font-display); font-size: 40px; color: var(--white); line-height: 1; text-align: center; min-width: 70px; }
+    .hs-inv-count span { display: block; font-family: var(--font-mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-light); margin-top: 4px; }
+    .hs-moves { flex-basis: 100%; }
+    .hs-modal { max-width: 560px; }
+    .hs-modal.wide { max-width: 720px; }
+    .hs-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .hs-modal-head h2 { margin: 0; }
+    .hs-x { background: none; border: 1px solid var(--border); color: var(--gray-light); width: 32px; height: 32px; border-radius: 8px; font-size: 18px; line-height: 1; cursor: pointer; flex-shrink: 0; }
+    .hs-x:hover { color: var(--white); border-color: var(--gray-light); }
+    .hs-sec { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--red); margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .hs-sec:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+    .hs-item { display: grid; grid-template-columns: minmax(0, 1fr) 70px 96px 32px; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .hs-item [data-k=name]:not([hidden]) { grid-column: 1 / -1; grid-row: 2; }
+    .hs-add { align-self: flex-start; padding: 6px 12px; font-size: 12px; }
+    .hs-seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .hs-seg button { flex: 1; background: none; border: none; padding: 10px 8px; color: var(--gray-light); font-size: 13px; cursor: pointer; font-family: var(--font-body); }
+    .hs-seg button + button { border-left: 1px solid var(--border); }
+    .hs-seg button.on { background: rgba(230,3,6,.14); color: var(--white); }
+    .hs-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .hs-total { background: var(--charcoal); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 13px; }
+    .hs-total > div { display: flex; justify-content: space-between; padding: 3px 0; color: var(--white-dim); }
+    .hs-total .grand { font-weight: 700; color: var(--white); font-size: 15px; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 7px; }
+    .hs-warn { color: var(--amber, #E6A503); font-size: 12.5px; margin-top: 6px; }
+    .hs-err { color: #ff6b6b; font-size: 13px; min-height: 0; }
+    .hs-err:empty { display: none; }
+    .hs-check { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--white-dim); cursor: pointer; }
+    .hs-lead { font-size: 14px; line-height: 1.55; color: var(--white-dim); margin: 0 0 12px; }
+    .hs-lead a { color: var(--red); }
+    .hs-toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; z-index: 200; background: #111; color: #fff; border: 1px solid var(--border); border-left: 3px solid var(--green, #1DB954); border-radius: 8px; padding: 12px 16px; font-size: 13.5px; max-width: calc(100vw - 32px); transition: all .2s ease; }
+    .hs-toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .hs-toast.bad { border-left-color: #ff6b6b; }
+    [hidden] { display: none !important; }
+
 /* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
 @media (max-width: 720px) {
   .store-tabs { overflow-x: auto; scrollbar-width: none; }
   .store-tabs::-webkit-scrollbar { display: none; }
   .store-tab { flex-shrink: 0; padding: 12px 14px; }
   .store-input-sm { width: 96px; }
+  .hs-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hs-tile-v { font-size: 24px; }
+  .hs-order { padding: 14px; }
+  .hs-order-body { grid-template-columns: 1fr; gap: 10px; }
+  .hs-bar-actions { width: 100%; }
+  .hs-bar-actions .btn { flex: 1; justify-content: center; }
+  .crm-form-row-grid.hs-three { grid-template-columns: 1fr 1fr; }
+  .hs-item { grid-template-columns: minmax(0, 1fr) 56px 80px 32px; }
+  .hs-menu { right: auto; left: 0; }
+  .hs-inv-main { width: 100%; }
 }
 </style>
 </head>
@@ -72,13 +165,14 @@
         </div>
         <div class="crm-section-sub">
           Everything you sell in one place — courses, classes, and products, digital or physical —
-          with the promo codes and orders that go with them.
+          with the orders, invoices, inventory and promo codes that go with them.
         </div>
 
         <div class="store-tabs">
           <button class="store-tab active" data-tab="catalog">Catalog</button>
-          <button class="store-tab" data-tab="promos">Promo Codes</button>
           <button class="store-tab" data-tab="orders">Orders</button>
+          <button class="store-tab" data-tab="inventory">Inventory</button>
+          <button class="store-tab" data-tab="promos">Promo Codes</button>
         </div>
 
         <!-- ─── Catalog ─────────────────────────────────────────────── -->
@@ -161,25 +255,37 @@
 
         <!-- ─── Orders ──────────────────────────────────────────────── -->
         <div class="store-panel" id="panel-orders">
-          <div class="card">
-            <h2>Product orders</h2>
-            <p style="font-size:13px; color:var(--gray-light); margin-bottom:12px;">
-              Every product bought on the site lands here with the shipping address Stripe
-              collected. Work the list top to bottom: mark an order <b>shipped</b> when it's out
-              the door and <b>done</b> when it's delivered.
-            </p>
-            <table class="data-table">
-              <thead>
-                <tr><th>Date</th><th>Product</th><th>Buyer</th><th>Paid</th><th>Ship to</th><th>Status</th></tr>
-              </thead>
-              <tbody id="orders-body"><tr><td colspan="6">Loading…</td></tr></tbody>
-            </table>
+          <div class="hs-bar">
+            <div>
+              <h2 class="hs-h">Orders</h2>
+              <div class="hs-dim">Site checkouts and the books you sell yourself, worked top to bottom: collect, ship, follow up.</div>
+            </div>
+            <div class="hs-bar-actions">
+              <button class="btn btn-ghost" id="hs-settings">Settings</button>
+              <button class="btn btn-primary" id="hs-new">+ New order</button>
+            </div>
           </div>
+          <div class="hs-summary" id="hs-summary"></div>
+          <div class="crm-chip-row hs-filters" id="hs-filters"></div>
+          <div id="hs-list"><div class="hs-empty">Loading…</div></div>
+        </div>
+
+        <!-- ─── Inventory ───────────────────────────────────────────── -->
+        <div class="store-panel" id="panel-inventory">
+          <div class="hs-bar">
+            <div>
+              <h2 class="hs-h">Inventory</h2>
+              <div class="hs-dim">Copies on your shelf. Hand sales count them down, cancelled orders put them back, and you get a reorder reminder when a title runs low. Amazon stock is Amazon's and isn't counted here.</div>
+            </div>
+            <div class="hs-bar-actions"><button class="btn btn-ghost" id="inv-settings">Settings</button></div>
+          </div>
+          <div id="inv-list"><div class="hs-empty">Loading…</div></div>
         </div>
 
       </div>
     </div>
   </div>
+  <div class="hs-toast" id="hs-toast" role="status" aria-live="polite"></div>
   <script type="module" src="js/manage-store.js"></script>
 </body>
 </html>

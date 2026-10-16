@@ -40,6 +40,7 @@ const sgMail = require('@sendgrid/mail');
 // public/js/focus-tax-core.js by scripts/build-focus-tax-server.cjs).
 const { computeFocusTax, WORK_WEEKS: FOCUS_TAX_WEEKS } = require('./focus-tax.js');
 const { careerTags } = require('./careers.js');
+const handSales = require('./hand-sales-core.js');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
@@ -4011,7 +4012,10 @@ exports.getOwnerPulse = onCall(async (request) => {
   ]);
 
   const unanswered = recentPosts.filter((p) => !Number(p.commentCount || 0)).length;
-  const grossCents = recentOrders.reduce((sum, o) => sum + Number(o.amountTotal || 0), 0);
+  // Hand sales count once the money is in; an open invoice is not revenue.
+  const grossCents = recentOrders
+    .filter((o) => o.kind !== 'manual' || (o.status !== 'cancelled' && handSales.isPaid(o)))
+    .reduce((sum, o) => sum + Number(o.amountTotal || 0), 0);
   const nextEvent = nextEvents[0] || null;
 
   const payload = {
@@ -7880,6 +7884,11 @@ exports.stripeWebhook = onRequest(
           await handleMembershipCheckout(db, stripe, session);
         }
 
+        // ── Hand-sale invoice paid by card (see manageHandSale) ─────
+        if (session.metadata && session.metadata.kind === 'invoice') {
+          await handleInvoiceCheckout(db, session);
+        }
+
         // ── License renewal ──────────────────────────────────────────
         // Extends the A.L.I.G.N. Practitioner License one year from its
         // current expiry (or from today if it already lapsed) and
@@ -8139,7 +8148,7 @@ exports.stripeWebhook = onRequest(
               }
             }
           } catch (e) { console.warn('[stripeWebhook] deal tie-in skipped:', e && e.message); }
-        } else if (!(session.metadata && session.metadata.kind === 'membership')) {
+        } else if (!(session.metadata && ['membership', 'invoice'].includes(session.metadata.kind))) {
           console.warn('[stripeWebhook] session missing uid/courseSlug metadata', session.id);
         }
       } else if (event.type === 'invoice.paid') {
@@ -15517,4 +15526,645 @@ async function handleMembershipEnded(db, sub, meta) {
     membership: { status: 'canceled', endedAt: admin.firestore.FieldValue.serverTimestamp(), cancelAt: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() }
   }, { merge: true });
   await tagMemberInCrm(db, { email: u.email, name: u.displayName, tags: ['Former Member'] });
+}
+
+// ════════════════════════════════════════════════════════════════
+// Hand sales: orders Anthony takes himself (a Facebook Messenger DM, a table
+// at an event, a text) instead of through Amazon or site checkout.
+//
+// Every order lands in `orders` beside the Stripe-written ones, as
+// kind 'manual', so the store console works one list. The rules freeze
+// orders against client writes; everything here runs on the Admin SDK so
+// the invoice number, the stock count, the CRM contact and the reminder
+// tasks move together.
+//
+//   manageHandSale  (admin)  create / update / pay / ship / deliver / cancel …
+//   adjustStock     (admin)  count books in, out, or correct the count
+//   getInvoice      (public, by private link) the invoice the buyer sees
+//   payInvoice      (public, by private link) a Stripe Checkout for the total
+//   stripeWebhook   marks the order paid when that checkout completes
+//
+// Reminders are ordinary CRM tasks (companies/{cid}/tasks), so they show on
+// /tasks and the runAutomationTick sweep emails them when they come due.
+// The shared rules (totals, buckets, which tasks should be open) live in
+// public/js/hand-sales-core.js; functions/hand-sales-core.js is its
+// generated copy.
+// ════════════════════════════════════════════════════════════════
+
+function invoiceLink(id, token) {
+  return `${APP_BASE_URL}/invoice?i=${encodeURIComponent(id)}&t=${encodeURIComponent(token)}`;
+}
+
+async function assertAdminCall(db, request) {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  if (!(await isAdminCaller(db, request))) throw new HttpsError('permission-denied', 'Admin access required.');
+}
+
+async function handSalesSettings(db) {
+  try {
+    const snap = await db.collection('config').doc('handSales').get();
+    return handSales.mergeSettings(snap.exists ? snap.data() : {});
+  } catch (e) {
+    return handSales.mergeSettings({});
+  }
+}
+
+async function handSaleProducts(db) {
+  const out = {};
+  const snap = await db.collection('products').get();
+  snap.docs.forEach((d) => { out[d.id] = { name: d.data().name || d.id }; });
+  return out;
+}
+
+const stockRef = (db, productId) => db.collection('stock').doc(productId);
+
+/**
+ * Applies the stock change between two versions of an order inside `tx`.
+ * Only products already being counted (a stock/{id} doc exists) move; an
+ * untracked product sells without a count. `snaps` are the stock reads the
+ * caller made before any write, as Firestore transactions require.
+ */
+function writeStockMoves(db, tx, snaps, delta, { orderId, invoiceNumber, byUid }) {
+  const now = admin.firestore.Timestamp.now();
+  const touched = [];
+  snaps.forEach((snap) => {
+    if (!snap.exists) return;
+    const id = snap.id;
+    const d = delta[id];
+    if (!d) return;
+    const onHand = Number(snap.data().onHand || 0) + d;
+    tx.set(snap.ref, { onHand, updatedAt: now }, { merge: true });
+    tx.set(snap.ref.collection('moves').doc(), {
+      delta: d,
+      reason: d < 0 ? 'sold' : 'returned',
+      orderId,
+      invoiceNumber: invoiceNumber || null,
+      note: '',
+      onHandAfter: onHand,
+      byUid: byUid || 'system',
+      at: now
+    });
+    touched.push({ id, onHand, data: snap.data() });
+  });
+  return touched;
+}
+
+/**
+ * Find or create the buyer's CRM contact. Messenger buyers often give only a
+ * name, so this matches on email, then phone, and otherwise makes a new
+ * contact tagged as a book buyer.
+ */
+async function handSaleContact(db, companyId, order, byUid) {
+  const col = db.collection('companies').doc(companyId).collection('contacts');
+  const FV = admin.firestore.FieldValue;
+  const b = order.buyer || {};
+  let ref = null;
+  if (order.contactId) {
+    const hinted = await col.doc(order.contactId).get().catch(() => null);
+    if (hinted && hinted.exists) ref = hinted.ref;
+  }
+  if (!ref && b.email) {
+    const s = await col.where('email', '==', b.email).limit(1).get().catch(() => null);
+    if (s && !s.empty) ref = s.docs[0].ref;
+  }
+  if (!ref && b.phone) {
+    const s = await col.where('phone', '==', b.phone).limit(1).get().catch(() => null);
+    if (s && !s.empty) ref = s.docs[0].ref;
+  }
+  const channel = handSales.labelFor(handSales.CHANNELS, order.channel);
+  if (ref) {
+    const patch = { tags: FV.arrayUnion('Book Buyer'), updatedAt: FV.serverTimestamp(), lastActivityAt: FV.serverTimestamp() };
+    if (b.email) patch.email = b.email;
+    if (b.phone) patch.phone = b.phone;
+    await ref.set(patch, { merge: true });
+  } else {
+    ref = await col.add({
+      name: b.name || 'Book buyer',
+      email: b.email || null,
+      phone: b.phone || null,
+      companyName: null,
+      source: 'Book Sale',
+      sourceDetail: [channel, b.handle].filter(Boolean).join(' · ') || null,
+      stage: 'new',
+      tags: ['Book Buyer'],
+      ownerUid: byUid || null,
+      createdAt: FV.serverTimestamp(),
+      updatedAt: FV.serverTimestamp(),
+      createdBy: byUid || 'system',
+      lastActivityAt: FV.serverTimestamp(),
+      lastContactedAt: null,
+      lastContactChannel: null,
+      lastContactDirection: null
+    });
+  }
+  return ref;
+}
+
+async function handSaleActivity(db, order, description, type = 'book_order') {
+  if (!order.companyId || !order.contactId) return;
+  try {
+    const ref = db.collection('companies').doc(order.companyId).collection('contacts').doc(order.contactId);
+    await ref.collection('activities').add({
+      type,
+      description,
+      actorUid: 'system',
+      actorName: 'Hand sales',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      meta: { orderId: order.id || null, invoiceNumber: order.invoiceNumber || null }
+    });
+    await ref.set({ lastActivityAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  } catch (e) {
+    console.warn('[handSales] CRM activity failed:', e && e.message);
+  }
+}
+
+/**
+ * Makes the open CRM tasks match handSales.taskPlan(order): creates the
+ * missing ones, completes the ones the order has moved past. A task Anthony
+ * already ticked off by hand is left alone and not recreated. Returns the
+ * order's new { kind: taskId } map.
+ */
+async function syncHandSaleTasks(db, order, settings) {
+  if (!order.companyId) return order.tasks || {};
+  const col = db.collection('companies').doc(order.companyId).collection('tasks');
+  const FV = admin.firestore.FieldValue;
+  const plan = handSales.taskPlan(order, settings);
+  const tasks = { ...(order.tasks || {}) };
+
+  for (const [kind, id] of Object.entries(tasks)) {
+    if (plan[kind] || !id) continue;
+    try {
+      const ref = col.doc(id);
+      const snap = await ref.get();
+      if (snap.exists && snap.data().status === 'open') {
+        await ref.set({ status: 'done', completedAt: FV.serverTimestamp(), completedByUid: 'system', updatedAt: FV.serverTimestamp() }, { merge: true });
+      }
+    } catch (e) { console.warn('[handSales] task close failed:', e && e.message); }
+    delete tasks[kind];
+  }
+
+  for (const [kind, p] of Object.entries(plan)) {
+    if (tasks[kind]) continue;
+    try {
+      const ref = await col.add({
+        title: p.title,
+        contactId: order.contactId || null,
+        contactName: (order.buyer && order.buyer.name) || null,
+        opportunityId: null,
+        orderId: order.id,
+        assigneeUid: order.ownerUid || null,
+        dueAt: admin.firestore.Timestamp.fromMillis(p.dueAt),
+        status: 'open',
+        priority: p.priority || 'normal',
+        completedAt: null,
+        completedByUid: null,
+        remindedAt: null,
+        createdAt: FV.serverTimestamp(),
+        updatedAt: FV.serverTimestamp(),
+        createdBy: 'system'
+      });
+      tasks[kind] = ref.id;
+    } catch (e) { console.warn('[handSales] task create failed:', e && e.message); }
+  }
+  return tasks;
+}
+
+/**
+ * One reorder task per product while it sits at or under its threshold;
+ * restocking past the line closes it.
+ */
+async function syncLowStockTask(db, stockId, onHand, stock, settings, assigneeUid) {
+  const low = handSales.lowStock(onHand, settings, stock.reorderAt);
+  const FV = admin.firestore.FieldValue;
+  const companyId = await resolveAcademyCompanyId(db);
+  if (!companyId) return;
+  const col = db.collection('companies').doc(companyId).collection('tasks');
+  if (low && !stock.lowStockTaskId) {
+    const ref = await col.add({
+      title: `Reorder ${stock.name || stockId}: ${onHand} left on the shelf`,
+      contactId: null, contactName: null, opportunityId: null,
+      assigneeUid: assigneeUid || null,
+      dueAt: admin.firestore.Timestamp.fromMillis(Date.now() + 2 * 86400000),
+      status: 'open', priority: 'high',
+      completedAt: null, completedByUid: null, remindedAt: null,
+      createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp(), createdBy: 'system'
+    });
+    await stockRef(db, stockId).set({ lowStockTaskId: ref.id }, { merge: true });
+  } else if (!low && stock.lowStockTaskId) {
+    await col.doc(stock.lowStockTaskId).set({ status: 'done', completedAt: FV.serverTimestamp(), completedByUid: 'system', updatedAt: FV.serverTimestamp() }, { merge: true }).catch(() => {});
+    await stockRef(db, stockId).set({ lowStockTaskId: null }, { merge: true });
+  }
+}
+
+/**
+ * Read an order, let `mutate` produce the next version, and write it with
+ * its stock moves in one transaction. Then sync the CRM tasks and any
+ * low-stock reorder task. `mutate` gets a copy and returns it (or throws an
+ * HttpsError to refuse the change).
+ */
+async function applyHandSale(db, orderId, mutate, { byUid = 'system', what = 'updated' } = {}) {
+  const ref = db.collection('orders').doc(orderId);
+  const now = admin.firestore.Timestamp.now();
+  let next = null;
+  let touched = [];
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
+    const before = { id: snap.id, ...snap.data() };
+    // Shallow copy: every mutate spreads the nested maps it changes, so the
+    // stored Timestamps (createdAt, paidAt, history) pass through untouched.
+    const after = mutate({ ...before }, before);
+    after.status = handSales.deliveryStatus(after);
+    const delta = handSales.stockDelta(before, after);
+    const stockSnaps = await Promise.all(Object.keys(delta).map((id) => tx.get(stockRef(db, id))));
+    touched = writeStockMoves(db, tx, stockSnaps, delta, { orderId, invoiceNumber: before.invoiceNumber, byUid });
+    delete after.id;
+    after.updatedAt = now;
+    after.history = [...(before.history || []), { at: now, by: byUid, what }].slice(-50);
+    // Mirror fields the older console and the owner dashboard read.
+    after.email = (after.buyer && after.buyer.email) || null;
+    after.productName = handSales.itemSummary(after);
+    tx.set(ref, after, { merge: false });
+    next = { ...after, id: orderId, createdAt: before.createdAt };
+  });
+  const settings = await handSalesSettings(db);
+  const tasks = await syncHandSaleTasks(db, next, settings);
+  // update(), not set-merge: a merge keeps the keys of tasks that closed.
+  await ref.update({ tasks });
+  for (const t of touched) {
+    await syncLowStockTask(db, t.id, t.onHand, t.data, settings, next.ownerUid).catch((e) => console.warn('[handSales] low stock task failed:', e && e.message));
+  }
+  return { ...next, tasks };
+}
+
+/** What the console gets back: the order minus nothing, plus its link. */
+function handSaleResult(order) {
+  return { ok: true, id: order.id, invoiceNumber: order.invoiceNumber, url: invoiceLink(order.id, order.invoiceToken), status: order.status, payment: order.payment };
+}
+
+async function emailInvoice(db, order, settings) {
+  const to = order.buyer && order.buyer.email;
+  if (!to) throw new HttpsError('failed-precondition', 'This order has no buyer email. Copy the message and send it where they ordered.');
+  if (!emailConfigured()) throw new HttpsError('failed-precondition', 'Email is not configured.');
+  const url = invoiceLink(order.id, order.invoiceToken);
+  const first = handSales.firstName(order.buyer.name);
+  const total = handSales.formatMoney(order.amountTotal);
+  await sendEmail({
+    to,
+    from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+    replyTo: REPLY_TO,
+    subject: `Invoice ${order.invoiceNumber} from ${settings.businessName}: ${total}`,
+    text: `${first ? `Hi ${first},` : 'Hello,'}\n\nThank you for ordering ${handSales.itemSummary(order)}. Your invoice for ${total} is here:\n\n${url}\n\nYou can pay by card on that page.\n\nAnthony Brown Sr.\n${settings.businessName}`,
+    html: agreementEmailHtml({
+      heading: `Invoice ${order.invoiceNumber}: ${total}`,
+      lines: [first ? `Hi ${first},` : 'Hello,', `Thank you for ordering ${handSales.itemSummary(order)}. Your invoice is ready, and you can pay by card right on the page.`],
+      url, button: 'View and pay invoice'
+    }),
+    customArgs: { type: 'hand_sale_invoice' }
+  });
+}
+
+/**
+ * manageHandSale({ action, id?, order?, ... }) — admin only.
+ *   create   { order }                 → new order, invoice number, tasks
+ *   update   { id, order }             → edit buyer, items, address, price
+ *   pay      { id, method, reference } → mark paid
+ *   unpay    { id }                    → undo a payment marked by mistake
+ *   ship     { id, carrier, number }   → out the door (tracking optional)
+ *   deliver  { id }                    → delivered / handed over
+ *   reviewed { id }                    → the review ask went out
+ *   cancel   { id } / reopen { id }    → stock follows
+ *   email    { id }                    → email the invoice link to the buyer
+ *   note     { id, note }              → internal note
+ */
+exports.manageHandSale = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const db = admin.firestore();
+  await assertAdminCall(db, request);
+  const byUid = request.auth.uid;
+  const data = request.data || {};
+  const action = String(data.action || '');
+  const id = data.id ? String(data.id) : null;
+  const now = admin.firestore.Timestamp.now();
+
+  if (action === 'create') {
+    const products = await handSaleProducts(db);
+    let clean;
+    try { clean = handSales.normalizeOrder(data.order || {}, { products }); }
+    catch (e) { throw new HttpsError('invalid-argument', e.message); }
+    const ref = db.collection('orders').doc();
+    const token = crypto.randomBytes(24).toString('hex');
+    let order = null;
+    let touched = [];
+    await db.runTransaction(async (tx) => {
+      const counterRef = db.collection('counters').doc('handSalesInvoice');
+      const c = await tx.get(counterRef);
+      const n = c.exists && Number(c.data().next) ? Number(c.data().next) : 1001;
+      const draft = { ...clean, kind: 'manual', status: 'new' };
+      draft.status = handSales.deliveryStatus(draft);
+      const delta = handSales.stockDelta(null, draft);
+      const stockSnaps = await Promise.all(Object.keys(delta).map((pid) => tx.get(stockRef(db, pid))));
+      tx.set(counterRef, { next: n + 1, updatedAt: now }, { merge: true });
+      order = {
+        ...draft,
+        invoiceNumber: handSales.invoiceNumber(n),
+        invoiceToken: token,
+        currency: 'usd',
+        email: clean.buyer.email || null,
+        productName: handSales.itemSummary(clean),
+        productType: 'book',
+        payment: { ...clean.payment, paidAt: clean.payment.status === 'unpaid' ? null : now },
+        tracking: null,
+        ownerUid: byUid,
+        createdBy: byUid,
+        companyId: null,
+        contactId: null,
+        tasks: {},
+        history: [{ at: now, by: byUid, what: 'created' }],
+        createdAt: now,
+        updatedAt: now
+      };
+      touched = writeStockMoves(db, tx, stockSnaps, delta, { orderId: ref.id, invoiceNumber: order.invoiceNumber, byUid });
+      tx.set(ref, order);
+    });
+    order.id = ref.id;
+
+    const settings = await handSalesSettings(db);
+    const companyId = await resolveAcademyCompanyId(db);
+    if (companyId) {
+      try {
+        const contactRef = await handSaleContact(db, companyId, order, byUid);
+        order.companyId = companyId;
+        order.contactId = contactRef.id;
+        await handSaleActivity(db, order, `Ordered ${handSales.itemSummary(order)} via ${handSales.labelFor(handSales.CHANNELS, order.channel)}: ${order.invoiceNumber}, ${handSales.formatMoney(order.amountTotal)}`);
+      } catch (e) { console.warn('[handSales] contact failed:', e && e.message); }
+    }
+    order.tasks = await syncHandSaleTasks(db, order, settings);
+    await ref.update({ companyId: order.companyId, contactId: order.contactId, tasks: order.tasks });
+    for (const t of touched) {
+      await syncLowStockTask(db, t.id, t.onHand, t.data, settings, byUid).catch((e) => console.warn('[handSales] low stock task failed:', e && e.message));
+    }
+    let emailed = false;
+    if (data.sendEmail && order.buyer.email) {
+      try { await emailInvoice(db, order, settings); emailed = true; await ref.set({ invoiceSentAt: now }, { merge: true }); }
+      catch (e) { console.warn('[handSales] invoice email failed:', e && e.message); }
+    }
+    return { ...handSaleResult(order), emailed };
+  }
+
+  if (!id) throw new HttpsError('invalid-argument', 'Missing order.');
+
+  if (action === 'email') {
+    const snap = await db.collection('orders').doc(id).get();
+    if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
+    const order = { id, ...snap.data() };
+    await emailInvoice(db, order, await handSalesSettings(db));
+    await snap.ref.set({ invoiceSentAt: now }, { merge: true });
+    return { ...handSaleResult(order), emailed: true };
+  }
+
+  const refuseIfCancelled = (o) => {
+    if (o.status === 'cancelled') throw new HttpsError('failed-precondition', 'This order is cancelled. Reopen it first.');
+  };
+
+  let what = action;
+  let mutate;
+  switch (action) {
+    case 'update': {
+      const products = await handSaleProducts(db);
+      let clean;
+      try { clean = handSales.normalizeOrder(data.order || {}, { products }); }
+      catch (e) { throw new HttpsError('invalid-argument', e.message); }
+      mutate = (o) => {
+        refuseIfCancelled(o);
+        const wasPaid = o.payment && o.payment.status !== 'unpaid';
+        const payment = clean.payment.status === 'unpaid' && wasPaid && !(data.order && data.order.payment)
+          ? o.payment
+          : { ...clean.payment, paidAt: clean.payment.status === 'unpaid' ? null : (o.payment && o.payment.paidAt) || now };
+        return { ...o, ...clean, payment };
+      };
+      what = 'edited';
+      break;
+    }
+    case 'pay': {
+      const method = handSales.PAYMENT_METHODS.some((m) => m.key === data.method) ? data.method : 'other';
+      mutate = (o) => {
+        refuseIfCancelled(o);
+        return { ...o, payment: { ...(o.payment || {}), status: 'paid', method, reference: String(data.reference || '').slice(0, 160), paidAt: now } };
+      };
+      what = `paid (${handSales.labelFor(handSales.PAYMENT_METHODS, method)})`;
+      break;
+    }
+    case 'unpay':
+      mutate = (o) => ({ ...o, payment: { ...(o.payment || {}), status: 'unpaid', paidAt: null } });
+      what = 'marked unpaid';
+      break;
+    case 'ship':
+      mutate = (o) => {
+        refuseIfCancelled(o);
+        const carrier = String(data.carrier || '').slice(0, 40);
+        const number = String(data.number || '').slice(0, 80);
+        return { ...o, status: 'shipped', shippedAt: now, tracking: carrier || number ? { carrier, number } : (o.tracking || null) };
+      };
+      what = 'shipped';
+      break;
+    case 'deliver':
+      mutate = (o) => { refuseIfCancelled(o); return { ...o, status: 'done', deliveredAt: now }; };
+      what = 'delivered';
+      break;
+    case 'reviewed':
+      mutate = (o) => ({ ...o, reviewAskedAt: now });
+      what = 'review asked';
+      break;
+    case 'cancel':
+      mutate = (o) => ({ ...o, status: 'cancelled', cancelledAt: now });
+      what = 'cancelled';
+      break;
+    case 'reopen':
+      mutate = (o) => {
+        if (o.status !== 'cancelled') return o;
+        return { ...o, status: 'new', cancelledAt: null };
+      };
+      what = 'reopened';
+      break;
+    case 'note':
+      mutate = (o) => ({ ...o, notes: String(data.note || '').slice(0, 2000) });
+      what = 'note';
+      break;
+    default:
+      throw new HttpsError('invalid-argument', 'Unknown action.');
+  }
+
+  const order = await applyHandSale(db, id, mutate, { byUid, what });
+  if (action === 'pay') await handSaleActivity(db, order, `Paid ${handSales.formatMoney(order.amountTotal)} for ${order.invoiceNumber} (${handSales.labelFor(handSales.PAYMENT_METHODS, order.payment.method)})`);
+  if (action === 'ship') await handSaleActivity(db, order, `${order.invoiceNumber} shipped${order.tracking && order.tracking.number ? `: ${order.tracking.number}` : ''}`);
+  if (action === 'cancel') await handSaleActivity(db, order, `${order.invoiceNumber} cancelled`);
+  return handSaleResult(order);
+});
+
+/**
+ * adjustStock({ productId, delta?, setTo?, reason, note, reorderAt?, unitCost? })
+ * — admin only. Starts counting a product (setTo on a product with no
+ * stock doc yet), receives a box from the printer (+delta), or corrects the
+ * count. Every change is a row in stock/{id}/moves.
+ */
+exports.adjustStock = onCall(async (request) => {
+  const db = admin.firestore();
+  await assertAdminCall(db, request);
+  const d = request.data || {};
+  const productId = String(d.productId || '');
+  if (!productId) throw new HttpsError('invalid-argument', 'Pick a product.');
+  const prod = await db.collection('products').doc(productId).get();
+  if (!prod.exists) throw new HttpsError('not-found', 'Product not found.');
+  const reason = handSales.STOCK_REASONS.some((r) => r.key === d.reason) ? d.reason : 'adjust';
+  const hasSet = d.setTo !== undefined && d.setTo !== null && d.setTo !== '';
+  const delta = Math.trunc(Number(d.delta) || 0);
+  if (hasSet && !(Number(d.setTo) >= 0)) throw new HttpsError('invalid-argument', 'Count must be zero or more.');
+  if (!hasSet && !delta && d.reorderAt === undefined && d.unitCost === undefined) {
+    throw new HttpsError('invalid-argument', 'Nothing to change.');
+  }
+  const ref = stockRef(db, productId);
+  const now = admin.firestore.Timestamp.now();
+  let result = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const cur = snap.exists ? snap.data() : {};
+    const before = Number(cur.onHand || 0);
+    const onHand = hasSet ? Math.trunc(Number(d.setTo)) : before + delta;
+    const change = onHand - before;
+    const patch = { productId, name: prod.data().name || productId, onHand, updatedAt: now };
+    if (!snap.exists) patch.createdAt = now;
+    if (d.reorderAt !== undefined) patch.reorderAt = d.reorderAt === '' || d.reorderAt === null ? null : Math.max(0, Math.trunc(Number(d.reorderAt) || 0));
+    if (d.unitCost !== undefined) patch.unitCost = d.unitCost === '' || d.unitCost === null ? null : Math.max(0, Number(d.unitCost) || 0);
+    tx.set(ref, patch, { merge: true });
+    if (change || !snap.exists) {
+      tx.set(ref.collection('moves').doc(), {
+        delta: change, reason: snap.exists ? reason : 'adjust', orderId: null, invoiceNumber: null,
+        note: String(d.note || (snap.exists ? '' : 'Started counting')).slice(0, 300),
+        onHandAfter: onHand, byUid: request.auth.uid, at: now
+      });
+    }
+    result = { ...cur, ...patch };
+  });
+  const settings = await handSalesSettings(db);
+  await syncLowStockTask(db, productId, result.onHand, result, settings, request.auth.uid)
+    .catch((e) => console.warn('[adjustStock] low stock task failed:', e && e.message));
+  return { ok: true, onHand: result.onHand };
+});
+
+async function invoiceByToken(db, request) {
+  const id = String((request.data && request.data.id) || '');
+  const token = String((request.data && request.data.token) || '');
+  if (!id || !token) throw new HttpsError('invalid-argument', 'This invoice link is incomplete.');
+  const snap = await db.collection('orders').doc(id).get();
+  const order = snap.exists ? snap.data() : null;
+  if (!order || order.kind !== 'manual' || !sameToken(order.invoiceToken, token)) {
+    throw new HttpsError('not-found', 'This invoice link is not valid.');
+  }
+  return { ref: snap.ref, order: { id, ...order } };
+}
+
+/**
+ * getInvoice({ id, token }) — public, by private link. The buyer's view:
+ * no internal notes, tasks, CRM ids or history.
+ */
+exports.getInvoice = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'getInvoice', max: 60, windowSec: 600 });
+  const { ref, order } = await invoiceByToken(db, request);
+  const settings = await handSalesSettings(db);
+  const unpaid = !handSales.isPaid(order) && order.status !== 'cancelled';
+  if (!order.viewedAt) await ref.set({ viewedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  const created = tsMs(order.createdAt);
+  return {
+    invoiceNumber: order.invoiceNumber,
+    createdAt: created,
+    dueAt: created ? created + Number(settings.dueDays) * 86400000 : null,
+    status: order.status,
+    delivery: order.delivery,
+    payment: { status: (order.payment && order.payment.status) || 'unpaid', method: (order.payment && order.payment.method) || null, paidAt: tsMs(order.payment && order.payment.paidAt) },
+    buyer: { name: order.buyer && order.buyer.name, email: order.buyer && order.buyer.email },
+    shipping: order.shipping || null,
+    items: (order.items || []).map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.unitPrice, note: it.note || '' })),
+    subtotal: order.subtotal, shippingFee: order.shippingFee, discount: order.discount, tax: order.tax, total: order.amountTotal,
+    giftMessage: order.giftMessage || '',
+    tracking: order.status === 'shipped' || order.status === 'done' ? (order.tracking || null) : null,
+    seller: { name: settings.businessName, email: settings.fromEmail, web: settings.web, address: settings.returnAddress, note: settings.invoiceNote },
+    payOptions: unpaid ? handSales.paymentOptions(settings, { amountTotal: order.amountTotal }, { cardEnabled: !!getStripe() && Number(order.amountTotal) >= 0.5 }) : []
+  };
+});
+
+/**
+ * payInvoice({ id, token }) — public, by private link. Opens a Stripe
+ * Checkout for the invoice total; the webhook marks the order paid.
+ */
+exports.payInvoice = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'payInvoice', max: 20, windowSec: 600 });
+  const { order } = await invoiceByToken(db, request);
+  if (order.status === 'cancelled') throw new HttpsError('failed-precondition', 'This invoice was cancelled.');
+  if (handSales.isPaid(order)) throw new HttpsError('failed-precondition', 'This invoice is already paid. Thank you!');
+  const stripe = getStripe();
+  if (!stripe) throw new HttpsError('failed-precondition', 'Card payments are not available right now. Use one of the other options on the invoice.');
+  const amount = Math.round(Number(order.amountTotal || 0) * 100);
+  if (amount < 50) throw new HttpsError('failed-precondition', 'This invoice has nothing to pay.');
+  const settings = await handSalesSettings(db);
+  const url = invoiceLink(order.id, order.invoiceToken);
+  const session = await stripe.checkout.sessions.create({
+    mode: 'payment',
+    line_items: [{
+      quantity: 1,
+      price_data: {
+        currency: 'usd',
+        unit_amount: amount,
+        product_data: {
+          name: `${settings.businessName} — Invoice ${order.invoiceNumber}`,
+          description: (order.items || []).map((it) => `${it.qty} × ${it.name}`).join(', ').slice(0, 500) || undefined
+        }
+      }
+    }],
+    ...(order.buyer && order.buyer.email ? { customer_email: order.buyer.email } : {}),
+    metadata: { kind: 'invoice', orderId: order.id, invoiceNumber: order.invoiceNumber },
+    payment_intent_data: { metadata: { kind: 'invoice', orderId: order.id, invoiceNumber: order.invoiceNumber } },
+    success_url: `${url}&paid=1`,
+    cancel_url: url
+  });
+  return { url: session.url };
+});
+
+/** Webhook branch: the invoice's Stripe Checkout completed. */
+async function handleInvoiceCheckout(db, session) {
+  const orderId = session.metadata && session.metadata.orderId;
+  if (!orderId) return;
+  if (session.payment_status && session.payment_status !== 'paid') return;
+  const now = admin.firestore.Timestamp.now();
+  const order = await applyHandSale(db, orderId, (o) => ({
+    ...o,
+    payment: {
+      ...(o.payment || {}),
+      status: 'paid',
+      method: 'card',
+      reference: String(session.payment_intent || session.id),
+      amountPaid: (session.amount_total || 0) / 100,
+      paidAt: now
+    }
+  }), { what: 'paid (card, invoice link)' });
+  await handSaleActivity(db, order, `Paid ${handSales.formatMoney(order.amountTotal)} by card for ${order.invoiceNumber}`);
+  if (emailConfigured()) {
+    try {
+      const lines = handSales.addressLines(order.shipping);
+      await sendEmail({
+        to: OWNER_EMAIL,
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject: `Paid: ${order.invoiceNumber} — ${order.buyer && order.buyer.name} (${handSales.formatMoney(order.amountTotal)})`,
+        html: reminderHtml('Invoice paid by card', [
+          `<strong>${escapeHtmlBasic(order.invoiceNumber)}</strong>: ${escapeHtmlBasic(handSales.itemSummary(order))}`,
+          `From: ${escapeHtmlBasic(order.buyer && order.buyer.name)}`,
+          lines.length ? `Ship to:<br>${lines.map(escapeHtmlBasic).join('<br>')}` : (order.delivery === 'hand' ? 'Hand delivery' : '<strong>No address yet</strong> — ask for one.'),
+          `<a href="${APP_BASE_URL}/manage-store.html?tab=orders" style="color:#E60306;">Open Orders →</a>`
+        ]),
+        text: `${order.invoiceNumber} paid by card: ${handSales.formatMoney(order.amountTotal)} from ${order.buyer && order.buyer.name}.`
+      });
+    } catch (e) { console.warn('[handSales] paid notice failed:', e && e.message); }
+  }
 }

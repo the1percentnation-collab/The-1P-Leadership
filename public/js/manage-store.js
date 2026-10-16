@@ -6,8 +6,10 @@
 //                 stay in the specialist editors this page links to.
 //   Promo Codes — scoped coupons for courses/products (shared module from
 //                 manage-coupons.js) plus each class's access codes.
-//   Orders      — product orders written by the Stripe webhook, worked
-//                 manually (new → shipped → done).
+//   Orders      — one pipeline for everything a person fulfils: Stripe
+//                 orders and hand sales (Messenger, events), with invoices,
+//                 payments, shipping and reminders. hand-sales-console.js.
+//   Inventory   — books on the shelf, drawn down by hand sales.
 //
 // Writes go through the client SDK under the same rules the specialist
 // editors already use: courses (stripe map frozen), products (admin CRUD),
@@ -19,8 +21,9 @@ import { onAuthReady } from './auth.js';
 import { getRoleInfo } from './roles.js';
 import { renderTopbar } from './topbar.js';
 import { initCoupons, refreshCoupons } from './manage-coupons.js';
+import { initHandSales } from './hand-sales-console.js';
 import {
-  collection, doc, getDoc, getDocs, setDoc, updateDoc, query, orderBy, serverTimestamp
+  collection, doc, getDoc, getDocs, setDoc, updateDoc, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const $ = (id) => document.getElementById(id);
@@ -239,60 +242,29 @@ async function renderClassCodes(slug) {
   }
 }
 
-// ─── Orders ───────────────────────────────────────────────────────────────
-
-function shippingHtml(sh) {
-  if (!sh) return '<span class="store-addr">—</span>';
-  const a = sh.address || {};
-  const lines = [sh.name, a.line1, a.line2, [a.city, a.state, a.postal_code].filter(Boolean).join(', '), a.country]
-    .filter(Boolean);
-  return `<div class="store-addr">${lines.map(escapeHtml).join('<br>')}</div>`;
-}
-
-async function renderOrders() {
-  const body = $('orders-body');
-  try {
-    const snap = await getDocs(query(collection(db, 'orders'), orderBy('createdAt', 'desc')));
-    if (snap.empty) {
-      body.innerHTML = '<tr><td colspan="6" style="color:var(--gray-mid);">No orders yet.</td></tr>';
-      return;
-    }
-    body.innerHTML = snap.docs.map((d) => {
-      const o = d.data();
-      const when = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate().toLocaleDateString() : '—';
-      return `<tr>
-        <td>${escapeHtml(when)}</td>
-        <td><b>${escapeHtml(o.productName || o.productId || '—')}</b>${o.couponCode ? `<div class="store-addr">code ${escapeHtml(o.couponCode)}</div>` : ''}</td>
-        <td class="store-addr">${escapeHtml(o.email || '—')}</td>
-        <td>${money(o.amountTotal)}</td>
-        <td>${shippingHtml(o.shipping)}</td>
-        <td>
-          <select class="c-input crm-select" data-order="${escapeHtml(d.id)}">
-            ${['needs-address', 'new', 'shipped', 'done'].map((s) => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s}</option>`).join('')}
-          </select>
-        </td>
-      </tr>`;
-    }).join('');
-
-    body.querySelectorAll('[data-order]').forEach((sel) => sel.addEventListener('change', async () => {
-      try {
-        await updateDoc(doc(db, 'orders', sel.dataset.order),
-          { status: sel.value, updatedAt: serverTimestamp() });
-      } catch (err) { alert(err.message || String(err)); }
-    }));
-  } catch (err) {
-    body.innerHTML = `<tr><td colspan="6" style="color:var(--red);">${escapeHtml(err.message || String(err))}</td></tr>`;
-  }
-}
-
 // ─── Shell ────────────────────────────────────────────────────────────────
+
+function showTab(name) {
+  const tab = document.querySelector(`.store-tab[data-tab="${name}"]`);
+  if (!tab) return;
+  document.querySelectorAll('.store-tab').forEach((t) => t.classList.toggle('active', t === tab));
+  document.querySelectorAll('.store-panel').forEach((p) =>
+    p.classList.toggle('active', p.id === 'panel-' + name));
+}
 
 function wireTabs() {
   document.querySelectorAll('.store-tab').forEach((tab) => tab.addEventListener('click', () => {
-    document.querySelectorAll('.store-tab').forEach((t) => t.classList.toggle('active', t === tab));
-    document.querySelectorAll('.store-panel').forEach((p) =>
-      p.classList.toggle('active', p.id === 'panel-' + tab.dataset.tab));
+    showTab(tab.dataset.tab);
+    const u = new URL(location.href);
+    u.searchParams.set('tab', tab.dataset.tab);
+    u.searchParams.delete('new');
+    history.replaceState(null, '', u);
   }));
+  // Deep links: /manage-store.html?tab=orders (the paid-invoice email and
+  // the Tasks reminders land here) and ?new=1 for a new hand sale.
+  const params = new URLSearchParams(location.search);
+  const want = params.get('tab') || (params.get('new') === '1' ? 'orders' : (location.hash || '').slice(1));
+  if (want) showTab(want);
 }
 
 async function main() {
@@ -308,7 +280,7 @@ async function main() {
   renderCatalog();
   initCoupons({ userEmail: u.email });
   initClassCodes();
-  renderOrders();
+  initHandSales();
 }
 
 main();
