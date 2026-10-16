@@ -10,7 +10,7 @@
     "test:indexes": "node firestore-indexes.test.cjs",
     "test:deploy": "node no-scheduled-functions.test.cjs",
     "test:crm": "node crm-nav.test.mjs && node crm-freshness.test.cjs && node crm-assistant.test.cjs && node crm-ai-log.test.cjs",
-    "test": "npm run test:deploy && npm run test:indexes && npm run test:hub && npm run test:commitment && npm run test:launch && npm run test:points && npm run test:catalog && npm run test:assessments && npm run test:tools && npm run test:books && npm run test:beta && npm run test:notify && npm run test:telnyx && npm run test:email && npm run test:crm && npm run emulator",
+    "test": "npm run test:deploy && npm run test:indexes && npm run test:hub && npm run test:commitment && npm run test:launch && npm run test:points && npm run test:catalog && npm run test:assessments && npm run test:tools && npm run test:reads && npm run test:books && npm run test:beta && npm run test:notify && npm run test:telnyx && npm run test:email && npm run test:crm && npm run emulator",
     "test:notify": "node announcement-fanout.test.cjs",
     "test:hub": "node hub-nextup.test.mjs && node hub-welcome.test.mjs && node toolkit.test.mjs",
     "test:launch": "node launch-date.test.mjs",
@@ -27,7 +27,8 @@
     "test:commitment": "node commitment.test.mjs",
     "test:assessments": "node assessments.test.mjs",
     "test:tools": "node focus-tax.test.mjs && node scorecard.test.mjs && node careers.test.mjs && node agreement.test.mjs && node membership.test.mjs && node drive-sync.test.mjs",
-    "e2e:drive-sync": "cd .. && tests/node_modules/.bin/firebase emulators:exec --only firestore --project demo-1p \"node tests/drive-sync-e2e.test.mjs\""
+    "e2e:drive-sync": "cd .. && tests/node_modules/.bin/firebase emulators:exec --only firestore --project demo-1p \"node tests/drive-sync-e2e.test.mjs\"",
+    "test:reads": "node reads.test.cjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",

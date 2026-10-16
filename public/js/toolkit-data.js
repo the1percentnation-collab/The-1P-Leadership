@@ -3,8 +3,9 @@
 // /toolkit renders one section per TOOLKIT_SECTIONS entry, in order:
 //   assessments  read from assessments-data.js, so a new assessment file shows
 //                up with no edit here
-//   reads        free series that run on the course player, marked
-//                `shelf: 'toolkit'` in the course registry (isToolkitItem)
+//   reads        READ_SERIES below (the essay series at /reads), then any free
+//                series on the course player marked `shelf: 'toolkit'` in the
+//                course registry (isToolkitItem)
 //   calculators  and every other section: the TOOLS list below
 //
 // Adding a calculator or planner: build its page, then add one TOOLS entry.
@@ -21,7 +22,7 @@ export const TOOLKIT_SECTIONS = [
   {
     key: 'reads',
     label: 'Free Reads',
-    blurb: 'Short series you can finish in one sitting. Read the piece, run the one thing at the end, move on.'
+    blurb: 'Essays worth finishing. Read the piece, run the one practice at the end, move on.'
   },
   {
     key: 'calculators',
@@ -32,6 +33,18 @@ export const TOOLKIT_SECTIONS = [
     key: 'templates',
     label: 'Templates & Worksheets',
     blurb: 'Frameworks and worksheets that go with the courses. Built to be used, not collected.'
+  }
+];
+
+// Essay series published at /reads (scripts/build-reads.js). The opening of
+// every essay is public; signing up for a free account opens the full text.
+export const READ_SERIES = [
+  {
+    slug: 'the-focus-tax',
+    title: 'The Focus Tax',
+    short: 'Four long-form essays on what an unstructured day really costs you, and the one practice that pays it back.',
+    meta: 'Four essays · about 9 minutes each',
+    href: '/reads'
   }
 ];
 

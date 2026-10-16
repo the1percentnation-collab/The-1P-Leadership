@@ -15,7 +15,7 @@ import { loadCourses, getCourses, isToolkitItem } from './courses-data.js';
 import { loadEnrollments, isEnrolled } from './enrollments.js';
 import { ASSESSMENTS } from './assessments-data.js';
 import { CATEGORIES } from './assessment-core.js';
-import { TOOLKIT_SECTIONS, TOOLS } from './toolkit-data.js';
+import { TOOLKIT_SECTIONS, TOOLS, READ_SERIES } from './toolkit-data.js';
 
 const $ = (id) => document.getElementById(id);
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -70,7 +70,15 @@ function assessmentCards() {
 }
 
 function readCards() {
-  return getCourses()
+  const series = READ_SERIES.map((r) => card({
+    eyebrow: 'Free essays',
+    title: r.title,
+    body: r.short,
+    meta: r.meta,
+    cta: 'Read',
+    href: r.href
+  }));
+  return series.concat(getCourses()
     .filter((c) => isToolkitItem(c) && c.status !== 'beta')
     .map((c) => {
       const live = c.status === 'live';
@@ -83,7 +91,7 @@ function readCards() {
         cta: !live ? 'Coming soon' : (enrolled ? 'Continue' : 'Start free'),
         href: live ? `/courses.html?course=${encodeURIComponent(c.slug)}` : null
       });
-    });
+    }));
 }
 
 function toolCards(sectionKey) {

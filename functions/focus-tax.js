@@ -53,14 +53,15 @@ const FOCUS_TAX_RANGES = {
   meetingHoursPerWeek: [0, 40]
 };
 
-// What each line of the tax is, where the book covers it, which free Focus
-// Tax read goes with it, and the one thing to run first if it is the biggest.
+// What each line of the tax is, where the book covers it, which Focus Tax
+// essay goes with it (readSlug is its page under /reads), and the one thing to run first if it is the biggest.
 const FOCUS_TAX_LINES = [
   {
     key: 'interruptions',
     label: 'Interruptions',
     chapter: 'Phase One: Why Structure Outperforms Motivation',
     read: 'The Tab You Never Closed',
+    readSlug: 'the-tab-you-never-closed',
     fix: 'Set two communication windows, one mid-morning and one mid-afternoon. Outside them the inbox stays closed and notifications stay off.'
   },
   {
@@ -68,6 +69,7 @@ const FOCUS_TAX_LINES = [
     label: 'Task switching',
     chapter: 'Phase Twelve: The Power of Batching',
     read: 'You Do Not Need More Focus, You Need Fewer Decisions',
+    readSlug: 'fewer-decisions-not-more-focus',
     fix: 'Batch by type. Calls together, admin together, creative work together. Load one context and stay inside it until the block is done.'
   },
   {
@@ -75,6 +77,7 @@ const FOCUS_TAX_LINES = [
     label: 'Meetings with no outcome',
     chapter: 'Phase Thirteen: How to Handle Meetings Without Letting Them Run Your Life',
     read: 'How to Run a Meeting When Your Brain Won\'t Stay in the Room',
+    readSlug: 'meeting-brain-wont-stay-in-the-room',
     fix: 'Ask what outcome each standing meeting produces. Set your default length to thirty minutes and batch meetings into set windows.'
   },
   {
@@ -82,6 +85,7 @@ const FOCUS_TAX_LINES = [
     label: 'Drift',
     chapter: 'Phase Ten: The Weekly Audit',
     read: 'Why Your To-Do List Keeps Lying to You',
+    readSlug: 'your-todo-list-is-lying',
     fix: 'Spend fifteen minutes on Sunday night blocking next week, deep work first. Close each Friday with the five-question weekly audit.'
   }
 ];
