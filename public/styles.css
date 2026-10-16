@@ -6774,14 +6774,44 @@ body.academy-course .ak-topbar { position: static; }
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: transparent;
-  border: 1px solid var(--border);
+  background: radial-gradient(circle at 50% 28%, rgba(255,255,255,0.07), rgba(8,8,8,0.92) 70%);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -6px 12px rgba(0,0,0,0.6);
   color: var(--gray-light);
   cursor: pointer;
   padding: 0;
+  transition: color .25s ease, border-color .25s ease, transform .25s ease;
 }
-.c-bell:hover { color: var(--white); border-color: rgba(204,27,27,0.4); }
-.c-bell-icon { font-size: 14px; line-height: 1; }
+/* Orbiting light ring: a conic gradient masked down to a 1.5px band, so it
+   reads as a sweep of light around the orb rather than a solid border. */
+.c-bell::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  padding: 1.5px;
+  background: conic-gradient(from 0deg, transparent 0 55%, rgba(255,255,255,0.55) 80%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  opacity: 0.35;
+  pointer-events: none;
+  transition: opacity .25s ease;
+}
+.c-bell:hover { color: var(--white); border-color: rgba(230,3,6,0.35); }
+.c-bell:hover::before { opacity: 1; animation: c-bell-orbit 2.8s linear infinite; }
+.c-bell:focus-visible { outline: 2px solid var(--red); outline-offset: 3px; }
+.c-bell:active { transform: scale(0.94); }
+@keyframes c-bell-orbit { to { transform: rotate(360deg); } }
+.c-bell-icon {
+  display: inline-flex;
+  width: 52%;
+  height: 52%;
+  line-height: 1;
+  transition: filter .25s ease;
+}
+.c-bell-icon svg { width: 100%; height: 100%; }
+.c-bell:hover .c-bell-icon { filter: drop-shadow(0 0 4px rgba(255,255,255,0.45)); }
 .c-bell-badge {
   position: absolute;
   top: -6px;
@@ -6800,16 +6830,23 @@ body.academy-course .ak-topbar { position: static; }
   align-items: center;
   justify-content: center;
   border: 2px solid var(--black);
-  box-shadow: 0 0 0 1px rgba(230,3,6,0.35);
+  box-shadow: 0 0 0 1px rgba(230,3,6,0.35), 0 0 10px rgba(230,3,6,0.6);
+  text-shadow: 0 0 6px rgba(255,255,255,0.5);
 }
 .c-bell-badge[hidden] { display: none; }
 /* Something unread: red ring and a slow glow so it reads from across the page. */
 .c-bell.has-unread {
   color: var(--white);
-  border-color: var(--red);
-  background: rgba(230,3,6,0.12);
+  border-color: rgba(230,3,6,0.6);
+  background: radial-gradient(circle at 50% 28%, rgba(230,3,6,0.28), rgba(8,8,8,0.92) 72%);
   animation: c-bell-glow 2s ease-in-out infinite;
 }
+.c-bell.has-unread::before {
+  background: conic-gradient(from 0deg, transparent 0 45%, rgba(230,3,6,0.9) 78%, #ff6a6c 92%, transparent 100%);
+  opacity: 1;
+  animation: c-bell-orbit 1.8s linear infinite;
+}
+.c-bell.has-unread .c-bell-icon { filter: drop-shadow(0 0 5px rgba(230,3,6,0.85)); }
 @keyframes c-bell-glow {
   0%, 100% { box-shadow: 0 0 0 0 rgba(230,3,6,0.55); }
   50%      { box-shadow: 0 0 0 6px rgba(230,3,6,0); }
@@ -6827,6 +6864,7 @@ body.academy-course .ak-topbar { position: static; }
 @media (prefers-reduced-motion: reduce) {
   .c-bell.has-unread { animation: none; box-shadow: 0 0 0 2px rgba(230,3,6,0.4); }
   .c-bell.ring .c-bell-icon { animation: none; }
+  .c-bell:hover::before, .c-bell.has-unread::before { animation: none; }
 }
 
 .c-notif-popover {
@@ -8123,7 +8161,9 @@ body.academy-course .ak-topbar { position: static; }
   flex-shrink: 0;
 }
 .c-search-btn:hover { color: var(--white); border-color: rgba(204,27,27,0.4); }
-.c-search-icon { font-size: 13px; line-height: 1; }
+.c-search-btn:focus-visible { outline: 2px solid var(--red); outline-offset: 3px; }
+.c-search-icon { display: inline-flex; width: 48%; height: 48%; line-height: 1; }
+.c-search-icon svg { width: 100%; height: 100%; }
 
 .c-search-overlay {
   position: fixed;
