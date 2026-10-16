@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Review and Sign | The One Percent Nation</title>
+  <link rel="icon" type="image/jpeg" href="/assets/favicon.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Mrs+Saint+Delafield&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/agreement.css">
+  <style>
+    :root { --red: #E60306; --ink: #111; --bg: #ececea; --line: #d9d9d6; --soft: #5b5c60; }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: 'Outfit', Arial, sans-serif; }
+    .bar { position: sticky; top: 0; z-index: 10; background: #0b0b0b; color: #fff; border-bottom: 3px solid var(--red); }
+    .bar-in { max-width: 1000px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .bar-brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; }
+    .bar-brand img { width: 30px; height: 30px; border-radius: 5px; }
+    .bar-brand span { font-family: 'Bebas Neue', Impact, sans-serif; font-size: 18px; letter-spacing: .06em; }
+    .bar-note { font-size: 12px; color: #b9b9b9; display: flex; align-items: center; gap: 6px; }
+    .bar-note::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #4ade80; }
+    .bar-actions { display: flex; gap: 8px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: 'Outfit', Arial, sans-serif; font-weight: 600; font-size: 14px; border-radius: 6px; padding: 10px 18px; cursor: pointer; border: 1px solid transparent; text-decoration: none; }
+    .btn-red { background: var(--red); color: #fff; }
+    .btn-red:hover { background: #b30205; }
+    .btn-red:disabled { opacity: .55; cursor: not-allowed; }
+    .btn-light { background: transparent; color: #fff; border-color: rgba(255,255,255,.3); }
+    .btn-light:hover { border-color: #fff; }
+    .btn-dark { background: transparent; color: var(--ink); border-color: var(--line); }
+    main { max-width: 1000px; margin: 0 auto; padding: 28px 20px 80px; }
+    .notice { max-width: 8.5in; margin: 0 auto 18px; background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--red); border-radius: 6px; padding: 14px 18px; font-size: 14.5px; line-height: 1.55; }
+    .notice.ok { border-left-color: #1d7a3a; }
+    .notice strong { font-weight: 600; }
+    .paper { max-width: 8.5in; margin: 0 auto; box-shadow: 0 2px 4px rgba(0,0,0,.06), 0 18px 50px rgba(0,0,0,.12); border-radius: 2px; }
+
+    .signpanel { max-width: 8.5in; margin: 22px auto 0; background: #fff; border: 1px solid var(--line); border-top: 4px solid var(--ink); border-radius: 6px; padding: 26px 28px; }
+    .signpanel h2 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+    .signpanel .sub { margin: 0 0 18px; color: var(--soft); font-size: 14px; line-height: 1.5; }
+    .sp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .sp-f label { display: block; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--soft); margin-bottom: 6px; }
+    .sp-f input { width: 100%; font: inherit; font-size: 15px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 6px; background: #fafaf9; color: var(--ink); }
+    .sp-f input:focus { outline: 2px solid var(--ink); outline-offset: 1px; background: #fff; }
+    .sp-preview { margin: 18px 0 6px; height: 74px; border-bottom: 1.5px solid var(--ink); display: flex; align-items: flex-end; padding: 0 4px 4px; }
+    .sp-preview span { font-family: 'Mrs Saint Delafield', cursive; font-size: 44px; line-height: 1; color: #0d2a6b; }
+    .sp-preview em { font-style: normal; color: #a3a3a3; font-size: 13px; padding-bottom: 8px; }
+    .sp-caption { font-size: 12px; color: var(--soft); margin-bottom: 18px; }
+    .sp-check { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start; font-size: 14px; line-height: 1.5; margin-bottom: 10px; cursor: pointer; }
+    .sp-check input { width: 17px; height: 17px; margin-top: 2px; accent-color: var(--ink); }
+    .sp-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 16px; }
+    .sp-msg { font-size: 14px; color: #b3261e; }
+    .sp-fine { font-size: 12px; color: var(--soft); margin-top: 14px; line-height: 1.5; }
+    .loading { text-align: center; padding: 80px 20px; color: var(--soft); }
+
+    @media (max-width: 640px) {
+      .bar-note { display: none; }
+      .bar-brand span { display: none; }
+      .bar-actions .btn { padding: 9px 12px; font-size: 13px; white-space: nowrap; }
+      .sp-grid { grid-template-columns: 1fr; }
+      .signpanel { padding: 20px 18px; }
+      main { padding: 16px 10px 60px; }
+    }
+    @media print {
+      body { background: #fff; }
+      .bar, .notice, .signpanel, .no-print { display: none !important; }
+      main { padding: 0; max-width: none; }
+      .paper { box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="bar">
+    <div class="bar-in">
+      <a class="bar-brand" href="https://the1pnation.com" rel="noopener"><img src="/assets/favicon.jpg" alt=""><span>The One Percent Nation</span></a>
+      <div class="bar-note">Private signing link</div>
+      <div class="bar-actions">
+        <button class="btn btn-light" type="button" id="btn-print" hidden>Download PDF</button>
+        <a class="btn btn-red" href="#sign" id="btn-jump" hidden>Review and sign</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="notice"></div>
+    <div id="doc" class="loading">Loading your agreement…</div>
+
+    <section class="signpanel" id="sign" hidden>
+      <h2>Sign the agreement</h2>
+      <p class="sub" id="sign-sub"></p>
+      <form id="sign-form" novalidate>
+        <div class="sp-grid">
+          <div class="sp-f"><label for="s-name">Full legal name</label><input id="s-name" autocomplete="name" maxlength="100" required></div>
+          <div class="sp-f"><label for="s-title">Title</label><input id="s-title" autocomplete="organization-title" maxlength="100" required></div>
+        </div>
+        <div class="sp-preview" aria-hidden="true" id="s-preview"><em>Your signature appears here</em></div>
+        <div class="sp-caption">Your typed name is your signature.</div>
+        <label class="sp-check"><input type="checkbox" id="s-terms"><span id="s-terms-text">I have read this Agreement and agree to its terms.</span></label>
+        <label class="sp-check"><input type="checkbox" id="s-esign"><span>I agree to sign electronically, and I intend my typed name to be my legal signature, with the same effect as a handwritten signature.</span></label>
+        <div class="sp-actions">
+          <button class="btn btn-red" type="submit" id="s-submit">Sign agreement</button>
+          <span class="sp-msg" id="s-msg" role="status" aria-live="polite"></span>
+        </div>
+        <p class="sp-fine">When you sign, your name, title, email, the time, and your IP address are recorded on the agreement's certificate of completion. You and The One Percent Nation each receive the executed copy by email.</p>
+      </form>
+    </section>
+  </main>
+
+  <script type="module" src="/js/sign-page.js"></script>
+</body>
+</html>

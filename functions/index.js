@@ -14935,3 +14935,262 @@ exports.ASSESSMENT_SLUGS = ASSESSMENT_SLUGS;
 // that carry an endpoint definition, so this deploys nothing.
 // ────────────────────────────────────────────────────────────────
 exports.promoteLaunchedItems = promoteLaunchedItems;
+
+// ════════════════════════════════════════════════════════════════
+// Speaking Engagement Agreements: digital signing.
+//
+// The owner prepares an agreement in /agreements (agreements/{id}, owner-only
+// in firestore.rules while it is a draft). sendAgreement freezes it: it builds
+// the snapshot the client will sign from the shared terms module
+// (functions/agreement-terms.js, generated from public/js/agreement-terms.js),
+// fingerprints it with SHA-256, applies the owner's signature, and emails the
+// client a private signing link. The client never reads Firestore: the
+// signing page goes through getAgreementForSigning and signAgreement, which
+// check the link's token. Signing records name, title, email, time, IP, and
+// browser, re-checks the fingerprint, and emails both parties the executed
+// copy. Nothing about a sent agreement can be changed from the browser.
+// ════════════════════════════════════════════════════════════════
+
+const agreementTerms = require('./agreement-terms.js');
+
+function agreementHash(snapshot) {
+  return crypto.createHash('sha256').update(agreementTerms.canonicalJson(snapshot)).digest('hex');
+}
+
+function sameToken(a, b) {
+  const x = Buffer.from(String(a || ''));
+  const y = Buffer.from(String(b || ''));
+  return x.length > 0 && x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
+function agreementLink(id, token) {
+  return `${APP_BASE_URL}/sign?a=${encodeURIComponent(id)}&t=${encodeURIComponent(token)}`;
+}
+
+function assertOwnerCall(request) {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  if (!(request.auth.token && request.auth.token.role === 'owner')) {
+    throw new HttpsError('permission-denied', 'Owner access required.');
+  }
+}
+
+const tsMs = (t) => (t && typeof t.toMillis === 'function' ? t.toMillis() : null);
+
+async function agreementCrmNote(db, contactId, description, tag) {
+  if (!contactId) return;
+  try {
+    const companyId = await resolveAcademyCompanyId(db);
+    if (!companyId) return;
+    const ref = db.collection('companies').doc(companyId).collection('contacts').doc(contactId);
+    if (!(await ref.get()).exists) return;
+    await ref.collection('activities').add({
+      type: 'agreement',
+      description,
+      actorUid: 'system',
+      actorName: 'Agreements',
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    if (tag) await ref.set({ tags: admin.firestore.FieldValue.arrayUnion(tag) }, { merge: true });
+  } catch (e) {
+    console.warn('[agreements] CRM note failed:', e && e.message);
+  }
+}
+
+function agreementEmailHtml({ heading, lines, url, button }) {
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;">
+    <div style="border-bottom:3px solid #111;padding-bottom:10px;margin-bottom:18px;font-weight:700;letter-spacing:1px;">THE ONE PERCENT NATION</div>
+    <h2 style="font-size:18px;margin:0 0 12px;">${escapeHtmlBasic(heading)}</h2>
+    ${lines.map((l) => `<p style="font-size:15px;line-height:1.55;margin:0 0 12px;">${escapeHtmlBasic(l)}</p>`).join('')}
+    <p style="margin:22px 0;"><a href="${url}" style="display:inline-block;background:#E60306;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">${escapeHtmlBasic(button)}</a></p>
+    <p style="font-size:12px;color:#888;">If the button does not work, open this link: ${escapeHtmlBasic(url)}</p>
+  </div>`;
+}
+
+/**
+ * sendAgreement({ id, resend }) — owner only. Freezes a draft and emails the
+ * client the signing link, or (resend) emails the same link again.
+ */
+exports.sendAgreement = onCall({ secrets: [sendgridKey] }, async (request) => {
+  assertOwnerCall(request);
+  const db = admin.firestore();
+  const id = String((request.data && request.data.id) || '');
+  if (!id) throw new HttpsError('invalid-argument', 'Missing agreement.');
+  const ref = db.collection('agreements').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Agreement not found.');
+  let doc = snap.data();
+
+  if (doc.status === 'draft') {
+    const missing = agreementTerms.missingForSend(doc);
+    if (missing.length) throw new HttpsError('failed-precondition', `Fill in before sending: ${missing.join(', ')}.`);
+    const now = admin.firestore.Timestamp.now();
+    const snapshot = agreementTerms.buildSnapshot(doc);
+    const update = {
+      status: 'sent',
+      snapshot,
+      hash: agreementHash(snapshot),
+      token: crypto.randomBytes(24).toString('hex'),
+      sentAt: now,
+      provider: { name: agreementTerms.PROVIDER.speaker, title: agreementTerms.PROVIDER.signerTitle, signedAt: now, uid: request.auth.uid },
+      sendCount: 1,
+      updatedAt: now
+    };
+    await ref.update(update);
+    doc = { ...doc, ...update };
+    await agreementCrmNote(db, doc.contactId, `Speaking agreement ${snapshot.agreementNo} sent for signature`, 'Speaking Agreement Sent');
+  } else if (doc.status === 'sent') {
+    if (!(request.data && request.data.resend)) throw new HttpsError('failed-precondition', 'Already sent.');
+    await ref.update({ sendCount: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  } else {
+    throw new HttpsError('failed-precondition', `This agreement is ${doc.status}.`);
+  }
+
+  const url = agreementLink(id, doc.token);
+  let emailed = false;
+  if (emailConfigured()) {
+    const s = doc.snapshot;
+    const first = (s.client.signerName || '').split(/\s+/)[0];
+    try {
+      await sendEmail({
+        to: s.client.signerEmail,
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject: `Please sign: Speaking Engagement Agreement ${s.agreementNo}`,
+        text: `${first ? `Hi ${first},` : 'Hello,'}\n\nYour Speaking Engagement Agreement with The One Percent Nation is ready to review and sign:\n\n${url}\n\nThe event date is reserved once the agreement is signed and the deposit is received.\n\nAnthony Brown Sr.\nThe One Percent Nation`,
+        html: agreementEmailHtml({
+          heading: 'Your Speaking Engagement Agreement is ready',
+          lines: [first ? `Hi ${first},` : 'Hello,', `The agreement for ${(s.schedule.event.find((r) => r.k === 'Event') || {}).v || 'your event'} is ready to review and sign. It takes about five minutes.`, 'The event date is reserved once the agreement is signed and the deposit is received.'],
+          url, button: 'Review and sign'
+        }),
+        customArgs: { type: 'agreement_sent' }
+      });
+      emailed = true;
+    } catch (e) {
+      console.warn('[sendAgreement] email failed:', e && e.message);
+    }
+  }
+  return { ok: true, url, emailed };
+});
+
+/**
+ * getAgreementForSigning({ id, token }) — public, by private link. Returns
+ * the frozen snapshot and its signing state, and records the first open.
+ */
+exports.getAgreementForSigning = onCall(async (request) => {
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'getAgreementForSigning', max: 60, windowSec: 600 });
+  const id = String((request.data && request.data.id) || '');
+  const token = String((request.data && request.data.token) || '');
+  if (!id || !token) throw new HttpsError('invalid-argument', 'This link is incomplete.');
+  const ref = db.collection('agreements').doc(id);
+  const snap = await ref.get();
+  const doc = snap.exists ? snap.data() : null;
+  if (!doc || !sameToken(doc.token, token) || doc.status === 'draft') {
+    throw new HttpsError('not-found', 'This agreement link is not valid.');
+  }
+  let viewedAt = tsMs(doc.viewedAt);
+  if (!viewedAt && doc.status === 'sent') {
+    viewedAt = Date.now();
+    await ref.update({ viewedAt: admin.firestore.Timestamp.fromMillis(viewedAt) });
+  }
+  const sig = doc.signature || null;
+  return {
+    status: doc.status,
+    snapshot: doc.snapshot,
+    hash: doc.hash,
+    provider: doc.provider ? { name: doc.provider.name, title: doc.provider.title, signedAt: tsMs(doc.provider.signedAt) } : null,
+    client: sig ? { name: sig.name, title: sig.title, email: sig.email, signedAt: tsMs(sig.signedAt), ip: sig.ip } : null,
+    audit: { sentAt: tsMs(doc.sentAt), viewedAt, hash: doc.hash }
+  };
+});
+
+/**
+ * signAgreement({ id, token, name, title, agreeTerms, agreeElectronic }) —
+ * public, by private link. Records the client's electronic signature.
+ */
+exports.signAgreement = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'signAgreement', max: 10, windowSec: 600 });
+  const d = request.data || {};
+  const id = String(d.id || '');
+  const token = String(d.token || '');
+  const name = String(d.name || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  const title = String(d.title || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  if (!id || !token) throw new HttpsError('invalid-argument', 'This link is incomplete.');
+  if (name.length < 2) throw new HttpsError('invalid-argument', 'Type your full name to sign.');
+  if (!title) throw new HttpsError('invalid-argument', 'Add your title.');
+  if (d.agreeTerms !== true || d.agreeElectronic !== true) {
+    throw new HttpsError('invalid-argument', 'Confirm both statements to sign.');
+  }
+
+  const ref = db.collection('agreements').doc(id);
+  const raw = request.rawRequest;
+  const userAgent = String((raw && raw.headers && raw.headers['user-agent']) || '').slice(0, 300);
+  const ip = clientIp(request);
+  const signedAt = admin.firestore.Timestamp.now();
+
+  const doc = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const cur = snap.exists ? snap.data() : null;
+    if (!cur || !sameToken(cur.token, token) || cur.status === 'draft') {
+      throw new HttpsError('not-found', 'This agreement link is not valid.');
+    }
+    if (cur.status === 'signed') throw new HttpsError('failed-precondition', 'This agreement is already signed.');
+    if (cur.status !== 'sent') throw new HttpsError('failed-precondition', `This agreement is ${cur.status} and can no longer be signed.`);
+    // The fingerprint taken at send must still match what is stored.
+    if (agreementHash(cur.snapshot) !== cur.hash) {
+      throw new HttpsError('data-loss', 'This agreement could not be verified. Contact The One Percent for a new link.');
+    }
+    const signature = { name, title, email: cur.snapshot.client.signerEmail, signedAt, ip, userAgent };
+    tx.update(ref, { status: 'signed', signature, signedAt, updatedAt: signedAt });
+    return { ...cur, signature };
+  });
+
+  const s = doc.snapshot;
+  const url = agreementLink(id, doc.token);
+  await agreementCrmNote(db, doc.contactId, `Speaking agreement ${s.agreementNo} signed by ${name}, ${title}`, 'Speaking Agreement Signed');
+
+  if (emailConfigured()) {
+    const recipients = [
+      { to: s.client.signerEmail, hello: `Hi ${name.split(' ')[0]},` },
+      { to: NOTIFY_EMAIL, hello: 'Signed and returned:' }
+    ];
+    for (const r of recipients) {
+      try {
+        await sendEmail({
+          to: r.to,
+          from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+          replyTo: REPLY_TO,
+          subject: `Signed: Speaking Engagement Agreement ${s.agreementNo}`,
+          text: `${r.hello}\n\nThe Speaking Engagement Agreement ${s.agreementNo} between The One Percent Nation and ${s.client.legalName} is fully signed. View or download the executed copy:\n\n${url}\n\nThe One Percent Nation`,
+          html: agreementEmailHtml({
+            heading: 'Agreement signed',
+            lines: [r.hello, `The Speaking Engagement Agreement ${s.agreementNo} between The One Percent Nation and ${s.client.legalName} is fully signed. Keep this link for your records; it opens the executed copy with its certificate of completion.`],
+            url, button: 'View the executed agreement'
+          }),
+          customArgs: { type: 'agreement_signed' }
+        });
+      } catch (e) {
+        console.warn('[signAgreement] email failed:', e && e.message);
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    client: { name, title, email: s.client.signerEmail, signedAt: signedAt.toMillis(), ip }
+  };
+});
+
+/** voidAgreement({ id }) — owner only. Cancels an unsigned agreement's link. */
+exports.voidAgreement = onCall(async (request) => {
+  assertOwnerCall(request);
+  const db = admin.firestore();
+  const id = String((request.data && request.data.id) || '');
+  const ref = db.collection('agreements').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Agreement not found.');
+  if (snap.data().status !== 'sent') throw new HttpsError('failed-precondition', 'Only a sent, unsigned agreement can be voided.');
+  await ref.update({ status: 'void', voidedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  return { ok: true };
+});

@@ -1266,6 +1266,20 @@ service cloud.firestore {
     // Alignment Audit scorecards, written in the owner's builder
     // (/scorecards.html). They hold a client's private findings, so they are
     // the owner's alone: no admin, no member, no Cloud Function reads them.
+    // Speaking Engagement Agreements, prepared in the owner's builder
+    // (/agreements). The owner edits a draft directly. Once sent, the
+    // agreement is frozen: sendAgreement, signAgreement, and voidAgreement
+    // (Admin SDK) are the only writers, so a signed agreement cannot be
+    // altered from any browser, the owner's included. Clients never read this
+    // collection; the signing page goes through getAgreementForSigning.
+    match /agreements/{agreementId} {
+      allow read: if isOwner();
+      allow create: if isOwner() && request.resource.data.status == 'draft';
+      allow update: if isOwner() && resource.data.status == 'draft'
+                    && request.resource.data.status == 'draft';
+      allow delete: if isOwner() && resource.data.status in ['draft', 'void'];
+    }
+
     match /auditScorecards/{scorecardId} {
       allow read, write: if isOwner();
     }
