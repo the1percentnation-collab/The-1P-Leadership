@@ -45,23 +45,15 @@ function stamp(v) {
 }
 
 function payHtml(v) {
-  const opts = v.payOptions || [];
-  if (!opts.length) return '';
-  const card = opts.find((o) => o.key === 'card');
-  const alt = opts.filter((o) => o.key !== 'card');
+  const card = (v.payOptions || []).find((o) => o.key === 'card');
+  if (!card) return '';
   return `<section class="iv-section no-print" id="pay">
     <h2>Pay ${esc(formatMoney(v.total))}</h2>
     <div class="iv-pay">
-      ${card ? `<div class="iv-card">
+      <div class="iv-card">
         <div><div class="t">Pay by card</div><div class="s">Secure checkout by Stripe. Apple Pay and Google Pay work too.</div></div>
         <button class="btn btn-red" id="btn-card" type="button">Pay ${esc(formatMoney(v.total))}</button>
-      </div>` : ''}
-      ${alt.length ? `<div>
-        <div class="iv-hint" style="margin-bottom:8px;">${card ? 'Or send it directly:' : 'Send payment directly:'}</div>
-        <div class="iv-alt">${alt.map((o) => `${o.url ? `<a class="iv-opt" href="${esc(o.url)}" target="_blank" rel="noopener">` : '<div class="iv-opt">'}
-          <div class="k">${esc(o.label)}</div><div class="v">${esc(o.handle)}</div>${o.url ? '</a>' : '</div>'}`).join('')}</div>
-        <div class="iv-hint">Put <b>${esc(v.invoiceNumber)}</b> in the payment note so it's matched to this invoice.</div>
-      </div>` : ''}
+      </div>
       <div class="iv-msg" id="pay-msg" role="status" aria-live="polite"></div>
     </div>
   </section>`;

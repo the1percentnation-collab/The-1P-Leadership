@@ -275,7 +275,7 @@ async function onOrderAction(act, o, el) {
   switch (act) {
     case 'copy-addr': return copy(addressLines(o.shipping).join('\n'), el);
     case 'copy-link': return copy(invoiceUrl(o), el);
-    case 'copy-msg': return copy(invoiceMessage(o, invoiceUrl(o), state.settings), el);
+    case 'copy-msg': return copy(invoiceMessage(o, invoiceUrl(o)), el);
     case 'copy-shipped': return copy(shippedMessage(o), el);
     case 'copy-review': return copy(reviewMessage(o, state.settings), el);
     case 'edit': return openOrderForm(o);
@@ -400,8 +400,8 @@ function openOrderForm(existing = null) {
         <button type="button" data-v="comp" class="${pay.status === 'comp' ? 'on' : ''}">Free / comp</button>
       </div>
       <div class="crm-form-row-grid" id="f-paid" ${pay.status === 'paid' ? '' : 'hidden'}>
-        <div class="crm-form-row"><label for="f-method">Paid with</label><select class="c-input crm-select" id="f-method">${opts(PAYMENT_METHODS.filter((m) => m.key !== 'card'), pay.method || 'cashapp')}</select></div>
-        <div class="crm-form-row"><label for="f-ref">Reference (optional)</label><input class="c-input" id="f-ref" placeholder="Cash App ID, check #…" value="${esc(pay.reference)}"></div>
+        <div class="crm-form-row"><label for="f-method">Paid with</label><select class="c-input crm-select" id="f-method">${opts(PAYMENT_METHODS.filter((m) => m.key !== 'card' && (!m.legacy || m.key === pay.method)), pay.method || 'cash')}</select></div>
+        <div class="crm-form-row"><label for="f-ref">Reference (optional)</label><input class="c-input" id="f-ref" placeholder="Check #, receipt…" value="${esc(pay.reference)}"></div>
       </div>
       <div class="hs-total" id="f-total"></div>
 
@@ -551,7 +551,7 @@ function openOrderForm(existing = null) {
 function showCreated(res) {
   const o = state.orders.find((x) => x.id === res.id);
   if (!o) { closeModal(); return; }
-  const msg = invoiceMessage(o, invoiceUrl(o), state.settings);
+  const msg = invoiceMessage(o, invoiceUrl(o));
   const paid = isPaid(o);
   openModal(`${o.invoiceNumber} created`, `
     <p class="hs-lead">${paid
@@ -575,8 +575,8 @@ function openPayForm(o) {
   openModal(`Payment for ${o.invoiceNumber}`, `
     <form class="crm-form" id="p-form">
       <p class="hs-lead">${esc(o.buyer && o.buyer.name)} owes <b>${formatMoney(o.amountTotal)}</b>.</p>
-      <div class="crm-form-row"><label for="p-method">Paid with</label><select class="c-input crm-select" id="p-method">${opts(PAYMENT_METHODS, 'cashapp')}</select></div>
-      <div class="crm-form-row"><label for="p-ref">Reference (optional)</label><input class="c-input" id="p-ref" placeholder="Cash App ID, check #…"></div>
+      <div class="crm-form-row"><label for="p-method">Paid with</label><select class="c-input crm-select" id="p-method">${opts(PAYMENT_METHODS.filter((m) => !m.legacy), 'card')}</select></div>
+      <div class="crm-form-row"><label for="p-ref">Reference (optional)</label><input class="c-input" id="p-ref" placeholder="Stripe receipt, check #…"></div>
       <div class="hs-err" id="p-err"></div>
       <div class="crm-modal-actions"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" type="submit">Mark paid</button></div>
     </form>`);
@@ -628,14 +628,8 @@ function openSettings() {
   const f = (id, label, val, extra = '') => `<div class="crm-form-row"><label for="st-${id}">${label}</label><input class="c-input" id="st-${id}" value="${esc(val)}" ${extra}></div>`;
   openModal('Invoice & reminder settings', `
     <form class="crm-form" id="st-form">
-      <div class="hs-sec">How buyers can pay you</div>
-      <p class="hs-dim" style="margin:0;">Card payments work automatically through the invoice link. Add any handles you also take; they print on every invoice.</p>
-      <div class="crm-form-row-grid">
-        ${f('cashapp', 'Cash App $cashtag', s.cashapp, 'placeholder="$YourTag"')}
-        ${f('venmo', 'Venmo @handle', s.venmo, 'placeholder="@your-handle"')}
-        ${f('zelle', 'Zelle email or phone', s.zelle)}
-        ${f('paypal', 'PayPal.me name', s.paypal, 'placeholder="yourname"')}
-      </div>
+      <div class="hs-sec">How buyers pay you</div>
+      <p class="hs-dim" style="margin:0;">Through your connected Stripe account only. Every invoice link opens a secure Stripe checkout (card, Apple Pay, Google Pay), and the order marks itself paid when it clears.</p>
       <div class="hs-sec">On the invoice</div>
       <div class="crm-form-row-grid">
         ${f('businessName', 'Business name', s.businessName)}
