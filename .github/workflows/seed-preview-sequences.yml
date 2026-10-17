@@ -1,0 +1,63 @@
+name: Seed chapter preview sequences
+# Writes the two drip sequences behind the free chapter preview
+# (companies/{id}/sequences/preview-nurture and /preview-finisher) by running
+# scripts/seed-preview-sequences.js with the deploy service account.
+#
+# The reader's lead gate ships with hosting; the emails it promises only exist
+# once this seed runs. Running it here means editing the copy needs no
+# terminal and no service account key on anyone's laptop.
+#
+# Safe to run on every push: both docs have fixed ids, so a re-run rewrites
+# the copy in place. enrolledCount and createdAt are preserved, and contacts
+# already enrolled keep their position and pick up the new copy at the step
+# they are on.
+#
+# The sequences are editable afterwards at /sequences.html. Edits made there
+# are overwritten by the next push that touches the seed, so the seed is the
+# source of truth for this copy. Pausing from the UI is the exception worth
+# knowing: a push would set active back to true.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/seed-preview-sequences.js'
+      - '.github/workflows/seed-preview-sequences.yml'
+  workflow_dispatch:
+    inputs:
+      paused:
+        description: 'Seed them paused, to read the copy before anything sends'
+        type: boolean
+        default: false
+
+concurrency:
+  group: seed-preview-sequences
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Write service account key
+        id: sa
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP }}
+        run: |
+          echo "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+          echo "path=$RUNNER_TEMP/sa.json" >> "$GITHUB_OUTPUT"
+
+      - name: Install script dependencies
+        working-directory: scripts
+        run: npm ci
+
+      - name: Seed
+        working-directory: scripts
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.sa.outputs.path }}
+        run: node seed-preview-sequences.js ${{ inputs.paused && '--paused' || '' }}

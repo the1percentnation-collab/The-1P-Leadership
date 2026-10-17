@@ -11085,6 +11085,17 @@ async function autoEnroll(db, companyId, contact, triggerType, value, source) {
     const dupe = await db.collection('companies').doc(companyId).collection('enrollments')
       .where('contactId', '==', contact.id).where('sequenceId', '==', s.id).get();
     if (dupe.docs.some((d) => d.data().status === 'active')) continue;
+    // A sequence marked stopOthersOnEnroll supersedes whatever the contact is
+    // already in. Needed where one tag is a deeper version of another: a book
+    // preview tags "Chapter Preview" on open and "Preview Finished" at the
+    // end, and without this the finisher would receive both drips at once.
+    if (seq.stopOthersOnEnroll === true) {
+      try {
+        await stopEnrollmentsForContact(db, companyId, contact.id, `superseded by ${seq.name || 'a later sequence'}`);
+      } catch (e) {
+        console.warn('[autoEnroll] could not stop superseded sequences:', e && e.message);
+      }
+    }
     const firstDelayMs = (Number(seq.steps[0].delayHours) || 0) * 3600 * 1000;
     await db.collection('companies').doc(companyId).collection('enrollments').add({
       sequenceId: s.id, sequenceName: seq.name || null,
