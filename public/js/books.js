@@ -50,12 +50,12 @@ export async function ownsBook(bookId) {
 // wins, so uploading a new edition in Manage Library replaces this one.
 export const BUILT_IN_BOOKS = {
   'i-cant-preview': {
-    title: 'I Can\u2019t: Chapter One Preview',
+    title: 'I Can\u2019t: Strategies To Overcoming Your Limiting Beliefs',
     author: 'Anthony Brown Sr.',
     status: 'live',
     openAccess: true,
     staticUrl: '/books/i-cant-preview.epub',
-    version: 'site-2026-10-10',
+    version: 'site-2026-10-16',
     buyHref: '/bundle.html',
     coverUrl: '/assets/i-cant-book-poster.jpg'
   }
