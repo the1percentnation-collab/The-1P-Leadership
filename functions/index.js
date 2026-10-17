@@ -1410,7 +1410,31 @@ const USER_SUBCOLLECTIONS = [
  *
  * The bootstrap owner cannot self-delete here (that would orphan the platform).
  */
-exports.deleteMyAccount = onCall(async (request) => {
+// Every live Stripe subscription billed to this account: course installment
+// plans and the membership, indexed in stripeSubscriptions by uid, plus the
+// membership id on the user doc in case its index row is missing.
+async function cancelSubscriptionsForUser(db, uid, userData) {
+  const ids = new Set();
+  const snap = await db.collection('stripeSubscriptions').where('uid', '==', uid).get();
+  snap.docs.forEach((d) => ids.add(d.id));
+  const memberSub = userData && userData.membership && userData.membership.subscriptionId;
+  if (memberSub) ids.add(String(memberSub));
+  if (!ids.size) return 0;
+  const stripe = getStripe();
+  if (!stripe) throw new Error('billing is not configured');
+  let canceled = 0;
+  for (const id of ids) {
+    let sub = null;
+    try { sub = await stripe.subscriptions.retrieve(id); }
+    catch (e) { if (e && e.code === 'resource_missing') continue; throw e; }
+    if (['canceled', 'incomplete_expired'].includes(sub.status)) continue;
+    await stripe.subscriptions.cancel(id);
+    canceled++;
+  }
+  return canceled;
+}
+
+exports.deleteMyAccount = onCall({ secrets: STRIPE_SECRETS }, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
 
@@ -1423,6 +1447,18 @@ exports.deleteMyAccount = onCall(async (request) => {
   if (email && email === OWNER_EMAIL.toLowerCase()) {
     throw new HttpsError('failed-precondition',
       'The owner account cannot be self-deleted. Contact support to transfer ownership first.');
+  }
+
+  // Stop billing before anything is deleted. Otherwise a deleted member keeps
+  // being charged, and each renewal webhook recreates users/{uid}. If a
+  // cancel fails, nothing is deleted, so the account can be retried.
+  try {
+    const canceled = await cancelSubscriptionsForUser(db, uid, data);
+    if (canceled) console.log(`[deleteMyAccount] canceled ${canceled} subscription(s) for ${uid}`);
+  } catch (e) {
+    console.error('[deleteMyAccount] subscription cancel failed:', e && e.message);
+    throw new HttpsError('failed-precondition',
+      `We could not cancel your subscription, so your account was not deleted. Please try again, or email ${REPLY_TO} and we will close it for you.`);
   }
 
   // Wipe every per-user subcollection that holds their data.
@@ -2519,6 +2555,7 @@ exports.shareEventToContacts = onCall(
   { secrets: [sendgridKey], timeoutSeconds: 540 },
   async (request) => {
     const db = admin.firestore();
+    await rateLimitCaller(db, request, { action: 'shareEventToContacts', max: 10, windowSec: 3600 });
     const data = request.data || {};
     const companyId = (data.companyId || '').toString().trim();
     const eventId = (data.eventId || '').toString().trim();
@@ -2650,6 +2687,7 @@ async function upsertEventContact(db, companyId, event, name, email, ownerUid, e
 
 exports.registerForEvent = onCall(async (request) => {
   const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'registerForEvent', max: 20, windowSec: 600 });
   const data = request.data || {};
   const eventId = (data.eventId || '').toString().trim();
   const name = (data.name || '').toString().trim().slice(0, 120);
@@ -3837,7 +3875,8 @@ exports.getLeaderboard = onCall(async (request) => {
     const u = d.data() || {};
     return {
       uid: d.id,
-      displayName: u.displayName || u.email || 'Unknown',
+      // Shown to every member: never fall back to the email address.
+      displayName: u.displayName || 'Member',
       avatarUrl: u.avatarUrl || null,
       statsPoints: Number(u.statsPoints || 0),
       statsWeekPoints: Number(u.statsWeekPoints || 0)
@@ -4680,6 +4719,7 @@ exports.onPrivateLikeWritten = onDocumentWritten(
 exports.searchMembers = onCall(async (request) => {
   const callerUid = request.auth && request.auth.uid;
   if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  await rateLimitCaller(admin.firestore(), request, { action: 'searchMembers', max: 60, windowSec: 60 });
 
   const data = request.data || {};
   const q = (data.query || '').toString().trim().toLowerCase();
@@ -4704,7 +4744,8 @@ exports.searchMembers = onCall(async (request) => {
     const u = doc || {};
     pool.set(uid, {
       uid,
-      displayName: u.displayName || u.email || 'Unknown',
+      // Shown to other members: never fall back to the email address.
+      displayName: u.displayName || 'Member',
       avatarUrl: u.avatarUrl || null
     });
   }
@@ -5282,6 +5323,7 @@ const SEARCH_POSTS_RESULTS = 10;     // results returned
 exports.searchPosts = onCall(async (request) => {
   const callerUid = request.auth && request.auth.uid;
   if (!callerUid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  await rateLimitCaller(admin.firestore(), request, { action: 'searchPosts', max: 60, windowSec: 60 });
 
   const data = request.data || {};
   const q = (data.query || '').toString().trim().toLowerCase();
@@ -10420,17 +10462,44 @@ async function executeSequenceStep(db, companyId, enrollment, step, seq) {
 
   if (step.channel === 'email') {
     if (!contact.email) return 'skipped: no email';
-    if (contact.emailUnsubscribed === true || contact.unsubscribed === true) return 'skipped: unsubscribed';
+    // The flags this used to read (`emailUnsubscribed`, `unsubscribed`) are
+    // written by nothing in this codebase, so the guard never fired and an
+    // unsubscribe was ignored for the rest of a cadence. isEmailSuppressed
+    // reads what the unsubscribe endpoint and the email event webhook set,
+    // the same check campaigns and 1:1 email use.
+    if (isEmailSuppressed(contact)) return 'skipped: unsubscribed';
     if (!body) return 'skipped: empty body';
     if (!emailConfigured()) return 'skipped: email not configured';
     const fromName = (ownerDoc && (ownerDoc.displayName || ownerDoc.name)) || FROM_NAME_DEFAULT;
+
+    // Cadence mail is marketing, so it carries the same opt-out a campaign
+    // does: a visible footer link plus the one-click header mail clients show.
+    let unsubLink = null;
+    try { unsubLink = unsubscribeUrl(companyId, contact.id, await ensureUnsubToken(cRef, contact.unsubToken)); }
+    catch (e) { console.warn('[sequence] unsub token failed:', e && e.message); }
+    const footerHtml = unsubLink
+      ? `<hr style="margin:28px 0 14px;border:none;border-top:1px solid #ddd;"><p style="font-size:12px;color:#777;line-height:1.6;"><a href="${unsubLink}" style="color:#777;">Unsubscribe from these emails</a>.</p>`
+      : '';
+    const footerText = unsubLink ? `\n\n--\nUnsubscribe: ${unsubLink}` : '';
+
     await sendEmail({
       to: contact.email,
       from: { email: FROM_EMAIL, name: fromName },
       replyTo: (ownerDoc && ownerDoc.email) || REPLY_TO,
       subject: subject || `A note from ${fromName}`,
-      text: body,
-      html: textToHtml(body)
+      text: body + footerText,
+      html: textToHtml(body) + footerHtml,
+      ...(unsubLink ? { headers: {
+        'List-Unsubscribe': `<${unsubLink}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+      } } : {}),
+      // Lets the email event webhook attribute opens, clicks and bounces.
+      customArgs: {
+        type: 'sequence',
+        companyId,
+        sequenceId: String(enrollment.sequenceId || ''),
+        contactId: String(contact.id || '')
+      }
     });
     await cRef.collection('activities').add({
       type: 'manual_email', description: `Sequence email (${seq.name}): ${subject || body.slice(0, 80)}`,
@@ -11103,6 +11172,7 @@ exports.onCallWrittenForSequences = onDocumentWritten(
 // registerProductInterest({ productId, name, email, phone, consent })
 exports.registerProductInterest = onCall(async (request) => {
   const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'registerProductInterest', max: 20, windowSec: 600 });
   const data = request.data || {};
   const productId = (data.productId || '').toString().trim();
   const name = (data.name || '').toString().trim().slice(0, 120);
@@ -11160,6 +11230,7 @@ exports.registerProductInterest = onCall(async (request) => {
 // joinEarlyAccess({ name, email, consent }) — general "future products" list.
 exports.joinEarlyAccess = onCall(async (request) => {
   const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'joinEarlyAccess', max: 20, windowSec: 600 });
   const data = request.data || {};
   const name = (data.name || '').toString().trim().slice(0, 120);
   const email = (data.email || '').toString().trim().toLowerCase().slice(0, 160);

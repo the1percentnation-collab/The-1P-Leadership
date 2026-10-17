@@ -13,7 +13,7 @@ import {
   initializeTestEnvironment, assertSucceeds, assertFails
 } from '@firebase/rules-unit-testing';
 import { doc, setDoc } from 'firebase/firestore';
-import { ref, getBytes, uploadBytes } from 'firebase/storage';
+import { ref, getBytes, listAll, uploadBytes } from 'firebase/storage';
 
 const env = await initializeTestEnvironment({
   projectId: 'demo-1p',
@@ -102,6 +102,36 @@ await env.withSecurityRulesDisabled(async (ctx) => {
 });
 await t('active member CANNOT download a book they did not buy',
   () => assertFails(getBytes(ref(env.authenticatedContext('memb').storage(), 'books/i-cant/book.epub'))));
+
+// ── Paid course files: enrolled learners and admins only ──────────────────
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'users/learner'), { email: 'learner@x.com', role: 'user', enrolledCourseSlugs: ['icant'] });
+  await setDoc(doc(db, 'users/freebie'), { email: 'freebie@x.com', role: 'user', enrolledCourseSlugs: ['the-brief'] });
+  const st = ctx.storage();
+  await uploadBytes(ref(st, 'courses/icant/videos/l1.mp4'), new Uint8Array([0, 0, 0, 24]), { contentType: 'video/mp4' });
+  await uploadBytes(ref(st, 'courses/icant/attachments/workbook.pdf'), new Uint8Array([37, 80, 68, 70]), { contentType: 'application/pdf' });
+});
+const learner = env.authenticatedContext('learner').storage();
+const freebie = env.authenticatedContext('freebie').storage();
+await t('an enrolled learner CAN read the course video and attachment',
+  () => Promise.all([
+    assertSucceeds(getBytes(ref(learner, 'courses/icant/videos/l1.mp4'))),
+    assertSucceeds(getBytes(ref(learner, 'courses/icant/attachments/workbook.pdf')))
+  ]));
+await t('a free account enrolled elsewhere CANNOT read a paid course video',
+  () => assertFails(getBytes(ref(freebie, 'courses/icant/videos/l1.mp4'))));
+await t('a free account CANNOT list a paid course folder',
+  () => assertFails(listAll(ref(freebie, 'courses/icant/videos'))));
+await t('a free account CANNOT read a paid course attachment',
+  () => assertFails(getBytes(ref(freebie, 'courses/icant/attachments/workbook.pdf'))));
+await t('a signed-out visitor CANNOT read a course video',
+  () => assertFails(getBytes(ref(anon, 'courses/icant/videos/l1.mp4'))));
+await t('an admin and the owner CAN read course files (uploads, previews)',
+  () => Promise.all([
+    assertSucceeds(getBytes(ref(adm, 'courses/icant/videos/l1.mp4'))),
+    assertSucceeds(getBytes(ref(owner, 'courses/icant/attachments/workbook.pdf')))
+  ]));
 
 await env.cleanup();
 
