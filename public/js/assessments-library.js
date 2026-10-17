@@ -16,11 +16,12 @@ const href = (a) => `/assessments/${a.slug}${location.search}`;
 let taken = {};
 let filter = 'all';
 
-function card(a) {
+function card(a, i) {
   const t = taken[a.slug];
   const badge = t ? `<span class="done">Taken${t.label ? ': ' + esc(t.label) : ''}</span>` : '';
   return `<a class="card" href="${href(a)}">
     ${badge}
+    <div class="num">${String(i + 1).padStart(2, '0')}${i === 0 && !t ? '<span class="first">Start here</span>' : ''}</div>
     <h3>${esc(a.title)}</h3>
     <div class="hook">${esc(a.hook)}</div>
     <div class="desc">${esc(a.short)}</div>
