@@ -232,6 +232,69 @@
     }
     #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
+    /* ── Lead gate ────────────────────────────────────────────────────────
+       Two moments, one card: the front door on a free preview, and the
+       end-of-preview panel. Sits above the splash so the book never paints
+       behind it, and above the toast so an error is readable. */
+    #gate {
+      position: fixed; inset: 0; z-index: 70; background: var(--bg);
+      display: grid; place-items: center; overflow-y: auto;
+      padding: calc(var(--safe-t) + 24px) 20px calc(var(--safe-b) + 24px);
+      opacity: 1; transition: opacity .3s var(--ease);
+    }
+    #gate[hidden] { display: none; }
+    #gate.gone { opacity: 0; pointer-events: none; }
+    .gate-card { width: 100%; max-width: 380px; text-align: center; }
+    #gate-cover {
+      width: 112px; aspect-ratio: 2/3; object-fit: cover; border-radius: 4px;
+      display: block; margin: 0 auto 20px; box-shadow: 0 14px 40px rgba(0,0,0,.22);
+    }
+    #gate-cover[src=""] { display: none; }
+    #gate-eyebrow {
+      font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--accent); margin: 0 0 10px;
+    }
+    #gate-title { font-size: 21px; font-weight: 600; line-height: 1.28; margin: 0 0 8px; }
+    #gate-sub { font-size: 14px; line-height: 1.55; color: var(--muted); margin: 0 0 22px; }
+    #gate-form { display: grid; gap: 10px; text-align: left; }
+    .gate-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    #gate-form label { display: grid; gap: 5px; }
+    #gate-form label span {
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    #gate-form input {
+      width: 100%; box-sizing: border-box; font-family: var(--font-ui); font-size: 15px;
+      color: var(--fg); background: var(--sheet); border: 1px solid var(--line);
+      border-radius: 10px; padding: 12px 13px; -webkit-appearance: none; appearance: none;
+      transition: border-color .18s var(--ease);
+    }
+    #gate-form input:focus { outline: none; border-color: var(--fg); }
+    #gate-form input[aria-invalid="true"] { border-color: var(--accent); }
+    .gate-err {
+      margin: 2px 0 0; font-size: 13px; line-height: 1.45; color: var(--accent);
+    }
+    .gate-submit {
+      margin-top: 6px; width: 100%; font-family: var(--font-ui); font-size: 15px; font-weight: 500;
+      padding: 14px 18px; border-radius: 12px; border: 1px solid var(--fg);
+      background: var(--fg); color: var(--bg); cursor: pointer;
+      transition: opacity .18s var(--ease);
+    }
+    .gate-submit:disabled { opacity: .55; cursor: default; }
+    .gate-fine { margin: 12px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); text-align: center; }
+    .gate-fine a { color: var(--muted); }
+    .gate-actions { margin-top: 18px; display: grid; gap: 10px; }
+    .gate-actions .btn {
+      width: 100%; box-sizing: border-box; text-align: center; padding: 14px 18px;
+      font-family: var(--font-ui); cursor: pointer;
+    }
+    /* .btn is written for anchors; a <button> needs the surface spelled out. */
+    .gate-actions button.btn { background: transparent; }
+    .gate-actions button.btn.primary { background: var(--fg); }
+    @media (max-width: 400px) {
+      .gate-row { grid-template-columns: 1fr; }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { transition-duration: 0s !important; animation: none !important; }
     }
@@ -352,6 +415,35 @@
     <div class="splash-msg" id="splash-msg">Opening your book…</div>
     <div class="pulse" id="splash-pulse"></div>
     <div class="splash-actions" id="splash-actions"></div>
+  </div>
+</div>
+
+<div id="gate" hidden>
+  <div class="gate-card">
+    <img id="gate-cover" src="" alt="">
+    <p id="gate-eyebrow"></p>
+    <h1 id="gate-title"></h1>
+    <p id="gate-sub"></p>
+    <form id="gate-form" novalidate>
+      <div class="gate-row">
+        <label>
+          <span>First name</span>
+          <input id="gate-first" type="text" autocomplete="given-name" autocapitalize="words" required>
+        </label>
+        <label>
+          <span>Last name</span>
+          <input id="gate-last" type="text" autocomplete="family-name" autocapitalize="words" required>
+        </label>
+      </div>
+      <label>
+        <span>Email</span>
+        <input id="gate-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" required>
+      </label>
+      <p class="gate-err" id="gate-err" hidden></p>
+      <button class="gate-submit" id="gate-submit" type="submit">Start reading</button>
+      <p class="gate-fine" id="gate-fine"></p>
+    </form>
+    <div class="gate-actions" id="gate-actions" hidden></div>
   </div>
 </div>
 

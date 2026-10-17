@@ -20,6 +20,7 @@ import { firebaseReady } from './firebase.js';
 import {
   getBook, ownsBook, isOpenAccess, getBookFile, loadPosition, createPositionSaver
 } from './books.js';
+import { gateBeforeOpen, showPreviewEnd, hasBypass } from './reader-lead.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -464,6 +465,12 @@ async function open() {
     return;
   }
 
+  // A free preview is the top of the funnel, so it asks who is reading it
+  // before it opens. Members and warm-DM links skip the wall (reader-lead.js).
+  if (free) {
+    await gateBeforeOpen({ book, bookId: BOOK_ID, skip: !!user || hasBypass(params) });
+  }
+
   let file;
   let saved;
   try {
@@ -507,8 +514,18 @@ async function open() {
   });
 
   view.addEventListener('relocate', onRelocate);
-  view.addEventListener('load', ({ detail: { doc } }) => {
+  // The end of a free preview is the second ask: the reader who got all the
+  // way through is the warmest one on the site. Fires once per open, on the
+  // book's last section (the preview-end page).
+  let previewEndShown = false;
+  const lastSection = (view.book.sections || []).length - 1;
+
+  view.addEventListener('load', ({ detail: { doc, index } }) => {
     doc.addEventListener('keydown', onKey);
+    if (free && !previewEndShown && lastSection > 0 && index === lastSection) {
+      previewEndShown = true;
+      showPreviewEnd({ book, bookId: BOOK_ID });
+    }
     // Taps inside the page. foliate's own link handler runs first and
     // prevents the default on links, so following a link never turns a page.
     doc.addEventListener('click', (e) => {

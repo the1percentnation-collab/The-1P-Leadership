@@ -14340,6 +14340,11 @@ const LEAD_FORMS = {
   // with the book it is built on, so calculator leads are the launch list.
   // Team-mode requests also join the corporate pipeline (see submitLeadForm).
   'focus-tax': { source: 'Focus Tax Calculator', tags: ['Focus Tax Calculator', 'Work Less Gain More'] },
+  // /read — the gate on a free book preview. Two moments on the same form
+  // type: 'start' is the reader asking to open it, 'finish' is the reader who
+  // got all the way through. The finisher tag (added in submitLeadForm) is the
+  // buying signal, so the two are one list you can still segment.
+  'chapter-preview': { source: 'Chapter Preview', tags: ['Chapter Preview', 'Book Reader'] },
   // /join — someone asking about a coaching or financial team role. Tagged
   // "Recruiting" plus one tag per role (functions/careers.js), so each hiring
   // track is its own CRM filter. A recruit is not a buyer, so no sales tags.
@@ -14575,6 +14580,13 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
   if (formType === 'focus-tax' && fields.mode === 'team') tags.push('Corporate', 'Focus Tax: Team');
   // The page sends a role key, never a tag; careerTags maps it to a fixed set.
   if (formType === 'careers') tags.push(...careerTags(fields.role_key));
+  // Someone who read a preview end to end is further down the funnel than
+  // someone who only opened it, and the book they finished is the offer to
+  // put in front of them.
+  if (formType === 'chapter-preview') {
+    if (fields.stage === 'finish') tags.push('Preview Finished');
+    if (fields.book_title) tags.push(`Preview: ${String(fields.book_title).slice(0, 60)}`);
+  }
   const ref = await upsertCrmContact(db, companyId, {
     name, email, phone, source: form.source, tags
   });
