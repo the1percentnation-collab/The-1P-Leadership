@@ -1,12 +1,12 @@
 name: Seed The Focus Tax
-# Writes courses/the-focus-tax and its modules to Firestore by running
-# scripts/seed-focus-tax.js with the deploy service account. Merging the code
-# does not create the Firestore record, and until it exists enrollFree answers
-# "Unknown course." Running the seed here means a release, or an edit to a
-# piece, needs no terminal.
+# Writes the essay series (reads/the-focus-tax and its essays) to Firestore by running
+# scripts/seed-focus-tax.js with the deploy service account. The public pages
+# at /reads ship with hosting; the full text members read lives in Firestore
+# and only exists once the seed runs. Running it here means a release, or an
+# edit to an essay, needs no terminal.
 #
-# Safe to run on every push: the seed never changes a status, price or
-# published state the owner set in /manage-courses.html.
+# Safe to run on every push: it rewrites the essays from the markdown, and
+# keeps the old Focus Tax course record retired (status inactive).
 on:
   push:
     branches:
@@ -14,6 +14,8 @@ on:
     paths:
       - 'scripts/seed-focus-tax.js'
       - 'scripts/focus-tax-content/**'
+      - 'scripts/lib/essays.js'
+      - 'scripts/lib/markdown.js'
       - '.github/workflows/seed-focus-tax.yml'
   workflow_dispatch:
 

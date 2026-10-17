@@ -11,7 +11,8 @@ import fs from 'node:fs';
 import assert from 'node:assert';
 import { loadPure } from './_load-pure.mjs';
 
-const { TOOLKIT_SECTIONS, TOOLS } = await loadPure('toolkit-data.js');
+const { TOOLKIT_SECTIONS, TOOLS, READ_SERIES } = await loadPure('toolkit-data.js');
+const { FOCUS_TAX_LINES } = await loadPure('focus-tax-core.js');
 // The course registry imports Firebase (code-mounted courses), so it is read
 // as text: each entry's block runs from its `slug:` to the next one.
 const REGISTRY = fs.readFileSync(new URL('../public/js/courses-registry.js', import.meta.url), 'utf8');
@@ -61,10 +62,18 @@ ok('every live tool links to a page that exists', () => {
   }
 });
 
-ok('The Focus Tax is a Toolkit item, not a listed course', () => {
-  const ft = entry('the-focus-tax');
-  assert.ok(ft, 'the-focus-tax is in the registry');
-  assert.match(ft, TOOLKIT_SHELF);
+ok('The Focus Tax is an essay series in the Toolkit, not a course', () => {
+  assert.ok(!entry('the-focus-tax'), 'the-focus-tax course came back into the registry');
+  const ft = READ_SERIES.find((r) => r.slug === 'the-focus-tax');
+  assert.ok(ft && ft.href === '/reads', 'The Focus Tax is missing from Free Reads');
+  assert.ok(fs.existsSync(new URL('reads.html', PUBLIC)), '/reads page is missing');
+});
+
+ok('every calculator essay link opens a published essay', () => {
+  for (const l of FOCUS_TAX_LINES) {
+    assert.ok(l.readSlug, `${l.key}: no readSlug`);
+    assert.ok(fs.existsSync(new URL(`reads/${l.readSlug}.html`, PUBLIC)), `${l.key}: /reads/${l.readSlug} not found`);
+  }
 });
 
 ok('The One Percent Brief stays in Courses', () => {

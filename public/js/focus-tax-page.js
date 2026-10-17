@@ -81,7 +81,7 @@ function render() {
     big.innerHTML = `
       <div class="eyebrow">Your biggest tax: ${esc(r.biggest.label)}</div>
       <p><b>Run this first.</b> ${esc(r.biggest.fix)}</p>
-      <p>Go deeper: <b>${esc(r.biggest.chapter)}</b> in the book, and the free read <a href="/course.html?course=the-focus-tax"><u>${esc(r.biggest.read)}</u></a>.</p>`;
+      <p>Go deeper: <b>${esc(r.biggest.chapter)}</b> in the book, and the essay <a href="/reads/${encodeURIComponent(r.biggest.readSlug)}"><u>${esc(r.biggest.read)}</u></a>.</p>`;
   } else {
     big.hidden = true;
   }

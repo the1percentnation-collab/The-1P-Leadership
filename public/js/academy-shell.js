@@ -37,6 +37,7 @@ function escapeHtml(s) {
 const ICONS = {
   dashboard: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/><path d="M9.5 20v-6h5v6"/>',
   library: '<path d="M5 4.5h3.5v15H5z"/><path d="M10.5 4.5H14v15h-3.5z"/><path d="m16 5.4 3.3-.9 3 14.3-3.3.8z"/>',
+  reads: '<path d="M6 3.5h12a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1Z"/><path d="M8.5 8h7M8.5 11.5h7M8.5 15h4.5"/>',
   courses: '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5Z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5Z"/>',
   community: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19.5a5.5 5.5 0 0 1 11 0"/><path d="M16 5.6a3 3 0 0 1 0 5.6"/><path d="M17.5 14.4a5.5 5.5 0 0 1 3 5.1"/>',
   resources: '<path d="M5 4h9l5 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M14 4v5h5"/><path d="M8.5 13.5h7"/><path d="M8.5 17h5"/>',
@@ -72,6 +73,7 @@ export function navIcon(name) {
 const MAIN_NAV = [
   { key: 'dashboard', href: '/dashboard.html', label: 'Dashboard', icon: 'dashboard' },
   { key: 'courses',   href: '/courses.html',   label: 'Courses',   icon: 'courses' },
+  { key: 'reads',     href: '/reads',          label: 'Reads',     icon: 'reads' },
   { key: 'library',   href: '/library',        label: 'Library',   icon: 'library' },
   { key: 'toolkit',   href: '/toolkit',        label: 'Toolkit',   icon: 'resources' },
   { key: 'community', href: '/community.html', label: 'Community', icon: 'community' },

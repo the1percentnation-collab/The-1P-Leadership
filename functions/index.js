@@ -15073,6 +15073,182 @@ exports.claimAssessment = onCall({ secrets: [sendgridKey] }, async (request) => 
   return { ok: true, status: isNew ? 'created' : 'existing', saved, emailed, priority: rec.priority };
 });
 
+// ── Reads: the members-only essay series ─────────────────────────────
+// /reads/<slug> is a static page carrying an essay's opening. The full text
+// lives at reads/{series}/essays/{slug}, readable by any signed-in account.
+// A signed-out reader unlocks it here with a name and email: the same free
+// portal account claimAssessment creates (and the same set-password email),
+// a CRM tag, and the essay back in one call, so the reader never leaves the
+// page. The essays are free to members, so returning the text to anyone who
+// gives an email is the intended trade, not a leak.
+const READ_SERIES = { 'the-focus-tax': 'The Focus Tax' };
+
+function readUnlockEmail({ firstName, seriesTitle, essayTitle, actionUrl }) {
+  const hi = firstName ? `Hi ${firstName},` : 'Hi,';
+  const subject = `Your free One Percent account: keep reading ${seriesTitle}`;
+  const body = `You just unlocked "${essayTitle}" from ${seriesTitle}. We created your free One Percent portal account with this email, so every essay in the series is open to you, along with the free assessment library.`;
+  const button = 'Set your password';
+  const text = [
+    hi, '', body, '',
+    `${button}: ${actionUrl}`, '',
+    'This link expires in about an hour. If it does, use "Forgot password" on the login page with this email.',
+    '', 'Anthony Brown Sr.', 'The One Percent'
+  ].join('\n');
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;">
+    <p style="font-size:15px;">${textToHtml(hi)}</p>
+    <p style="font-size:15px;line-height:1.55;">${textToHtml(body)}</p>
+    <p style="margin:22px 0;"><a href="${actionUrl}" style="background:#E60306;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;">${button}</a></p>
+    <p style="font-size:12px;color:#888;">This link expires in about an hour. If it does, use "Forgot password" on the login page with this email.</p>
+    <p style="font-size:14px;margin-top:24px;">Anthony Brown Sr.<br>The One Percent</p>
+  </div>`;
+  return { subject, text, html };
+}
+
+exports.claimRead = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  const series = String(data.series || '').trim();
+  const slug = String(data.slug || '').trim();
+  if (!READ_SERIES[series] || !/^[a-z0-9-]{1,100}$/.test(slug)) {
+    throw new HttpsError('invalid-argument', 'That essay could not be found.');
+  }
+  const essayRef = db.collection('reads').doc(series).collection('essays').doc(slug);
+
+  // A signed-in member is already in: no account to make, just the text.
+  if (request.auth && request.auth.uid) {
+    const snap = await essayRef.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'This essay is not available yet.');
+    return { ok: true, status: 'member', html: snap.data().html || '' };
+  }
+
+  const name = String(data.name || '').trim().slice(0, 120);
+  const email = normalizeEmail(data.email).slice(0, 160);
+  if (!name) throw new HttpsError('invalid-argument', 'Please enter your first name.');
+  if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
+  await rateLimitCaller(db, request, { action: 'claimRead', max: 12, windowSec: 600 });
+
+  const snap = await essayRef.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'This essay is not available yet.');
+  const essay = snap.data();
+
+  const FV = admin.firestore.FieldValue;
+  let uid = null;
+  let isNew = false;
+  try {
+    uid = (await admin.auth().getUserByEmail(email)).uid;
+  } catch (e) {
+    if (!(e && e.code === 'auth/user-not-found')) throw new HttpsError('internal', 'Could not set up your account. Please try again.');
+  }
+  if (!uid) {
+    try {
+      uid = (await admin.auth().createUser({ email, displayName: name, emailVerified: false })).uid;
+      isNew = true;
+    } catch (e) {
+      if (e && e.code === 'auth/email-already-exists') uid = (await admin.auth().getUserByEmail(email)).uid;
+      else throw new HttpsError('internal', 'Could not set up your account. Please try again.');
+    }
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  if (isNew) {
+    // The welcome is held as "sending" so onUserCreated skips its generic
+    // one; the set-password email below is this account's welcome.
+    await userRef.set({
+      email,
+      displayName: name,
+      role: email === OWNER_EMAIL ? 'owner' : 'user',
+      companyId: null,
+      tier: 'individual',
+      signupSource: 'reads',
+      createdAt: FV.serverTimestamp(),
+      lastActiveAt: FV.serverTimestamp(),
+      welcomeEmailStatus: 'sending',
+      welcomeEmailAttemptedAt: FV.serverTimestamp()
+    }, { merge: true });
+  } else {
+    const profile = await userRef.get();
+    if (!profile.exists) {
+      await userRef.set({
+        email,
+        displayName: name,
+        role: email === OWNER_EMAIL ? 'owner' : 'user',
+        companyId: null,
+        tier: 'individual',
+        createdAt: FV.serverTimestamp(),
+        lastActiveAt: FV.serverTimestamp()
+      });
+    }
+  }
+
+  const seriesTitle = READ_SERIES[series];
+  const readPath = `/reads/${slug}`;
+
+  // The CRM tag and the welcome email run side by side so a new reader is
+  // not kept waiting on both. Neither can fail the unlock.
+  const tagCrm = (async () => {
+    try {
+      let userSnap = await userRef.get();
+      // A new account races onUserCreated, which creates its CRM contact.
+      // Wait briefly so both land on the same contact.
+      for (let i = 0; isNew && i < 4 && !(userSnap.exists && userSnap.data().crmContactId); i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        userSnap = await userRef.get();
+      }
+      const user = userSnap.exists ? userSnap.data() : {};
+      if (!user.email) user.email = email;
+      const crm = await syncMemberToCrm(db, uid, user, {
+        source: seriesTitle,
+        activity: {
+          type: 'reads',
+          actorName: 'Reads',
+          description: `Unlocked "${essay.title || slug}" (${seriesTitle})`,
+          meta: { series, slug }
+        }
+      });
+      if (crm) {
+        await crm.ref.set({ tags: FV.arrayUnion('Reader', `Reads: ${seriesTitle}`), lastActivityAt: FV.serverTimestamp() }, { merge: true });
+      }
+    } catch (e) {
+      console.error('[claimRead] CRM tag failed:', e && e.message);
+    }
+  })();
+
+  const welcome = (async () => {
+    if (!isNew) return;
+    let emailed = false;
+    try {
+      if (emailConfigured()) {
+        const actionUrl = await admin.auth().generatePasswordResetLink(email, { url: `${APP_BASE_URL}${readPath}` });
+        const msg = readUnlockEmail({
+          firstName: name.split(/\s+/)[0] || '', seriesTitle, essayTitle: essay.title || seriesTitle, actionUrl
+        });
+        const { messageId } = await sendEmail({
+          to: email,
+          from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+          replyTo: REPLY_TO,
+          subject: msg.subject,
+          text: msg.text,
+          html: msg.html,
+          customArgs: { type: 'welcome', uid }
+        });
+        emailed = true;
+        await userRef.set({
+          welcomeEmailStatus: 'sent', welcomeEmailSentAt: FV.serverTimestamp(), welcomeEmailMessageId: messageId
+        }, { merge: true });
+      }
+    } catch (e) {
+      console.error('[claimRead] welcome email failed:', e && e.message);
+    }
+    if (!emailed) {
+      // Left for the standard welcome retry (submitOnboarding / owner sync).
+      try { await userRef.set({ welcomeEmailStatus: 'failed', welcomeEmailError: 'reads email not sent' }, { merge: true }); } catch (e) {}
+    }
+  })();
+
+  await Promise.all([tagCrm, welcome]);
+  return { ok: true, status: isNew ? 'created' : 'existing', html: essay.html || '' };
+});
+
 // Exposed for the assessments test, which checks this list against the
 // library in public/js/assessments-data.js. A plain object deploys nothing.
 exports.ASSESSMENT_SLUGS = ASSESSMENT_SLUGS;

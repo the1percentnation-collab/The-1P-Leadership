@@ -46,7 +46,8 @@ account key. Move them onto `lib/init.js` before running any of them.
 | `fix-clc-slugs.js` | Moves the Leader Coach off the `1p-clc` slug onto `1p-clc-leader` with its lessons, members and purchases; resets `1p-clc` to the Life Coach identity; archives the superseded `silence-the-voice` draft. | **Yes, once.** See below. |
 | `seed-clc.js` | Writes the 8 written modules, the 48-question exam bank, the FOUNDING coupon and certification config for the $3,497 Life Coach program. | **Yes, once — but only AFTER `fix-clc-slugs.js`.** It refuses to run before that and tells you so. |
 | `seed-brief.js` | Writes The One Percent Brief course ($12/month subscription) and one module per file in `brief-content/`. Brief 1 is published, the rest are drafts. Re-runs never change status, price or a brief's published state. | **Yes**, once to create it, and again whenever a brief is added or edited. |
-| `seed-focus-tax.js` | Writes The Focus Tax course (free, created live) and one module per markdown file in `focus-tax-content/`, all published. A piece with a `brief` in `meta.js` ends in a link to that brief. Re-runs never change status, price or a piece's published state. | **Automatic.** The *Seed The Focus Tax* workflow runs it on every push to `main` that touches the seed or `focus-tax-content/`, and can be run by hand from the Actions tab. |
+| `seed-focus-tax.js` | Writes The Focus Tax essays to Firestore (`reads/the-focus-tax`, public archive list; `essays/{slug}`, full text for members) from `focus-tax-content/`, removes essays no longer in the folder, and keeps the old course record retired. | **Automatic.** The *Seed The Focus Tax* workflow runs it on every push to `main` that touches the essays or the seed, and can be run by hand from the Actions tab. |
+| `build-reads.js` | Generates the public `/reads` pages from the same markdown: the archive and one page per essay with its opening. `--check` reports stale pages. | **Yes**, after editing an essay. Commit the output. |
 | `upload-book.js` | Uploads an EPUB (and cover) to the digital library and writes `books/{id}`. See `docs/digital-library.md`. | **Yes**, once the final EPUB is ready, and again for each new edition. |
 | `setup-digital-library.js` | Makes the I Can't bundle digital, creates the paperback option, and adds the book to everyone already enrolled. | **Yes, once** after the first upload. Dry run by default; `--apply` writes. |
 | `seed-booking.js` | Writes `config/booking` with the Zoom scheduler URL. | Optional. `/book-a-call.html` already works from a hardcoded fallback. |
@@ -84,37 +85,49 @@ rest of the sequence.
 
 ## The Focus Tax and The One Percent Brief
 
-These two are one funnel, so they are run and released together.
+These two are one funnel. The Focus Tax is a members-only essay series at
+`/reads`: deep, single-idea reads of roughly 2,000 words, free with a portal
+account. `one-percent-brief` is the paid side, $12 a month or $99 a year.
 
-`the-focus-tax` is free and short: four pieces of roughly 600 words on time,
-capacity and structure. `one-percent-brief` is the paid side, $12 a month or
-$99 a year, six long-form briefs written and one published.
+Four essays and not more for now, by design. The briefs already cover ADHD
+focus, overthinking and burnout at length, so essays on those subjects would
+compete with the thing they are supposed to sell. These four are the subjects
+no brief covers: open loops, the list versus the calendar, meetings and
+working memory, and decision load.
 
-Four and not more by design. The briefs already cover ADHD focus, overthinking
-and burnout at length, so short pieces on those subjects would compete with
-the thing they are supposed to sell. These four are the subjects no brief
-covers: open loops, the list versus the calendar, meetings and working memory,
-and decision load.
+### How a reader gets in
 
-Pieces 1 and 3 point at brief 3, which goes deeper on starting tasks and on
-external structure. Pieces 2 and 4 carry no pointer, because nothing in the
-Brief covers the calendar or decision load yet. Give them a `brief` in
-`meta.js` when something does.
+- `/reads` (the archive) and the opening of every essay are public, so a
+  shared link shows a real preview and the opening is indexable.
+- The rest of the essay is behind a free portal account. A signed-in member
+  reads it straight away. A signed-out reader gives a first name and email in
+  the card under the preview; the `claimRead` function creates their portal
+  account, tags them in the CRM (`Reader`, `Reads: The Focus Tax`), emails a
+  set-password link, and returns the essay in the same moment, so they never
+  leave the page. The device remembers them for the next essay.
 
-A piece of the Focus Tax is a markdown file in `focus-tax-content/` with
-frontmatter (`title`, `slug`, `issue`, `pillar`, `read_time`, `hook`) plus an
-entry in `focus-tax-content/meta.js` keyed by that slug, holding the workbook
-and summary and the `brief` number it points at. Adding one is those two edits
-and a re-run. The markdown converter in the seed handles `##` and `###`
-headings, paragraphs, ordered and unordered lists, `**bold**` and `*italic*`,
-and drops the rule above the source note.
+### Writing or editing an essay
 
-The Focus Tax is ungated. The seed creates it live at price 0, it shows in the
-portal's course library and the dashboard marked Free, and a signed-in member
-who opens it is enrolled on the way in (no checkout, no Join step). Reading
-still needs a portal login, which is what captures the reader as a lead.
+An essay is a markdown file in `focus-tax-content/` with frontmatter
+(`title`, `slug`, `issue`, `pillar`, `read_time`, `hook`). The converter
+(`lib/markdown.js`) handles `##` and `###` headings, paragraphs, ordered and
+unordered lists, `> ` pull quotes, `**bold**` and `*italic*`, and a closing
+`---` rule before the `**Source note:**`. No em dashes (the test checks).
 
-The free series only works as acquisition if the thing it points at is
-purchasable. Set `one-percent-brief` to live in `/manage-courses.html` when
-it is ready; until then the pointers in pieces 1 and 3 land on a Notify me
-button, which still captures interest.
+1. Edit or add the markdown file. To point an essay at a brief, give it a
+   `brief` number in `focus-tax-content/meta.js`. Essays 1 and 3 point at
+   brief 3; 2 and 4 carry none until the Brief covers the calendar or
+   decision load.
+2. `cd scripts && node build-reads.js` to regenerate the public pages in
+   `public/reads/`, and commit them. `tests/reads.test.cjs` fails if they are
+   out of date.
+3. Merge. Hosting publishes the pages, and the *Seed The Focus Tax* workflow
+   writes the full text to Firestore (`reads/the-focus-tax/essays/{slug}`).
+
+The essays used to be a course (`courses/the-focus-tax`). The seed keeps that
+record retired (status inactive), so it no longer appears in Courses.
+
+The essays only work as acquisition if the thing they point at can be
+bought. Set `one-percent-brief` to live in `/manage-courses.html` when it is
+ready; until then the pointers in essays 1 and 3 land on a Notify me button,
+which still captures interest.
