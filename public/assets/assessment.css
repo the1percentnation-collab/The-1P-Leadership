@@ -82,7 +82,8 @@ input,select,textarea{font-size:16px;font-family:inherit;}
 .card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--red);opacity:0.7;transition:opacity .2s;}
 .card:hover{border-color:var(--border-red);transform:translateY(-2px);}
 .card:hover::before{opacity:1;}
-.card .num{font-family:var(--font-mono);font-size:11px;letter-spacing:0.14em;color:var(--red);}
+.card .num{display:flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:11px;letter-spacing:0.14em;color:var(--red);}
+.card .num .first{font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--white);background:var(--red-glow);border:1px solid var(--border-red);border-radius:999px;padding:3px 9px;}
 .card h3{font-family:var(--font-display);font-size:28px;letter-spacing:0.02em;line-height:1;font-weight:400;}
 .card .hook{color:var(--white);font-weight:500;}
 .card .desc{color:var(--gray-400);font-size:14px;flex:1;}
