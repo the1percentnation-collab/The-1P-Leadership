@@ -6774,14 +6774,43 @@ body.academy-course .ak-topbar { position: static; }
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: transparent;
+  background: radial-gradient(circle at 50% 30%, rgba(255,255,255,0.07), rgba(255,255,255,0.01) 70%);
   border: 1px solid var(--border);
   color: var(--gray-light);
   cursor: pointer;
   padding: 0;
+  transition: color .2s ease, border-color .2s ease, box-shadow .2s ease;
 }
-.c-bell:hover { color: var(--white); border-color: rgba(204,27,27,0.4); }
-.c-bell-icon { font-size: 14px; line-height: 1; }
+.c-bell:hover {
+  color: var(--white);
+  border-color: rgba(230,3,6,0.55);
+  box-shadow: 0 0 12px rgba(230,3,6,0.35), inset 0 0 8px rgba(230,3,6,0.18);
+}
+.c-bell-icon {
+  width: 55%;
+  height: 55%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* The bar inside the bell only lights when something is waiting. */
+.c-bell-core { opacity: 0; }
+/* Scanner ring: a red arc that sweeps the rim while anything is unread. */
+.c-bell::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  padding: 1.5px;
+  background: conic-gradient(transparent 0 55%, rgba(230,3,6,0.9) 85%, #FF6B6B 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  pointer-events: none;
+}
 .c-bell-badge {
   position: absolute;
   top: -6px;
@@ -6800,22 +6829,28 @@ body.academy-course .ak-topbar { position: static; }
   align-items: center;
   justify-content: center;
   border: 2px solid var(--black);
-  box-shadow: 0 0 0 1px rgba(230,3,6,0.35);
+  box-shadow: 0 0 0 1px rgba(230,3,6,0.35), 0 0 10px rgba(230,3,6,0.6);
+  z-index: 1;
 }
 .c-bell-badge[hidden] { display: none; }
-/* Something unread: red ring and a slow glow so it reads from across the page. */
+/* Something unread: red ring, a sweeping scanner arc and a slow glow so it
+   reads from across the page. */
 .c-bell.has-unread {
   color: var(--white);
-  border-color: var(--red);
-  background: rgba(230,3,6,0.12);
+  border-color: rgba(230,3,6,0.6);
+  background: radial-gradient(circle at 50% 35%, rgba(230,3,6,0.28), rgba(230,3,6,0.06) 70%);
   animation: c-bell-glow 2s ease-in-out infinite;
 }
+.c-bell.has-unread .c-bell-icon { filter: drop-shadow(0 0 3px rgba(255,80,80,0.8)); }
+.c-bell.has-unread .c-bell-core { opacity: 1; stroke: #FF6B6B; }
+.c-bell.has-unread::before { opacity: 1; animation: c-bell-scan 2.4s linear infinite; }
 @keyframes c-bell-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(230,3,6,0.55); }
-  50%      { box-shadow: 0 0 0 6px rgba(230,3,6,0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(230,3,6,0.55), 0 0 10px rgba(230,3,6,0.3); }
+  50%      { box-shadow: 0 0 0 6px rgba(230,3,6,0), 0 0 16px rgba(230,3,6,0.45); }
 }
+@keyframes c-bell-scan { to { transform: rotate(360deg); } }
 /* A new one arrived while they were on the page. */
-.c-bell.ring .c-bell-icon { display: inline-block; transform-origin: 50% 0; animation: c-bell-swing .9s ease-in-out; }
+.c-bell.ring .c-bell-icon { transform-origin: 50% 10%; animation: c-bell-swing .9s ease-in-out; }
 @keyframes c-bell-swing {
   0%, 100% { transform: rotate(0); }
   15% { transform: rotate(18deg); }
@@ -6824,8 +6859,16 @@ body.academy-course .ak-topbar { position: static; }
   60% { transform: rotate(-8deg); }
   75% { transform: rotate(4deg); }
 }
+/* Brand-red keyboard focus instead of the browser's blue ring, and no ring
+   at all after a mouse click. */
+.c-bell:focus, .c-search-btn:focus { outline: none; }
+.c-bell:focus-visible, .c-search-btn:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 3px;
+}
 @media (prefers-reduced-motion: reduce) {
   .c-bell.has-unread { animation: none; box-shadow: 0 0 0 2px rgba(230,3,6,0.4); }
+  .c-bell.has-unread::before { animation: none; }
   .c-bell.ring .c-bell-icon { animation: none; }
 }
 
@@ -6939,10 +6982,38 @@ body.academy-course .ak-topbar { position: static; }
 .c-notif-row:hover { background: rgba(255,255,255,0.04); color: var(--white); }
 .c-notif-row.unread { background: rgba(204,27,27,0.06); }
 .c-notif-icon {
-  font-size: 14px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
   color: var(--gray-light);
 }
+.c-notif-icon svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.c-notif-icon--hot {
+  color: #FF6B6B;
+  border-color: rgba(230,3,6,0.45);
+  background: rgba(230,3,6,0.10);
+  box-shadow: 0 0 8px rgba(230,3,6,0.25);
+}
+.c-notif-icon--win {
+  color: #FFD56F;
+  border-color: rgba(255,213,111,0.45);
+  background: rgba(255,213,111,0.08);
+  box-shadow: 0 0 8px rgba(255,213,111,0.18);
+}
+.c-notif-row:hover .c-notif-icon--neutral { color: var(--white); border-color: rgba(255,255,255,0.2); }
 .c-notif-body { min-width: 0; }
 .c-notif-line {
   font-size: 13px;
@@ -8115,15 +8186,27 @@ body.academy-course .ak-topbar { position: static; }
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: transparent;
+  background: radial-gradient(circle at 50% 30%, rgba(255,255,255,0.07), rgba(255,255,255,0.01) 70%);
   border: 1px solid var(--border);
   color: var(--gray-light);
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
+  transition: color .2s ease, border-color .2s ease, box-shadow .2s ease;
 }
-.c-search-btn:hover { color: var(--white); border-color: rgba(204,27,27,0.4); }
-.c-search-icon { font-size: 13px; line-height: 1; }
+.c-search-btn:hover {
+  color: var(--white);
+  border-color: rgba(230,3,6,0.55);
+  box-shadow: 0 0 12px rgba(230,3,6,0.35), inset 0 0 8px rgba(230,3,6,0.18);
+}
+.c-search-icon {
+  width: 50%;
+  height: 50%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
 
 .c-search-overlay {
   position: fixed;

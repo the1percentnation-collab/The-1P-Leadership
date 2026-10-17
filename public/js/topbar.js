@@ -131,18 +131,37 @@ const bellState = {
   outsideClickBound: false
 };
 
+// Line icons drawn on a 24px grid, stroked in currentColor so each row's tone
+// class sets the color. Same style as the bell and search buttons.
+const NOTIF_ICON_PATHS = {
+  like: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  comment: '<path d="M5 5h14v10h-9l-4 4v-4H5z"/>',
+  mention: '<circle cx="12" cy="12" r="3.5"/><path d="M15.5 12v1.5a2.5 2.5 0 0 0 5 0V12a8.5 8.5 0 1 0-3.3 6.7"/>',
+  channel_request: '<circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M16 7l2 2M13.5 9.5l2 2"/>',
+  channel_access_granted: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.7"/>',
+  channel_access_denied: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  course_reminder: '<circle cx="12" cy="13.5" r="7"/><path d="M12 10v3.5l2.5 1.5M10 3h4"/>',
+  course_deadline: '<path d="M6 21V4M6 4h11l-2.5 4L17 12H6"/>',
+  announcement: '<path d="M4 10v4h3l8 4V6l-8 4H4zM18.5 9.5a3.5 3.5 0 0 1 0 5"/>',
+  course_granted: '<path d="M2.5 9.5L12 5l9.5 4.5L12 14z"/><path d="M6.5 11.5v4.5c3 2.4 8 2.4 11 0v-4.5M21.5 9.5V14"/>',
+  default: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>'
+};
+
+// hot: someone reached for them or a clock is running. win: something was
+// given to them. Everything else stays neutral.
+const NOTIF_TONES = {
+  like: 'hot',
+  mention: 'hot',
+  announcement: 'hot',
+  course_deadline: 'hot',
+  course_granted: 'win',
+  channel_access_granted: 'win'
+};
+
 function notifIcon(type) {
-  if (type === 'like') return '❤️';
-  if (type === 'comment') return '💬';
-  if (type === 'mention') return '@';
-  if (type === 'channel_request') return '🔑';
-  if (type === 'channel_access_granted') return '🔓';
-  if (type === 'channel_access_denied') return '🔒';
-  if (type === 'course_reminder') return '⏱';
-  if (type === 'course_deadline') return '🏁';
-  if (type === 'announcement') return '📣';
-  if (type === 'course_granted') return '🎓';
-  return '🔔';
+  const paths = NOTIF_ICON_PATHS[type] || NOTIF_ICON_PATHS.default;
+  const tone = NOTIF_TONES[type] || 'neutral';
+  return `<span class="c-notif-icon c-notif-icon--${tone}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths}</svg></span>`;
 }
 
 function channelLabel(n) {
@@ -259,7 +278,7 @@ function renderNotifPopover() {
          </div>`;
     return `
     <a class="c-notif-row unread" data-notif="${escapeHtml(n.id)}" href="${escapeHtml(notifHref(n))}">
-      <span class="c-notif-icon">${notifIcon(n.type)}</span>
+      ${notifIcon(n.type)}
       ${avatarHtml({ avatarUrl: n.fromAvatar, displayName: n.fromName }, 28)}
       <div class="c-notif-body">
         <div class="c-notif-line">${notifLine(n)}</div>
@@ -645,7 +664,11 @@ export function renderTopbar({
 
   const bellHtml = withBell ? `
     <button class="c-bell" id="btn-bell" title="Notifications" aria-label="Notifications">
-      <span class="c-bell-icon">🔔</span>
+      <svg class="c-bell-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/>
+        <path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>
+        <path class="c-bell-core" d="M12 9.5v3.5"/>
+      </svg>
       <span class="c-bell-badge" id="bell-badge" hidden>0</span>
     </button>
     <div class="c-notif-popover" id="notif-popover" hidden></div>
@@ -653,7 +676,10 @@ export function renderTopbar({
 
   const searchHtml = withSearch ? `
     <button class="c-search-btn" id="btn-search" title="Search" aria-label="Search">
-      <span class="c-search-icon">🔍</span>
+      <svg class="c-search-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="10.5" cy="10.5" r="6"/>
+        <path d="M15 15l5 5"/>
+      </svg>
     </button>
   ` : '';
 
