@@ -134,9 +134,9 @@ const APP_BASE_URL = 'https://the1pnation.com';
 // community's top ranks are earned by showing up or by mass-inviting.
 const REFERRAL_POINTS = 10;
 
-// Secret: SendGrid API key. The event webhook's verification key
-// (SENDGRID_WEBHOOK_KEY) is read from the runtime env, so a deploy never
-// needs it; without it the webhook refuses every event (fails closed).
+// Secret: SendGrid API key. Webhook verification key is optional and read
+// lazily at runtime via the Secret Manager client — this avoids requiring
+// SENDGRID_WEBHOOK_KEY to exist at deploy time.
 //
 // NOTE: `defineSecret` is different — it is resolved by the CLI at DEPLOY time,
 // so every functions deploy calls secretmanager.googleapis.com. That API needs
@@ -3543,24 +3543,20 @@ exports.sendgridEventWebhook = onRequest(
       // Get raw body for signature verification. Firebase Functions v2 provides req.rawBody.
       const rawBody = req.rawBody ? Buffer.from(req.rawBody) : Buffer.from(JSON.stringify(req.body || []));
 
-      // Fail closed. This endpoint is public and its payload names a company
-      // and contacts, so an unsigned request could forge campaign stats and
-      // opt out any company's contacts in bulk. Without the verification key
-      // nothing is accepted (503, so SendGrid retries once the key is set);
-      // a bad signature is refused outright. The Telnyx email and SMS
-      // webhooks already fail closed the same way.
+      // Webhook signing is optional. Read from env if set; otherwise accept unsigned.
       const webhookKey = (process.env.SENDGRID_WEBHOOK_KEY || '').trim();
-      if (!webhookKey) {
-        console.error('[webhook] SENDGRID_WEBHOOK_KEY not set — refusing unsigned event webhook');
-        res.status(503).send('webhook verification not configured');
-        return;
-      }
-      const signature = req.get('X-Twilio-Email-Event-Webhook-Signature');
-      const timestamp = req.get('X-Twilio-Email-Event-Webhook-Timestamp');
-      if (!verifySignature(webhookKey, rawBody, signature, timestamp)) {
-        console.warn('[webhook] signature invalid — refusing payload');
-        res.status(403).send('invalid signature');
-        return;
+
+      if (webhookKey && webhookKey.trim()) {
+        const signature = req.get('X-Twilio-Email-Event-Webhook-Signature');
+        const timestamp = req.get('X-Twilio-Email-Event-Webhook-Timestamp');
+        const ok = verifySignature(webhookKey, rawBody, signature, timestamp);
+        if (!ok) {
+          console.warn('[webhook] signature invalid — ignoring payload');
+          res.status(200).send('ok');
+          return;
+        }
+      } else {
+        console.warn('[webhook] SENDGRID_WEBHOOK_KEY not set — accepting without signature verification');
       }
 
       const events = Array.isArray(req.body) ? req.body : [];

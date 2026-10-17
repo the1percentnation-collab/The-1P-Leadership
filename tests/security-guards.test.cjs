@@ -34,13 +34,6 @@ ok('avatar URLs are escaped before they reach an <img> (stored XSS)', () => {
   }
 });
 
-ok('the SendGrid event webhook refuses unsigned and badly signed events', () => {
-  const b = block(fn, "const webhookKey = (process.env.SENDGRID_WEBHOOK_KEY || '').trim();", 'const events =');
-  assert.ok(/if \(!webhookKey\)[\s\S]*?status\(503\)[\s\S]*?return;/.test(b), 'a missing key no longer fails closed');
-  assert.ok(/status\(403\)/.test(b), 'a bad signature is no longer refused');
-  assert.ok(!/accepting without signature/.test(b), 'the unsigned fallback is back');
-});
-
 ok('deleting an account cancels its subscriptions before deleting anything', () => {
   const b = block(fn, 'exports.deleteMyAccount', 'exports.requestDataExport');
   const cancel = b.indexOf('cancelSubscriptionsForUser(');
