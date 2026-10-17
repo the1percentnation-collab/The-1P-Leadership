@@ -172,7 +172,8 @@ await t('the invoice opens only with the right token, and shows the buyer view',
   const j = await call('getInvoice', { id: orderId, token });
   const v = j.result;
   assert(v && v.invoiceNumber === 'INV-1001' && v.total === 45 && v.items[0].qty === 2, JSON.stringify(j));
-  assert(v.payOptions.some((p) => p.key === 'card') && v.payOptions.some((p) => p.handle === '$OnePct'), JSON.stringify(v.payOptions));
+  // A Cash App tag saved before invoices went Stripe-only must not print.
+  assert(v.payOptions.length === 1 && v.payOptions[0].key === 'card', JSON.stringify(v.payOptions));
   const raw = JSON.stringify(v);
   assert(!/Tulsa keynote|contactId|invoiceToken|ownerUid/.test(raw), 'internal fields leaked: ' + raw);
   assert((await read(`orders/${orderId}`)).viewedAt, 'first open not recorded');
@@ -223,7 +224,7 @@ await t('shipping closes the ship task and opens the review ask', async () => {
 });
 
 await t('a second order dips the shelf under the line and opens a reorder task', async () => {
-  const j = await call('manageHandSale', { action: 'create', order: { ...ORDER, buyer: { name: 'Sam Lee', phone: '+15555550123' }, items: [{ productId: 'book-i-cant', qty: 3, unitPrice: 20 }], delivery: 'hand', payment: { status: 'paid', method: 'cashapp' } } }, owner.token);
+  const j = await call('manageHandSale', { action: 'create', order: { ...ORDER, buyer: { name: 'Sam Lee', phone: '+15555550123' }, items: [{ productId: 'book-i-cant', qty: 3, unitPrice: 20 }], delivery: 'hand', payment: { status: 'paid', method: 'cash' } } }, owner.token);
   assert(j.result && j.result.invoiceNumber === 'INV-1002' && j.result.status === 'new', JSON.stringify(j));
   const s = await read('stock/book-i-cant');
   assert(s.onHand === 3 && s.lowStockTaskId, JSON.stringify(s));

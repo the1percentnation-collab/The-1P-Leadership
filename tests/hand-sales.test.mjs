@@ -192,21 +192,19 @@ ok('addresses pasted from a chat split into fields', () => {
   assert.deepStrictEqual([d.address.city, d.address.state], ['New York', 'NY']);
 });
 
-ok('payment options print only the handles that are set, with deep links', () => {
+ok('invoices offer Stripe card checkout only, even with old handles still saved', () => {
   const opts = paymentOptions({ cashapp: '$OnePct', venmo: '@one-pct', paypal: 'https://paypal.me/onepct' }, { amountTotal: 24.99 });
-  assert.deepStrictEqual(opts.map((o) => o.key), ['card', 'cashapp', 'venmo', 'paypal']);
-  assert.strictEqual(opts[1].url, 'https://cash.app/$OnePct/24.99');
-  assert.strictEqual(opts[3].handle, 'paypal.me/onepct');
+  assert.deepStrictEqual(opts.map((o) => o.key), ['card']);
   assert.deepStrictEqual(paymentOptions({}, null, { cardEnabled: false }), []);
 });
 
-ok('the Messenger message carries the link, the handles, and an address ask when needed', () => {
+ok('the Messenger message carries the link, card-only pay, and an address ask when needed', () => {
   const o = { ...manual({ status: 'needs-address', shipping: null }), invoiceNumber: 'INV-1001' };
-  const msg = invoiceMessage(o, 'https://x/invoice?i=1&t=2', { cashapp: 'OnePct' });
+  const msg = invoiceMessage(o, 'https://x/invoice?i=1&t=2');
   assert.match(msg, /^Hey Jane!/);
   assert.match(msg, /https:\/\/x\/invoice\?i=1&t=2/);
-  assert.match(msg, /Cash App \$OnePct/);
-  assert.match(msg, /INV-1001 in the note/);
+  assert.match(msg, /pay by card right on that page\./);
+  assert.doesNotMatch(msg, /Cash App|Venmo|Zelle|PayPal/);
   assert.match(msg, /address you want it shipped to/);
 });
 

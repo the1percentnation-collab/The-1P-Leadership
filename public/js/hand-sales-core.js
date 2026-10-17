@@ -9,9 +9,9 @@
 // tests/hand-sales.test.mjs fails if the copies drift.
 //
 // One order moves through two independent tracks:
-//   payment  — unpaid → paid (or comp). Card payments land through the
-//              invoice's Stripe link; Cash App, Zelle and the rest are marked
-//              by hand.
+//   payment  — unpaid → paid (or comp). Buyers pay through the invoice's
+//              Stripe link only; cash or a check handed over in person is
+//              marked by hand.
 //   delivery — needs-address → new → shipped → done, or cancelled.
 // The console's buckets read both, so an order shipped on trust still sits
 // in "To collect" until the money arrives.
@@ -27,12 +27,14 @@ const CHANNELS = [
   { key: 'other', label: 'Other' }
 ];
 
+// Legacy keys stay so orders recorded before invoices went Stripe-only still
+// read right; the console never offers them for new payments.
 const PAYMENT_METHODS = [
   { key: 'card', label: 'Card (invoice link)' },
-  { key: 'cashapp', label: 'Cash App' },
-  { key: 'venmo', label: 'Venmo' },
-  { key: 'zelle', label: 'Zelle' },
-  { key: 'paypal', label: 'PayPal' },
+  { key: 'cashapp', label: 'Cash App', legacy: true },
+  { key: 'venmo', label: 'Venmo', legacy: true },
+  { key: 'zelle', label: 'Zelle', legacy: true },
+  { key: 'paypal', label: 'PayPal', legacy: true },
   { key: 'cash', label: 'Cash' },
   { key: 'check', label: 'Check' },
   { key: 'other', label: 'Other' }
@@ -61,10 +63,6 @@ const DEFAULT_SETTINGS = {
   fromEmail: 'anthonybrown@the1pnation.com',
   web: 'the1pnation.com',
   returnAddress: '',
-  cashapp: '',
-  venmo: '',
-  zelle: '',
-  paypal: '',
   defaultShipping: 5,
   dueDays: 3,
   shipWithinDays: 2,
@@ -366,19 +364,13 @@ function taskPlan(order, settings = DEFAULT_SETTINGS, now = Date.now()) {
 }
 
 /** Ready-to-paste message for the channel the order came in on. */
-function invoiceMessage(order, url, settings = DEFAULT_SETTINGS) {
-  const s = mergeSettings(settings);
+function invoiceMessage(order, url) {
   const hi = firstName(order.buyer && order.buyer.name);
   const lines = [
     `${hi ? `Hey ${hi}` : 'Hey'}! Thank you for ordering ${itemSummary(order)}.`,
-    `Here is your invoice for ${formatMoney(order.amountTotal)}: ${url}`
+    `Here is your invoice for ${formatMoney(order.amountTotal)}: ${url}`,
+    'You can pay by card right on that page.'
   ];
-  const alt = paymentOptions(s, order).filter((o) => o.key !== 'card');
-  if (alt.length) {
-    lines.push(`You can pay by card right on that page, or ${alt.map((o) => `${o.label} ${o.handle}`).join(', ')}. Put ${order.invoiceNumber || 'your name'} in the note.`);
-  } else {
-    lines.push('You can pay by card right on that page.');
-  }
   if (order.delivery === 'ship' && !hasAddress(order.shipping)) {
     lines.push('Send me the address you want it shipped to and I will get it out to you.');
   } else if (order.delivery === 'ship') {
@@ -401,23 +393,12 @@ function reviewMessage(order, settings = DEFAULT_SETTINGS) {
 }
 
 /**
- * Payment options to print on an invoice. Card first when the invoice can
- * take one; the rest come from the handles saved in settings.
+ * Payment options to print on an invoice. Stripe card checkout is the only
+ * way buyers pay, so this is the card option or nothing (Stripe not set up,
+ * or a total under Stripe's minimum).
  */
-function paymentOptions(settings, order, { cardEnabled = true } = {}) {
-  const s = mergeSettings(settings);
-  const amt = order ? Number(order.amountTotal || 0).toFixed(2) : '';
-  const out = [];
-  if (cardEnabled) out.push({ key: 'card', label: 'Card', handle: '' });
-  const cash = String(s.cashapp || '').replace(/^\$/, '').trim();
-  if (cash) out.push({ key: 'cashapp', label: 'Cash App', handle: '$' + cash, url: `https://cash.app/$${encodeURIComponent(cash)}${amt ? '/' + amt : ''}` });
-  const ven = String(s.venmo || '').replace(/^@/, '').trim();
-  if (ven) out.push({ key: 'venmo', label: 'Venmo', handle: '@' + ven, url: `https://venmo.com/u/${encodeURIComponent(ven)}` });
-  const zel = String(s.zelle || '').trim();
-  if (zel) out.push({ key: 'zelle', label: 'Zelle', handle: zel });
-  const pp = String(s.paypal || '').replace(/^https?:\/\/(www\.)?paypal\.me\//i, '').replace(/\/.*$/, '').trim();
-  if (pp) out.push({ key: 'paypal', label: 'PayPal', handle: 'paypal.me/' + pp, url: `https://paypal.me/${encodeURIComponent(pp)}${amt ? '/' + amt : ''}` });
-  return out;
+function paymentOptions(_settings, _order, { cardEnabled = true } = {}) {
+  return cardEnabled ? [{ key: 'card', label: 'Card', handle: '' }] : [];
 }
 
 function lowStock(onHand, settings = DEFAULT_SETTINGS, reorderAt = null) {
