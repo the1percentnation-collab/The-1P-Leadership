@@ -6982,10 +6982,38 @@ body.academy-course .ak-topbar { position: static; }
 .c-notif-row:hover { background: rgba(255,255,255,0.04); color: var(--white); }
 .c-notif-row.unread { background: rgba(204,27,27,0.06); }
 .c-notif-icon {
-  font-size: 14px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
   color: var(--gray-light);
 }
+.c-notif-icon svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.c-notif-icon--hot {
+  color: #FF6B6B;
+  border-color: rgba(230,3,6,0.45);
+  background: rgba(230,3,6,0.10);
+  box-shadow: 0 0 8px rgba(230,3,6,0.25);
+}
+.c-notif-icon--win {
+  color: #FFD56F;
+  border-color: rgba(255,213,111,0.45);
+  background: rgba(255,213,111,0.08);
+  box-shadow: 0 0 8px rgba(255,213,111,0.18);
+}
+.c-notif-row:hover .c-notif-icon--neutral { color: var(--white); border-color: rgba(255,255,255,0.2); }
 .c-notif-body { min-width: 0; }
 .c-notif-line {
   font-size: 13px;
