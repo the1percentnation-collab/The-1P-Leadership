@@ -645,7 +645,11 @@ export function renderTopbar({
 
   const bellHtml = withBell ? `
     <button class="c-bell" id="btn-bell" title="Notifications" aria-label="Notifications">
-      <span class="c-bell-icon">🔔</span>
+      <svg class="c-bell-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/>
+        <path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>
+        <path class="c-bell-core" d="M12 9.5v3.5"/>
+      </svg>
       <span class="c-bell-badge" id="bell-badge" hidden>0</span>
     </button>
     <div class="c-notif-popover" id="notif-popover" hidden></div>
@@ -653,7 +657,10 @@ export function renderTopbar({
 
   const searchHtml = withSearch ? `
     <button class="c-search-btn" id="btn-search" title="Search" aria-label="Search">
-      <span class="c-search-icon">🔍</span>
+      <svg class="c-search-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="10.5" cy="10.5" r="6"/>
+        <path d="M15 15l5 5"/>
+      </svg>
     </button>
   ` : '';
 
