@@ -4156,6 +4156,17 @@ function clampPreview(text) {
 }
 
 /**
+ * Where a push about a post opens. Same shape as the bell's notifHref
+ * (topbar.js): the channel in the query, the post in the hash, which is what
+ * community-page.js reads. `?post=` alone is ignored there and lands the
+ * reader in #general.
+ */
+function communityPostUrl(category, postId) {
+  const channel = encodeURIComponent(category || 'general');
+  return `${APP_BASE_URL}/community.html?channel=${channel}#post-${encodeURIComponent(postId || '')}`;
+}
+
+/**
  * Send a multicast FCM push to a user's registered tokens. Best-effort:
  * never throws. Prunes tokens that come back as not-registered.
  */
@@ -4302,13 +4313,178 @@ async function fanOutMentions(db, mentionedUids, ctx) {
         title: `${ctx.fromName || 'Someone'} mentioned you`,
         body: clampPreview(ctx.preview),
         data: {
-          url: `${APP_BASE_URL}/community.html?post=${encodeURIComponent(ctx.postId)}`,
+          url: communityPostUrl(ctx.category, ctx.postId),
           type: 'mention',
           postId: ctx.postId
         }
       }).catch(() => {});
     }
   }
+}
+
+// ── New threads → everyone following the channel ────────────────────
+// A new post rings the bell (and the phone) of each member who follows its
+// channel. Following is users/{uid}.channelAlerts[channelKey]:
+//   'all'      — every new thread
+//   'mentions' — only @mentions (which fanOutMentions already covers)
+// Absent means the channel's default: members of a private channel asked to
+// join a small room, so they default to 'all'. Everyone else, including staff
+// who can read a private channel without being in it, defaults to 'mentions',
+// or a growing community buzzes every phone on every post.
+// notifPrefs.newThreads === false turns thread alerts off everywhere.
+//
+// One rolling bell row per channel (`thread_{channelKey}`) counts up while it
+// sits unread, so a busy hour reads "4 new threads in Wins", not four rows.
+// The phone hears about the first one, then at most once per
+// THREAD_ALERT_THROTTLE_MS until the member opens the row.
+
+const THREAD_ALERT_THROTTLE_MS = 15 * 60 * 1000;
+
+/** 'all' | 'mentions' for this member in this channel. */
+function channelAlertLevel(user, channelKey, isPrivateMember) {
+  const v = user && user.channelAlerts && user.channelAlerts[channelKey];
+  if (v === 'all' || v === 'mentions') return v;
+  return isPrivateMember ? 'all' : 'mentions';
+}
+
+/**
+ * Should `uid` hear about this new thread? Never the author, never someone
+ * the post @mentions (they get the mention instead), and never anyone who
+ * could not open the post: the same read rules as firestore.rules, so a
+ * company post never pings another company and a private channel never
+ * pings a non-member.
+ */
+function threadAlertShouldNotify(uid, user, { post, isPrivate, channelKey, memberUids }) {
+  if (!uid || !user || !post) return false;
+  if (uid === post.authorUid) return false;
+  if (Array.isArray(post.mentionedUids) && post.mentionedUids.includes(uid)) return false;
+  const prefs = user.notifPrefs || {};
+  if (prefs.newThreads === false) return false;
+  const role = user.role || 'user';
+  const isMember = isPrivate && Array.isArray(memberUids) && memberUids.includes(uid);
+  if (channelAlertLevel(user, channelKey, isMember) !== 'all') return false;
+  if (isPrivate) return isMember || role === 'owner' || role === 'admin';
+  return post.companyId == null || role === 'owner' || (!!user.companyId && user.companyId === post.companyId);
+}
+
+/**
+ * Next state of a member's rolling thread row, from the existing row (or
+ * null). { count, push, wasUnread }.
+ */
+function threadAlertNext(existing, nowMs) {
+  if (!existing || existing.read !== false) return { count: 1, push: true, wasUnread: false };
+  const count = (Number(existing.threadCount) || 1) + 1;
+  const p = existing.pushedAt;
+  const last = p && typeof p.toMillis === 'function' ? p.toMillis() : Number(p) || 0;
+  return { count, push: !last || nowMs - last >= THREAD_ALERT_THROTTLE_MS, wasUnread: true };
+}
+
+/** Push title and body for a thread alert. */
+function threadAlertCopy({ channelName, fromName, preview, count }) {
+  const who = fromName || 'Someone';
+  const where = channelName || 'the community';
+  if (count > 1) {
+    return {
+      title: `${count} new threads in ${where}`,
+      body: clampPreview(preview ? `Latest from ${who}: ${preview}` : `Latest from ${who}.`)
+    };
+  }
+  return { title: `${who} posted in ${where}`, body: clampPreview(preview) || 'Tap to read the new thread.' };
+}
+
+/** Upsert one member's rolling row in a transaction; returns threadAlertNext's result. */
+async function notifyThread(db, uid, ctx, nowMs) {
+  const userRef = db.collection('users').doc(uid);
+  const notifRef = userRef.collection('notifications').doc(`thread_${ctx.channelKey}`);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(notifRef);
+    const next = threadAlertNext(snap.exists ? snap.data() : null, nowMs);
+    tx.set(notifRef, {
+      type: 'new_thread',
+      fromUid: ctx.fromUid || null,
+      fromName: ctx.fromName || '',
+      fromAvatar: ctx.fromAvatar || null,
+      title: null,
+      postId: ctx.postId,
+      commentId: null,
+      category: ctx.channelKey,
+      channelName: ctx.channelName || null,
+      preview: clampPreview(ctx.preview),
+      link: null,
+      image: null,
+      threadCount: next.count,
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      ...(next.push ? { pushedAt: admin.firestore.Timestamp.fromMillis(nowMs) } : {})
+    }, { merge: true });
+    if (!next.wasUnread) {
+      tx.set(userRef, { unreadNotifCount: admin.firestore.FieldValue.increment(1) }, { merge: true });
+    }
+    return next;
+  });
+}
+
+const THREAD_FANOUT_CONCURRENCY = 20;
+
+async function fanOutNewThread(db, postId, post, channelKey) {
+  const key = channelKey || post.category || 'general';
+  const isPrivate = !!channelKey;
+  let chan = {};
+  try {
+    const s = await db.collection('channels').doc(key).get();
+    if (s.exists) chan = s.data() || {};
+  } catch (e) { /* the four core channels may have no doc */ }
+  const channelName = chan.name || key.charAt(0).toUpperCase() + key.slice(1);
+  const memberUids = Array.isArray(chan.memberUids) ? chan.memberUids : [];
+
+  // Candidates: everyone who chose 'all' here, plus (private) every member,
+  // whose default is 'all'. The filter below settles each one.
+  const users = new Map();
+  const optIns = await db.collection('users')
+    .where(new admin.firestore.FieldPath('channelAlerts', key), '==', 'all').get();
+  optIns.forEach((d) => users.set(d.id, d.data() || {}));
+  if (isPrivate) {
+    const missing = memberUids.filter((u) => typeof u === 'string' && u && !users.has(u));
+    for (let i = 0; i < missing.length; i += 100) {
+      const snaps = await db.getAll(...missing.slice(i, i + 100).map((u) => db.collection('users').doc(u)));
+      snaps.forEach((s) => { if (s.exists) users.set(s.id, s.data() || {}); });
+    }
+  }
+
+  const ctx = {
+    channelKey: key,
+    channelName,
+    postId,
+    fromUid: post.authorUid,
+    fromName: post.authorName || '',
+    fromAvatar: post.authorAvatar || null,
+    preview: post.text || ''
+  };
+  const recipients = [...users.keys()].filter((uid) =>
+    threadAlertShouldNotify(uid, users.get(uid), { post, isPrivate, channelKey: key, memberUids }));
+  const nowMs = Date.now();
+  let notified = 0;
+  let pushed = 0;
+  for (let i = 0; i < recipients.length; i += THREAD_FANOUT_CONCURRENCY) {
+    await Promise.all(recipients.slice(i, i + THREAD_FANOUT_CONCURRENCY).map(async (uid) => {
+      try {
+        const next = await notifyThread(db, uid, ctx, nowMs);
+        notified += 1;
+        if (!next.push) return;
+        const copy = threadAlertCopy({ channelName, fromName: ctx.fromName, preview: ctx.preview, count: next.count });
+        const r = await pushToUser(db, uid, {
+          title: copy.title,
+          body: copy.body,
+          data: { url: communityPostUrl(key, postId), type: 'new_thread', postId, channel: key }
+        });
+        pushed += r.sent || 0;
+      } catch (err) {
+        console.error(`[thread] notify ${uid} failed:`, err && err.message);
+      }
+    }));
+  }
+  console.log(`[thread] ${key}/${postId} → ${notified} member(s), ${pushed} push(es)`);
+  return { notified, pushed };
 }
 
 // ── Announcements → the bell ────────────────────────────────────────
@@ -4520,6 +4696,13 @@ async function handlePostCreated(event, channelKey) {
     } catch (err) {
       console.error('[onPostCreated] mention fan-out failed:', err && err.message);
     }
+
+    // New-thread alerts for everyone following the channel.
+    try {
+      await fanOutNewThread(db, snap.id, post, channelKey);
+    } catch (err) {
+      console.error('[onPostCreated] thread fan-out failed:', err && err.message);
+    }
 }
 
 exports.onPostCreated = onDocumentCreated(
@@ -4573,7 +4756,7 @@ async function handleCommentCreated(event, channelKey) {
             title: `${comment.authorName || 'Someone'} commented on your post`,
             body: clampPreview(comment.text || ''),
             data: {
-              url: `${APP_BASE_URL}/community.html?post=${encodeURIComponent(postId)}`,
+              url: communityPostUrl(postData.category, postId),
               type: 'comment',
               postId
             }
@@ -4682,7 +4865,7 @@ async function handleLikeWritten(event, channelKey) {
               title: `${likerName || 'Someone'} liked your post`,
               body: clampPreview(post.text || ''),
               data: {
-                url: `${APP_BASE_URL}/community.html?post=${encodeURIComponent(postId)}`,
+                url: communityPostUrl(post.category, postId),
                 type: 'like',
                 postId
               }
@@ -10788,8 +10971,31 @@ function validateCommitmentInput(data, today) {
   const reminderTime = String(d.reminderTime || '');
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(reminderTime)) return { error: 'Pick a reminder time.' };
   const ch = d.channels || {};
-  const channels = { email: ch.email !== false, inapp: ch.inapp !== false, push: ch.push === true };
+  const push = ch.push === true;
+  // pushOptOut is written every time, so a merge-save never keeps an old
+  // opt-out alive under a plan that now wants push. See courseReminderWantsPush.
+  const channels = { email: ch.email !== false, inapp: ch.inapp !== false, push, pushOptOut: !push && ch.pushOptOut === true };
   return { value: { goalDate, weeklyMinutes, sessionMinutes, days, reminderTime, channels } };
+}
+
+/**
+ * Does this course reminder go to the member's phone too?
+ *
+ * Push follows the member's notification settings, not just the commit-page
+ * checkbox: anyone who has turned push on (on the community page, their
+ * profile, or here) gets their course reminders there. `channels.push` was
+ * false by default for every plan saved before that, including plans made
+ * on a device that could not show the toggle, so a stored false is not a
+ * refusal. Only `pushOptOut` (unticked for this course) or
+ * notifPrefs.courseReminders === false (off everywhere) is. Members with no
+ * registered device are skipped by pushToUser itself.
+ */
+function courseReminderWantsPush(channels, notifPrefs) {
+  const prefs = notifPrefs || {};
+  if (prefs.courseReminders === false) return false;
+  const ch = channels || {};
+  if (ch.push === true) return true;
+  return ch.pushOptOut !== true;
 }
 
 const PARKINSON_LINES = [
@@ -10941,7 +11147,7 @@ async function sendCourseWorkReminders(db, { now = new Date() } = {}) {
         } catch (e) { console.warn('[tick] course reminder in-app failed', e && e.message); }
       }
 
-      if (ch.push === true) {
+      if (courseReminderWantsPush(ch, u.notifPrefs)) {
         const r = await pushToUser(db, uid, {
           title: msg.subject,
           body: msg.body,

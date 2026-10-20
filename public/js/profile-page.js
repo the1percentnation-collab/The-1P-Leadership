@@ -5,7 +5,8 @@ import { onAuthReady, signOut } from './auth.js';
 import { ensureOnboarded } from './onboarding-guard.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import { getRoleInfo } from './roles.js';
-import { getUserProfile, updateOwnProfile, uploadAvatar, avatarHtml, escapeHtml } from './community.js';
+import { getUserProfile, updateOwnProfile, uploadAvatar, avatarHtml, escapeHtml, listChannels, canAccessChannel } from './community.js';
+import { renderNotifSettings } from './notify-prefs.js';
 import {
   collection, getDocs, query, where, getCountFromServer
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -161,6 +162,14 @@ function renderEdit(me) {
               <input id="field-phone" class="profile-input" type="tel" value="${val(me.phone)}" placeholder="+1 555 123 4567">
             </div>
           </div>
+        </section>
+
+        <section class="profile-card" id="notifications">
+          <div class="profile-card-head">
+            <h2>Notifications</h2>
+            <p>Choose what reaches your phone and the bell. Changes save as you make them.</p>
+          </div>
+          <div id="notif-settings" class="profile-save-status">Loading…</div>
         </section>
 
         <section class="profile-card" id="my-assessments">
@@ -417,6 +426,20 @@ async function renderView(profile, viewer) {
   `;
 }
 
+async function renderMyNotifSettings(uid, profile, role) {
+  const root = $('notif-settings');
+  if (!root) return;
+  const isStaff = role === 'owner' || role === 'admin';
+  let channels = [];
+  try {
+    channels = (await listChannels({ isAdmin: isStaff })).filter((c) => canAccessChannel(c, uid, isStaff));
+  } catch (e) { /* settings still work without the channel list */ }
+  root.className = 'np-settings';
+  await renderNotifSettings(root, { uid, profile, channels });
+  // Arriving from a "manage notifications" link scrolls straight here.
+  if (location.hash === '#notifications') $('notifications').scrollIntoView({ block: 'start' });
+}
+
 async function main() {
   if (!firebaseReady) {
     $('panel').innerHTML = `<div class="card"><div class="auth-error">Firebase is unavailable.</div></div>`;
@@ -456,6 +479,7 @@ async function main() {
   const urlUid = new URLSearchParams(location.search).get('uid');
   if (!urlUid || urlUid === u.uid) {
     renderEdit(me);
+    renderMyNotifSettings(u.uid, myProfile, info.role);
   } else {
     // Read-only view of another user. Firestore rules allow self + owner + company admin
     // of target's company. Regular company users cannot read peer user docs directly, so

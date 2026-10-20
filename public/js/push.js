@@ -10,7 +10,7 @@
 // it's configured.
 
 import { app, db, firebaseReady } from './firebase.js';
-import { doc, setDoc, arrayUnion } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { doc, setDoc, arrayUnion, arrayRemove } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const VAPID_PUBLIC_KEY = 'BF4PAT5i-T4_ozQ3-k1ekN4jT8I5KDBnj1pYkyoH6khh3mAizYJQny_4KQpkKP1BKG4BWGZQot6FXugy06DqphU'; // <-- paste your Web Push public key here
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
@@ -79,9 +79,78 @@ export async function enablePush(uid) {
     }
     if (!token) return { ok: false, reason: 'error', message: 'no token returned' };
     await setDoc(doc(db, 'users', uid), { fcmTokens: arrayUnion(token) }, { merge: true });
+    rememberToken(token);
     return { ok: true };
   } catch (e) {
     console.warn('[push] enable failed', e);
     return { ok: false, reason: 'error', message: String((e && e.message) || e) };
   }
 }
+
+// This device's token, remembered so checking status never calls getToken:
+// with permission granted and no token, getToken mints a new subscription.
+// 'off' marks a device the member switched off here.
+const TOKEN_KEY = 'fcmTokenHere';
+function rememberToken(v) {
+  try { localStorage.setItem(TOKEN_KEY, v); } catch (e) { /* private mode */ }
+}
+function rememberedToken() {
+  try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; }
+}
+
+/**
+ * This device's token, without prompting. Devices that turned push on before
+ * the token was remembered still have their registration, and getToken
+ * returns the existing token for it rather than minting one.
+ */
+async function currentToken() {
+  if (!(await pushAvailable()) || Notification.permission !== 'granted') return null;
+  const saved = rememberedToken();
+  if (saved === 'off') return null;
+  if (saved) return saved;
+  const reg = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js');
+  if (!reg) return null;
+  await whenActive(reg);
+  const { getMessaging, getToken } = await import(SDK);
+  const token = await getToken(getMessaging(app), { vapidKey: VAPID_PUBLIC_KEY, serviceWorkerRegistration: reg });
+  if (token) rememberToken(token);
+  return token || null;
+}
+
+/**
+ * Is push on for THIS device? True when the browser allows it and this
+ * device's token is among the member's saved tokens (`fcmTokens` from their
+ * user doc). Never prompts.
+ */
+export async function pushEnabledHere(fcmTokens) {
+  try {
+    const token = await currentToken();
+    return !!token && Array.isArray(fcmTokens) && fcmTokens.includes(token);
+  } catch (e) {
+    return false;
+  }
+}
+
+/** Stop push to this device: drop its token server-side and in the browser. */
+export async function disablePush(uid) {
+  try {
+    const token = await currentToken();
+    if (!token) return { ok: true };
+    await setDoc(doc(db, 'users', uid), { fcmTokens: arrayRemove(token) }, { merge: true });
+    rememberToken('off');
+    const { getMessaging, deleteToken } = await import(SDK);
+    try { await deleteToken(getMessaging(app)); } catch (e) { /* server copy is already gone */ }
+    return { ok: true };
+  } catch (e) {
+    console.warn('[push] disable failed', e);
+    return { ok: false, reason: 'error', message: String((e && e.message) || e) };
+  }
+}
+
+/** Member-facing copy for each enablePush failure reason. */
+export const PUSH_ERRORS = {
+  denied: 'Notifications are blocked for this site. Allow them in your browser settings, then try again.',
+  dismissed: 'No problem. You can turn notifications on any time from your profile.',
+  unsupported: 'Push isn\'t available in this browser.',
+  error: 'Couldn\'t turn on notifications just now. Try again.'
+};

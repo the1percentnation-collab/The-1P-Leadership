@@ -27,8 +27,8 @@ function grab(name) {
 }
 const linesSrc = src.slice(src.indexOf('const PARKINSON_LINES'), src.indexOf('];', src.indexOf('const PARKINSON_LINES')) + 2);
 const server = new Function(
-  [linesSrc, grab('commitmentLocalClock'), grab('commitmentDue'), grab('validateCommitmentInput'), grab('courseReminderMessage')].join('\n')
-  + '\nreturn { commitmentLocalClock, commitmentDue, validateCommitmentInput, courseReminderMessage };'
+  [linesSrc, grab('commitmentLocalClock'), grab('commitmentDue'), grab('validateCommitmentInput'), grab('courseReminderMessage'), grab('courseReminderWantsPush')].join('\n')
+  + '\nreturn { commitmentLocalClock, commitmentDue, validateCommitmentInput, courseReminderMessage, courseReminderWantsPush };'
 )();
 
 let passed = 0;
@@ -150,7 +150,15 @@ ok('accepts a sane plan and normalizes it', () => {
   const r = server.validateCommitmentInput(input, '2026-09-24');
   assert.equal(r.error, undefined);
   assert.deepEqual(r.value.days, [1, 3, 5]);
-  assert.deepEqual(r.value.channels, { email: true, inapp: true, push: true });
+  assert.deepEqual(r.value.channels, { email: true, inapp: true, push: true, pushOptOut: false });
+});
+
+ok('an unticked push box is only an opt-out when the member said so', () => {
+  const v = (channels) => server.validateCommitmentInput({ ...input, channels }, '2026-09-24').value.channels;
+  assert.equal(v({ push: false }).pushOptOut, false);
+  assert.equal(v({ push: false, pushOptOut: true }).pushOptOut, true);
+  // Turning push back on clears an old opt-out rather than leaving both set.
+  assert.equal(v({ push: true, pushOptOut: true }).pushOptOut, false);
 });
 
 ok('rejects bad input', () => {
@@ -165,6 +173,27 @@ ok('rejects bad input', () => {
   assert.ok(bad({ days: [7] }));
   assert.ok(bad({ reminderTime: '7pm' }));
   assert.ok(bad({ reminderTime: '24:00' }));
+});
+
+console.log('\nserver: courseReminderWantsPush');
+
+ok('a plan that ticked push gets push', () => {
+  assert.equal(server.courseReminderWantsPush({ push: true }, {}), true);
+});
+ok('older plans saved push:false by default, which is not a refusal', () => {
+  assert.equal(server.courseReminderWantsPush({ email: true, inapp: true, push: false }, {}), true);
+  assert.equal(server.courseReminderWantsPush(undefined, undefined), true);
+});
+ok('unticking push on the plan opts that course out', () => {
+  assert.equal(server.courseReminderWantsPush({ push: false, pushOptOut: true }, {}), false);
+});
+ok('turning course reminders off in settings wins over the plan', () => {
+  assert.equal(server.courseReminderWantsPush({ push: true }, { courseReminders: false }), false);
+});
+ok('the tick asks courseReminderWantsPush, not the bare checkbox', () => {
+  const body = grab('sendCourseWorkReminders');
+  assert.match(body, /courseReminderWantsPush\(ch, u\.notifPrefs\)/);
+  assert.doesNotMatch(body, /ch\.push === true/);
 });
 
 console.log('\nserver: courseReminderMessage');
