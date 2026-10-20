@@ -4360,10 +4360,21 @@ function threadAlertShouldNotify(uid, user, { post, isPrivate, channelKey, membe
   if (Array.isArray(post.mentionedUids) && post.mentionedUids.includes(uid)) return false;
   const prefs = user.notifPrefs || {};
   if (prefs.newThreads === false) return false;
-  const role = user.role || 'user';
   const isMember = isPrivate && Array.isArray(memberUids) && memberUids.includes(uid);
   if (channelAlertLevel(user, channelKey, isMember) !== 'all') return false;
-  if (isPrivate) return isMember || role === 'owner' || role === 'admin';
+  return canReadThread(uid, user, { post, isPrivate, memberUids });
+}
+
+/**
+ * Could `uid` open this post? The read rules from firestore.rules: private
+ * channels are members and staff; public posts are global, or the post's
+ * company, or the owner.
+ */
+function canReadThread(uid, user, { post, isPrivate, memberUids }) {
+  const role = (user && user.role) || 'user';
+  if (isPrivate) {
+    return role === 'owner' || role === 'admin' || (Array.isArray(memberUids) && memberUids.includes(uid));
+  }
   return post.companyId == null || role === 'owner' || (!!user.companyId && user.companyId === post.companyId);
 }
 
@@ -11162,6 +11173,216 @@ async function sendCourseWorkReminders(db, { now = new Date() } = {}) {
   return out;
 }
 
+// ════════════════════════════════════════════════════════════════
+// Community digest — the daily email for members without push.
+// Push reaches members in real time; everyone with no push device instead
+// gets one evening email listing the new threads they can read, and only on
+// days that have some. Once per Eastern date, from DIGEST_HOUR on (the tick
+// runs about hourly). The claim on users/{uid}.communityDigest.date makes it
+// once-only even when ticks overlap. notifPrefs.digest === false, or an
+// opt-out on the member's CRM contact (unsubscribe, bounce, spam report),
+// stops it.
+// ════════════════════════════════════════════════════════════════
+
+const DIGEST_TIMEZONE = 'America/New_York';
+const DIGEST_HOUR = 18;
+const DIGEST_LOOKBACK_MS = 24 * 3600 * 1000;
+const DIGEST_MAX_THREADS = 6;
+
+function digestEligible(u) {
+  if (!u || !u.email) return false;
+  if (u.notifPrefs && u.notifPrefs.digest === false) return false;
+  return !(Array.isArray(u.fcmTokens) && u.fcmTokens.length);
+}
+
+/**
+ * The threads one member's digest lists. `threads` rows are
+ * { id, post, channelKey, channelName, isPrivate, memberUids }. Drops the
+ * member's own posts, anything older than `sinceMs` and anything they could
+ * not open; liveliest first, then newest. { total, top }.
+ */
+function digestThreadsFor(uid, user, threads, sinceMs) {
+  const ms = (t) => (t && typeof t.toMillis === 'function' ? t.toMillis() : Number(t) || 0);
+  const mine = threads.filter((t) => t.post.authorUid !== uid
+    && ms(t.post.createdAt) > sinceMs
+    && canReadThread(uid, user, t));
+  const heat = (t) => (Number(t.post.commentCount) || 0) + (Number(t.post.likeCount) || 0);
+  mine.sort((a, b) => heat(b) - heat(a) || ms(b.post.createdAt) - ms(a.post.createdAt));
+  return { total: mine.length, top: mine.slice(0, DIGEST_MAX_THREADS) };
+}
+
+/** Signed per-member token for the one-click digest unsubscribe. */
+function digestUnsubToken(uid, secret) {
+  return crypto.createHmac('sha256', String(secret)).update(`digest:${uid}`).digest('hex').slice(0, 32);
+}
+
+function digestUnsubscribeUrl(uid, secret) {
+  const q = new URLSearchParams({ u: uid, t: digestUnsubToken(uid, secret) });
+  return `${APP_BASE_URL}/digest-unsubscribe.html?${q.toString()}`;
+}
+
+/** Subject, HTML and text for one digest. Pure, so the copy is testable. */
+function communityDigestMessage({ total, top }, unsubUrl) {
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  const first = top[0];
+  const subject = total === 1
+    ? `${first.post.authorName || 'Someone'} posted in ${first.channelName}`
+    : `${total} new threads in the community`;
+  const more = total - top.length;
+  const settingsUrl = `${APP_BASE_URL}/profile.html#notifications`;
+  const rows = top.map((t) => {
+    const url = communityPostUrl(t.channelKey, t.id);
+    const replies = Number(t.post.commentCount) || 0;
+    return { t, url, replies, preview: clampPreview(t.post.text || '') || 'Shared an image.' };
+  });
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:8px;">
+    <h2 style="color:#E60306;margin:0 0 6px;font-size:22px;">Today in the community</h2>
+    <p style="font-size:15px;color:#444;margin:0 0 20px;">${total === 1 ? 'A new thread' : `${total} new threads`} since yesterday.</p>
+    ${rows.map((r) => `<a href="${esc(r.url)}" style="display:block;text-decoration:none;color:#222;border:1px solid #eee;border-radius:10px;padding:14px 16px;margin:0 0 10px;">
+      <div style="font-size:12px;color:#888;margin:0 0 4px;">${esc(r.t.channelName)} · ${esc(r.t.post.authorName || 'A member')}${r.replies ? ` · ${r.replies} repl${r.replies === 1 ? 'y' : 'ies'}` : ''}</div>
+      <div style="font-size:15px;line-height:1.45;">${esc(r.preview)}</div>
+    </a>`).join('')}
+    ${more > 0 ? `<p style="font-size:14px;color:#444;margin:4px 0 0;">Plus ${more} more.</p>` : ''}
+    <p style="margin:22px 0 24px;"><a href="${APP_BASE_URL}/community.html" style="display:inline-block;background:#E60306;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px;">Open the community →</a></p>
+    <p style="font-size:12px;color:#888;margin:0;">You get this because push notifications are off for you. <a href="${esc(settingsUrl)}" style="color:#888;">Turn on push</a> to hear in real time, or <a href="${esc(unsubUrl)}" style="color:#888;">stop the daily digest</a>.</p>
+    <p style="font-size:12px;color:#888;margin:6px 0 0;">The One Percent Academy</p>
+  </div>`;
+  const text = [
+    `Today in the community: ${total === 1 ? 'a new thread' : `${total} new threads`} since yesterday.`,
+    '',
+    ...rows.map((r) => `${r.t.channelName} · ${r.t.post.authorName || 'A member'}\n${r.preview}\n${r.url}\n`),
+    more > 0 ? `Plus ${more} more.\n` : '',
+    `Open the community: ${APP_BASE_URL}/community.html`,
+    '',
+    `Turn on push: ${settingsUrl}`,
+    `Stop the daily digest: ${unsubUrl}`
+  ].join('\n');
+  return { subject, html, text };
+}
+
+/** Every thread posted since `sinceMs`, public and private, tagged with its channel. */
+async function loadDigestThreads(db, sinceMs) {
+  const since = admin.firestore.Timestamp.fromMillis(sinceMs);
+  const chanSnap = await db.collection('channels').get();
+  const chans = new Map(chanSnap.docs.map((d) => [d.id, d.data() || {}]));
+  const nameOf = (key) => (chans.get(key) && chans.get(key).name) || key.charAt(0).toUpperCase() + key.slice(1);
+  const out = [];
+
+  const pub = await db.collection('posts').where('createdAt', '>', since).get();
+  pub.forEach((d) => {
+    const post = d.data() || {};
+    const key = post.category || 'general';
+    out.push({ id: d.id, post, channelKey: key, channelName: nameOf(key), isPrivate: false, memberUids: [] });
+  });
+
+  for (const [key, c] of chans) {
+    if (c.visibility !== 'private') continue;
+    const snap = await db.collection('channels').doc(key).collection('posts').where('createdAt', '>', since).get();
+    const memberUids = Array.isArray(c.memberUids) ? c.memberUids : [];
+    snap.forEach((d) => out.push({ id: d.id, post: d.data() || {}, channelKey: key, channelName: nameOf(key), isPrivate: true, memberUids }));
+  }
+  return out;
+}
+
+/** Tick step: send today's community digests, once the evening has arrived. */
+async function sendCommunityDigests(db, { now = new Date(), dryRun = false } = {}) {
+  const clock = commitmentLocalClock(now, DIGEST_TIMEZONE);
+  if (!clock || clock.minutes < DIGEST_HOUR * 60) return { skipped: 'before send time' };
+  const secret = (process.env.CRM_TICK_SECRET || '').trim();
+  if (!secret) return { skipped: 'CRM_TICK_SECRET is not set' };
+
+  const out = { eligible: 0, empty: 0, sent: 0, suppressed: 0, failed: 0, notConfigured: 0 };
+  const nowMs = now.getTime();
+  const threads = await loadDigestThreads(db, nowMs - DIGEST_LOOKBACK_MS);
+  if (!threads.length) return { ...out, threads: 0 };
+  out.threads = threads.length;
+
+  const usersSnap = await db.collection('users').get();
+  for (const d of usersSnap.docs) {
+    const u = d.data() || {};
+    if (!digestEligible(u)) continue;
+    const last = u.communityDigest || {};
+    if (last.date === clock.date) continue;
+    out.eligible++;
+    const lastMs = last.sentAt && typeof last.sentAt.toMillis === 'function' ? last.sentAt.toMillis() : 0;
+    const picked = digestThreadsFor(d.id, u, threads, Math.max(lastMs, nowMs - DIGEST_LOOKBACK_MS));
+    if (!picked.total) { out.empty++; continue; }
+
+    // A member whose CRM contact opted out (unsubscribe link, bounce, spam
+    // report) gets no digest either. Checked before the dry-run exit so a
+    // dry run reports who would really get one.
+    if (u.crmCompanyId && u.crmContactId) {
+      try {
+        const c = await db.collection('companies').doc(u.crmCompanyId).collection('contacts').doc(u.crmContactId).get();
+        if (c.exists && isEmailSuppressed(c.data())) { out.suppressed++; continue; }
+      } catch (e) { /* no contact: nothing to honor */ }
+    }
+    if (dryRun) { out.wouldSend = (out.wouldSend || 0) + 1; continue; }
+    if (!emailConfigured()) { out.notConfigured++; continue; }
+
+    // Claim the day before sending, so overlapping ticks can't double-send.
+    let claimed = false;
+    try {
+      claimed = await db.runTransaction(async (tx) => {
+        const s = await tx.get(d.ref);
+        if (((s.data() || {}).communityDigest || {}).date === clock.date) return false;
+        tx.set(d.ref, { communityDigest: { date: clock.date, sentAt: admin.firestore.Timestamp.fromMillis(nowMs) } }, { merge: true });
+        return true;
+      });
+    } catch (e) { claimed = false; }
+    if (!claimed) continue;
+
+    const unsub = digestUnsubscribeUrl(d.id, secret);
+    const msg = communityDigestMessage(picked, unsub);
+    try {
+      await sendEmail({
+        to: u.email, from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
+        subject: msg.subject, html: msg.html, text: msg.text,
+        headers: {
+          'List-Unsubscribe': `<${APP_BASE_URL}/api/digest-unsubscribe?u=${encodeURIComponent(d.id)}&t=${digestUnsubToken(d.id, secret)}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+        },
+        customArgs: { type: 'community_digest', uid: d.id }
+      });
+      out.sent++;
+    } catch (e) {
+      out.failed++;
+      if (!out.error) out.error = String((e && e.message) || e).slice(0, 200);
+      console.warn('[tick] community digest failed', d.id, e && e.message);
+    }
+  }
+  return out;
+}
+
+/**
+ * digestUnsubscribe — POST /api/digest-unsubscribe?u=&t=
+ *
+ * Stops the daily digest for one member. POST only: mail scanners prefetch
+ * GET links, and a prefetch must not unsubscribe anyone. The email's footer
+ * opens /digest-unsubscribe.html, which POSTs here on a click; mail clients
+ * POST here directly through List-Unsubscribe-Post. A bad token and an
+ * unknown member both answer { ok: false }.
+ */
+exports.digestUnsubscribe = onRequest({ cors: false }, async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).json({ ok: false }); return; }
+  const uid = String(req.query.u || '').trim();
+  const token = String(req.query.t || '').trim();
+  const secret = (process.env.CRM_TICK_SECRET || '').trim();
+  if (!uid || !token || !secret || !timingSafeEqualStr(token, digestUnsubToken(uid, secret))) {
+    res.status(200).json({ ok: false });
+    return;
+  }
+  try {
+    const ref = admin.firestore().collection('users').doc(uid);
+    if (!(await ref.get()).exists) { res.status(200).json({ ok: false }); return; }
+    await ref.set({ notifPrefs: { digest: false } }, { merge: true });
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error('[digestUnsubscribe] failed:', err && err.message);
+    res.status(200).json({ ok: false });
+  }
+});
+
 // Constant-time string compare that tolerates unequal lengths.
 //
 // crypto.timingSafeEqual throws a RangeError when the two buffers differ in
@@ -11196,7 +11417,7 @@ async function runTick(db, { dryRun = false } = {}) {
     return { error: (e && e.message) || String(e) };
   });
 
-  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges] = await Promise.all([
+  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest] = await Promise.all([
     step('sequences', processDueEnrollments(db, { dryRun })),
     // These only ever renew or send; there is nothing to preview, so a dry
     // run skips them rather than pretending to measure something.
@@ -11205,10 +11426,12 @@ async function runTick(db, { dryRun = false } = {}) {
     step('courseReminders', dryRun ? { skipped: 'dryRun' } : sendCourseWorkReminders(db)),
     step('launches', promoteLaunchedItems(db, { dryRun })),
     step('announcements', fanOutDueAnnouncements(db, { dryRun })),
-    step('reviewNudges', dryRun ? { skipped: 'dryRun' } : sendReviewNudges(db))
+    step('reviewNudges', dryRun ? { skipped: 'dryRun' } : sendReviewNudges(db)),
+    // A dry run counts who would get a digest today without sending or claiming.
+    step('communityDigest', sendCommunityDigests(db, { dryRun }))
   ]);
 
-  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges };
+  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest };
   const failedSteps = Object.keys(steps).filter((k) => steps[k] && steps[k].error);
   const summary = { ok: failedSteps.length === 0, dryRun, ms: Date.now() - startedAt, ...steps };
   if (failedSteps.length) summary.failedSteps = failedSteps;

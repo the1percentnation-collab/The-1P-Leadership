@@ -11,11 +11,14 @@
 //   - A private channel reaches its members by default, honors a member who
 //     chose mentions only, and never reaches staff who aren't in it.
 //   - Members can write their own alert settings and nobody else's.
+//   - The digest's one-click unsubscribe needs a POST and the member's own
+//     signed token, and the automation tick runs the digest step cleanly.
 //
 // From the repo root: `npm run e2e:thread` in tests/ (writes fake secrets and
 // removes them afterwards).
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
 import { doc, setDoc, getDoc, getDocs, collection } from 'firebase/firestore';
 
@@ -161,6 +164,30 @@ await t('a member can save their own alert settings and nobody else\'s', async (
     channelAlerts: { wins: 'all' }, notifPrefs: { courseReminders: false }
   }, { merge: true }));
   await assertFails(setDoc(doc(mine, 'users/fan'), { channelAlerts: { wins: 'mentions' } }, { merge: true }));
+});
+
+// ── Digest wiring in the Functions runtime ────────────────────────────────
+const TICK_SECRET = 'e2e-tick-secret';
+const digestToken = (uid) => crypto.createHmac('sha256', TICK_SECRET).update(`digest:${uid}`).digest('hex').slice(0, 32);
+const unsub = (method, uid, token) => fetch(`${FN}/digestUnsubscribe?u=${encodeURIComponent(uid)}&t=${token}`, { method }).then(async (r) => ({ status: r.status, body: await r.json() }));
+
+await t('the digest unsubscribe ignores a prefetching GET and a forged token', async () => {
+  assert((await unsub('GET', 'lurker', digestToken('lurker'))).status === 405, 'GET was accepted');
+  assert((await unsub('POST', 'lurker', digestToken('fan'))).body.ok === false, 'another member\'s token worked');
+  const u = await read('users/lurker');
+  assert(!(u.notifPrefs && u.notifPrefs.digest === false), 'digest was turned off');
+});
+
+await t('a one-click POST with the member\'s own token stops their digest', async () => {
+  const r = await unsub('POST', 'lurker', digestToken('lurker'));
+  assert(r.body.ok === true, JSON.stringify(r));
+  const u = await read('users/lurker');
+  assert(u.notifPrefs.digest === false && u.notifPrefs.courseReminders === false, 'prefs not merged: ' + JSON.stringify(u.notifPrefs));
+});
+
+await t('the automation tick runs the digest step cleanly', async () => {
+  const r = await fetch(`${FN}/runAutomationTick?dryRun=1`, { method: 'POST', headers: { 'X-Tick-Secret': TICK_SECRET } }).then((x) => x.json());
+  assert(r.communityDigest && !r.communityDigest.error, 'digest step: ' + JSON.stringify(r.communityDigest));
 });
 
 await env.cleanup();

@@ -36,7 +36,7 @@ function constLine(text, name) {
   return m[0];
 }
 
-const names = ['clampPreview', 'communityPostUrl', 'channelAlertLevel', 'threadAlertShouldNotify', 'threadAlertNext', 'threadAlertCopy'];
+const names = ['clampPreview', 'communityPostUrl', 'channelAlertLevel', 'canReadThread', 'threadAlertShouldNotify', 'threadAlertNext', 'threadAlertCopy'];
 // eslint-disable-next-line no-new-func
 const server = new Function([
   constLine(src, 'APP_BASE_URL'),

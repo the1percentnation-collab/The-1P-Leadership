@@ -4,8 +4,8 @@
 //   notifPrefs.{type}         false turns that kind of alert off. Absent = on.
 //   channelAlerts.{channel}   'all' (every new thread) or 'mentions'.
 //   fcmTokens                 this member's push devices (push.js).
-// The server reads the same fields: notifyUser / pushToUser / fanOutNewThread
-// and sendCourseWorkReminders in functions/index.js. Keep the defaults here in
+// The server reads the same fields: notifyUser / pushToUser / fanOutNewThread,
+// sendCourseWorkReminders and sendCommunityDigests in functions/index.js. Keep the defaults here in
 // step with channelAlertLevel there.
 
 import { db, firebaseReady } from './firebase.js';
@@ -19,7 +19,8 @@ export const ALERT_TYPES = [
   { key: 'comments', label: 'Comments on your posts' },
   { key: 'likes', label: 'Likes on your posts' },
   { key: 'announcements', label: 'Announcements', hint: 'Updates from The One Percent team.' },
-  { key: 'courseReminders', label: 'Course work reminders on your phone', hint: 'The sessions on your course plans. Email and bell are set on each plan.' }
+  { key: 'courseReminders', label: 'Course work reminders on your phone', hint: 'The sessions on your course plans. Email and bell are set on each plan.' },
+  { key: 'digest', label: 'Daily community digest email', hint: 'An evening email of new threads, sent only while push is off and only on days with new posts.' }
 ];
 
 /**
