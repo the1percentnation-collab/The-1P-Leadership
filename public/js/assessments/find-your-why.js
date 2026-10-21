@@ -15,6 +15,7 @@ export default {
       label: 'Impact',
       headline: 'Your Why is Impact',
       desc: 'You are driven by making a visible difference in people and problems.',
+      goal: 'See and grow the difference your work makes',
       why: 'Knowing that impact moves you explains why some work energizes you and other work feels empty. It helps you choose roles and projects where your effort clearly changes something.',
       summary: 'You come alive when your effort changes something real for someone else. That drive makes you a powerful force for progress, and people feel it when you show up. The blind spot: you can tie your worth to results and overlook the impact you are already having. Your purpose is not only in the big wins. It is in the people you help along the way.',
       levels: {
@@ -34,6 +35,7 @@ export default {
       label: 'Mastery',
       headline: 'Your Why is Mastery',
       desc: 'You are driven by getting better and doing excellent work.',
+      goal: 'Keep getting better while you celebrate your progress',
       why: 'Knowing that mastery moves you explains why you need to be learning and stretching to feel engaged. It helps you choose work that keeps you growing instead of coasting.',
       summary: 'You are energized by growth, skill, and the quiet satisfaction of doing something exceptionally well. That discipline makes you someone others trust with hard things. The blind spot: the pursuit of better can turn into never good enough. Your purpose grows when you let your mastery serve something beyond your own standards.',
       levels: {
@@ -53,6 +55,7 @@ export default {
       label: 'Freedom',
       headline: 'Your Why is Freedom',
       desc: 'You are driven by choice, autonomy, and owning your time.',
+      goal: 'Own more of your time and choose commitments on purpose',
       why: 'Knowing that freedom moves you explains why control over your time matters so much to your energy. It helps you design work that gives you room to do your best thinking.',
       summary: 'You do your best work when you have room to decide how, when, and where. That independence fuels creativity and bold decisions. The blind spot: guarding your freedom can make commitment feel like a cage. Real freedom grows from clarity about what you are free to build, not only what you are free from.',
       levels: {
@@ -72,6 +75,7 @@ export default {
       label: 'Legacy',
       headline: 'Your Why is Legacy',
       desc: 'You are driven by building something that lasts beyond you.',
+      goal: 'Build something lasting through what you do this week',
       why: 'Knowing that legacy moves you explains why short-term wins often feel less important than long-term ones. It helps you invest your time in what will still matter years from now.',
       summary: 'You think in decades, and you want your life to leave something meaningful behind for your family, your community, or your field. That long view gives you patience and a strong sense of responsibility. The blind spot: focusing on the future can cost you presence today. Your legacy is shaped as much by how you live this week as by what you build.',
       levels: {
@@ -91,6 +95,7 @@ export default {
       label: 'Connection',
       headline: 'Your Why is Connection',
       desc: 'You are driven by relationships, belonging, and bringing people together.',
+      goal: 'Bring people together without losing time for yourself',
       why: 'Knowing that connection moves you explains why the people around you shape your energy as much as the work does. It helps you choose teams and communities where you can thrive.',
       summary: 'You are energized by people, trust, and the sense that you are part of something together. That gift makes you the person others turn to and rally around. The blind spot: you can put everyone else first until there is little left for you. Your purpose is strongest when your relationships include the one you have with yourself.',
       levels: {

@@ -13,6 +13,7 @@ export default {
       key: 'selfLeadership',
       label: 'Self-Leadership',
       desc: 'Leading yourself with discipline and consistency before you lead anyone else.',
+      goal: 'Lead yourself with discipline before you lead others',
       why: 'People follow what you do long before they follow what you say. If you cannot lead yourself on a hard day, a bigger title only makes the gap more visible.',
       levels: {
         low: 'Right now your day often leads you more than you lead it. Mood, energy and other people set the agenda, and the commitments you make to yourself are the first to go. That is common under pressure, and it is the best place to start, because small promises kept rebuild trust with yourself quickly.',
@@ -31,6 +32,7 @@ export default {
       key: 'communication',
       label: 'Communication',
       desc: 'Saying what matters clearly, listening fully, and handling hard conversations well.',
+      goal: 'Speak clearly, listen fully, and face hard conversations',
       why: 'Every result a leader gets passes through a conversation first. Unclear words create rework, and avoided conversations create problems that grow in the dark.',
       levels: {
         low: 'People may leave your conversations unsure of what you need, or the hard conversations may be waiting on your list for weeks. That is usually a sign of care or caution, not a lack of ability. Start with one clear sentence before every important conversation and the rest becomes easier.',
@@ -49,6 +51,7 @@ export default {
       key: 'decisionMaking',
       label: 'Decision Making',
       desc: 'Making sound, timely decisions and owning the results.',
+      goal: 'Make timely decisions and own the results',
       why: 'A slow decision is often a decision to let the situation decide for you. Your team moves at the speed of your decisions.',
       levels: {
         low: 'Decisions may be stacking up on your desk while you wait for certainty that will not come. That delay quietly slows everyone who depends on you. The fix is not being braver. It is setting a deadline for each decision and deciding with what you know on that date.',
@@ -67,6 +70,7 @@ export default {
       key: 'developingOthers',
       label: 'Developing Others',
       desc: 'Multiplying your impact by growing the people around you.',
+      goal: 'Multiply your impact by growing the people around you',
       why: 'At the next level, your success is measured by what your people can do without you. Developing others is how your impact grows past your own hours.',
       levels: {
         low: 'Right now it probably feels faster to do things yourself, and in the short run it is. The cost is a team that waits on you and a ceiling on how far you can grow. Start with one person and one skill, and invest thirty minutes a week.',
@@ -85,6 +89,7 @@ export default {
       key: 'strategicThinking',
       label: 'Strategic Thinking',
       desc: "Seeing the bigger picture and connecting today's work to where you are going.",
+      goal: "Connect today's work to where you are going",
       why: 'The higher you lead, the more your value comes from seeing around corners. Strategy is what keeps hard work pointed at the right target.',
       levels: {
         low: 'Most of your week is spent reacting, and the urgent keeps crowding out the important. That is not a lack of vision. It is a lack of protected time to think. One hour a week away from email will change how you see your work.',
