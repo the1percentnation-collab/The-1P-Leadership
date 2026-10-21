@@ -287,6 +287,9 @@ main, footer { position: relative; z-index: 1; }
 .symptoms .go { color: var(--red); opacity: 0; transform: translateX(-6px); transition: opacity .2s, transform .2s; }
 .symptoms a:hover .go, .symptoms a:focus-visible .go { opacity: 1; transform: none; }
 @media (hover: none) { .symptoms .go { opacity: 1; transform: none; } }
+.problem-copy p.problem-note { margin: 22px 0 0; font-size: 15.5px; color: var(--gray-500); }
+.problem-note a { color: var(--white); border-bottom: 1px solid var(--red-line); text-decoration: none; transition: border-color .2s; }
+.problem-note a:hover, .problem-note a:focus-visible { border-color: var(--red); }
 
 /* ===== Homepage: paths ===== */
 .doors { display: grid; grid-template-columns: 1.35fr 1fr; gap: 20px; }

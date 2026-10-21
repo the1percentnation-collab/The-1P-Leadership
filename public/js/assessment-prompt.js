@@ -256,3 +256,14 @@ window.addEventListener('scroll', measureScroll, { passive: true });
 // Exit intent only means something with a mouse: on touch there is no
 // cursor heading for the tab bar.
 if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) document.addEventListener('mouseout', onExit);
+
+// Assessment links placed in the page itself (data-assess-spot="hero" and so
+// on) report which spot was clicked, so placements can be compared in GA.
+// Clicking one counts as finding the library: the prompt will not ask again.
+document.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('a[data-assess-spot]');
+  if (!a) return;
+  local.convertedAt = local.convertedAt || Date.now();
+  write(localStorage, STORE_KEY, local);
+  track('assessment_link_click', { spot: a.dataset.assessSpot });
+});
