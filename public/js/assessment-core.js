@@ -298,6 +298,32 @@ export function nextBand(def, score) {
 }
 
 /**
+ * A result saved to the portal (users/{uid}/assessments/{slug}), rebuilt
+ * from its per-area scores into the shape scoreAssessment returns, so a
+ * report or a plan can be built from it on any device. Pass `saved.previous`
+ * to rebuild the result a retake replaced.
+ */
+export function resultFromSaved(def, saved) {
+  const s = saved || {};
+  const dims = def.dimensions.map((d) => ({
+    key: d.key, label: d.label, score: Number((s.dims || {})[d.key]) || 0, answered: 1
+  }));
+  const order = def.dimensions.map((d) => d.key);
+  const desc = dims.slice().sort((a, b) => b.score - a.score || order.indexOf(a.key) - order.indexOf(b.key));
+  const asc = dims.slice().sort((a, b) => a.score - b.score || order.indexOf(a.key) - order.indexOf(b.key));
+  const overall = Number(s.score) || 0;
+  return {
+    overall,
+    dims,
+    highest: desc[0].key,
+    lowest: asc[0].key,
+    band: def.mode === 'profile' ? null : bandFor(def, overall),
+    profileType: def.mode === 'profile' ? desc[0].key : null,
+    complete: true
+  };
+}
+
+/**
  * Profile mode: each type's share of the whole, rounded to whole percents
  * that add to 100, strongest first. Shows a blend, not just a winner.
  */
@@ -405,6 +431,9 @@ export function validateAssessment(def) {
     need(!keys.has(d.key), `duplicate dimension ${d.key}`);
     keys.add(d.key);
     need(d.label && d.desc, `dimension ${d.key} needs label and desc`);
+    // The goal a member adopts for this area in the plan wizard (/plan-build).
+    need(typeof d.goal === 'string' && d.goal.trim().length >= 10 && d.goal.length <= 70 && !/\.$/.test(d.goal.trim()),
+      `dimension ${d.key} needs a goal: one line, 70 chars max, no trailing period`);
     need(Array.isArray(d.actions) && d.actions.length === 3, `dimension ${d.key} needs exactly 3 actions`);
     const qs = def.questions.filter((q) => q.dim === d.key).length;
     need(qs >= 3, `dimension ${d.key} needs at least 3 questions (has ${qs})`);

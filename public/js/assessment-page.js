@@ -9,7 +9,7 @@ import { getAssessment } from './assessments-data.js';
 import {
   SCALE, PROFILE_QUESTIONS, LEVELS, scoreAssessment, headlineFor, buildReport, bandFor, suggestEmail,
   readingOf, levelLabelFor, toneFor, howToRead,
-  isPriorityLead, cleanProfile
+  isPriorityLead, cleanProfile, resultFromSaved
 } from './assessment-core.js';
 import { onAuthReady, signOut } from './auth.js';
 import { db, functions, firebaseReady } from './firebase.js';
@@ -313,13 +313,14 @@ function renderTeaser() {
       </div>
       <div class="unlock">
         <div class="eyebrow">Your full report is ready</div>
-        <h2 class="display">Unlock it free.</h2>
-        <p class="sub">Enter your name and email. Your full report opens right here, and we save it to a free portal account for you.</p>
+        <h2 class="display">Save your plan free.</h2>
+        <p class="sub">Enter your name and email. Your full report opens right here, and you can turn it into a plan with a weekly check-in, saved to a free portal account.</p>
         <ul>
           <li>What each of your ${def.dimensions.length} scores means for you, and the exact answers behind it</li>
           <li>${def.mode === 'profile' ? 'Your type in depth: its strengths, its blind spot and your runner-up' : 'Your strongest area, and the one to focus on first'}</li>
           <li>A week-by-week 30-day plan with specific actions</li>
-          <li>Reflection questions, and a report you can print or save</li>
+          <li>Pick the goals that matter, check off tasks, and get a weekly check-in</li>
+          <li>A retake at day 30 that shows how far each area has moved</li>
           <li>Every other free assessment, with your results saved in one place</li>
         </ul>
         <form class="form" id="unlock-form" novalidate>
@@ -328,7 +329,7 @@ function renderTeaser() {
           <label for="u-email">Email</label>
           <input id="u-email" type="email" autocomplete="email" required>
           <div class="form-msg" id="u-msg" role="status" aria-live="polite"></div>
-          <button class="btn btn-red btn-block" type="submit" id="u-go">Unlock my full report</button>
+          <button class="btn btn-red btn-block" type="submit" id="u-go">Unlock my report and plan</button>
         </form>
         <p class="fine">No password needed now. We will create your free One Percent portal account, save this report to your profile, and email you a link to set your password. Already a member? <a href="/login?next=${encodeURIComponent(next)}">Log in instead</a>. By continuing you agree to our <a href="/terms">terms</a> and <a href="/privacy">privacy policy</a>.</p>
       </div>
@@ -464,11 +465,45 @@ async function unlock(user) {
     state.savedFor = user.uid;
     save();
     setSaved('Saved to your member portal');
+    loadSince(user, r);
   } catch (e) {
     savedOnce = false;
     console.warn('[assessment] save failed', e && e.message);
     setSaved('Your report is below. We could not save it to your portal this time.');
   }
+}
+
+// What moved since the result this one replaced, area by area. `previous`
+// is the stored result a retake overwrote (see recordAssessment).
+function renderSince(current, previous) {
+  const el = $('since');
+  if (!el || !previous || !previous.dims) return;
+  const rows = def.dimensions.map((d) => {
+    const now = (current.dims.find((x) => x.key === d.key) || {}).score;
+    const before = previous.dims[d.key];
+    if (typeof now !== 'number' || typeof before !== 'number') return null;
+    const delta = now - before;
+    const good = readingOf(def) === 'lower-better' ? delta < 0 : delta > 0;
+    const cls = delta === 0 || readingOf(def) === 'profile' ? 'flat' : (good ? 'up' : 'down');
+    return `<li class="${cls}"><span>${esc(d.label)}</span><b>${before} → ${now}</b><em>${delta > 0 ? '+' : ''}${delta}</em></li>`;
+  }).filter(Boolean);
+  if (!rows.length) return;
+  const when = previous.completedAt && previous.completedAt.toDate
+    ? previous.completedAt.toDate().toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) : null;
+  el.innerHTML = `<section class="panel since">
+    <div class="eyebrow">Since ${when ? esc(when) : 'last time'}</div>
+    <h3>What moved</h3>
+    <ul class="since-list">${rows.join('')}</ul>
+    <p class="muted">Your goals from this assessment now show these scores in <a href="/plan">My Plan</a>.</p>
+  </section>`;
+}
+
+async function loadSince(user, current) {
+  if (!firebaseReady || !user) return;
+  try {
+    const snap = await getDoc(doc(db, 'users', user.uid, 'assessments', slug));
+    if (snap.exists() && snap.data().previous) renderSince(current, snap.data().previous);
+  } catch (e) { /* the comparison is a bonus; the report stands without it */ }
 }
 
 function setSaved(text) {
@@ -534,9 +569,17 @@ function renderFull(r, profile, status, answers) {
       <span class="saved" id="saved">${status === 'saving' ? 'Saving to your portal…' : esc(status || '')}</span>
       <span class="res-tool-btns">
         <button class="text-btn" type="button" id="retake-top">↻ Retake the assessment</button>
-        <button class="text-btn" type="button" id="print">Print or save as PDF</button>
+        <button class="text-btn" type="button" id="print">Print</button>
       </span>
     </div>
+    <div id="since"></div>
+
+    <section class="panel plan-cta no-print">
+      <div class="eyebrow">Your next step</div>
+      <h3>Turn this into your plan.</h3>
+      <p class="muted">Choose the goals that matter from these results. They save to your portal with tasks to check off, a weekly check-in, and a retake at day 30 to see what moved.</p>
+      <a class="btn btn-red" href="/plan-build?a=${encodeURIComponent(slug)}" id="build-plan">Build my plan</a>
+    </section>
 
     <section class="panel">
       ${step('Your scores by area')}
@@ -561,6 +604,7 @@ function renderFull(r, profile, status, answers) {
       <ol class="plan">${rep.plan.map((p) => `<li><div class="wk">Week ${p.week}<small>${esc(p.area)}</small></div><p>${esc(p.action)}</p></li>`).join('')}
         <li class="retake"><div class="wk">Day 30</div><p>Retake this assessment and compare. Progress you can measure is progress you keep.</p></li>
       </ol>
+      <p class="no-print" style="margin-top:16px;"><a class="text-btn" href="/plan-build?a=${encodeURIComponent(slug)}">Make this plan yours: choose your goals, reword the actions, set your dates →</a></p>
     </section>
 
     <section class="panel">
@@ -582,12 +626,14 @@ function renderFull(r, profile, status, answers) {
     ${def.disclaimer ? `<p class="disclaimer">${esc(def.disclaimer)}</p>` : ''}
 
     <div class="res-actions no-print">
-      <a class="btn btn-red" href="/dashboard">Go to my portal</a>
+      <a class="btn btn-red" href="/plan-build?a=${encodeURIComponent(slug)}">Build my plan</a>
+      <a class="btn btn-ghost" href="/dashboard">Go to my portal</a>
       <a class="btn btn-ghost" href="/assessments">All assessments</a>
       <button class="btn btn-ghost" type="button" id="retake">↻ Retake the assessment</button>
     </div>`;
 
   $('print').addEventListener('click', () => { track('assessment_print', { assessment: slug }); window.print(); });
+  $('build-plan').addEventListener('click', () => track('plan_build_start', { assessment: slug, from: 'report' }));
   if ($('not-me')) $('not-me').addEventListener('click', async () => {
     try { await signOut(); } catch (e) { /* signed out locally either way */ }
     // Their answers stay, so the person at the keyboard can claim this
@@ -625,27 +671,6 @@ window.addEventListener('afterprint', () => {
   document.querySelectorAll('#s-result details').forEach((d) => { d.open = d.dataset.wasOpen === '1'; });
 });
 
-// A result saved from another device or an earlier visit, rebuilt from the
-// stored per-area scores so the member can read it again anywhere.
-function resultFromSaved(saved) {
-  const dims = def.dimensions.map((d) => ({
-    key: d.key, label: d.label, score: Number((saved.dims || {})[d.key]) || 0, answered: 1
-  }));
-  const order = def.dimensions.map((d) => d.key);
-  const desc = dims.slice().sort((a, b) => b.score - a.score || order.indexOf(a.key) - order.indexOf(b.key));
-  const asc = dims.slice().sort((a, b) => a.score - b.score || order.indexOf(a.key) - order.indexOf(b.key));
-  const overall = Number(saved.score) || 0;
-  return {
-    overall,
-    dims,
-    highest: desc[0].key,
-    lowest: asc[0].key,
-    band: def.mode === 'profile' ? null : bandFor(def, overall),
-    profileType: def.mode === 'profile' ? desc[0].key : null,
-    complete: true
-  };
-}
-
 async function showSavedResult(user) {
   if (!firebaseReady) return false;
   member = user;
@@ -660,7 +685,9 @@ async function showSavedResult(user) {
     // the wrong statements, so they are only used when the set still matches.
     const answers = Array.isArray(saved.answers) && saved.answers.length === def.questions.length
       ? Object.assign({}, saved.answers) : null;
-    renderFull(resultFromSaved(saved), saved.profile || {}, when ? `Your result from ${when}` : 'Your saved result', answers);
+    const current = resultFromSaved(def, saved);
+    renderFull(current, saved.profile || {}, when ? `Your result from ${when}` : 'Your saved result', answers);
+    if (saved.previous) renderSince(current, saved.previous);
     show('s-result');
     return true;
   } catch (e) {
@@ -679,6 +706,13 @@ if (!def) {
   utm();
   track('assessment_view', { assessment: slug });
   renderIntro();
+  if (new URLSearchParams(location.search).get('retake') === '1' && state.finished) {
+    const c = state.claimed;
+    state = { answers: {}, profile: state.profile || {}, index: 0, finished: false };
+    if (c && c.email) state.contact = { name: c.name || '', email: c.email };
+    save();
+    track('assessment_retake', { assessment: slug, from: 'plan' });
+  }
   const complete = scoreAssessment(def, state.answers).complete;
   if (state.finished && complete) {
     showResult();
@@ -686,7 +720,7 @@ if (!def) {
     show('s-intro');
     // Nothing in progress here: a signed-in member who took it before sees
     // their saved result instead of a blank start.
-    if (!Object.keys(state.answers).length) {
+    if (!Object.keys(state.answers).length && new URLSearchParams(location.search).get('retake') !== '1') {
       onAuthReady().then((user) => { if (user) showSavedResult(user); });
     }
   }

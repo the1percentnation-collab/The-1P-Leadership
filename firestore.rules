@@ -390,6 +390,32 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // users/{uid}/assessmentHistory/{id} — every saved result, oldest to
+      // newest, so a retake can be compared with the one before. Written by
+      // recordAssessment (Admin SDK). Self/owner read; server-only writes.
+      match /assessmentHistory/{entryId} {
+        allow read: if isOwner() || isSelf(uid);
+        allow write: if false;
+      }
+
+      // users/{uid}/goals/{goalId} — My Plan. Every write goes through the
+      // managePlan callable, which enforces the active-goal limit, task
+      // shape and the review clock that the reminder sender relies on. A
+      // coach a goal is shared with reads it through getCoachClients, not
+      // here. Self/owner read; server-only writes.
+      match /goals/{goalId} {
+        allow read: if isOwner() || isSelf(uid);
+        allow write: if false;
+      }
+
+      // users/{uid}/journal/{entryId} — private reflections from My Plan.
+      // Never shared with a coach or a team. Self/owner read; written and
+      // deleted through managePlan.
+      match /journal/{entryId} {
+        allow read: if isOwner() || isSelf(uid);
+        allow write: if false;
+      }
+
       // users/{uid}/purchases/{sessionId} — written by the Stripe webhook
       // (Admin SDK). Self/owner read; server-only writes.
       match /purchases/{purchaseId} {

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Build My Plan | The One Percent Nation</title>
+  <meta name="description" content="Turn your assessment results into a plan: choose your goals, make the actions yours, and get a weekly check-in.">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/assets/favicon.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/assessment.css">
+  <link rel="stylesheet" href="/assets/plan.css">
+</head>
+<body>
+  <nav class="a-nav">
+    <div class="wrap">
+      <a class="a-logo" href="/"><img src="/assets/academy-logo.png" alt=""><span>The One Percent</span></a>
+      <div class="a-nav-links">
+        <a class="a-link" href="/assessments">All Assessments</a>
+        <a class="a-link" href="/plan">My Plan</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="narrow">
+    <div class="pl-steps" id="pl-steps" aria-label="Progress"></div>
+    <section class="screen" id="w-body" aria-live="polite"></section>
+  </main>
+
+  <script type="module" src="/js/plan-build.js"></script>
+  <script src="/js/consent-banner.js" defer></script>
+</body>
+</html>

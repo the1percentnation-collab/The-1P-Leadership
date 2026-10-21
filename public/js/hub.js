@@ -43,6 +43,7 @@ import { fmtLaunchDate, launchCountdown } from './launch-date.js';
 import { listActiveAnnouncements } from './announcements.js';
 import { renderSpotlight } from './hub-spotlight.js';
 import { buildNextSteps } from './hub-nextup.js';
+import { planNextSteps, todayIso } from './plan-core.js';
 import { dailySeries, seriesTotal } from './points-history.js';
 
 const $ = (id) => document.getElementById(id);
@@ -896,6 +897,19 @@ function renderLeaderboard(rows, stats, uid) {
   list.innerHTML = top.map((r, i) => row(r, i, r.uid === uid)).join('') + mine;
 }
 
+// ─── My Plan ──────────────────────────────────────────────────────────────
+// The member's goals (users/{uid}/goals) turned into next-step cards: a due
+// review or check-in, or the next task on their focus goal. A member with
+// results and no active goal is invited to build a plan from them.
+
+async function loadPlanSteps(uid) {
+  const [goals, results] = await Promise.all([
+    getDocs(collection(db, 'users', uid, 'goals')),
+    getDocs(query(collection(db, 'users', uid, 'assessments'), limit(1)))
+  ]);
+  return planNextSteps(goals.docs.map((d) => Object.assign({ id: d.id }, d.data())), todayIso(), { hasAssessments: !results.empty });
+}
+
 // ─── My assessments ───────────────────────────────────────────────────────
 // Free assessment results (users/{uid}/assessments, written by the
 // submitAssessment / claimAssessment functions), newest first, each linking
@@ -1100,7 +1114,7 @@ async function main() {
   const settle = (p, fallback) => p.then((v) => v).catch(() => fallback);
 
   const [
-    , events, stats, leaderboard, notifications, hasNewCommunity, streak, certification
+    , events, stats, leaderboard, notifications, hasNewCommunity, streak, certification, planSteps
   ] = await Promise.all([
     settle(loadCompletions(), null),
     settle(loadEventFeed(), []),
@@ -1119,7 +1133,8 @@ async function main() {
         ? httpsCallable(functions, 'getCertificationStatus')({ slug: '1p-clc' }).then((r) => r.data)
         : Promise.resolve(null),
       null
-    )
+    ),
+    settle(firebaseReady && uid ? loadPlanSteps(uid) : Promise.resolve([]), [])
   ]);
 
   eventFeed = events;
@@ -1144,7 +1159,8 @@ async function main() {
     certification,
     // A member with zero posts has never spoken here; that is worth a nudge.
     hasPosted: !stats || Number(stats.postCount || 0) > 0,
-    profileNudgeShown: setupCardShown
+    profileNudgeShown: setupCardShown,
+    planSteps
   }));
 
   // Below the fold and never awaited — the page is already usable without them.

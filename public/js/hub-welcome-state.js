@@ -121,6 +121,10 @@ export const TOUR_STOPS = [
     blurb: 'Your home base. Your streak, your level, what to do next, and everything happening across the Academy this week.'
   },
   {
+    key: 'plan', icon: 'plan', label: 'My Plan', href: '/plan',
+    blurb: 'Your goals, built from your assessment results. Check off tasks, do a two-minute check-in each week, and retake at day 30 to see what moved.'
+  },
+  {
     key: 'courses', icon: 'courses', label: 'Courses', href: '/courses.html',
     blurb: 'Every track you own, plus everything you can add. Progress saves automatically, so you can stop mid-module and pick it up anywhere.'
   },

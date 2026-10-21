@@ -388,6 +388,35 @@ await t('member CANNOT write a commitment directly (callable only)',
 await t('member CANNOT read someone else\'s course commitment',
   () => assertFails(getDoc(doc(emp, 'users/solo/courseCommitments/icant'))));
 
+// ── My Plan: goals, journal and assessment history ──────────────────────
+// Every write goes through managePlan (and recordAssessment for history),
+// so the browser may read its own and write none of them.
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const f = ctx.firestore();
+  await setDoc(doc(f, 'users/solo/goals/g1'), { title: 'Get your team pointed at one shared goal', status: 'active', tasks: [] });
+  await setDoc(doc(f, 'users/solo/journal/j1'), { text: 'private', date: '2026-10-21' });
+  await setDoc(doc(f, 'users/solo/assessmentHistory/h1'), { slug: 'team-alignment', score: 48, dims: {} });
+});
+
+for (const path of ['goals/g1', 'journal/j1', 'assessmentHistory/h1']) {
+  await t(`member CAN read their own ${path.split('/')[0]}`,
+    () => assertSucceeds(getDoc(doc(solo, `users/solo/${path}`))));
+  await t(`member CANNOT read someone else's ${path.split('/')[0]}`,
+    () => assertFails(getDoc(doc(emp, `users/solo/${path}`))));
+}
+
+await t('member CANNOT write a goal directly (managePlan only)',
+  () => assertFails(setDoc(doc(solo, 'users/solo/goals/g2'), { title: 'Skip the limit', status: 'active', tasks: [] })));
+
+await t('member CANNOT mark their own goal shared with a coach directly',
+  () => assertFails(updateDoc(doc(solo, 'users/solo/goals/g1'), { coachUid: 'emp' })));
+
+await t('member CANNOT write a journal entry directly',
+  () => assertFails(setDoc(doc(solo, 'users/solo/journal/j2'), { text: 'x' })));
+
+await t('member CANNOT forge assessment history',
+  () => assertFails(setDoc(doc(solo, 'users/solo/assessmentHistory/h2'), { slug: 'team-alignment', score: 99 })));
+
 // ── CRM lead sources (crmSources on the company doc) and Source details ──
 // The contact card's "+ Add a new source" and the CRM Settings card write
 // straight to the company doc from the browser, so these pin who may.
