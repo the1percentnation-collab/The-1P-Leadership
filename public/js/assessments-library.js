@@ -6,6 +6,7 @@
 import { ASSESSMENTS } from './assessments-data.js';
 import { CATEGORIES } from './assessment-core.js';
 import { onAuthReady } from './auth.js';
+import { markVisited } from './assessment-prompt-core.js';
 import { db, firebaseReady } from './firebase.js';
 import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
@@ -74,6 +75,7 @@ if (pre && CATEGORIES.some((c) => c.key === pre)) filter = pre;
 renderFeatured();
 renderFilters();
 renderLibrary();
+markVisited();
 if (typeof gtag === 'function') gtag('event', 'assessment_library_view');
 
 onAuthReady(async (user) => {
