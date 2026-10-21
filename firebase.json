@@ -65,6 +65,13 @@
                                               "functionId": "unsubscribe",
                                               "region": "us-central1"
                                     }
+                        },
+                        {
+                                    "source": "/api/digest-unsubscribe",
+                                    "function": {
+                                              "functionId": "digestUnsubscribe",
+                                              "region": "us-central1"
+                                    }
                         }
               ],
               "headers": [

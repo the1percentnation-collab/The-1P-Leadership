@@ -13462,3 +13462,100 @@ a.tk-card:hover { border-color: var(--border-red); transform: translateY(-2px); 
 @media (max-width: 640px) {
   .tk-card--wide { grid-column: auto; }
 }
+
+/* ───────────────────────────────────────────────────────────────────────
+   Notifications — channel Follow button, the push opt-in offer, and the
+   settings card on the profile page (js/notify-prefs.js). */
+
+.c-channel-follow {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.c-channel-follow svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+.c-channel-follow.is-on {
+  color: var(--red);
+  border-color: var(--border-red);
+}
+.c-channel-follow.is-on svg { fill: currentColor; }
+
+.np-offer-mount { margin: 0 0 16px; }
+.np-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border-red);
+  border-radius: 12px;
+}
+.np-offer-text {
+  flex: 1 1 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--white-dim);
+}
+.np-offer-text strong { color: var(--white); font-size: 14px; }
+.np-offer-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.np-offer-note { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--gray-light); }
+
+.np-settings { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.np-subhead {
+  margin: 6px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+}
+.np-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.np-row, .np-device {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+}
+.np-row + .np-row { border-top: 1px solid var(--border); }
+label.np-row { cursor: pointer; }
+.np-device {
+  border: 1px solid var(--border-red);
+  border-radius: 10px;
+}
+.np-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.np-row-label { font-size: 14px; color: var(--white); }
+.np-row-hint { font-size: 12px; color: var(--gray-light); }
+.np-switch { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--red); }
+.np-select {
+  flex-shrink: 0;
+  background: var(--black);
+  color: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+}
+@media (max-width: 560px) {
+  .np-device { flex-wrap: wrap; }
+  .c-channel-follow span { display: none; }
+}

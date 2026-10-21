@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daily Digest | The One Percent Nation</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" type="image/jpeg" href="/assets/favicon.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/1p.css">
+  <style>
+    .wrap { max-width: 520px; margin: 0 auto; padding: calc(var(--nav-h) + 112px) 24px 100px; text-align: center; position: relative; z-index: 1; }
+    h1 { font-family: var(--font-display); font-size: clamp(38px, 6vw, 56px); letter-spacing: 0.02em; margin-bottom: 18px; }
+    h1 .red { color: var(--red); }
+  p { font-size: 16px; font-weight: 300; line-height: 1.8; color: var(--gray-400); margin-bottom: 24px; }
+  
+/* Phone-width fixes. Scoped to max-width media queries; desktop unchanged. */
+@media (max-width: 720px) {
+  .wrap { padding: calc(var(--nav-h) + 48px) 20px 64px; }
+}
+</style>
+</head>
+<body class="noise">
+
+<nav>
+  <div class="nav-inner">
+    <a class="nav-logo" href="/">
+      <div class="nav-logo-text"><span class="l1">The One Percent</span><span class="l2">NATION</span></div>
+    </a>
+    <a href="/" class="nav-back">← Back to Main Site</a>
+  </div>
+</nav>
+
+<div class="wrap" id="wrap">
+  <h1>STOP THE <span class="red">DAILY DIGEST</span>?</h1>
+  <p>You'll stop getting the evening email about new community threads. Nothing else changes.</p>
+  <p><button class="btn-submit" id="stop" type="button">Stop the digest</button></p>
+  <p><a href="/profile.html#notifications" style="color:var(--red);">Turn on push instead</a></p>
+</div>
+
+<footer>
+  <div class="footer-copy">© 2026 The One Percent Nation. All rights reserved.</div>
+  <div class="footer-links">
+    <a href="/privacy.html">Privacy Policy</a>
+    <a href="/">Back to Site</a>
+  </div>
+</footer>
+
+<script>
+  // Unsubscribing takes a click, not a page load: mail scanners prefetch
+  // links, and a prefetch must not take anyone off the digest. The function
+  // checks the signed token (digestUnsubscribe in functions/index.js), so a
+  // link cannot be edited to unsubscribe somebody else.
+  document.getElementById('stop').addEventListener('click', async (e) => {
+    const wrap = document.getElementById('wrap');
+    e.target.disabled = true;
+    try {
+      const res = await fetch(`/api/digest-unsubscribe${location.search}`, { method: 'POST' });
+      const data = await res.json();
+      wrap.innerHTML = data.ok
+        ? '<h1>DIGEST <span class="red">STOPPED</span></h1>' +
+          '<p>No more daily digest emails. Turn it back on any time in your profile under Notifications.</p>' +
+          '<p><a href="/community.html" style="color:var(--red);">Back to the community</a></p>'
+        : '<h1>LINK <span class="red">EXPIRED</span></h1>' +
+          '<p>This link is not valid. Turn the digest off in your profile under Notifications, or email <a href="mailto:the1percentnation@gmail.com" style="color:var(--red);">the1percentnation@gmail.com</a>.</p>';
+    } catch {
+      e.target.disabled = false;
+      wrap.insertAdjacentHTML('beforeend', '<p>Something went wrong. Try again, or turn the digest off in your profile under Notifications.</p>');
+    }
+  });
+</script>
+</body>
+</html>
