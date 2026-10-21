@@ -131,3 +131,20 @@ The essays only work as acquisition if the thing they point at can be
 bought. Set `one-percent-brief` to live in `/manage-courses.html` when it is
 ready; until then the pointers in essays 1 and 3 land on a Notify me button,
 which still captures interest.
+
+## Keynote closing slide (no credentials needed)
+
+A 1920x1080 slide with a QR code to the Team Alignment Assessment, tagged with
+the host organization. Every result from that room reaches the CRM tagged
+`Campaign: keynote-<org>`, so you can walk into the follow-up meeting with
+how many of their people took it.
+
+```bash
+cd scripts && npm install
+node keynote-slide.mjs --org "Acme Corp" --out ./slides
+```
+
+It writes `keynote-slide-acme-corp.html` and, when Playwright is installed, a
+PNG for Keynote, PowerPoint, Google Slides or Canva. Without `--org` it makes
+the generic slide, also kept at `docs/keynote/keynote-slide.png`. The spoken
+link on the slide, the1pnation.com/myteam, is a redirect in `firebase.json`.

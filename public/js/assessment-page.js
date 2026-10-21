@@ -13,6 +13,7 @@ import {
 } from './assessment-core.js';
 import { onAuthReady, signOut } from './auth.js';
 import { db, functions, firebaseReady } from './firebase.js';
+import { markVisited } from './assessment-prompt-core.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
@@ -677,6 +678,7 @@ if (!def) {
   const desc = document.querySelector('meta[name="description"]');
   if (desc) desc.setAttribute('content', `${def.hook} ${def.short}`);
   utm();
+  markVisited();
   track('assessment_view', { assessment: slug });
   renderIntro();
   const complete = scoreAssessment(def, state.answers).complete;
