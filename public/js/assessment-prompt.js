@@ -4,17 +4,12 @@
 //   <script type="module" src="/js/assessment-prompt.js"></script>
 // When it opens is decided in assessment-prompt-core.js. This file gathers the
 // signals (visible time, scroll depth, pages seen, desktop exit intent), draws
-// the dialog and, after "Not right now", a small tab that keeps the offer one
+// the dialog (one explanation, one button to the library) and, after "Not right now", a small tab that keeps the offer one
 // click away. It never opens over the cookie banner or the open chat panel.
 import { decide, showPill, promptUtm, STORE_KEY } from './assessment-prompt-core.js';
 
 const SESSION_KEY = '1p-prompt-s';
 const UTM_KEY = '1p-utm'; // shared with assessment-page.js
-
-const CHOICES = [
-  { key: 'me', slug: 'alignment-scorecard', label: 'For me', title: 'The Alignment Scorecard', line: 'Where the life you built and the life you want are out of step.' },
-  { key: 'team', slug: 'team-alignment', label: 'For my team', title: 'The Team Alignment Assessment', line: 'Where your team is moving together, and where it is not.' }
-];
 
 const read = (store, key) => { try { return JSON.parse(store.getItem(key) || 'null') || {}; } catch (e) { return {}; } };
 const write = (store, key, val) => { try { store.setItem(key, JSON.stringify(val)); } catch (e) { /* private mode */ } };
@@ -71,6 +66,7 @@ function injectStyles() {
   const css = `
 .ap-overlay{position:fixed;inset:0;z-index:99990;background:rgba(0,0,0,.66);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);opacity:0;transition:opacity .35s ease}
 .ap-overlay.on{opacity:1}
+.ap-dialog,.ap-dialog *{box-sizing:border-box}
 .ap-dialog{position:fixed;z-index:99991;left:50%;top:50%;width:min(560px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;transform:translate(-50%,-46%);opacity:0;transition:transform .45s cubic-bezier(.16,1,.3,1),opacity .35s ease;background:#0F0F0F;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.6);padding:34px 32px 24px;font-family:'Outfit',system-ui,sans-serif}
 .ap-dialog.on{transform:translate(-50%,-50%);opacity:1}
 .ap-dialog::before{content:"";position:absolute;left:32px;right:32px;top:0;height:2px;background:linear-gradient(90deg,transparent,#E60306,transparent)}
@@ -79,18 +75,14 @@ function injectStyles() {
 .ap-eyebrow{font-family:'Space Mono',ui-monospace,monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#ff5a5c}
 .ap-title{font-family:'Bebas Neue',Impact,'Arial Narrow',sans-serif;font-weight:400;font-size:clamp(38px,7vw,52px);line-height:.95;letter-spacing:.01em;margin:10px 0 12px}
 .ap-title span{color:#E60306}
-.ap-body{color:#B4B4B4;font-size:16px;line-height:1.55;margin:0 0 22px}
-.ap-choices{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.ap-choice{display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:#151515;color:#fff;text-decoration:none;transition:border-color .2s,transform .2s,background .2s}
-.ap-choice:hover,.ap-choice:focus-visible{border-color:#E60306;background:#1A1A1A;transform:translateY(-2px);outline:none}
-.ap-choice b{font-family:'Space Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#ff5a5c;font-weight:700}
-.ap-choice strong{font-size:16px;font-weight:600;line-height:1.25}
-.ap-choice small{font-size:13.5px;color:#A0A0A0;line-height:1.45}
-.ap-choice em{font-style:normal;font-weight:600;font-size:14px;margin-top:auto;padding-top:6px}
-.ap-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:18px;font-size:14px}
-.ap-later{border:0;background:transparent;color:#A0A0A0;font:inherit;cursor:pointer;padding:8px 0}
+.ap-body{color:#B4B4B4;font-size:16px;line-height:1.6;margin:0 0 14px}
+.ap-body strong{color:#fff;font-weight:600}
+.ap-cta{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-top:10px;padding:16px 20px;border-radius:10px;background:#E60306;color:#fff;text-decoration:none;font-family:'Space Mono',ui-monospace,monospace;font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;transition:background .2s,transform .2s}
+.ap-cta:hover,.ap-cta:focus-visible{background:#ff1a1d;transform:translateY(-1px);outline:none}
+.ap-cta:focus-visible{box-shadow:0 0 0 3px rgba(230,3,6,.4)}
+.ap-foot{display:flex;justify-content:center;margin-top:10px;font-size:14px}
+.ap-later{border:0;background:transparent;color:#A0A0A0;font:inherit;cursor:pointer;padding:8px 12px}
 .ap-later:hover,.ap-later:focus-visible{color:#fff}
-.ap-all{color:#fff;text-decoration:none;border-bottom:1px solid rgba(230,3,6,.6)}
 .ap-pill{position:fixed;z-index:9990;left:max(20px,env(safe-area-inset-left,0px));bottom:max(24px,env(safe-area-inset-bottom,0px));display:flex;align-items:center;border-radius:999px;background:#0F0F0F;border:1px solid rgba(230,3,6,.55);box-shadow:0 10px 30px rgba(0,0,0,.45);font-family:'Outfit',system-ui,sans-serif;opacity:0;transform:translateY(10px);transition:opacity .35s ease,transform .35s ease}
 .ap-pill.on{opacity:1;transform:none}
 .ap-pill button{border:0;background:transparent;color:#fff;font:inherit;cursor:pointer}
@@ -103,15 +95,12 @@ function injectStyles() {
   .ap-dialog{left:0;right:0;top:auto;bottom:0;width:100%;max-height:78vh;transform:translateY(100%);border-radius:20px 20px 0 0;border-bottom:0;padding:28px 20px calc(18px + env(safe-area-inset-bottom,0px))}
   .ap-dialog.on{transform:none}
   .ap-dialog::before{left:20px;right:20px}
-  .ap-wide,.ap-choice small,.ap-choice em{display:none}
-  .ap-choices{grid-template-columns:1fr;gap:10px}
-  .ap-choice{padding:12px 44px 12px 14px;gap:3px;position:relative}
-  .ap-choice::after{content:"\\2192";position:absolute;right:16px;top:50%;transform:translateY(-50%);font-weight:600}
+  .ap-wide{display:none}
   .ap-title{font-size:38px;margin:8px 0 10px}
-  .ap-body{font-size:15px;margin-bottom:14px}
-  .ap-foot{margin-top:12px}
+  .ap-body{font-size:15px;margin-bottom:10px}
+  .ap-foot{margin-top:6px}
 }
-@media (prefers-reduced-motion:reduce){.ap-overlay,.ap-dialog,.ap-pill,.ap-choice{transition:none}}`;
+@media (prefers-reduced-motion:reduce){.ap-overlay,.ap-dialog,.ap-pill,.ap-cta{transition:none}}`;
   const style = document.createElement('style');
   style.id = 'ap-styles';
   style.textContent = css;
@@ -119,8 +108,8 @@ function injectStyles() {
 }
 
 // ── The dialog ─────────────────────────────────────────────────────────────
-function link(choice) {
-  return `/assessments/${choice.slug}${promptUtm(read(sessionStorage, UTM_KEY), choice.key)}`;
+function link() {
+  return `/assessments${promptUtm(read(sessionStorage, UTM_KEY), 'library')}`;
 }
 
 function open(trigger) {
@@ -136,15 +125,13 @@ function open(trigger) {
       <button class="ap-x" type="button" data-ap="dismiss" aria-label="Close">&times;</button>
       <div class="ap-eyebrow">Free &middot; 5 minutes<span class="ap-wide"> &middot; Your score and a plan</span></div>
       <h2 class="ap-title" id="ap-title">Where do you actually <span>stand?</span></h2>
-      <p class="ap-body" id="ap-body">Successful on paper does not always mean aligned in practice. Answer a few honest questions and leave with your score and one clear next step you can start this week.</p>
-      <div class="ap-choices">
-        ${CHOICES.map((c) => `<a class="ap-choice" href="${link(c)}" data-ap-choice="${c.key}">
-          <b>${c.label}</b><strong>${c.title}</strong><small>${c.line}</small><em>Start &rarr;</em>
-        </a>`).join('')}
+      <div id="ap-body">
+        <p class="ap-body">Successful on paper does not always mean aligned in practice. Our free assessments measure the gap between where you are and where you want to be, across your life, your leadership, your team and your money.</p>
+        <p class="ap-body">Answer a few honest questions and get <strong>your score, the exact areas pulling you off course, and one clear next step</strong> you can start this week.</p>
       </div>
+      <a class="ap-cta" href="${link()}" data-ap-choice="library">See the assessments &rarr;</a>
       <div class="ap-foot">
         <button class="ap-later" type="button" data-ap="dismiss">Not right now</button>
-        <a class="ap-all" href="/assessments" data-ap-choice="library">Browse all assessments</a>
       </div>
     </div>`;
   document.body.appendChild(root);
@@ -158,6 +145,11 @@ function open(trigger) {
     if (choice) {
       local.convertedAt = Date.now();
       write(localStorage, STORE_KEY, local);
+      // The library page does not record campaigns, so hold the prompt's
+      // tags here for the assessment the visitor picks next.
+      if (promptUtm(read(sessionStorage, UTM_KEY), 'library')) {
+        write(sessionStorage, UTM_KEY, { source: 'site', medium: 'popup', campaign: 'assessment-prompt-library' });
+      }
       track('assessment_prompt_click', { choice: choice.dataset.apChoice, trigger });
       return; // the link navigates
     }
@@ -170,7 +162,7 @@ function open(trigger) {
 
   requestAnimationFrame(() => {
     root.querySelectorAll('.ap-overlay,.ap-dialog').forEach((el) => el.classList.add('on'));
-    const first = root.querySelector('.ap-choice');
+    const first = root.querySelector('.ap-cta');
     if (first) first.focus({ preventScroll: true });
   });
 }
