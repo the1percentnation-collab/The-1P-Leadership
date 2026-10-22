@@ -84,7 +84,7 @@ export function getActiveCourse() {
 // ─── Pricing display ──────────────────────────────────────────────────────
 // Lives in pricing.js now so products share the exact rule; re-exported here
 // because every existing caller imports it from this module.
-export { priceInfo, fmtMoney } from './pricing.js';
+export { priceInfo, fmtMoney, freeJoinNote } from './pricing.js';
 
 // ─── Module metadata (for roadmaps) ───────────────────────────────────────
 

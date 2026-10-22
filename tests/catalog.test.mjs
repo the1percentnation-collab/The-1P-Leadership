@@ -9,7 +9,7 @@ const {
   normalizeCourse, normalizeProduct, isOnSale, visibleOn, hrefFor, isExternal,
   ctaFor, nextLaunch, filterByTab, sortForDisplay
 } = await loadPure('catalog-core.js');
-const { priceInfo, saleEnded } = await loadPure('pricing.js');
+const { priceInfo, saleEnded, freeJoinNote } = await loadPure('pricing.js');
 
 let passed = 0;
 function ok(name, run) {
@@ -67,6 +67,37 @@ ok('no end date means the sale is open-ended', () => {
 ok('a Firestore Timestamp end date is read through toMillis', () => {
   const ts = { toMillis: () => NOW - 1 };
   assert.strictEqual(priceInfo({ price: 20, salePrice: 10, saleEndsAt: ts }, { now: NOW }).onSale, false);
+});
+
+// The One Percent Brief launch offer: $12/mo struck through, Free, and a note
+// naming the deadline and the regular plan.
+const brief = (over = {}) => ({
+  price: 12, salePrice: 0, saleEndsAt: new Date(2027, 3, 15, 23, 59),
+  pricing: { mode: 'subscription', interval: 'month', annualPrice: 99 }, ...over
+});
+
+ok('a membership on sale for $0 reads Free with the regular plan struck through', () => {
+  const p = priceInfo(brief(), { now: NOW });
+  assert.strictEqual(p.label, 'Free');
+  assert.strictEqual(p.originalLabel, '$12/mo');
+  assert.strictEqual(p.isFree, true);
+  assert.strictEqual(p.isSubscription, true);
+});
+
+ok('the free-join note names the deadline and the regular plan', () => {
+  assert.strictEqual(freeJoinNote(brief(), { now: NOW }),
+    'Join by April 15 and it stays free for you for good. After that it is $12/mo or $99/yr.');
+  assert.strictEqual(freeJoinNote(brief({ pricing: { mode: 'subscription', interval: 'month' } }), { now: NOW }),
+    'Join by April 15 and it stays free for you for good. After that it is $12/mo.');
+});
+
+ok('the free-join note only shows during a free membership sale', () => {
+  assert.strictEqual(freeJoinNote(brief({ saleEndsAt: new Date(NOW - DAY) }), { now: NOW }), null, 'sale over');
+  assert.strictEqual(freeJoinNote(brief({ salePrice: 6 }), { now: NOW }), null, 'discounted, not free');
+  assert.strictEqual(freeJoinNote(brief({ salePrice: null }), { now: NOW }), null, 'no sale');
+  assert.strictEqual(freeJoinNote({ price: 20, salePrice: 0 }, { now: NOW }), null, 'one-time course');
+  const after = priceInfo(brief({ saleEndsAt: new Date(NOW - DAY) }), { now: NOW });
+  assert.strictEqual(after.label, '$12/mo', 'back to the regular price once the sale ends');
 });
 
 ok('products get the identical pricing rule without a pricing map', () => {

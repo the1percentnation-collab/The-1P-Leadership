@@ -50,10 +50,11 @@ export function priceInfo(item, { now = Date.now() } = {}) {
   const intervalSuffix = interval ? (interval === 'year' ? '/yr' : '/mo') : '';
 
   // A one-time price of zero reads "Free", not "$0". A $0 subscription keeps
-  // its number so the interval still shows.
+  // its number so the interval still shows, but a membership on sale for $0
+  // reads "Free" next to the struck-through regular price.
   const money = (n) => (n === 0 && !isSubscription ? 'Free' : fmtMoney(n) + intervalSuffix);
   const baseLabel = item.priceLabel || (base != null ? money(base) : '');
-  const label = onSale ? money(sale) : baseLabel;
+  const label = onSale ? (sale === 0 ? 'Free' : money(sale)) : baseLabel;
 
   return {
     label,
@@ -65,4 +66,20 @@ export function priceInfo(item, { now = Date.now() } = {}) {
     intervalSuffix,
     saleEndsAtMs: toMs(item.saleEndsAt)
   };
+}
+
+/**
+ * The line under the price while a membership is free to join. Anyone who
+ * joins during the sale is enrolled with no subscription, so they keep it for
+ * good; the regular plan is spelled out so visitors see what they
+ * are getting for free. Null when the item isn't a free membership sale.
+ */
+export function freeJoinNote(item, { now = Date.now() } = {}) {
+  const p = priceInfo(item, { now });
+  if (!(p.onSale && p.isFree && p.isSubscription)) return null;
+  const annual = Number(item.pricing && item.pricing.annualPrice);
+  const regular = p.originalLabel + (Number.isFinite(annual) && annual > 0 ? ` or ${fmtMoney(annual)}/yr` : '');
+  if (p.saleEndsAtMs == null) return `Free to join for now, and free for good once you are in. Regularly ${regular}.`;
+  const by = new Date(p.saleEndsAtMs).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  return `Join by ${by} and it stays free for you for good. After that it is ${regular}.`;
 }

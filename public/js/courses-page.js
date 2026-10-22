@@ -11,7 +11,7 @@
 // Access gating: if X isn't in the user's enrollments, the welcome view
 // is shown with a message. Nothing auto-opens; the user always chooses.
 
-import { loadCourses, getCourseBySlug, priceInfo, isToolkitItem } from './courses-data.js';
+import { loadCourses, getCourseBySlug, priceInfo, freeJoinNote, isToolkitItem } from './courses-data.js';
 import { onAuthReady, currentUser } from './auth.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import { renderShell } from './academy-shell.js';
@@ -137,7 +137,8 @@ function courseCardHtml(c, { action, statusBadge, saleBadge = '', soon = false }
       ${p.onSale ? `<s>${escapeHtml(p.originalLabel)}</s>` : ''}
       <span>${escapeHtml(p.label)}</span>
     </div>` : '<div class="course-card-price"></div>';
-  const priceNote = c.priceNote ? `<div class="course-card-note">${escapeHtml(c.priceNote)}</div>` : '';
+  const noteText = freeJoinNote(c) || c.priceNote;
+  const priceNote = noteText ? `<div class="course-card-note">${escapeHtml(noteText)}</div>` : '';
   const searchText = [c.title, c.short, c.category, c.subtitle, c.eyebrow]
     .filter(Boolean).join(' ').toLowerCase();
   return `
