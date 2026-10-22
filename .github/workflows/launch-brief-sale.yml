@@ -1,0 +1,45 @@
+name: Launch The One Percent Brief sale
+# Sets The One Percent Brief live and free to join until 11:59 PM Eastern on
+# December 6, 2026, by running scripts/launch-brief-sale.js with the deploy
+# service account. Runs once when the script lands on main, and can be run
+# again from the Actions tab. Re-running is harmless: it writes the same
+# status and sale. To change or end the offer, use /manage-courses.html.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/launch-brief-sale.js'
+  workflow_dispatch:
+
+concurrency:
+  group: launch-brief-sale
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Write service account key
+        id: sa
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP }}
+        run: |
+          echo "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+          echo "path=$RUNNER_TEMP/sa.json" >> "$GITHUB_OUTPUT"
+
+      - name: Install script dependencies
+        working-directory: scripts
+        run: npm ci
+
+      - name: Launch the sale
+        working-directory: scripts
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.sa.outputs.path }}
+        run: node launch-brief-sale.js
