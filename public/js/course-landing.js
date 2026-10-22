@@ -6,7 +6,7 @@
 // purchase card → What you'll learn → This course includes → Course content
 // accordion → Requirements → Description → Instructor → More courses.
 
-import { loadCourses, getCourses, getCourseBySlug, priceInfo, isToolkitItem } from './courses-data.js';
+import { loadCourses, getCourses, getCourseBySlug, priceInfo, freeJoinNote, isToolkitItem } from './courses-data.js';
 import { launchDateMs, fmtLaunchDate, launchCountdown } from './launch-date.js';
 import { onAuthReady, currentUser } from './auth.js';
 import { firebaseReady, functions, db } from './firebase.js';
@@ -346,12 +346,15 @@ function purchaseCardHtml(course, { enrolled }) {
     cta = `<button class="cl-cta" id="cl-notify">Notify me when enrollment opens</button>`;
   }
 
+  // A membership free to join for a limited time swaps its usual note (the
+  // annual option, how to cancel) for the offer and the regular plan.
+  const note = freeJoinNote(course) || course.priceNote;
   const priceHtml = enrolled ? '' : `
     <div class="cl-price">
       <span class="cl-price-now">${escapeHtml(p.label || '')}</span>
       ${p.onSale ? `<s class="cl-price-was">${escapeHtml(p.originalLabel)}</s>` : ''}
     </div>
-    ${course.priceNote ? `<div class="cl-price-note">${escapeHtml(course.priceNote)}</div>` : ''}
+    ${note ? `<div class="cl-price-note">${escapeHtml(note)}</div>` : ''}
     ${course.shipsBook ? `<div class="cl-price-note">Includes a paperback of <em>I Can't: Is Not A Strategy</em>. We ask for your US shipping address at checkout.</div>` : ''}
     ${!live && !isBundle ? `<div class="cl-soon-note">${escapeHtml(soonNote(course))}</div>` : ''}`;
 
@@ -375,7 +378,8 @@ function purchaseCardHtml(course, { enrolled }) {
   // Monthly is the default; createCheckoutSession reads the price from the
   // course doc and only takes the choice from here.
   const annual = annualOption(course);
-  const billingHtml = (!enrolled && live && annual) ? `
+  // Nothing to bill while it is free, so no plan to choose.
+  const billingHtml = (!enrolled && live && annual && !p.isFree) ? `
     <div class="cl-plan" id="cl-billing" style="display:flex;flex-direction:column;gap:6px;margin:10px 0 4px;font-size:13px;">
       <label style="display:flex;gap:8px;align-items:center;cursor:pointer;">
         <input type="radio" name="cl-billing" value="month" checked> Monthly · ${escapeHtml(p.label)}

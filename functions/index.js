@@ -5631,10 +5631,19 @@ async function isAdminCaller(db, request) {
   return snap.exists && snap.data().role === 'admin';
 }
 
-function effectivePriceDollars(course) {
+// Mirrors priceInfo in public/js/pricing.js: a sale only counts until its
+// saleEndsAt. Without the end check a $0 sale never closed server-side, so
+// enrollFree kept joining people free and checkout refused to charge after
+// the page had gone back to the regular price.
+function effectivePriceDollars(course, now = Date.now()) {
   const base = typeof course.price === 'number' ? course.price : null;
   const sale = typeof course.salePrice === 'number' && course.salePrice >= 0 ? course.salePrice : null;
-  if (sale != null && base != null && sale < base) return sale;
+  const endsAt = course.saleEndsAt;
+  const endsMs = !endsAt ? null
+    : typeof endsAt.toMillis === 'function' ? endsAt.toMillis()
+    : new Date(endsAt).getTime();
+  const ended = Number.isFinite(endsMs) && endsMs <= now;
+  if (sale != null && base != null && sale < base && !ended) return sale;
   return base;
 }
 
