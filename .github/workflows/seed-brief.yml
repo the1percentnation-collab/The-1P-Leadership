@@ -1,0 +1,51 @@
+name: Seed The One Percent Brief
+# Writes The One Percent Brief (courses/one-percent-brief and one module per
+# brief) to Firestore by running scripts/seed-brief.js with the deploy service
+# account. The brief copy lives in scripts/brief-content/ and only reaches the
+# course page once the seed runs, so without this the course opens empty.
+#
+# Safe to run on every push: the seed never changes the course status, price
+# or pricing once set, and never changes a brief's published state once it
+# exists. Going live and releasing each month's brief stay in
+# /manage-courses.html.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/seed-brief.js'
+      - 'scripts/brief-content/**'
+      - '.github/workflows/seed-brief.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: seed-brief
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Write service account key
+        id: sa
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP }}
+        run: |
+          echo "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+          echo "path=$RUNNER_TEMP/sa.json" >> "$GITHUB_OUTPUT"
+
+      - name: Install script dependencies
+        working-directory: scripts
+        run: npm ci
+
+      - name: Seed
+        working-directory: scripts
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.sa.outputs.path }}
+        run: node seed-brief.js
