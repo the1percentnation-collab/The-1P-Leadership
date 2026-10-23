@@ -140,6 +140,11 @@ t('it waits for the evening, honors a CRM opt-out and claims the day before send
   assert.ok(body.indexOf('runTransaction') < send, 'the day is claimed after sending');
   assert.match(body, /List-Unsubscribe-Post/);
 });
+t('a failed send gives the day back so the next tick retries', () => {
+  const body = grab('sendCommunityDigests');
+  const failed = body.slice(body.indexOf('out.failed++'));
+  assert.match(failed, /communityDigest: last\.date \? last : admin\.firestore\.FieldValue\.delete\(\)/);
+});
 t('unsubscribing is POST-only and checks the token in constant time', () => {
   const i = src.indexOf('exports.digestUnsubscribe');
   const fn = src.slice(i, src.indexOf('\n});', i));
