@@ -16558,7 +16558,9 @@ async function emailInvoice(db, order, settings, { reminder = false } = {}) {
 }
 
 const INVOICE_SEND_VIA = {
-  email: 'email', sms: 'a text from the CRM', 'phone-text': 'a text from your phone', messenger: 'Messenger', instagram: 'Instagram'
+  email: 'email', sms: 'a text from the CRM', 'phone-text': 'a text from your phone', messenger: 'Messenger', instagram: 'Instagram',
+  // Sent before the console tracked it (pasted by hand); marked so Remind can take over.
+  manual: 'hand, outside the console'
 };
 
 /**

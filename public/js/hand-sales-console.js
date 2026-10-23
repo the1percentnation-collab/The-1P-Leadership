@@ -592,7 +592,7 @@ function showCreated(res) {
 // device, email, or copy and paste. The message is editable first. With
 // { reminder: true } it is the follow-up on an invoice that went unpaid.
 
-const SENT_VIA = { sms: 'text', 'phone-text': 'text from your phone', messenger: 'Messenger', instagram: 'Instagram', email: 'email' };
+const SENT_VIA = { sms: 'text', 'phone-text': 'text from your phone', messenger: 'Messenger', instagram: 'Instagram', email: 'email', manual: 'hand' };
 
 function openSendForm(o, { title, lead, reminder = false } = {}) {
   const b = o.buyer || {};
@@ -627,6 +627,7 @@ function openSendForm(o, { title, lead, reminder = false } = {}) {
         <button type="button" class="btn btn-ghost" data-send="copy">Copy message</button>
         <button type="button" class="btn btn-ghost" data-send="link">Copy link only</button>
       </div>
+      ${!reminder && !o.invoiceSentAt ? '<button type="button" class="hs-link" data-send="manual">Already sent it another way? Mark it sent</button>' : ''}
       ${offered.length ? '' : '<p class="hs-dim" style="margin:0;">Add a phone, email or Facebook profile to the order to send it from here.</p>'}
     </div>`);
 
@@ -667,6 +668,7 @@ function openSendForm(o, { title, lead, reminder = false } = {}) {
     switch (btn.dataset.send) {
       case 'copy': return copy(text, btn);
       case 'link': return copy(invoiceUrl(o), btn);
+      case 'manual': return done('manual', `${o.invoiceNumber} marked sent. Remind lights up if it sits unpaid.`);
       case 'dm': {
         // m.me and ig.me cannot prefill a message, so it rides the clipboard.
         await copy(text);
