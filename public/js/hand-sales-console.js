@@ -23,7 +23,7 @@ import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 import {
   CHANNELS, PAYMENT_METHODS, STOCK_REASONS, BUCKETS, DEFAULT_SETTINGS,
   formatMoney, labelFor, mergeSettings, computeTotals, addressLines, isPaid, orderBucket,
-  invoiceMessage, shippedMessage, reviewMessage, lowStock, summarize, parseAddress
+  invoiceMessage, reminderMessage, reminderDue, lastNudgeMs, smsLink, dmLink, shippedMessage, reviewMessage, lowStock, summarize, parseAddress
 } from './hand-sales-core.js';
 
 const $ = (id) => document.getElementById(id);
@@ -116,8 +116,9 @@ function renderSummary() {
   const tracked = Object.values(state.stock);
   const shelf = tracked.reduce((n, x) => n + (Number(x.onHand) || 0), 0);
   const low = tracked.filter((x) => lowStock(x.onHand, state.settings, x.reorderAt)).length;
+  const nudge = state.orders.filter((o) => reminderDue(o, state.settings)).length;
   $('hs-summary').innerHTML = `
-    <div class="hs-tile ${s.owedCount ? 'warn' : ''}"><div class="hs-tile-k">Owed to you</div><div class="hs-tile-v">${formatMoney(s.owed)}</div><div class="hs-tile-s">${s.owedCount} unpaid invoice${s.owedCount === 1 ? '' : 's'}</div></div>
+    <div class="hs-tile ${s.owedCount ? 'warn' : ''}"><div class="hs-tile-k">Owed to you</div><div class="hs-tile-v">${formatMoney(s.owed)}</div><div class="hs-tile-s">${s.owedCount} unpaid invoice${s.owedCount === 1 ? '' : 's'}${nudge ? ` · ${nudge} to remind` : ''}</div></div>
     <div class="hs-tile ${s.toShip ? 'hot' : ''}"><div class="hs-tile-k">Ready to ship</div><div class="hs-tile-v">${s.toShip}</div><div class="hs-tile-s">${s.needsAddress ? `${s.needsAddress} waiting on an address` : 'paid and waiting'}</div></div>
     <div class="hs-tile"><div class="hs-tile-k">This month</div><div class="hs-tile-v">${formatMoney(s.monthRevenue)}</div><div class="hs-tile-s">${s.monthUnits} unit${s.monthUnits === 1 ? '' : 's'} paid</div></div>
     <div class="hs-tile ${low ? 'warn' : ''}"><div class="hs-tile-k">On the shelf</div><div class="hs-tile-v">${tracked.length ? shelf : '—'}</div><div class="hs-tile-s">${tracked.length ? (low ? `${low} running low` : 'stock healthy') : 'not counting yet'}</div></div>`;
@@ -143,7 +144,9 @@ function payBadge(o) {
   const p = o.payment || {};
   if (p.status === 'comp') return '<span class="hs-badge ok">Comp</span>';
   if (p.status === 'paid') return `<span class="hs-badge ok">Paid · ${esc(labelFor(PAYMENT_METHODS, p.method))}</span>`;
-  return `<span class="hs-badge bad">Unpaid${o.viewedAt ? ' · invoice opened' : ''}</span>`;
+  const reminded = o.reminderCount > 1 ? `reminded ${o.reminderCount}×` : 'reminded';
+  const seen = o.viewedAt ? 'invoice opened' : (o.remindedAt ? reminded : (o.invoiceSentAt ? 'invoice sent' : ''));
+  return `<span class="hs-badge bad">Unpaid${seen ? ` · ${seen}` : ''}</span>`;
 }
 
 function stageBadge(o) {
@@ -172,6 +175,17 @@ function primaryAction(o) {
   if (o.status === 'shipped') return `<button class="btn btn-primary hs-act" data-act="deliver">Mark delivered</button>`;
   if (o.status === 'done' && !o.reviewAskedAt) return `<button class="btn btn-primary hs-act" data-act="review">Ask for review</button>`;
   return '';
+}
+
+const canSend = (o) => o.kind === 'manual' && o.status !== 'cancelled' && !isPaid(o);
+
+// Not sent yet: Send invoice. Sent: Remind, lit up once it has sat quiet for
+// dueDays (the same clock as the collect task in Tasks).
+function sendButton(o) {
+  if (!canSend(o)) return '<button class="btn btn-ghost hs-act" data-act="copy-msg">Copy message</button>';
+  if (!o.invoiceSentAt) return '<button class="btn btn-ghost hs-act" data-act="send">Send invoice</button>';
+  const due = reminderDue(o, state.settings);
+  return `<button class="btn btn-ghost hs-act ${due ? 'hs-nudge' : ''}" data-act="remind"${due ? ' title="Unpaid and quiet. Time to follow up."' : ''}>Remind</button>`;
 }
 
 function orderCardHtml(o) {
@@ -208,10 +222,12 @@ function orderCardHtml(o) {
       <div class="hs-actions">
         ${manual ? `
           ${primaryAction(o)}
-          <button class="btn btn-ghost hs-act" data-act="copy-msg">Copy message</button>
+          ${sendButton(o)}
           <a class="btn btn-ghost hs-act" href="${esc(invoiceUrl(o))}" target="_blank" rel="noopener">Invoice</a>
           <details class="hs-more"><summary class="btn btn-ghost hs-act">More</summary><div class="hs-menu">
             <button data-act="edit">Edit order</button>
+            ${canSend(o) ? '<button data-act="copy-msg">Copy message</button>' : ''}
+            ${canSend(o) && o.invoiceSentAt ? '<button data-act="send">Send original invoice</button>' : ''}
             ${o.buyer && o.buyer.email ? `<button data-act="email">Email invoice${o.invoiceSentAt ? ' again' : ''}</button>` : ''}
             <button data-act="copy-link">Copy invoice link</button>
             ${o.status === 'shipped' || o.status === 'done' ? '<button data-act="copy-shipped">Copy shipped message</button><button data-act="copy-review">Copy review ask</button>' : ''}
@@ -234,7 +250,8 @@ function renderOrderList() {
   // Work queue order: money first, then addresses, then shipping, oldest first.
   if (f.key === 'open') {
     const rank = { collect: 0, address: 1, ship: 2 };
-    rows.sort((a, b) => (rank[orderBucket(a)] - rank[orderBucket(b)]) || ((a.createdAtMs || 0) - (b.createdAtMs || 0)));
+    const due = (o) => (reminderDue(o, state.settings) ? 0 : 1);
+    rows.sort((a, b) => (rank[orderBucket(a)] - rank[orderBucket(b)]) || (due(a) - due(b)) || ((a.createdAtMs || 0) - (b.createdAtMs || 0)));
   }
   const list = $('hs-list');
   list.innerHTML = rows.length ? rows.map(orderCardHtml).join('')
@@ -278,6 +295,8 @@ async function onOrderAction(act, o, el) {
     case 'copy-msg': return copy(invoiceMessage(o, invoiceUrl(o)), el);
     case 'copy-shipped': return copy(shippedMessage(o), el);
     case 'copy-review': return copy(reviewMessage(o, state.settings), el);
+    case 'send': return openSendForm(o);
+    case 'remind': return openSendForm(o, { reminder: true });
     case 'edit': return openOrderForm(o);
     case 'pay': return openPayForm(o);
     case 'ship': return openShipForm(o);
@@ -551,24 +570,217 @@ function openOrderForm(existing = null) {
 function showCreated(res) {
   const o = state.orders.find((x) => x.id === res.id);
   if (!o) { closeModal(); return; }
-  const msg = invoiceMessage(o, invoiceUrl(o));
-  const paid = isPaid(o);
+  if (!isPaid(o)) {
+    openSendForm(o, {
+      title: `${o.invoiceNumber} created`,
+      lead: `Send them the invoice. A reminder to collect ${formatMoney(o.amountTotal)} is in <a href="/tasks.html">Tasks</a>${res.emailed ? `, and the invoice was emailed to ${esc(o.buyer.email)}` : ''}.`
+    });
+    return;
+  }
   openModal(`${o.invoiceNumber} created`, `
-    <p class="hs-lead">${paid
-      ? `Paid and on your list to ${o.delivery === 'hand' ? 'deliver' : 'ship'}. A reminder is in <a href="/tasks.html">Tasks</a>.`
-      : `Send them the invoice. A reminder to collect ${formatMoney(o.amountTotal)} is in <a href="/tasks.html">Tasks</a>${res.emailed ? `, and the invoice was emailed to ${esc(o.buyer.email)}` : ''}.`}</p>
-    ${paid ? '' : `
-    <div class="crm-form-row"><label>Message to paste in ${esc(labelFor(CHANNELS, o.channel))}</label>
-      <textarea class="c-input" rows="7" readonly id="c-msg">${esc(msg)}</textarea></div>`}
+    <p class="hs-lead">Paid and on your list to ${o.delivery === 'hand' ? 'deliver' : 'ship'}. A reminder is in <a href="/tasks.html">Tasks</a>.</p>
     <div class="crm-modal-actions">
       <a class="btn btn-ghost" href="${esc(invoiceUrl(o))}" target="_blank" rel="noopener">Open invoice</a>
-      ${paid ? '' : '<button class="btn btn-ghost" id="c-link">Copy link only</button><button class="btn btn-primary" id="c-copy">Copy message</button>'}
-      ${paid ? '<button class="btn btn-primary" data-close>Done</button>' : ''}
+      <button class="btn btn-primary" data-close>Done</button>
     </div>`);
-  if (!paid) {
-    $('c-copy').addEventListener('click', (e) => copy(msg, e.target));
-    $('c-link').addEventListener('click', (e) => copy(invoiceUrl(o), e.target));
+}
+
+// ─── Send invoice ─────────────────────────────────────────────────────────
+// Every way to get the invoice to the buyer, straight from the order card:
+// a text from the CRM number (sendSms, so the consent gate and the
+// conversation log are the CRM's own), a text or DM from Anthony's own
+// device, email, or copy and paste. The message is editable first. With
+// { reminder: true } it is the follow-up on an invoice that went unpaid.
+
+const SENT_VIA = { sms: 'text', 'phone-text': 'text from your phone', messenger: 'Messenger', instagram: 'Instagram', email: 'email', manual: 'hand', page: 'your Facebook Page' };
+
+function openSendForm(o, { title, lead, reminder = false } = {}) {
+  const b = o.buyer || {};
+  const dm = dmLink(o);
+  const crmText = !!(o.companyId && o.contactId && b.phone);
+  const phoneText = !!smsLink(b.phone, '');
+  // Lead with the channel they ordered on.
+  const want = { facebook: 'dm', instagram: 'dm', text: 'sms', phone: 'sms', email: 'email' }[o.channel];
+  const offered = [dm && 'dm', crmText && 'sms', phoneText && 'phone', b.email && 'email'].filter(Boolean);
+  const first = offered.includes(want) ? want : (want === 'sms' && offered.includes('phone') ? 'phone' : offered[0]);
+  const cls = (k) => `btn ${k === first ? 'btn-primary' : 'btn-ghost'}`;
+  const by = (via) => (SENT_VIA[via] ? ` by ${SENT_VIA[via]}` : '');
+  const history = [
+    o.invoiceSentAt && `Invoice sent ${day(o.invoiceSentAt)}${by(o.invoiceSentVia)}.`,
+    o.remindedAt && `Last reminded ${day(o.remindedAt)}${by(o.remindedVia)}.`,
+    o.viewedAt && `They opened it ${day(o.viewedAt)}.`
+  ].filter(Boolean).join(' ');
+  const quietDays = lastNudgeMs(o) ? Math.floor((Date.now() - lastNudgeMs(o)) / 86400000) : 0;
+  const noun = reminder ? 'Reminder' : 'Invoice';
+
+  const bd = openModal(title || `${reminder ? 'Remind' : 'Send'} ${o.invoiceNumber}`, `
+    <div class="crm-form">
+      ${lead ? `<p class="hs-lead">${lead}</p>` : `<p class="hs-lead">${esc(b.name || 'They')} owe${b.name ? 's' : ''} <b>${formatMoney(o.amountTotal)}</b>${reminder && quietDays ? `, quiet for ${quietDays} day${quietDays === 1 ? '' : 's'}` : ''}.${history ? ` ${esc(history)}` : ''}</p>`}
+      <div class="crm-form-row"><label for="s-msg">Message</label>
+        <textarea class="c-input" rows="7" id="s-msg">${esc((reminder ? reminderMessage : invoiceMessage)(o, invoiceUrl(o)))}</textarea></div>
+      <div class="hs-err" id="s-err"></div>
+      <div id="s-page" class="hs-page" hidden></div>
+      <div class="hs-send">
+        ${dm ? `<button type="button" class="${cls('dm')}" data-send="dm">Copy &amp; open ${esc(dm.app)}</button>` : ''}
+        ${crmText ? `<button type="button" class="${cls('sms')}" data-send="sms">Text from CRM number</button>` : ''}
+        ${phoneText ? `<button type="button" class="${cls('phone')}" data-send="phone">Text from my phone</button>` : ''}
+        ${b.email ? `<button type="button" class="${cls('email')}" data-send="email">Email ${esc(b.email)}</button>` : ''}
+        <button type="button" class="btn btn-ghost" data-send="copy">Copy message</button>
+        <button type="button" class="btn btn-ghost" data-send="link">Copy link only</button>
+      </div>
+      ${!reminder && !o.invoiceSentAt ? '<button type="button" class="hs-link" data-send="manual">Already sent it another way? Mark it sent</button>' : ''}
+      ${offered.length ? '' : '<p class="hs-dim" style="margin:0;">Add a phone, email or Facebook profile to the order to send it from here.</p>'}
+    </div>`);
+
+  // Same rule sendSms enforces, read ahead so the button says why before a
+  // click fails. The server still decides.
+  if (crmText) {
+    getDoc(doc(db, 'companies', o.companyId, 'contacts', o.contactId)).then((snap) => {
+      const c = snap.exists() ? snap.data() : {};
+      if (c.smsConsent === true && c.smsOptedOut !== true) return;
+      const btn = bd.querySelector('[data-send="sms"]');
+      if (!bd.isConnected || !btn) return;
+      btn.disabled = true;
+      btn.textContent = c.smsOptedOut === true ? 'CRM text: opted out' : 'CRM text: no consent on file';
+      btn.title = 'Record SMS consent on their CRM record to text from the CRM number.';
+      const alt = bd.querySelector('[data-send="phone"]');
+      if (btn.classList.contains('btn-primary') && alt) {
+        btn.classList.replace('btn-primary', 'btn-ghost');
+        alt.classList.replace('btn-ghost', 'btn-primary');
+      }
+    }).catch(() => {});
   }
+
+  const box = $('s-msg');
+  const fail = (e, extra = '') => { $('s-err').innerHTML = esc(errMsg(e)) + extra; };
+  mountPageSection(bd, o, { reminder, noun, getText: () => box.value.trim(), fail });
+  const done = async (via, okMsg) => {
+    closeModal();
+    toast(okMsg);
+    try {
+      await call('manageHandSale', { action: 'sent', id: o.id, via, reminder });
+      await refreshOrders();
+    } catch (e) { toast(errMsg(e), true); }
+  };
+
+  bd.querySelectorAll('[data-send]').forEach((btn) => btn.addEventListener('click', async () => {
+    const text = box.value.trim();
+    $('s-err').textContent = '';
+    if (!text && ['dm', 'sms', 'phone', 'copy'].includes(btn.dataset.send)) { fail(new Error('Write a message first.')); return; }
+    switch (btn.dataset.send) {
+      case 'copy': return copy(text, btn);
+      case 'link': return copy(invoiceUrl(o), btn);
+      case 'manual': return done('manual', `${o.invoiceNumber} marked sent. Remind lights up if it sits unpaid.`);
+      case 'dm': {
+        // m.me and ig.me cannot prefill a message, so it rides the clipboard.
+        await copy(text);
+        window.open(dm.url, '_blank', 'noopener');
+        return done(dm.app === 'Instagram' ? 'instagram' : 'messenger', `Message copied. Paste it in ${dm.app} and send.`);
+      }
+      case 'phone':
+        window.location.href = smsLink(b.phone, text);
+        return done('phone-text', `Opened Messages with the ${noun.toLowerCase()}. Hit send there.`);
+      case 'sms': {
+        btn.disabled = true; btn.textContent = 'Sending…';
+        try {
+          await call('sendSms', { companyId: o.companyId, contactId: o.contactId, body: text });
+        } catch (e) {
+          btn.disabled = false; btn.textContent = 'Text from CRM number';
+          const consent = /consent|opted out/i.test(errMsg(e));
+          fail(e, consent ? ` <a href="/contact.html?id=${encodeURIComponent(o.contactId)}" target="_blank" rel="noopener">Open their record</a>${phoneText ? ', or use Text from my phone.' : '.'}` : '');
+          return;
+        }
+        return done('sms', `${noun} texted to ${b.name || b.phone}.`);
+      }
+      case 'email': {
+        btn.disabled = true; btn.textContent = 'Sending…';
+        try {
+          await call('manageHandSale', { action: 'email', id: o.id, reminder });
+        } catch (e) {
+          btn.disabled = false; btn.textContent = `Email ${b.email}`;
+          fail(e);
+          return;
+        }
+        closeModal();
+        toast(`${noun} emailed to ${b.email}.`);
+        return refreshOrders();
+      }
+      default:
+    }
+  }));
+  setTimeout(() => box.focus(), 30);
+}
+
+// ─── Facebook Page Messenger ──────────────────────────────────────────────
+// When the Page is connected (functions/messenger.js), the send sheet can
+// message the buyer from the Page itself: link their Page conversation once,
+// then send in one click while Facebook's window is open (24 hours after
+// their last message, 7 days with Human Agent approved). Hidden entirely
+// until the Page is set up.
+
+const when = (ms) => new Date(ms).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+const ago = (ms) => {
+  const m = Math.round((Date.now() - ms) / 60000);
+  if (m < 60) return `${Math.max(1, m)}m ago`;
+  if (m < 1440) return `${Math.round(m / 60)}h ago`;
+  return `${Math.round(m / 1440)}d ago`;
+};
+
+function mountPageSection(bd, o, { reminder, noun, getText, fail }) {
+  const host = bd.querySelector('#s-page');
+  const render = (info, picking = false) => {
+    if (!bd.isConnected) return;
+    if (!info || !info.configured) { host.hidden = true; return; }
+    host.hidden = false;
+    const t = info.linked;
+    const windowNote = info.humanAgent ? '7 days' : '24 hours';
+    if (t && !picking) {
+      host.innerHTML = t.closesAt
+        ? `<div class="hs-page-row"><button type="button" class="btn btn-primary" data-page="send">Send from Page on Messenger</button>
+            <span class="hs-dim">To ${esc(t.name)} · open until ${esc(when(t.closesAt))} · <button type="button" class="hs-link" data-page="pick">change</button></span></div>`
+        : `<div class="hs-dim">Page conversation with <b>${esc(t.name)}</b> is linked, but Facebook only lets a Page reply within ${windowNote} of their last message${t.lastInboundMs ? ` (${esc(ago(t.lastInboundMs))})` : ''}. Use Copy &amp; open Messenger below. <button type="button" class="hs-link" data-page="pick">change</button></div>`;
+      if (t.closesAt) {
+        // The Page send is the one-click path; it outranks the copy buttons.
+        bd.querySelectorAll('.hs-send .btn-primary').forEach((b) => b.classList.replace('btn-primary', 'btn-ghost'));
+      }
+    } else if (!picking) {
+      host.innerHTML = `<div class="hs-page-row"><button type="button" class="btn btn-ghost" data-page="pick">Link their Facebook Page conversation</button>
+        <span class="hs-dim">${info.threads.length ? 'Then send from the Page in one click.' : 'No one has messaged the Page yet.'}</span></div>`;
+    } else {
+      host.innerHTML = `<div class="hs-k" style="margin-bottom:6px;">Which Page conversation is ${esc((o.buyer && o.buyer.name) || 'the buyer')}?</div>
+        <div class="hs-threads">${info.threads.length ? info.threads.map((x) => `
+          <button type="button" class="hs-thread" data-psid="${esc(x.psid)}">
+            <span><b>${esc(x.name)}</b>${x.match === 2 ? ' <span class="hs-badge ok">name match</span>' : ''}<br><span class="hs-dim">${esc(x.lastText || '')}</span></span>
+            <span class="hs-dim">${x.lastInboundMs ? esc(ago(x.lastInboundMs)) : ''}</span>
+          </button>`).join('') : '<div class="hs-dim">No one has messaged the Page yet. Once they do, they show up here.</div>'}</div>
+        <button type="button" class="hs-link" data-page="cancel">Cancel</button>`;
+    }
+    host.querySelectorAll('[data-page]').forEach((b) => b.addEventListener('click', () => onPage(b, info)));
+    host.querySelectorAll('[data-psid]').forEach((b) => b.addEventListener('click', async () => {
+      host.querySelectorAll('[data-psid]').forEach((x) => { x.disabled = true; });
+      try {
+        render(await call('manageHandSale', { action: 'link-messenger', id: o.id, psid: b.dataset.psid }));
+      } catch (e) { fail(e); render(info, true); }
+    }));
+  };
+  const onPage = async (b, info) => {
+    if (b.dataset.page === 'pick') return render(info, true);
+    if (b.dataset.page === 'cancel') return render(info);
+    const text = getText();
+    if (!text) { fail(new Error('Write a message first.')); return; }
+    b.disabled = true; b.textContent = 'Sending…';
+    try {
+      await call('manageHandSale', { action: 'messenger', id: o.id, body: text, reminder });
+    } catch (e) {
+      b.disabled = false; b.textContent = 'Send from Page on Messenger';
+      fail(e);
+      return;
+    }
+    closeModal();
+    toast(`${noun} sent to ${info.linked.name} from your Page.`);
+    refreshOrders();
+  };
+  call('manageHandSale', { action: 'messenger-threads', id: o.id }).then((info) => render(info)).catch(() => { host.hidden = true; });
 }
 
 function openPayForm(o) {
@@ -645,7 +857,9 @@ function openSettings() {
         ${f('shipWithinDays', 'Ship within (days)', s.shipWithinDays, 'type="number" min="0" step="1"')}
         ${f('reviewAfterDays', 'Review ask after (days)', s.reviewAfterDays, 'type="number" min="0" step="1"')}
         ${f('lowStockAt', 'Low stock at', s.lowStockAt, 'type="number" min="0" step="1"')}
+        ${f('digestHour', 'Collections email at (hour, 0 = off)', s.digestHour, 'type="number" min="0" max="23" step="1"')}
       </div>
+      <p class="hs-dim" style="margin:0;">Each morning (Eastern), one email lists the invoices to remind and the ones never sent, each a tap from its send screen. Nothing to chase, no email.</p>
       ${f('reviewUrl', 'Review link (Amazon)', s.reviewUrl)}
       <div class="hs-err" id="st-err"></div>
       <div class="crm-modal-actions"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" type="submit">Save settings</button></div>
@@ -779,5 +993,19 @@ export async function initHandSales() {
     $('hs-list').innerHTML = `<div class="hs-err">${esc(errMsg(e))}</div>`;
   }
   // /manage-store.html?new=1 opens the form straight away (phone shortcut).
-  if (new URLSearchParams(location.search).get('new') === '1') openOrderForm();
+  const params = new URLSearchParams(location.search);
+  if (params.get('new') === '1') openOrderForm();
+  // ?remind=<id> / ?send=<id>: the collections email's buttons.
+  const linked = params.get('remind') || params.get('send');
+  if (linked) openLinkedOrder(linked, !!params.get('remind'));
+}
+
+function openLinkedOrder(id, reminder) {
+  const u = new URL(location.href);
+  u.searchParams.delete('remind'); u.searchParams.delete('send');
+  history.replaceState(null, '', u);
+  const o = state.orders.find((x) => x.id === id);
+  if (!o) { toast('That order is gone.', true); return; }
+  if (!canSend(o)) { toast(`${o.invoiceNumber} is ${isPaid(o) ? 'already paid' : 'cancelled'}. Nothing to send.`); return; }
+  openSendForm(o, { reminder: reminder && !!o.invoiceSentAt });
 }

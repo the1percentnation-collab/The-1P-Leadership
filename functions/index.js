@@ -41,6 +41,7 @@ const sgMail = require('@sendgrid/mail');
 const { computeFocusTax, WORK_WEEKS: FOCUS_TAX_WEEKS } = require('./focus-tax.js');
 const { careerTags } = require('./careers.js');
 const handSales = require('./hand-sales-core.js');
+const messenger = require('./messenger.js');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
@@ -11426,7 +11427,7 @@ async function runTick(db, { dryRun = false } = {}) {
     return { error: (e && e.message) || String(e) };
   });
 
-  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest] = await Promise.all([
+  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest] = await Promise.all([
     step('sequences', processDueEnrollments(db, { dryRun })),
     // These only ever renew or send; there is nothing to preview, so a dry
     // run skips them rather than pretending to measure something.
@@ -11437,10 +11438,11 @@ async function runTick(db, { dryRun = false } = {}) {
     step('announcements', fanOutDueAnnouncements(db, { dryRun })),
     step('reviewNudges', dryRun ? { skipped: 'dryRun' } : sendReviewNudges(db)),
     // A dry run counts who would get a digest today without sending or claiming.
-    step('communityDigest', sendCommunityDigests(db, { dryRun }))
+    step('communityDigest', sendCommunityDigests(db, { dryRun })),
+    step('storeDigest', sendStoreDigest(db, { dryRun }))
   ]);
 
-  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest };
+  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest };
   const failedSteps = Object.keys(steps).filter((k) => steps[k] && steps[k].error);
   const summary = { ok: failedSteps.length === 0, dryRun, ms: Date.now() - startedAt, ...steps };
   if (failedSteps.length) summary.failedSteps = failedSteps;
@@ -16531,7 +16533,7 @@ function handSaleResult(order) {
   return { ok: true, id: order.id, invoiceNumber: order.invoiceNumber, url: invoiceLink(order.id, order.invoiceToken), status: order.status, payment: order.payment };
 }
 
-async function emailInvoice(db, order, settings) {
+async function emailInvoice(db, order, settings, { reminder = false } = {}) {
   const to = order.buyer && order.buyer.email;
   if (!to) throw new HttpsError('failed-precondition', 'This order has no buyer email. Copy the message and send it where they ordered.');
   if (!emailConfigured()) throw new HttpsError('failed-precondition', 'Email is not configured.');
@@ -16542,15 +16544,298 @@ async function emailInvoice(db, order, settings) {
     to,
     from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
     replyTo: REPLY_TO,
-    subject: `Invoice ${order.invoiceNumber} from ${settings.businessName}: ${total}`,
-    text: `${first ? `Hi ${first},` : 'Hello,'}\n\nThank you for ordering ${handSales.itemSummary(order)}. Your invoice for ${total} is here:\n\n${url}\n\nYou can pay by card on that page.\n\nAnthony Brown Sr.\n${settings.businessName}`,
+    subject: `${reminder ? 'Reminder: invoice' : 'Invoice'} ${order.invoiceNumber} from ${settings.businessName}: ${total}`,
+    text: reminder
+      ? `${first ? `Hi ${first},` : 'Hello,'}\n\nCircling back on your order of ${handSales.itemSummary(order)}. Your invoice for ${total} is still open here:\n\n${url}\n\nIt takes about a minute by card.\n\nAnthony Brown Sr.\n${settings.businessName}`
+      : `${first ? `Hi ${first},` : 'Hello,'}\n\nThank you for ordering ${handSales.itemSummary(order)}. Your invoice for ${total} is here:\n\n${url}\n\nYou can pay by card on that page.\n\nAnthony Brown Sr.\n${settings.businessName}`,
     html: agreementEmailHtml({
-      heading: `Invoice ${order.invoiceNumber}: ${total}`,
-      lines: [first ? `Hi ${first},` : 'Hello,', `Thank you for ordering ${handSales.itemSummary(order)}. Your invoice is ready, and you can pay by card right on the page.`],
+      heading: `${reminder ? 'Still open: invoice' : 'Invoice'} ${order.invoiceNumber}: ${total}`,
+      lines: [first ? `Hi ${first},` : 'Hello,', reminder
+        ? `Circling back on your order of ${handSales.itemSummary(order)}. Your invoice is still open, and it takes about a minute to pay by card right on the page.`
+        : `Thank you for ordering ${handSales.itemSummary(order)}. Your invoice is ready, and you can pay by card right on the page.`],
       url, button: 'View and pay invoice'
     }),
-    customArgs: { type: 'hand_sale_invoice' }
+    customArgs: { type: reminder ? 'hand_sale_reminder' : 'hand_sale_invoice' }
   });
+}
+
+/**
+ * The morning collections email: one a day to the owner, at settings
+ * digestHour (DIGEST_TIMEZONE), listing invoices due a reminder and invoices
+ * never sent, each linking straight to its Remind / Send sheet in the store
+ * console. Nothing to chase, no email. Runs from the tick, so it lands on the
+ * first tick after the hour (the tick is roughly hourly).
+ */
+async function sendStoreDigest(db, { now = new Date(), dryRun = false } = {}) {
+  const settings = await handSalesSettings(db);
+  const hour = Number(settings.digestHour);
+  if (!hour) return { skipped: 'turned off' };
+  const clock = commitmentLocalClock(now, DIGEST_TIMEZONE);
+  if (!clock || clock.minutes < hour * 60) return { skipped: 'before send time' };
+  const stateRef = db.collection('config').doc('handSalesDigest');
+  const last = await stateRef.get();
+  if (last.exists && last.data().date === clock.date) return { skipped: 'already sent today' };
+
+  const snap = await db.collection('orders').where('kind', '==', 'manual').get();
+  const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const digest = handSales.collectionsDigest(orders, settings, now.getTime());
+  const counts = { remind: digest.remind.length, unsent: digest.unsent.length, owed: digest.owed };
+  if (digest.empty) return { ...counts, skipped: 'nothing to chase' };
+  if (dryRun) return { ...counts, wouldSend: true };
+  if (!emailConfigured()) return { ...counts, skipped: 'email not configured' };
+
+  // Claim the day first, so overlapping ticks cannot double-send.
+  const claimed = await db.runTransaction(async (tx) => {
+    const s = await tx.get(stateRef);
+    if (s.exists && s.data().date === clock.date) return false;
+    tx.set(stateRef, { date: clock.date, sentAt: admin.firestore.Timestamp.fromDate(now), ...counts });
+    return true;
+  });
+  if (!claimed) return { skipped: 'already sent today' };
+
+  const msg = storeDigestMessage(digest);
+  await sendEmail({
+    to: OWNER_EMAIL,
+    from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+    replyTo: REPLY_TO,
+    subject: msg.subject, html: msg.html, text: msg.text,
+    customArgs: { type: 'hand_sale_digest' }
+  });
+  return { ...counts, sent: true };
+}
+
+function storeDigestMessage(digest) {
+  const money = handSales.formatMoney;
+  const orders = `${APP_BASE_URL}/manage-store.html?tab=orders`;
+  const day = (t) => (t && t.toDate ? t.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: DIGEST_TIMEZONE }) : '');
+  const who = (o) => (o.buyer && o.buyer.name) || 'Buyer';
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const remindLine = ({ order: o, quietDays }) => {
+    const sent = o.remindedAt ? `reminded ${day(o.remindedAt)}` : `sent ${day(o.invoiceSentAt)}`;
+    return { o, link: `${orders}&remind=${encodeURIComponent(o.id)}`, cta: 'Remind', note: `${sent}${o.viewedAt ? ', opened' : ', not opened'} · ${plural(quietDays, 'day')} quiet` };
+  };
+  const unsentLine = ({ order: o, ageDays }) => ({
+    o, link: `${orders}&send=${encodeURIComponent(o.id)}`, cta: 'Send', note: ageDays ? `created ${plural(ageDays, 'day')} ago, never sent` : 'created today, never sent'
+  });
+  const sections = [
+    digest.remind.length && { title: `Remind (${digest.remind.length})`, rows: digest.remind.map(remindLine) },
+    digest.unsent.length && { title: `Not sent yet (${digest.unsent.length})`, rows: digest.unsent.map(unsentLine) }
+  ].filter(Boolean);
+  const head = [
+    digest.remind.length && plural(digest.remind.length, 'invoice') + ' to remind',
+    digest.unsent.length && plural(digest.unsent.length, 'invoice') + ' to send'
+  ].filter(Boolean).join(', ');
+  const subject = `Collect today: ${head} · ${money(digest.owed)} owed`;
+  const esc = escapeHtmlBasic;
+  const rowHtml = (r) => `<tr>
+      <td style="padding:10px 0;border-bottom:1px solid #eee;font-size:14px;color:#222;">
+        <strong>${esc(who(r.o))}</strong> · ${esc(money(r.o.amountTotal))} <span style="color:#888;">${esc(r.o.invoiceNumber)}</span><br>
+        <span style="font-size:12px;color:#888;">${esc(r.note)}</span>
+      </td>
+      <td style="padding:10px 0;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;">
+        <a href="${r.link}" style="background:#E60306;color:#fff;text-decoration:none;font-weight:bold;font-size:13px;padding:7px 14px;border-radius:6px;">${r.cta} →</a>
+      </td></tr>`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
+    <h2 style="color:#E60306;margin:0 0 4px;">${esc(money(digest.owed))} owed across ${esc(plural(digest.owedCount, 'invoice'))}</h2>
+    <p style="font-size:14px;color:#555;margin:0 0 16px;">Each button opens the message ready to go. One tap, paste or send, done.</p>
+    ${sections.map((sec) => `<h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#888;margin:18px 0 0;">${esc(sec.title)}</h3>
+      <table style="width:100%;border-collapse:collapse;">${sec.rows.map(rowHtml).join('')}</table>`).join('')}
+    ${digest.toShip ? `<p style="font-size:14px;color:#222;margin:18px 0 0;">Also: ${esc(plural(digest.toShip, 'paid order'))} waiting to ship. <a href="${orders}" style="color:#E60306;">Open Orders →</a></p>` : ''}
+    <p style="font-size:12px;color:#888;margin-top:22px;">The One Percent Nation store. Change the time or turn this off in Orders → Settings.</p>
+  </div>`;
+  const text = [
+    `${money(digest.owed)} owed across ${plural(digest.owedCount, 'invoice')}.`,
+    ...sections.map((sec) => `\n${sec.title}\n` + sec.rows.map((r) => `- ${who(r.o)}, ${money(r.o.amountTotal)} ${r.o.invoiceNumber} (${r.note}): ${r.link}`).join('\n')),
+    digest.toShip ? `\nAlso: ${plural(digest.toShip, 'paid order')} waiting to ship: ${orders}` : ''
+  ].join('\n');
+  return { subject, html, text };
+}
+
+// ─── Facebook Page Messenger ──────────────────────────────────────────────
+// Pure pieces and the full picture are in functions/messenger.js.
+
+const messengerThreadsCol = (db) => db.collection('messengerThreads');
+
+function threadView(doc, cfg) {
+  const t = doc.data() || {};
+  const last = t.lastInboundAt && t.lastInboundAt.toMillis ? t.lastInboundAt.toMillis() : null;
+  return {
+    psid: doc.id,
+    name: t.name || 'Messenger user',
+    lastText: t.lastText || '',
+    lastInboundMs: last,
+    closesAt: messenger.windowClosesAt(last, Date.now(), cfg),
+    contactId: t.contactId || null
+  };
+}
+
+async function orderContactRef(db, order) {
+  if (!order.companyId || !order.contactId) {
+    throw new HttpsError('failed-precondition', 'This order has no CRM contact yet. Save the order again and retry.');
+  }
+  return db.collection('companies').doc(order.companyId).collection('contacts').doc(order.contactId);
+}
+
+async function messengerThreadsFor(db, order) {
+  const cfg = messenger.messengerConfig();
+  const out = { configured: cfg.ok, missing: cfg.missing, humanAgent: cfg.humanAgent, linked: null, threads: [] };
+  if (!cfg.ok) return out;
+  let psid = null;
+  if (order.companyId && order.contactId) {
+    const c = await (await orderContactRef(db, order)).get();
+    psid = c.exists ? c.data().messengerPsid || null : null;
+  }
+  if (psid) {
+    const t = await messengerThreadsCol(db).doc(psid).get();
+    if (t.exists) out.linked = threadView(t, cfg);
+  }
+  const recent = await messengerThreadsCol(db).orderBy('lastInboundAt', 'desc').limit(30).get();
+  const buyer = order.buyer && order.buyer.name;
+  out.threads = messenger.rankThreads(recent.docs.map((d) => threadView(d, cfg)), buyer).slice(0, 20);
+  return out;
+}
+
+async function linkMessengerThread(db, order, psid) {
+  if (!psid) throw new HttpsError('invalid-argument', 'Pick a conversation.');
+  const tRef = messengerThreadsCol(db).doc(psid);
+  const t = await tRef.get();
+  if (!t.exists) throw new HttpsError('not-found', 'That conversation is gone.');
+  const cRef = await orderContactRef(db, order);
+  const FV = admin.firestore.FieldValue;
+  await cRef.set({ messengerPsid: psid, messengerName: t.data().name || null, updatedAt: FV.serverTimestamp() }, { merge: true });
+  await tRef.set({ contactId: order.contactId, companyId: order.companyId, linkedAt: FV.serverTimestamp() }, { merge: true });
+  await handSaleActivity(db, order, `Linked to the Facebook Page conversation with ${t.data().name || 'them'}`, 'messenger');
+}
+
+/**
+ * Send one message to the order's buyer through the Page, inside Meta's
+ * window (messenger.sendPlan). Throws an HttpsError that says why when it
+ * cannot, so the console can offer copy-and-paste instead.
+ */
+async function sendOrderOnMessenger(db, order, body, byUid) {
+  const text = String(body || '').trim();
+  if (!text) throw new HttpsError('invalid-argument', 'Write a message first.');
+  const cfg = messenger.messengerConfig();
+  if (!cfg.ok) throw new HttpsError('failed-precondition', `Facebook Page messaging is not set up yet (missing ${cfg.missing.join(', ')}).`);
+  const c = await (await orderContactRef(db, order)).get();
+  const psid = c.exists ? c.data().messengerPsid : null;
+  if (!psid) throw new HttpsError('failed-precondition', 'Link their Page conversation first.');
+  const tRef = messengerThreadsCol(db).doc(psid);
+  const t = await tRef.get();
+  const last = t.exists && t.data().lastInboundAt ? t.data().lastInboundAt.toMillis() : null;
+  const plan = messenger.sendPlan(last, Date.now(), cfg);
+  if (plan.error) throw new HttpsError('failed-precondition', plan.error);
+  let sent;
+  try {
+    sent = await messenger.sendText(cfg, psid, text, plan);
+  } catch (e) {
+    // 10 / 2018278: outside the window by Meta's own clock. 551: they blocked the Page or are unavailable.
+    if (e.code === 10 || e.subcode === 2018278) {
+      throw new HttpsError('failed-precondition', 'Facebook says the messaging window with them is closed. Copy the message and send it from your own Messenger.');
+    }
+    throw new HttpsError('failed-precondition', `Messenger refused it: ${e.message}`);
+  }
+  const FV = admin.firestore.FieldValue;
+  await tRef.collection('messages').doc(sent.mid || `out_${Date.now()}`).set({
+    direction: 'out', text, at: FV.serverTimestamp(), byUid: byUid || null, orderId: order.id, tag: plan.tag || null
+  });
+  await tRef.set({ lastOutboundAt: FV.serverTimestamp(), lastText: text.slice(0, 200), lastDirection: 'out', updatedAt: FV.serverTimestamp() }, { merge: true });
+  return sent;
+}
+
+/**
+ * metaMessengerWebhook — the Page's webhook in the Meta app.
+ *   GET  ?hub.mode=subscribe&hub.verify_token=…&hub.challenge=…  (setup handshake)
+ *   POST message events, signed with X-Hub-Signature-256.
+ * Every sender becomes messengerThreads/{psid}; a sender already linked to a
+ * CRM contact also lands on that contact's timeline. Always answers 200 to a
+ * signed delivery, since Meta retries and then disables a failing webhook.
+ */
+exports.metaMessengerWebhook = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  const cfg = messenger.messengerConfig();
+  if (req.method === 'GET') {
+    const okMode = req.query['hub.mode'] === 'subscribe';
+    const given = String(req.query['hub.verify_token'] || '');
+    if (okMode && cfg.verifyToken && given && timingSafeEqualStr(given, cfg.verifyToken)) {
+      res.status(200).send(String(req.query['hub.challenge'] || ''));
+    } else {
+      res.status(403).send('forbidden');
+    }
+    return;
+  }
+  if (req.method !== 'POST') { res.status(405).send('method not allowed'); return; }
+  if (!messenger.signatureOk(req.rawBody, req.get('X-Hub-Signature-256'), cfg.appSecret)) {
+    res.status(403).send('invalid signature');
+    return;
+  }
+  const db = admin.firestore();
+  const FV = admin.firestore.FieldValue;
+  for (const m of messenger.inboundMessages(req.body)) {
+    try {
+      const ref = messengerThreadsCol(db).doc(m.psid);
+      const snap = await ref.get();
+      const t = snap.exists ? snap.data() : {};
+      const profile = !t.name && cfg.token ? await messenger.fetchProfile(cfg, m.psid) : null;
+      const at = admin.firestore.Timestamp.fromMillis(m.at);
+      await ref.set({
+        psid: m.psid,
+        pageId: m.pageId || null,
+        ...(profile ? { name: profile.name } : {}),
+        lastInboundAt: at,
+        lastText: m.text.slice(0, 200),
+        lastDirection: 'in',
+        updatedAt: FV.serverTimestamp(),
+        ...(snap.exists ? {} : { createdAt: FV.serverTimestamp(), contactId: null })
+      }, { merge: true });
+      await ref.collection('messages').doc(m.mid).set({ direction: 'in', text: m.text, at });
+      if (t.contactId && t.companyId) {
+        const cRef = db.collection('companies').doc(t.companyId).collection('contacts').doc(t.contactId);
+        await cRef.collection('activities').add({
+          type: 'messenger', description: `Messenger: ${m.text.slice(0, 120)}`,
+          actorUid: 'system', actorName: 'Facebook Page', createdAt: FV.serverTimestamp(), meta: { direction: 'in', psid: m.psid }
+        });
+        await cRef.set({ lastActivityAt: FV.serverTimestamp(), ...lastContactedFields('messenger', 'in') }, { merge: true });
+      }
+    } catch (e) {
+      console.warn('[messenger] inbound failed:', m.psid, e && e.message);
+    }
+  }
+  res.status(200).send('ok');
+});
+
+const INVOICE_SEND_VIA = {
+  email: 'email', sms: 'a text from the CRM', 'phone-text': 'a text from your phone', messenger: 'Messenger', instagram: 'Instagram',
+  // Sent before the console tracked it (pasted by hand); marked so Remind can take over.
+  manual: 'hand, outside the console',
+  page: 'your Facebook Page on Messenger'
+};
+
+/**
+ * Stamp an invoice send or a reminder on the order and log it on the CRM
+ * contact (sendSms logs its own text). A reminder also pushes the open
+ * collect task out by dueDays, so Tasks shows the next follow-up instead of
+ * one that just happened.
+ */
+async function recordInvoiceSend(db, ref, order, { via, reminder, settings, now }) {
+  const FV = admin.firestore.FieldValue;
+  await ref.set(reminder
+    ? { remindedAt: now, remindedVia: via, reminderCount: FV.increment(1) }
+    : { invoiceSentAt: now, invoiceSentVia: via }, { merge: true });
+  if (via !== 'sms') {
+    await handSaleActivity(db, order, `${reminder ? 'Payment reminder for' : 'Invoice'} ${order.invoiceNumber} sent by ${INVOICE_SEND_VIA[via]}`);
+  }
+  const taskId = order.tasks && order.tasks.collect;
+  if (!reminder || !order.companyId || !taskId) return;
+  try {
+    const task = db.collection('companies').doc(order.companyId).collection('tasks').doc(taskId);
+    const t = await task.get();
+    if (t.exists && t.data().status === 'open') {
+      await task.set({
+        dueAt: admin.firestore.Timestamp.fromMillis(now.toMillis() + Number(settings.dueDays) * 86400000),
+        updatedAt: FV.serverTimestamp()
+      }, { merge: true });
+    }
+  } catch (e) { console.warn('[handSales] collect task push failed:', e && e.message); }
 }
 
 /**
@@ -16563,7 +16848,9 @@ async function emailInvoice(db, order, settings) {
  *   deliver  { id }                    → delivered / handed over
  *   reviewed { id }                    → the review ask went out
  *   cancel   { id } / reopen { id }    → stock follows
- *   email    { id }                    → email the invoice link to the buyer
+ *   email    { id, reminder? }         → email the invoice (or a reminder)
+ *   sent     { id, via, reminder? }    → the invoice or a reminder went out
+ *                                         another way (text, Messenger, IG)
  *   note     { id, note }              → internal note
  */
 exports.manageHandSale = onCall({ secrets: [sendgridKey] }, async (request) => {
@@ -16642,13 +16929,35 @@ exports.manageHandSale = onCall({ secrets: [sendgridKey] }, async (request) => {
 
   if (!id) throw new HttpsError('invalid-argument', 'Missing order.');
 
-  if (action === 'email') {
+  // email sends it from here; for the rest the console sends through sendSms
+  // (the CRM's consent-gated path) or opens Messenger / the Messages app on
+  // Anthony's own device, then reports here so the card shows how it went out.
+  if (action === 'email' || action === 'sent' || action === 'messenger') {
+    const via = { email: 'email', messenger: 'page' }[action] || String(data.via || '');
+    // 'page' is only ever recorded by a real Page send below.
+    if (!INVOICE_SEND_VIA[via] || (action === 'sent' && via === 'page')) throw new HttpsError('invalid-argument', 'Unknown send channel.');
+    const reminder = data.reminder === true;
     const snap = await db.collection('orders').doc(id).get();
     if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
     const order = { id, ...snap.data() };
-    await emailInvoice(db, order, await handSalesSettings(db));
-    await snap.ref.set({ invoiceSentAt: now }, { merge: true });
-    return { ...handSaleResult(order), emailed: true };
+    if (reminder && (handSales.isPaid(order) || order.status === 'cancelled')) {
+      throw new HttpsError('failed-precondition', 'This order is already settled. No reminder needed.');
+    }
+    const settings = await handSalesSettings(db);
+    if (via === 'email') await emailInvoice(db, order, settings, { reminder });
+    if (via === 'page') await sendOrderOnMessenger(db, order, data.body, byUid);
+    await recordInvoiceSend(db, snap.ref, order, { via, reminder, settings, now });
+    return { ...handSaleResult(order), emailed: via === 'email' };
+  }
+
+  // The Page conversations to link this order to, best guess first, and the
+  // one already linked (on the CRM contact, so every order of theirs shares it).
+  if (action === 'messenger-threads' || action === 'link-messenger') {
+    const snap = await db.collection('orders').doc(id).get();
+    if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
+    const order = { id, ...snap.data() };
+    if (action === 'link-messenger') await linkMessengerThread(db, order, String(data.psid || ''));
+    return messengerThreadsFor(db, order);
   }
 
   const refuseIfCancelled = (o) => {

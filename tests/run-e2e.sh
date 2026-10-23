@@ -15,6 +15,10 @@ EMAIL_PROVIDER=telnyx
 TELNYX_API_KEY=KEYe2efake
 TELNYX_API_BASE=http://127.0.0.1:8766/v2
 CRM_TICK_SECRET=e2e-tick-secret
+META_PAGE_ACCESS_TOKEN=e2e-page-token
+META_APP_SECRET=e2e-meta-secret
+META_VERIFY_TOKEN=e2e-verify
+META_GRAPH_BASE=http://127.0.0.1:8766
 ENV
 cat > functions/.secret.local <<SEC
 STRIPE_SECRET_KEY=sk_test_fake
