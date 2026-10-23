@@ -41,6 +41,7 @@ const sgMail = require('@sendgrid/mail');
 const { computeFocusTax, WORK_WEEKS: FOCUS_TAX_WEEKS } = require('./focus-tax.js');
 const { careerTags } = require('./careers.js');
 const handSales = require('./hand-sales-core.js');
+const messenger = require('./messenger.js');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
@@ -16650,10 +16651,163 @@ function storeDigestMessage(digest) {
   return { subject, html, text };
 }
 
+// ─── Facebook Page Messenger ──────────────────────────────────────────────
+// Pure pieces and the full picture are in functions/messenger.js.
+
+const messengerThreadsCol = (db) => db.collection('messengerThreads');
+
+function threadView(doc, cfg) {
+  const t = doc.data() || {};
+  const last = t.lastInboundAt && t.lastInboundAt.toMillis ? t.lastInboundAt.toMillis() : null;
+  return {
+    psid: doc.id,
+    name: t.name || 'Messenger user',
+    lastText: t.lastText || '',
+    lastInboundMs: last,
+    closesAt: messenger.windowClosesAt(last, Date.now(), cfg),
+    contactId: t.contactId || null
+  };
+}
+
+async function orderContactRef(db, order) {
+  if (!order.companyId || !order.contactId) {
+    throw new HttpsError('failed-precondition', 'This order has no CRM contact yet. Save the order again and retry.');
+  }
+  return db.collection('companies').doc(order.companyId).collection('contacts').doc(order.contactId);
+}
+
+async function messengerThreadsFor(db, order) {
+  const cfg = messenger.messengerConfig();
+  const out = { configured: cfg.ok, missing: cfg.missing, humanAgent: cfg.humanAgent, linked: null, threads: [] };
+  if (!cfg.ok) return out;
+  let psid = null;
+  if (order.companyId && order.contactId) {
+    const c = await (await orderContactRef(db, order)).get();
+    psid = c.exists ? c.data().messengerPsid || null : null;
+  }
+  if (psid) {
+    const t = await messengerThreadsCol(db).doc(psid).get();
+    if (t.exists) out.linked = threadView(t, cfg);
+  }
+  const recent = await messengerThreadsCol(db).orderBy('lastInboundAt', 'desc').limit(30).get();
+  const buyer = order.buyer && order.buyer.name;
+  out.threads = messenger.rankThreads(recent.docs.map((d) => threadView(d, cfg)), buyer).slice(0, 20);
+  return out;
+}
+
+async function linkMessengerThread(db, order, psid) {
+  if (!psid) throw new HttpsError('invalid-argument', 'Pick a conversation.');
+  const tRef = messengerThreadsCol(db).doc(psid);
+  const t = await tRef.get();
+  if (!t.exists) throw new HttpsError('not-found', 'That conversation is gone.');
+  const cRef = await orderContactRef(db, order);
+  const FV = admin.firestore.FieldValue;
+  await cRef.set({ messengerPsid: psid, messengerName: t.data().name || null, updatedAt: FV.serverTimestamp() }, { merge: true });
+  await tRef.set({ contactId: order.contactId, companyId: order.companyId, linkedAt: FV.serverTimestamp() }, { merge: true });
+  await handSaleActivity(db, order, `Linked to the Facebook Page conversation with ${t.data().name || 'them'}`, 'messenger');
+}
+
+/**
+ * Send one message to the order's buyer through the Page, inside Meta's
+ * window (messenger.sendPlan). Throws an HttpsError that says why when it
+ * cannot, so the console can offer copy-and-paste instead.
+ */
+async function sendOrderOnMessenger(db, order, body, byUid) {
+  const text = String(body || '').trim();
+  if (!text) throw new HttpsError('invalid-argument', 'Write a message first.');
+  const cfg = messenger.messengerConfig();
+  if (!cfg.ok) throw new HttpsError('failed-precondition', `Facebook Page messaging is not set up yet (missing ${cfg.missing.join(', ')}).`);
+  const c = await (await orderContactRef(db, order)).get();
+  const psid = c.exists ? c.data().messengerPsid : null;
+  if (!psid) throw new HttpsError('failed-precondition', 'Link their Page conversation first.');
+  const tRef = messengerThreadsCol(db).doc(psid);
+  const t = await tRef.get();
+  const last = t.exists && t.data().lastInboundAt ? t.data().lastInboundAt.toMillis() : null;
+  const plan = messenger.sendPlan(last, Date.now(), cfg);
+  if (plan.error) throw new HttpsError('failed-precondition', plan.error);
+  let sent;
+  try {
+    sent = await messenger.sendText(cfg, psid, text, plan);
+  } catch (e) {
+    // 10 / 2018278: outside the window by Meta's own clock. 551: they blocked the Page or are unavailable.
+    if (e.code === 10 || e.subcode === 2018278) {
+      throw new HttpsError('failed-precondition', 'Facebook says the messaging window with them is closed. Copy the message and send it from your own Messenger.');
+    }
+    throw new HttpsError('failed-precondition', `Messenger refused it: ${e.message}`);
+  }
+  const FV = admin.firestore.FieldValue;
+  await tRef.collection('messages').doc(sent.mid || `out_${Date.now()}`).set({
+    direction: 'out', text, at: FV.serverTimestamp(), byUid: byUid || null, orderId: order.id, tag: plan.tag || null
+  });
+  await tRef.set({ lastOutboundAt: FV.serverTimestamp(), lastText: text.slice(0, 200), lastDirection: 'out', updatedAt: FV.serverTimestamp() }, { merge: true });
+  return sent;
+}
+
+/**
+ * metaMessengerWebhook — the Page's webhook in the Meta app.
+ *   GET  ?hub.mode=subscribe&hub.verify_token=…&hub.challenge=…  (setup handshake)
+ *   POST message events, signed with X-Hub-Signature-256.
+ * Every sender becomes messengerThreads/{psid}; a sender already linked to a
+ * CRM contact also lands on that contact's timeline. Always answers 200 to a
+ * signed delivery, since Meta retries and then disables a failing webhook.
+ */
+exports.metaMessengerWebhook = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  const cfg = messenger.messengerConfig();
+  if (req.method === 'GET') {
+    const okMode = req.query['hub.mode'] === 'subscribe';
+    const given = String(req.query['hub.verify_token'] || '');
+    if (okMode && cfg.verifyToken && given && timingSafeEqualStr(given, cfg.verifyToken)) {
+      res.status(200).send(String(req.query['hub.challenge'] || ''));
+    } else {
+      res.status(403).send('forbidden');
+    }
+    return;
+  }
+  if (req.method !== 'POST') { res.status(405).send('method not allowed'); return; }
+  if (!messenger.signatureOk(req.rawBody, req.get('X-Hub-Signature-256'), cfg.appSecret)) {
+    res.status(403).send('invalid signature');
+    return;
+  }
+  const db = admin.firestore();
+  const FV = admin.firestore.FieldValue;
+  for (const m of messenger.inboundMessages(req.body)) {
+    try {
+      const ref = messengerThreadsCol(db).doc(m.psid);
+      const snap = await ref.get();
+      const t = snap.exists ? snap.data() : {};
+      const profile = !t.name && cfg.token ? await messenger.fetchProfile(cfg, m.psid) : null;
+      const at = admin.firestore.Timestamp.fromMillis(m.at);
+      await ref.set({
+        psid: m.psid,
+        pageId: m.pageId || null,
+        ...(profile ? { name: profile.name } : {}),
+        lastInboundAt: at,
+        lastText: m.text.slice(0, 200),
+        lastDirection: 'in',
+        updatedAt: FV.serverTimestamp(),
+        ...(snap.exists ? {} : { createdAt: FV.serverTimestamp(), contactId: null })
+      }, { merge: true });
+      await ref.collection('messages').doc(m.mid).set({ direction: 'in', text: m.text, at });
+      if (t.contactId && t.companyId) {
+        const cRef = db.collection('companies').doc(t.companyId).collection('contacts').doc(t.contactId);
+        await cRef.collection('activities').add({
+          type: 'messenger', description: `Messenger: ${m.text.slice(0, 120)}`,
+          actorUid: 'system', actorName: 'Facebook Page', createdAt: FV.serverTimestamp(), meta: { direction: 'in', psid: m.psid }
+        });
+        await cRef.set({ lastActivityAt: FV.serverTimestamp(), ...lastContactedFields('messenger', 'in') }, { merge: true });
+      }
+    } catch (e) {
+      console.warn('[messenger] inbound failed:', m.psid, e && e.message);
+    }
+  }
+  res.status(200).send('ok');
+});
+
 const INVOICE_SEND_VIA = {
   email: 'email', sms: 'a text from the CRM', 'phone-text': 'a text from your phone', messenger: 'Messenger', instagram: 'Instagram',
   // Sent before the console tracked it (pasted by hand); marked so Remind can take over.
-  manual: 'hand, outside the console'
+  manual: 'hand, outside the console',
+  page: 'your Facebook Page on Messenger'
 };
 
 /**
@@ -16778,9 +16932,10 @@ exports.manageHandSale = onCall({ secrets: [sendgridKey] }, async (request) => {
   // email sends it from here; for the rest the console sends through sendSms
   // (the CRM's consent-gated path) or opens Messenger / the Messages app on
   // Anthony's own device, then reports here so the card shows how it went out.
-  if (action === 'email' || action === 'sent') {
-    const via = action === 'email' ? 'email' : String(data.via || '');
-    if (!INVOICE_SEND_VIA[via]) throw new HttpsError('invalid-argument', 'Unknown send channel.');
+  if (action === 'email' || action === 'sent' || action === 'messenger') {
+    const via = { email: 'email', messenger: 'page' }[action] || String(data.via || '');
+    // 'page' is only ever recorded by a real Page send below.
+    if (!INVOICE_SEND_VIA[via] || (action === 'sent' && via === 'page')) throw new HttpsError('invalid-argument', 'Unknown send channel.');
     const reminder = data.reminder === true;
     const snap = await db.collection('orders').doc(id).get();
     if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
@@ -16790,8 +16945,19 @@ exports.manageHandSale = onCall({ secrets: [sendgridKey] }, async (request) => {
     }
     const settings = await handSalesSettings(db);
     if (via === 'email') await emailInvoice(db, order, settings, { reminder });
+    if (via === 'page') await sendOrderOnMessenger(db, order, data.body, byUid);
     await recordInvoiceSend(db, snap.ref, order, { via, reminder, settings, now });
     return { ...handSaleResult(order), emailed: via === 'email' };
+  }
+
+  // The Page conversations to link this order to, best guess first, and the
+  // one already linked (on the CRM contact, so every order of theirs shares it).
+  if (action === 'messenger-threads' || action === 'link-messenger') {
+    const snap = await db.collection('orders').doc(id).get();
+    if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
+    const order = { id, ...snap.data() };
+    if (action === 'link-messenger') await linkMessengerThread(db, order, String(data.psid || ''));
+    return messengerThreadsFor(db, order);
   }
 
   const refuseIfCancelled = (o) => {

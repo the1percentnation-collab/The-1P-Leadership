@@ -273,6 +273,13 @@ ok('Morning digest: reminders quiet longest first, unsent oldest first, paid and
   assert.strictEqual(mergeSettings({}).digestHour, 8);
 });
 
+ok('a title ending in a period does not double up in the messages', () => {
+  const o = { ...manual(), items: [{ qty: 1, name: "I Can't: Strategies To Overcoming Your Limiting Beliefs.", unitPrice: 14.99 }] };
+  assert.doesNotMatch(invoiceMessage(o, 'u'), /\.\./);
+  assert.doesNotMatch(reminderMessage(o, 'u'), /\.\./);
+  assert.match(reminderMessage(o, 'u'), /Limiting Beliefs\.\n/);
+});
+
 ok('this month counts only paid, live orders; owed counts every unpaid one', () => {
   const at = Date.UTC(2026, 9, 10);
   const s = summarize([

@@ -120,6 +120,12 @@
     .hs-lead a { color: var(--red); }
     .hs-send { display: flex; flex-wrap: wrap; gap: 8px; }
     .hs-send .btn[disabled] { opacity: .45; cursor: not-allowed; }
+    .hs-page { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+    .hs-page-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .hs-threads { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; margin-bottom: 6px; }
+    .hs-thread { display: flex; justify-content: space-between; gap: 10px; text-align: left; background: none; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; color: var(--white-dim); font-size: 13px; cursor: pointer; font-family: var(--font-body); }
+    .hs-thread:hover { border-color: var(--red); color: var(--white); }
+    .hs-thread[disabled] { opacity: .5; cursor: wait; }
     .hs-nudge { border-color: var(--amber, #E6A503) !important; color: var(--amber, #E6A503) !important; }
     .hs-toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; z-index: 200; background: #111; color: #fff; border: 1px solid var(--border); border-left: 3px solid var(--green, #1DB954); border-radius: 8px; padding: 12px 16px; font-size: 13.5px; max-width: calc(100vw - 32px); transition: all .2s ease; }
     .hs-toast.show { opacity: 1; transform: translate(-50%, 0); }

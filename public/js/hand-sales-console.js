@@ -592,7 +592,7 @@ function showCreated(res) {
 // device, email, or copy and paste. The message is editable first. With
 // { reminder: true } it is the follow-up on an invoice that went unpaid.
 
-const SENT_VIA = { sms: 'text', 'phone-text': 'text from your phone', messenger: 'Messenger', instagram: 'Instagram', email: 'email', manual: 'hand' };
+const SENT_VIA = { sms: 'text', 'phone-text': 'text from your phone', messenger: 'Messenger', instagram: 'Instagram', email: 'email', manual: 'hand', page: 'your Facebook Page' };
 
 function openSendForm(o, { title, lead, reminder = false } = {}) {
   const b = o.buyer || {};
@@ -619,6 +619,7 @@ function openSendForm(o, { title, lead, reminder = false } = {}) {
       <div class="crm-form-row"><label for="s-msg">Message</label>
         <textarea class="c-input" rows="7" id="s-msg">${esc((reminder ? reminderMessage : invoiceMessage)(o, invoiceUrl(o)))}</textarea></div>
       <div class="hs-err" id="s-err"></div>
+      <div id="s-page" class="hs-page" hidden></div>
       <div class="hs-send">
         ${dm ? `<button type="button" class="${cls('dm')}" data-send="dm">Copy &amp; open ${esc(dm.app)}</button>` : ''}
         ${crmText ? `<button type="button" class="${cls('sms')}" data-send="sms">Text from CRM number</button>` : ''}
@@ -652,6 +653,7 @@ function openSendForm(o, { title, lead, reminder = false } = {}) {
 
   const box = $('s-msg');
   const fail = (e, extra = '') => { $('s-err').innerHTML = esc(errMsg(e)) + extra; };
+  mountPageSection(bd, o, { reminder, noun, getText: () => box.value.trim(), fail });
   const done = async (via, okMsg) => {
     closeModal();
     toast(okMsg);
@@ -707,6 +709,78 @@ function openSendForm(o, { title, lead, reminder = false } = {}) {
     }
   }));
   setTimeout(() => box.focus(), 30);
+}
+
+// ─── Facebook Page Messenger ──────────────────────────────────────────────
+// When the Page is connected (functions/messenger.js), the send sheet can
+// message the buyer from the Page itself: link their Page conversation once,
+// then send in one click while Facebook's window is open (24 hours after
+// their last message, 7 days with Human Agent approved). Hidden entirely
+// until the Page is set up.
+
+const when = (ms) => new Date(ms).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+const ago = (ms) => {
+  const m = Math.round((Date.now() - ms) / 60000);
+  if (m < 60) return `${Math.max(1, m)}m ago`;
+  if (m < 1440) return `${Math.round(m / 60)}h ago`;
+  return `${Math.round(m / 1440)}d ago`;
+};
+
+function mountPageSection(bd, o, { reminder, noun, getText, fail }) {
+  const host = bd.querySelector('#s-page');
+  const render = (info, picking = false) => {
+    if (!bd.isConnected) return;
+    if (!info || !info.configured) { host.hidden = true; return; }
+    host.hidden = false;
+    const t = info.linked;
+    const windowNote = info.humanAgent ? '7 days' : '24 hours';
+    if (t && !picking) {
+      host.innerHTML = t.closesAt
+        ? `<div class="hs-page-row"><button type="button" class="btn btn-primary" data-page="send">Send from Page on Messenger</button>
+            <span class="hs-dim">To ${esc(t.name)} · open until ${esc(when(t.closesAt))} · <button type="button" class="hs-link" data-page="pick">change</button></span></div>`
+        : `<div class="hs-dim">Page conversation with <b>${esc(t.name)}</b> is linked, but Facebook only lets a Page reply within ${windowNote} of their last message${t.lastInboundMs ? ` (${esc(ago(t.lastInboundMs))})` : ''}. Use Copy &amp; open Messenger below. <button type="button" class="hs-link" data-page="pick">change</button></div>`;
+      if (t.closesAt) {
+        // The Page send is the one-click path; it outranks the copy buttons.
+        bd.querySelectorAll('.hs-send .btn-primary').forEach((b) => b.classList.replace('btn-primary', 'btn-ghost'));
+      }
+    } else if (!picking) {
+      host.innerHTML = `<div class="hs-page-row"><button type="button" class="btn btn-ghost" data-page="pick">Link their Facebook Page conversation</button>
+        <span class="hs-dim">${info.threads.length ? 'Then send from the Page in one click.' : 'No one has messaged the Page yet.'}</span></div>`;
+    } else {
+      host.innerHTML = `<div class="hs-k" style="margin-bottom:6px;">Which Page conversation is ${esc((o.buyer && o.buyer.name) || 'the buyer')}?</div>
+        <div class="hs-threads">${info.threads.length ? info.threads.map((x) => `
+          <button type="button" class="hs-thread" data-psid="${esc(x.psid)}">
+            <span><b>${esc(x.name)}</b>${x.match === 2 ? ' <span class="hs-badge ok">name match</span>' : ''}<br><span class="hs-dim">${esc(x.lastText || '')}</span></span>
+            <span class="hs-dim">${x.lastInboundMs ? esc(ago(x.lastInboundMs)) : ''}</span>
+          </button>`).join('') : '<div class="hs-dim">No one has messaged the Page yet. Once they do, they show up here.</div>'}</div>
+        <button type="button" class="hs-link" data-page="cancel">Cancel</button>`;
+    }
+    host.querySelectorAll('[data-page]').forEach((b) => b.addEventListener('click', () => onPage(b, info)));
+    host.querySelectorAll('[data-psid]').forEach((b) => b.addEventListener('click', async () => {
+      host.querySelectorAll('[data-psid]').forEach((x) => { x.disabled = true; });
+      try {
+        render(await call('manageHandSale', { action: 'link-messenger', id: o.id, psid: b.dataset.psid }));
+      } catch (e) { fail(e); render(info, true); }
+    }));
+  };
+  const onPage = async (b, info) => {
+    if (b.dataset.page === 'pick') return render(info, true);
+    if (b.dataset.page === 'cancel') return render(info);
+    const text = getText();
+    if (!text) { fail(new Error('Write a message first.')); return; }
+    b.disabled = true; b.textContent = 'Sending…';
+    try {
+      await call('manageHandSale', { action: 'messenger', id: o.id, body: text, reminder });
+    } catch (e) {
+      b.disabled = false; b.textContent = 'Send from Page on Messenger';
+      fail(e);
+      return;
+    }
+    closeModal();
+    toast(`${noun} sent to ${info.linked.name} from your Page.`);
+    refreshOrders();
+  };
+  call('manageHandSale', { action: 'messenger-threads', id: o.id }).then((info) => render(info)).catch(() => { host.hidden = true; });
 }
 
 function openPayForm(o) {

@@ -318,7 +318,9 @@ function itemSummary(order) {
   if (!items.length) return 'order';
   const first = items[0];
   const rest = items.length - 1;
-  return `${first.qty > 1 ? first.qty + '× ' : ''}${first.name}${rest > 0 ? ` +${rest} more` : ''}`;
+  // A title's own closing period would double up in "Thank you for ordering X."
+  const name = String(first.name || '').replace(/[\s.]+$/, '');
+  return `${first.qty > 1 ? first.qty + '× ' : ''}${name}${rest > 0 ? ` +${rest} more` : ''}`;
 }
 
 /**

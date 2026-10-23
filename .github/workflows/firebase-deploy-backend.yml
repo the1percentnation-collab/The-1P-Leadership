@@ -98,6 +98,11 @@ jobs:
           INBOUND_EMAIL_DOMAIN: ${{ secrets.INBOUND_EMAIL_DOMAIN }}
           INBOUND_EMAIL_TOKEN: ${{ secrets.INBOUND_EMAIL_TOKEN }}
           FUNCTIONS_BASE_URL: ${{ secrets.FUNCTIONS_BASE_URL }}
+          # Facebook Page Messenger for store invoices (docs/messenger-setup.md).
+          META_PAGE_ACCESS_TOKEN: ${{ secrets.META_PAGE_ACCESS_TOKEN }}
+          META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
+          META_VERIFY_TOKEN: ${{ secrets.META_VERIFY_TOKEN }}
+          META_HUMAN_AGENT: ${{ secrets.META_HUMAN_AGENT }}
         run: |
           : > .env
           set_count=0
@@ -109,7 +114,8 @@ jobs:
                       TWILIO_CALLER_ID GOOGLE_OAUTH_CLIENT_ID \
                       GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_REDIRECT_URI \
                       CRM_TICK_SECRET EMAIL_PROVIDER SENDGRID_WEBHOOK_KEY \
-                      INBOUND_EMAIL_DOMAIN INBOUND_EMAIL_TOKEN FUNCTIONS_BASE_URL; do
+                      INBOUND_EMAIL_DOMAIN INBOUND_EMAIL_TOKEN FUNCTIONS_BASE_URL \
+                      META_PAGE_ACCESS_TOKEN META_APP_SECRET META_VERIFY_TOKEN META_HUMAN_AGENT; do
             value="${!name}"
             if [ -n "$value" ]; then
               printf '%s=%s\n' "$name" "$value" >> .env

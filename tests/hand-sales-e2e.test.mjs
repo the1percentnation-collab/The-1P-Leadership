@@ -18,6 +18,7 @@
 //
 // From the repo root: `npm run e2e:hand-sales` in tests/.
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import http from 'node:http';
 import { createRequire } from 'node:module';
@@ -42,6 +43,7 @@ const assert = (c, m) => { if (!c) throw new Error(m || 'assertion failed'); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const emails = [];
+const graphSends = [];   // Messenger Send API calls (META_GRAPH_BASE points here)
 const capture = http.createServer((req, res) => {
   let body = '';
   req.on('data', (c) => { body += c; });
@@ -50,6 +52,18 @@ const capture = http.createServer((req, res) => {
       emails.push(JSON.parse(body));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ data: { id: `msg_${emails.length}` } }));
+      return;
+    }
+    if (req.method === 'POST' && /\/me\/messages\?/.test(req.url)) {
+      const b = JSON.parse(body);
+      graphSends.push({ url: req.url, body: b });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ recipient_id: b.recipient.id, message_id: `mid.${graphSends.length}` }));
+      return;
+    }
+    if (req.method === 'GET' && /\/PSID-DANA\?fields=/.test(req.url)) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ first_name: 'Dana', last_name: 'Fox', id: 'PSID-DANA' }));
       return;
     }
     res.writeHead(404); res.end();
@@ -312,6 +326,79 @@ await t('Morning digest: one collections email a day, each order a tap from its 
   assert(/Dana Fox/.test(mail.html_body) && /Dana Fox/.test(mail.text_body), 'buyer missing');
   const again = await tick();
   assert(again && again.skipped === 'already sent today', 'second tick: ' + JSON.stringify(again));
+});
+
+// Facebook Page Messenger: Meta's webhook signs with the app secret
+// (e2e-meta-secret here) and the Send API is the capture server above.
+const pageMessage = (psid, text, at = Date.now()) => JSON.stringify({
+  object: 'page',
+  entry: [{ id: 'PAGE1', time: at, messaging: [{ sender: { id: psid }, recipient: { id: 'PAGE1' }, timestamp: at, message: { mid: `m.${psid}.${at}`, text } }] }]
+});
+const postWebhook = (raw, secret = 'e2e-meta-secret') => fetch(`${FN}/metaMessengerWebhook`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-Hub-Signature-256': 'sha256=' + crypto.createHmac('sha256', secret).update(raw).digest('hex') },
+  body: raw
+});
+const dana = () => globalThis.danaOrder;
+
+await t('Messenger: the webhook handshake answers only the right verify token', async () => {
+  const good = await fetch(`${FN}/metaMessengerWebhook?hub.mode=subscribe&hub.verify_token=e2e-verify&hub.challenge=12345`);
+  assert(good.status === 200 && (await good.text()) === '12345', 'handshake failed');
+  const bad = await fetch(`${FN}/metaMessengerWebhook?hub.mode=subscribe&hub.verify_token=nope&hub.challenge=12345`);
+  assert(bad.status === 403, 'wrong verify token accepted');
+});
+
+await t('Messenger: a forged delivery is refused; a signed one opens a Page thread', async () => {
+  const forged = await postWebhook(pageMessage('PSID-EVIL', 'hi'), 'wrong-secret');
+  assert(forged.status === 403, 'forged delivery accepted: ' + forged.status);
+  const r = await postWebhook(pageMessage('PSID-DANA', 'Can I get a signed copy?'));
+  assert(r.status === 200, 'webhook ' + r.status);
+  const th = await asAdmin(async (db) => (await getDoc(doc(db, 'messengerThreads/PSID-DANA'))).data());
+  assert(th && th.name === 'Dana Fox' && th.lastText === 'Can I get a signed copy?' && th.contactId === null, JSON.stringify(th));
+  assert(!(await asAdmin(async (db) => (await getDoc(doc(db, 'messengerThreads/PSID-EVIL'))).exists())), 'forged thread written');
+});
+
+await t('Messenger: the order lists Page threads with the buyer first, then links one', async () => {
+  const orders = await asAdmin((db) => getDocs(collection(db, 'orders')));
+  globalThis.danaOrder = orders.docs.find((d) => d.data().invoiceNumber === 'INV-1003').id;
+  const list = (await call('manageHandSale', { action: 'messenger-threads', id: dana() }, owner.token)).result;
+  assert(list.configured && !list.linked && list.threads[0].psid === 'PSID-DANA' && list.threads[0].match === 2, JSON.stringify(list));
+  const linked = (await call('manageHandSale', { action: 'link-messenger', id: dana(), psid: 'PSID-DANA' }, owner.token)).result;
+  assert(linked.linked && linked.linked.psid === 'PSID-DANA' && linked.linked.closesAt > Date.now(), JSON.stringify(linked));
+  const o = await read(`orders/${dana()}`);
+  assert((await read(`companies/${CO}/contacts/${o.contactId}`)).messengerPsid === 'PSID-DANA', 'contact not linked');
+});
+
+await t('Messenger: inside the 24-hour window the invoice goes out from the Page', async () => {
+  const before = graphSends.length;
+  const j = await call('manageHandSale', { action: 'messenger', id: dana(), body: 'Hey Dana! Your invoice: https://x/i' }, owner.token);
+  assert(j.result && j.result.ok, JSON.stringify(j));
+  const sent = graphSends.slice(before);
+  assert(sent.length === 1 && sent[0].body.recipient.id === 'PSID-DANA' && sent[0].body.messaging_type === 'RESPONSE' && !sent[0].body.tag
+    && sent[0].body.message.text === 'Hey Dana! Your invoice: https://x/i' && /access_token=e2e-page-token/.test(sent[0].url), JSON.stringify(sent));
+  const o = await read(`orders/${dana()}`);
+  assert(o.invoiceSentVia === 'page' && o.invoiceSentAt, 'send not recorded');
+  const forged = await call('manageHandSale', { action: 'sent', id: dana(), via: 'page' }, owner.token);
+  assert(forged.error, 'recorded a Page send that never happened');
+});
+
+await t('Messenger: once their message is over 24 hours old the Page refuses, and nothing is sent', async () => {
+  await asAdmin((db) => setDoc(doc(db, 'messengerThreads/PSID-DANA'), { lastInboundAt: new Date(Date.now() - 2 * 86400000) }, { merge: true }));
+  const before = graphSends.length;
+  const j = await call('manageHandSale', { action: 'messenger', id: dana(), body: 'Reminder', reminder: true }, owner.token);
+  assert(j.error && /over 24 hours/.test(j.error.message), JSON.stringify(j));
+  assert(graphSends.length === before, 'sent outside the window');
+  const list = (await call('manageHandSale', { action: 'messenger-threads', id: dana() }, owner.token)).result;
+  assert(list.linked && list.linked.closesAt === null, 'window should read closed');
+});
+
+await t('Messenger: a linked buyer\'s next message reopens the window and lands on their CRM record', async () => {
+  await postWebhook(pageMessage('PSID-DANA', 'Just paid!'));
+  const o = await read(`orders/${dana()}`);
+  const acts = await asAdmin((db) => getDocs(collection(db, `companies/${CO}/contacts/${o.contactId}/activities`)));
+  assert(acts.docs.some((d) => d.data().description === 'Messenger: Just paid!'), 'inbound not on the contact');
+  const list = (await call('manageHandSale', { action: 'messenger-threads', id: dana() }, owner.token)).result;
+  assert(list.linked.closesAt > Date.now(), 'window did not reopen');
 });
 
 await env.cleanup();
