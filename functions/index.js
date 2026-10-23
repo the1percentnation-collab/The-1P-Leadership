@@ -1387,6 +1387,8 @@ exports.revokeSeat = onCall(async (request) => {
  * examAttempts and certificates.
  *
  * Keep in step with the match blocks under users/{uid} in firestore.rules.
+ * courseCommitments and assessments were missing until My Plan shipped, so
+ * those two survived a deletion before then.
  */
 const USER_SUBCOLLECTIONS = [
   'progress',
@@ -1400,7 +1402,12 @@ const USER_SUBCOLLECTIONS = [
   'notifications',
   'registrations',
   'courseInterests',
-  'purchases'
+  'purchases',
+  'courseCommitments',
+  'assessments',
+  'assessmentHistory',
+  'goals',
+  'journal'
 ];
 
 /**
@@ -11427,7 +11434,7 @@ async function runTick(db, { dryRun = false } = {}) {
     return { error: (e && e.message) || String(e) };
   });
 
-  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest] = await Promise.all([
+  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest, planReminders] = await Promise.all([
     step('sequences', processDueEnrollments(db, { dryRun })),
     // These only ever renew or send; there is nothing to preview, so a dry
     // run skips them rather than pretending to measure something.
@@ -11439,10 +11446,11 @@ async function runTick(db, { dryRun = false } = {}) {
     step('reviewNudges', dryRun ? { skipped: 'dryRun' } : sendReviewNudges(db)),
     // A dry run counts who would get a digest today without sending or claiming.
     step('communityDigest', sendCommunityDigests(db, { dryRun })),
-    step('storeDigest', sendStoreDigest(db, { dryRun }))
+    step('storeDigest', sendStoreDigest(db, { dryRun })),
+    step('planReminders', dryRun ? { skipped: 'dryRun' } : sendPlanReminders(db))
   ]);
 
-  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest };
+  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest, planReminders };
   const failedSteps = Object.keys(steps).filter((k) => steps[k] && steps[k].error);
   const summary = { ok: failedSteps.length === 0, dryRun, ms: Date.now() - startedAt, ...steps };
   if (failedSteps.length) summary.failedSteps = failedSteps;
@@ -15287,6 +15295,47 @@ function parseAssessmentPayload(data) {
   };
 }
 
+// Every result is also kept in users/{uid}/assessmentHistory, since the
+// assessments doc holds only the latest one, and each goal built from this
+// assessment gets the area's new score. That is how a day-30 retake shows a
+// member 48 → 61 instead of a number with nothing to compare it to.
+async function recordAssessmentProgress(db, uid, result) {
+  const FV = admin.firestore.FieldValue;
+  const userRef = db.collection('users').doc(uid);
+  try {
+    await userRef.collection('assessmentHistory').add({
+      slug: result.slug,
+      title: result.title,
+      mode: result.mode,
+      score: result.score,
+      label: result.label,
+      dims: result.dims,
+      completedAt: FV.serverTimestamp()
+    });
+  } catch (e) {
+    console.warn('[recordAssessment] history write failed:', e && e.message);
+  }
+  try {
+    const goals = await userRef.collection('goals').where('slug', '==', result.slug).get();
+    const batch = db.batch();
+    let n = 0;
+    goals.docs.forEach((d) => {
+      const g = d.data() || {};
+      if (g.status === 'done' || typeof result.dims[g.areaKey] !== 'number') return;
+      batch.update(d.ref, {
+        latest: result.dims[g.areaKey],
+        latestAt: FV.serverTimestamp(),
+        lastActivityDate: planToday(g.timezone),
+        updatedAt: FV.serverTimestamp()
+      });
+      n++;
+    });
+    if (n) await batch.commit();
+  } catch (e) {
+    console.warn('[recordAssessment] goal score update failed:', e && e.message);
+  }
+}
+
 // Saves a result to users/{uid}/assessments/{slug} and mirrors it into the
 // CRM (tags, activity, and an owner email for a priority lead). The result
 // is saved even if the CRM step fails. Returns { priority, crm }.
@@ -15294,10 +15343,21 @@ async function recordAssessment(db, uid, { meta, result }, { authEmail, source }
   const FV = admin.firestore.FieldValue;
   const resultRef = db.collection('users').doc(uid).collection('assessments').doc(result.slug);
   const prior = await resultRef.get();
-  await resultRef.set(Object.assign({}, result, {
+  // The result this one replaces, so a retake can show what moved even for
+  // results saved before the history below existed.
+  const before = prior.exists && prior.data().dims ? {
+    previous: {
+      score: prior.data().score == null ? null : prior.data().score,
+      label: prior.data().label || '',
+      dims: prior.data().dims || {},
+      completedAt: prior.data().completedAt || null
+    }
+  } : {};
+  await resultRef.set(Object.assign({}, result, before, {
     completedAt: FV.serverTimestamp(),
     takenCount: FV.increment(1)
   }, prior.exists ? {} : { firstCompletedAt: FV.serverTimestamp() }), { merge: true });
+  await recordAssessmentProgress(db, uid, result);
 
   const { role, teamSize } = result.profile;
   const utm = result.utm;
@@ -15535,6 +15595,621 @@ exports.claimAssessment = onCall({ secrets: [sendgridKey] }, async (request) => 
 
   return { ok: true, status: isNew ? 'created' : 'existing', saved, emailed, priority: rec.priority };
 });
+
+// ── My Plan: goals in the member portal ──────────────────────────────
+// Members build goals from an assessment result (the /plan-build wizard),
+// from the Goal Planner, or in their own words, and keep them at
+// users/{uid}/goals/{goalId}: tasks to check off, a weekly check-in, and a
+// review at day 30 (day 90 for a Goal Planner plan) with a retake to compare.
+// Reflections land in users/{uid}/journal. Every write goes through
+// managePlan, which applies the rules in plan-core.js (generated from
+// public/js/plan-core.js, the same rules the pages use).
+//
+// A member may share a goal with a certified 1P coach from the directory;
+// the coach sees that goal's tasks and check-ins through getCoachClients,
+// never the journal. A company admin sees team totals through
+// getTeamPlanSummary, never one person's goals.
+const planCore = require('./plan-core.js');
+
+const PLAN_POINTS = { CHECKIN: 3, REVIEW: 10 };
+const PLAN_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+const PLAN_UID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** The member's local date in `timezone`, falling back to New York. */
+function planToday(timezone) {
+  const clock = commitmentLocalClock(new Date(), timezone || 'America/New_York')
+    || commitmentLocalClock(new Date(), 'America/New_York');
+  return clock.date;
+}
+
+function planTimezone(raw) {
+  const tz = planCore.oneLine(raw, 64);
+  return tz && commitmentLocalClock(new Date(), tz) ? tz : 'America/New_York';
+}
+
+/** A goal as the browser gets it back: plain data, no Timestamps. */
+function planGoalOut(id, g) {
+  const out = { id };
+  Object.keys(g || {}).forEach((k) => {
+    const v = g[k];
+    if (v && typeof v.toMillis === 'function') out[k] = v.toMillis();
+    else if (v && typeof v === 'object' && v.constructor && v.constructor.name.endsWith('Transform')) return;
+    else out[k] = v;
+  });
+  return out;
+}
+
+/** Leads 11+ people, or runs an organization with a team, on any result. */
+async function isPriorityPlanMember(db, uid) {
+  const snap = await db.collection('users').doc(uid).collection('assessments').limit(25).get();
+  return snap.docs.some((d) => {
+    const p = (d.data() || {}).profile || {};
+    return isPriorityAssessmentLead(p.role, p.teamSize);
+  });
+}
+
+/**
+ * The CRM side of My Plan: a tag and an activity when a member starts a
+ * plan, and, for a priority lead, an open task for Anthony when a goal is
+ * finished or goes quiet for two weeks. Never throws: the plan saves either
+ * way.
+ */
+async function planCrmEvent(db, uid, goal, kind) {
+  try {
+    const userSnap = await db.collection('users').doc(uid).get();
+    const user = userSnap.exists ? (userSnap.data() || {}) : {};
+    const name = user.displayName || 'A member';
+    const change = planCore.scoreChange(goal);
+    const moved = change ? ` ${goal.areaLabel || 'Score'} ${change.from} → ${change.to}.` : '';
+    const describe = {
+      start: `Started a plan: ${goal.title}`,
+      done: `Finished a goal: ${goal.title}.${moved}`,
+      stalled: `Goal has had no activity for ${planCore.STALL_DAYS} days: ${goal.title}`
+    }[kind];
+    const priority = kind === 'start' ? false : await isPriorityPlanMember(db, uid);
+    if (kind !== 'start' && !priority) return false;
+    const crm = await syncMemberToCrm(db, uid, user, {
+      source: 'My Plan',
+      activity: { type: 'plan', actorName: 'My Plan', description: describe, meta: { kind, slug: goal.slug || null, title: goal.title } }
+    });
+    if (!crm) return false;
+    const FV = admin.firestore.FieldValue;
+    await crm.ref.set({ tags: FV.arrayUnion('My Plan'), lastActivityAt: FV.serverTimestamp() }, { merge: true });
+    if (kind === 'start') return true;
+    const contact = (await crm.ref.get()).data() || {};
+    const team = goal.slug && planCore.TEAM_ASSESSMENTS.includes(goal.slug);
+    await db.collection('companies').doc(crm.companyId).collection('tasks').add({
+      title: (kind === 'done' ? `${name} finished a goal: ${goal.title}` : `${name}'s goal has gone quiet: ${goal.title}`).slice(0, 160),
+      description: kind === 'done'
+        ? `Priority lead.${moved} A good moment to talk about the rest of their ${team ? 'team' : 'plan'}${team ? ' and offer the Alignment Audit' : ''}.`
+        : `Priority lead. No check-ins or tasks done for ${planCore.STALL_DAYS} days. A short, encouraging note may get them moving again.`,
+      contactId: crm.contactId, contactName: contact.name || user.displayName || null,
+      assigneeUid: contact.ownerUid || null,
+      status: 'open', priority: kind === 'done' ? 'high' : 'normal',
+      dueAt: admin.firestore.Timestamp.fromMillis(Date.now() + 24 * 3600 * 1000),
+      remindedAt: null,
+      createdBy: 'my-plan',
+      createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp()
+    });
+    return true;
+  } catch (e) {
+    console.warn('[plan] CRM step failed:', kind, e && e.message);
+    return false;
+  }
+}
+
+/**
+ * Saves new goals for `uid`, with the active-goal limit enforced in the same
+ * transaction. data: { goals, journal?, asLater?, pauseIds?, finishIds?,
+ * makeFocus? }. pauseIds move goals to Later and finishIds mark them done
+ * first, which is how the wizard makes room when three are already active.
+ */
+async function createPlanGoals(db, uid, data, today, timezone) {
+  const list = Array.isArray(data.goals) ? data.goals : [];
+  if (!list.length) throw new HttpsError('invalid-argument', 'Choose at least one goal.');
+  if (list.length > planCore.MAX_AREAS_PER_BUILD) throw new HttpsError('invalid-argument', `Pick up to ${planCore.MAX_AREAS_PER_BUILD} goals at a time.`);
+  const values = list.map((g) => {
+    const v = planCore.validateNewGoal(Object.assign({}, g, { timezone }), { today, slugs: ASSESSMENT_SLUGS });
+    if (v.error) throw new HttpsError('invalid-argument', v.error);
+    return v.value;
+  });
+  const ids = (arr) => (Array.isArray(arr) ? arr : []).map(String).filter((id) => PLAN_ID_RE.test(id)).slice(0, planCore.MAX_GOALS);
+  const pauseIds = ids(data.pauseIds);
+  const finishIds = ids(data.finishIds).filter((id) => !pauseIds.includes(id));
+  const asLater = data.asLater === true;
+
+  const FV = admin.firestore.FieldValue;
+  const goalsCol = db.collection('users').doc(uid).collection('goals');
+  const created = await db.runTransaction(async (tx) => {
+    const all = await tx.get(goalsCol);
+    const finishedCount = all.docs.filter((d) => (d.data() || {}).status === 'done').length;
+    if (all.size - finishedCount + values.length > planCore.MAX_GOALS) {
+      throw new HttpsError('failed-precondition', 'Your plan is full. Delete a goal you no longer need first.');
+    }
+    const leaving = new Set(pauseIds.concat(finishIds));
+    const stillActive = all.docs.filter((d) => (d.data() || {}).status === 'active' && !leaving.has(d.id));
+    if (!asLater && stillActive.length + values.length > planCore.MAX_ACTIVE) {
+      throw new HttpsError('failed-precondition',
+        `You can have ${planCore.MAX_ACTIVE} active goals at once. Move one to Later or finish it to make room.`,
+        { reason: 'limit', active: stillActive.map((d) => ({ id: d.id, title: (d.data() || {}).title || '' })) });
+    }
+    all.docs.forEach((d) => {
+      if (pauseIds.includes(d.id) && (d.data() || {}).status === 'active') {
+        tx.update(d.ref, { status: 'later', focus: false, lastActivityDate: today, updatedAt: FV.serverTimestamp() });
+      } else if (finishIds.includes(d.id) && (d.data() || {}).status !== 'done') {
+        tx.update(d.ref, { status: 'done', focus: false, doneDate: today, lastActivityDate: today, updatedAt: FV.serverTimestamp() });
+      }
+    });
+    const makeFocus = !asLater && (data.makeFocus === true || !stillActive.some((d) => (d.data() || {}).focus));
+    if (makeFocus) stillActive.forEach((d) => { if ((d.data() || {}).focus) tx.update(d.ref, { focus: false }); });
+    return values.map((v, i) => {
+      const ref = goalsCol.doc();
+      tx.set(ref, Object.assign({}, v, {
+        status: asLater ? 'later' : 'active',
+        focus: makeFocus && i === 0,
+        checkins: [],
+        reviews: [],
+        coachUid: null,
+        coachName: null,
+        lastCheckinDate: null,
+        lastActivityDate: today,
+        lastReminderDate: null,
+        reviewNoticeFor: null,
+        stallNoticeFor: null,
+        doneDate: null,
+        createdAt: FV.serverTimestamp(),
+        updatedAt: FV.serverTimestamp()
+      }));
+      return { id: ref.id, value: v };
+    });
+  });
+
+  // First reflections from the wizard. Best effort: the goals are saved.
+  const notes = (Array.isArray(data.journal) ? data.journal : []).slice(0, planCore.MAX_AREAS_PER_BUILD);
+  for (const n of notes) {
+    const text = planCore.cleanText(n && n.text, planCore.NOTE_MAX);
+    if (!text) continue;
+    const match = created.find((c) => c.value.areaKey && c.value.areaKey === (n && n.areaKey)) || created[0];
+    try {
+      await db.collection('users').doc(uid).collection('journal').add({
+        prompt: planCore.oneLine(n.prompt, planCore.TEXT_MAX) || null,
+        text,
+        goalId: match ? match.id : null,
+        goalTitle: match ? match.value.title : null,
+        date: today,
+        createdAt: FV.serverTimestamp()
+      });
+    } catch (e) { console.warn('[plan] journal write failed:', e && e.message); }
+  }
+  await planCrmEvent(db, uid, created[0].value, 'start');
+  return { ok: true, ids: created.map((c) => c.id) };
+}
+
+/** After a goal leaves active, the next active one (newest first) takes the focus. */
+async function handOffPlanFocus(db, uid) {
+  const col = db.collection('users').doc(uid).collection('goals');
+  const active = (await col.where('status', '==', 'active').get()).docs;
+  if (!active.length || active.some((d) => (d.data() || {}).focus)) return;
+  const next = active.slice().sort((a, b) => String((b.data() || {}).startDate || '').localeCompare(String((a.data() || {}).startDate || '')))[0];
+  await next.ref.update({ focus: true });
+}
+
+/**
+ * managePlan — every change to a member's own plan.
+ *
+ *   op: 'create'         { goals, journal?, asLater?, pauseIds?, finishIds?, makeFocus? }
+ *       'toggleTask' | 'editTask' | 'addTask' | 'deleteTask'
+ *       'editGoal' | 'setStatus' | 'checkin' | 'review'   { goalId, ... }
+ *       'setFocus' | 'delete'                              { goalId }
+ *       'share'                                            { goalId, coachUid | null }
+ *       'journal'                                          { text, prompt?, goalId? }
+ *       'deleteJournal'                                    { entryId }
+ *   timezone: the member's IANA zone, so "today" is their today.
+ */
+exports.managePlan = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in to save your plan.');
+  const db = admin.firestore();
+  const data = request.data || {};
+  const op = String(data.op || '');
+  await rateLimitCaller(db, request, { action: 'managePlan', max: 300, windowSec: 600 });
+  const timezone = planTimezone(data.timezone);
+  const today = planToday(timezone);
+  const FV = admin.firestore.FieldValue;
+  const userRef = db.collection('users').doc(uid);
+
+  if (op === 'create') return createPlanGoals(db, uid, data, today, timezone);
+
+  if (op === 'journal') {
+    const text = planCore.cleanText(data.text, planCore.NOTE_MAX);
+    if (!text) throw new HttpsError('invalid-argument', 'Write something first.');
+    let goalTitle = null;
+    const goalId = PLAN_ID_RE.test(String(data.goalId || '')) ? String(data.goalId) : null;
+    if (goalId) {
+      const g = await userRef.collection('goals').doc(goalId).get();
+      goalTitle = g.exists ? (g.data().title || null) : null;
+    }
+    const ref = await userRef.collection('journal').add({
+      prompt: planCore.oneLine(data.prompt, planCore.TEXT_MAX) || null,
+      text, goalId: goalTitle ? goalId : null, goalTitle, date: today, createdAt: FV.serverTimestamp()
+    });
+    return { ok: true, id: ref.id };
+  }
+  if (op === 'deleteJournal') {
+    const id = String(data.entryId || '');
+    if (!PLAN_ID_RE.test(id)) throw new HttpsError('invalid-argument', 'Unknown entry.');
+    await userRef.collection('journal').doc(id).delete();
+    return { ok: true };
+  }
+
+  const goalId = String(data.goalId || '');
+  if (!PLAN_ID_RE.test(goalId)) throw new HttpsError('invalid-argument', 'Unknown goal.');
+  const ref = userRef.collection('goals').doc(goalId);
+
+  if (op === 'delete') {
+    const snap = await ref.get();
+    if (!snap.exists) return { ok: true };
+    await ref.delete();
+    if ((snap.data() || {}).focus) await handOffPlanFocus(db, uid);
+    return { ok: true };
+  }
+
+  if (op === 'share') {
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'That goal is gone. Refresh and try again.');
+    const coachUid = data.coachUid ? String(data.coachUid) : null;
+    if (!coachUid) {
+      await ref.update({ coachUid: null, coachName: null, updatedAt: FV.serverTimestamp() });
+      return { ok: true, goal: planGoalOut(goalId, Object.assign({}, snap.data(), { coachUid: null, coachName: null })) };
+    }
+    if (!PLAN_UID_RE.test(coachUid)) throw new HttpsError('invalid-argument', 'Unknown coach.');
+    if (coachUid === uid) throw new HttpsError('invalid-argument', 'Choose a coach other than yourself.');
+    const coach = await db.collection('coachDirectory').doc(coachUid).get();
+    if (!coach.exists || coach.data().active !== true) throw new HttpsError('failed-precondition', 'That coach is not taking clients through the directory right now.');
+    const coachName = planCore.oneLine(coach.data().displayName || coach.data().name || 'Your coach', 80);
+    await ref.update({ coachUid, coachName, updatedAt: FV.serverTimestamp() });
+    try {
+      const me = await userRef.get();
+      await notifyUser(db, coachUid, {
+        id: `plan_shared_${uid}_${goalId}`,
+        type: 'plan_shared',
+        fromUid: uid,
+        fromName: (me.exists && me.data().displayName) || 'A member',
+        preview: (snap.data() || {}).title || '',
+        link: '/plan#coaching'
+      });
+    } catch (e) { console.warn('[plan] coach notice failed:', e && e.message); }
+    return { ok: true, goal: planGoalOut(goalId, Object.assign({}, snap.data(), { coachUid, coachName })) };
+  }
+
+  if (op === 'setFocus') {
+    const out = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new HttpsError('not-found', 'That goal is gone. Refresh and try again.');
+      if ((snap.data() || {}).status !== 'active') throw new HttpsError('failed-precondition', 'Only an active goal can be your focus.');
+      const active = await tx.get(userRef.collection('goals').where('status', '==', 'active'));
+      active.docs.forEach((d) => { if (d.id !== goalId && (d.data() || {}).focus) tx.update(d.ref, { focus: false }); });
+      tx.update(ref, { focus: true, updatedAt: FV.serverTimestamp() });
+      return Object.assign({}, snap.data(), { focus: true });
+    });
+    return { ok: true, goal: planGoalOut(goalId, out) };
+  }
+
+  const result = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError('not-found', 'That goal is gone. Refresh and try again.');
+    const goal = snap.data() || {};
+    if (op === 'setStatus' && data.status === 'active' && goal.status !== 'active') {
+      const active = await tx.get(userRef.collection('goals').where('status', '==', 'active'));
+      if (active.size >= planCore.MAX_ACTIVE) {
+        throw new HttpsError('failed-precondition',
+          `You have ${planCore.MAX_ACTIVE} active goals. Finish one or move it to Later first.`, { reason: 'limit' });
+      }
+    }
+    const r = planCore.applyGoalOp(goal, op, data, today);
+    if (r.error) throw new HttpsError('invalid-argument', r.error);
+    tx.update(ref, Object.assign({}, r.patch, { updatedAt: FV.serverTimestamp() }));
+    return { before: goal, after: Object.assign({}, goal, r.patch), event: r.event || null };
+  });
+
+  const { before, after, event } = result;
+  if (before.focus && after.status !== 'active') await handOffPlanFocus(db, uid);
+  if (after.status === 'active' && before.status !== 'active') await handOffPlanFocus(db, uid);
+
+  // Points reward the habit (a check-in a week, a finished review), never
+  // the number of boxes ticked, so nobody farms them with tiny tasks.
+  let points = 0;
+  if (event === 'checkin') {
+    const last = before.lastCheckinDate;
+    if (!last || planCore.dayDiff(last, today) >= 5) points = PLAN_POINTS.CHECKIN;
+  } else if (event === 'review') {
+    points = PLAN_POINTS.REVIEW;
+  }
+  if (points) {
+    try { await applyPointsDelta(db, uid, points, event === 'review' ? { planReviews: 1 } : { planCheckins: 1 }); } catch (e) { console.warn('[plan] points failed:', e && e.message); }
+  }
+  if (event === 'review') {
+    const easier = planCore.cleanText(data.easier, planCore.NOTE_MAX);
+    if (easier) {
+      try {
+        await userRef.collection('journal').add({
+          prompt: 'What got easier?', text: easier, goalId, goalTitle: after.title || null, date: today, createdAt: FV.serverTimestamp()
+        });
+      } catch (e) { console.warn('[plan] review journal failed:', e && e.message); }
+    }
+  }
+  if (event === 'done' || (event === 'review' && after.status === 'done')) await planCrmEvent(db, uid, after, 'done');
+  return { ok: true, goal: planGoalOut(goalId, after), points };
+});
+
+/**
+ * claimPlan — saves a wizard plan for a visitor who unlocked their report
+ * with name and email and has not set a password yet, so they are not
+ * signed in. Mirrors claimAssessment's caution: anyone can type any email,
+ * so this only writes to an account that was created in the last week, has
+ * no way to sign in yet (no password, no Google link), and has no goals. Anything else gets
+ * { status: 'login' } and the plan waits in the browser until they log in.
+ */
+exports.claimPlan = onCall(async (request) => {
+  const db = admin.firestore();
+  const data = request.data || {};
+  if (request.auth && request.auth.uid) throw new HttpsError('failed-precondition', 'You are signed in. Save from your plan instead.');
+  const email = normalizeEmail(data.email).slice(0, 160);
+  if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'Please enter a valid email.');
+  await rateLimitCaller(db, request, { action: 'claimPlan', max: 6, windowSec: 600 });
+  let user;
+  try { user = await admin.auth().getUserByEmail(email); } catch (e) { return { ok: true, status: 'login' }; }
+  // No password and no Google link yet: nobody can have signed in to it.
+  // Setting the password from the results email adds one, and from then
+  // on this account saves through a real login like any other.
+  const meta = user.metadata || {};
+  const created = Date.parse(meta.creationTime || '') || 0;
+  const fresh = !(user.providerData || []).length && created > Date.now() - 7 * 24 * 3600 * 1000;
+  if (!fresh) return { ok: true, status: 'login' };
+  const existing = await db.collection('users').doc(user.uid).collection('goals').limit(1).get();
+  if (!existing.empty) return { ok: true, status: 'login' };
+  const timezone = planTimezone(data.timezone);
+  await createPlanGoals(db, user.uid, { goals: data.goals, journal: data.journal }, planToday(timezone), timezone);
+  return { ok: true, status: 'saved' };
+});
+
+/**
+ * getCoachClients — for a certified coach: every goal members have shared
+ * with them, grouped by member. Tasks and check-ins only; the journal is
+ * never shared.
+ */
+exports.getCoachClients = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'getCoachClients', max: 60, windowSec: 600 });
+  const listing = await db.collection('coachDirectory').doc(uid).get();
+  if (!listing.exists) return { coach: false, clients: [] };
+  const snap = await db.collectionGroup('goals').where('coachUid', '==', uid).limit(300).get();
+  const byMember = new Map();
+  snap.docs.forEach((d) => {
+    const memberUid = d.ref.parent.parent.id;
+    const g = d.data() || {};
+    if (!byMember.has(memberUid)) byMember.set(memberUid, []);
+    const p = planCore.progressOf(g);
+    const t = planCore.nextTask(g);
+    byMember.get(memberUid).push({
+      id: d.id, title: g.title, status: g.status, source: g.source,
+      areaLabel: g.areaLabel || null, assessmentTitle: g.assessmentTitle || null, reading: g.reading || null,
+      baseline: g.baseline == null ? null : g.baseline, latest: g.latest == null ? null : g.latest, target: g.target == null ? null : g.target,
+      done: p.done, total: p.total, nextTask: t ? { text: t.text, due: t.due || null } : null,
+      checkins: (g.checkins || []).slice(-3), startDate: g.startDate || null, reviewDate: g.reviewDate || null,
+      lastActivityDate: g.lastActivityDate || null
+    });
+  });
+  const clients = [];
+  for (const [memberUid, goals] of byMember) {
+    let name = 'Member';
+    try {
+      const u = await db.collection('users').doc(memberUid).get();
+      if (u.exists && u.data().displayName) name = u.data().displayName;
+    } catch (e) { /* keep the fallback */ }
+    clients.push({ uid: memberUid, name, goals });
+  }
+  clients.sort((a, b) => a.name.localeCompare(b.name));
+  return { coach: true, clients };
+});
+
+/**
+ * getTeamPlanSummary — for a company admin: how the team is doing, in totals
+ * only. Withheld under planCore.TEAM_MIN members, and an assessment average
+ * appears only once that many have taken it, so no single person's score
+ * can be read off it.
+ */
+exports.getTeamPlanSummary = onCall(async (request) => {
+  const db = admin.firestore();
+  const companyId = String((request.data || {}).companyId || '');
+  if (!PLAN_UID_RE.test(companyId)) throw new HttpsError('invalid-argument', 'companyId is required.');
+  const { company } = await assertCompanyAdmin(db, companyId, request);
+  await rateLimitCaller(db, request, { action: 'getTeamPlanSummary', max: 30, windowSec: 600 });
+  const users = await db.collection('users').where('companyId', '==', companyId).limit(300).get();
+  const members = [];
+  const docs = users.docs;
+  for (let i = 0; i < docs.length; i += 20) {
+    const chunk = await Promise.all(docs.slice(i, i + 20).map(async (u) => {
+      const [a, g] = await Promise.all([u.ref.collection('assessments').get(), u.ref.collection('goals').get()]);
+      const assessments = {};
+      a.docs.forEach((d) => { const r = d.data() || {}; if (r.dims && typeof r.score === 'number') assessments[d.id] = { score: r.score, dims: r.dims }; });
+      return { assessments, goals: g.docs.map((d) => d.data() || {}) };
+    }));
+    members.push(...chunk);
+  }
+  const summary = planCore.summarizeTeam(members, { today: planToday('America/New_York') });
+  return Object.assign({ ok: true, companyName: company.name || '' }, summary);
+});
+
+function planReminderHtml(msg) {
+  const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:8px;">
+    <h2 style="color:#E60306;margin:0 0 12px;font-size:22px;">${esc(msg.heading)}</h2>
+    <p style="font-size:16px;line-height:1.5;color:#222;margin:0 0 20px;">${esc(msg.body)}</p>
+    <p style="margin:0 0 24px;"><a href="${esc(msg.url)}" style="display:inline-block;background:#E60306;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px;">${esc(msg.cta)} →</a></p>
+    <p style="font-size:12px;color:#888;margin:0;">You chose these reminders when you built your plan. <a href="${esc(APP_BASE_URL)}/plan" style="color:#888;">Change your check-in day or turn reminders off</a>.</p>
+    <p style="font-size:12px;color:#888;margin:6px 0 0;">The One Percent</p>
+  </div>`;
+}
+
+/**
+ * The one-time Alignment Audit note (planCore.auditNudgeDue): a priority lead
+ * a few days into a plan from a team assessment, who has not asked for an
+ * Audit, gets one personal email from Anthony. Once per member, ever. The
+ * goal is stamped either way so it is not looked at again. Returns 'sent' or
+ * why it was skipped.
+ */
+async function sendAuditNudge(db, goalRef, g, today) {
+  const FV = admin.firestore.FieldValue;
+  const userRef = goalRef.parent.parent;
+  const uid = userRef.id;
+  // Claim the member before anything else, so overlapping ticks or two
+  // goals from team assessments can never send it twice.
+  const claimed = await db.runTransaction(async (tx) => {
+    const u = await tx.get(userRef);
+    if (!u.exists || (u.data() || {}).auditNudgeSentAt) return null;
+    tx.update(userRef, { auditNudgeSentAt: FV.serverTimestamp() });
+    return u.data() || {};
+  });
+  const stamp = (why) => goalRef.update({ auditNudgeFor: why }).then(() => why);
+  if (!claimed) return stamp('already-sent');
+  const release = () => userRef.update({ auditNudgeSentAt: FV.delete() });
+  if (!(await isPriorityPlanMember(db, uid))) { await release(); return stamp('not-priority'); }
+  const user = claimed;
+  if (!user.crmCompanyId || !user.crmContactId) { await release(); return stamp('no-contact'); }
+  const cRef = db.collection('companies').doc(user.crmCompanyId).collection('contacts').doc(user.crmContactId);
+  const cSnap = await cRef.get();
+  const contact = cSnap.exists ? Object.assign({ id: cSnap.id }, cSnap.data()) : null;
+  if (!contact || !contact.email) { await release(); return stamp('no-contact'); }
+  // Already asked for an Audit: the note would be noise. Keep the claim so
+  // it is never sent later either.
+  if (Array.isArray(contact.tags) && contact.tags.includes('Alignment Audit')) return stamp('audit-requested');
+  if (isEmailSuppressed(contact)) return stamp('unsubscribed');
+  if (!emailConfigured()) { await release(); return 'email-not-configured'; }
+
+  // Marketing mail, so it carries the same opt-out a campaign does.
+  let unsubLink = null;
+  try { unsubLink = unsubscribeUrl(user.crmCompanyId, contact.id, await ensureUnsubToken(cRef, contact.unsubToken)); }
+  catch (e) { console.warn('[plan] audit note unsub token failed:', e && e.message); }
+  const firstName = String(user.displayName || contact.name || '').trim().split(/\s+/)[0] || '';
+  const msg = planCore.auditNudgeMessage(g, { firstName, base: APP_BASE_URL });
+  const footerHtml = unsubLink
+    ? `<hr style="margin:28px 0 14px;border:none;border-top:1px solid #ddd;"><p style="font-size:12px;color:#777;line-height:1.6;"><a href="${unsubLink}" style="color:#777;">Unsubscribe from these emails</a>.</p>`
+    : '';
+  try {
+    await sendEmail({
+      to: contact.email,
+      from: { email: FROM_EMAIL, name: 'Anthony Brown Sr.' },
+      replyTo: REPLY_TO,
+      subject: msg.subject,
+      text: msg.text + (unsubLink ? `\n\n--\nUnsubscribe: ${unsubLink}` : ''),
+      html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;font-size:15px;line-height:1.55;">${textToHtml(msg.text)}${footerHtml}</div>`,
+      ...(unsubLink ? { headers: { 'List-Unsubscribe': `<${unsubLink}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } } : {}),
+      customArgs: { type: 'audit-nudge', companyId: user.crmCompanyId, contactId: contact.id, uid }
+    });
+  } catch (e) {
+    await release();
+    console.warn('[plan] audit note failed:', e && e.message);
+    return 'email-failed';
+  }
+  await cRef.collection('activities').add({
+    type: 'manual_email', description: `Alignment Audit note after their ${g.assessmentTitle || 'assessment'} plan: ${msg.subject}`,
+    actorUid: 'system', actorName: 'My Plan', createdAt: FV.serverTimestamp(),
+    meta: { kind: 'audit-nudge', slug: g.slug || null }
+  });
+  await cRef.set(Object.assign({ tags: FV.arrayUnion('Audit Note Sent') }, lastContactedFields('email', 'out')), { merge: true });
+  return stamp('sent');
+}
+
+/**
+ * Tick step: weekly check-in and review reminders for active goals, the
+ * two-week stall note to the CRM for priority leads, and the one-time
+ * Alignment Audit note.
+ */
+async function sendPlanReminders(db, { now = new Date() } = {}) {
+  const FV = admin.firestore.FieldValue;
+  const out = { due: 0, checkins: 0, reviews: 0, email: 0, emailFailed: 0, emailNotConfigured: 0, inapp: 0, push: 0, stalled: 0, auditNotes: 0 };
+  const snap = await db.collectionGroup('goals').where('status', '==', 'active').limit(3000).get();
+  for (const d of snap.docs) {
+    const g = d.data() || {};
+    const clock = commitmentLocalClock(now, g.timezone || 'America/New_York');
+    if (!clock) continue;
+    const userRef = d.ref.parent.parent;
+    const uid = userRef.id;
+
+    const quietSince = g.lastActivityDate || g.startDate;
+    if (planCore.isStalled(g, clock.date) && g.stallNoticeFor !== quietSince) {
+      try {
+        await d.ref.update({ stallNoticeFor: quietSince });
+        if (await planCrmEvent(db, uid, g, 'stalled')) out.stalled++;
+      } catch (e) { console.warn('[tick] plan stall note failed', e && e.message); }
+    }
+
+    // Business hours in the member's own timezone, like the reminders.
+    if (planCore.auditNudgeDue(g, clock.date) && clock.minutes >= 9 * 60 && clock.minutes < 18 * 60) {
+      try {
+        if (await sendAuditNudge(db, d.ref, g, clock.date) === 'sent') out.auditNotes++;
+      } catch (e) { console.warn('[tick] audit note failed', e && e.message); }
+    }
+
+    const due = planCore.planReminderDue(g, clock);
+    if (!due) continue;
+    let claimed = false;
+    try {
+      claimed = await db.runTransaction(async (tx) => {
+        const s = await tx.get(d.ref);
+        const cur = s.exists ? (s.data() || {}) : null;
+        if (!cur || cur.lastReminderDate === due.date) return false;
+        tx.update(d.ref, Object.assign({ lastReminderDate: due.date }, due.kind === 'review' ? { reviewNoticeFor: cur.reviewDate || null } : {}));
+        return true;
+      });
+    } catch (e) { claimed = false; }
+    if (!claimed) continue;
+
+    out.due++;
+    if (due.kind === 'review') out.reviews++; else out.checkins++;
+    const msg = planCore.planReminderMessage(g, due, { base: APP_BASE_URL, goalId: d.id });
+    const ch = g.reminders || {};
+    try {
+      if (ch.email !== false) {
+        const u = await userRef.get();
+        let to = (u.exists && u.data().email) || '';
+        if (!to) { try { to = (await admin.auth().getUser(uid)).email || ''; } catch (e) { /* no auth record */ } }
+        if (to && !emailConfigured()) out.emailNotConfigured++;
+        else if (to) {
+          try {
+            await sendEmail({
+              to, from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
+              subject: msg.subject, html: planReminderHtml(msg),
+              text: `${msg.body}\n\n${msg.cta}: ${msg.url}\n\nChange your check-in day or turn reminders off: ${APP_BASE_URL}/plan`
+            });
+            out.email++;
+          } catch (e) { out.emailFailed++; console.warn('[tick] plan reminder email failed', e && e.message); }
+        }
+      }
+      if (ch.inapp !== false) {
+        await notifyUser(db, uid, {
+          id: `plan_${due.kind}_${d.id}_${due.date}`,
+          type: due.kind === 'review' ? 'plan_review' : 'plan_checkin',
+          title: g.title,
+          fromName: 'My Plan',
+          preview: msg.body,
+          link: `/plan#goal-${d.id}`
+        });
+        out.inapp++;
+      }
+      if (ch.push === true) {
+        const r = await pushToUser(db, uid, { title: msg.subject, body: msg.body, data: { url: msg.url, type: `plan_${due.kind}` } });
+        out.push += r.sent || 0;
+      }
+    } catch (e) {
+      console.warn('[tick] plan reminder failed', d.id, e && e.message);
+    }
+  }
+  return out;
+}
 
 // ── Reads: the members-only essay series ─────────────────────────────
 // /reads/<slug> is a static page carrying an essay's opening. The full text

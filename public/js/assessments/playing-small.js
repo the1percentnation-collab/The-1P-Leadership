@@ -13,6 +13,7 @@ export default {
       key: 'confidence',
       label: 'Confidence',
       desc: 'Trusting your ability enough to act before you feel completely ready.',
+      goal: 'Act on your ability before you feel fully ready',
       why: 'Readiness rarely arrives before the opportunity does. Confidence is what lets you act on what you already know instead of waiting to feel certain.',
       levels: {
         low: 'You often wait to feel fully ready before you act, and that moment rarely comes. You may soften your opinions or hold them back entirely. That caution likely protected you at some point. Now it is costing you chances to show what you can do.',
@@ -31,6 +32,7 @@ export default {
       key: 'visibility',
       label: 'Visibility',
       desc: 'Letting the right people see your work, your ideas, and your potential.',
+      goal: 'Let the right people see your work and ideas',
       why: 'Opportunities go to people others can see. Good work that stays hidden rarely opens the doors it deserves to.',
       levels: {
         low: 'Your work is likely stronger than the people around you realize. You may downplay your wins to avoid seeming arrogant, or keep ideas to yourself until they feel perfect. Visibility is not bragging. It is giving people the information they need to back you.',
@@ -49,6 +51,7 @@ export default {
       key: 'risk',
       label: 'Risk-Taking',
       desc: 'Choosing growth over comfort when the outcome is not guaranteed.',
+      goal: 'Take smart risks when the outcome is not guaranteed',
       why: 'Growth almost always sits on the other side of an uncertain step. Without some risk, comfort slowly becomes a ceiling.',
       levels: {
         low: 'You tend to stay where things feel safe, even when you have outgrown them. Uncertainty feels like a reason to wait. That is a natural human response, not a weakness. Taking small, low-stakes risks on purpose will teach your mind that you can handle the unknown.',
@@ -67,6 +70,7 @@ export default {
       key: 'asking',
       label: 'Asking',
       desc: 'Requesting the help, introductions, and opportunities that accelerate your growth.',
+      goal: 'Ask for the help and introductions that move you forward',
       why: 'Nobody gets far alone. Asking is how you borrow other people\'s experience, networks and help to move faster than you could on your own.',
       levels: {
         low: 'You tend to carry things alone rather than ask, often because you do not want to be a burden. That independence has served you, but it is also slowing you down. Most people are glad to help when they are asked clearly and specifically.',
@@ -85,6 +89,7 @@ export default {
       key: 'advocacy',
       label: 'Self-Advocacy',
       desc: 'Speaking up for your value, your needs, and what you have earned.',
+      goal: 'Speak up for your value and what you have earned',
       why: 'Hoping your work will speak for itself leaves your value up to chance. Self-advocacy makes sure what you have earned is seen and rewarded.',
       levels: {
         low: 'You may be underpaid, overlooked or overloaded and still hesitate to say so. You hope your work will speak for itself, and often it does not. Speaking up starts with knowing your results clearly, so you can name them calmly and without apology.',

@@ -13,6 +13,7 @@ export default {
       key: 'fulfillment',
       label: 'Fulfillment',
       desc: 'Whether the results you worked for actually feel like enough when you reach them.',
+      goal: 'Chase results that actually feel like enough',
       why: 'If reaching a goal never feels like enough, you will keep raising the bar and never feel the reward. Fulfillment tells you whether your success is feeding you or just keeping you busy.',
       levels: {
         low: 'Your wins arrive and fade within days, and the next target appears before you have taken a breath. That does not mean you are ungrateful. It usually means the goals were set to prove something rather than to give you something. Start by noticing what actually satisfies you, even in small ways.',
@@ -31,6 +32,7 @@ export default {
       key: 'values',
       label: 'Values',
       desc: 'Whether your daily choices reflect what you say matters most.',
+      goal: 'Align your daily choices with what matters most',
       why: 'When your calendar and your values point in different directions, success starts to feel hollow. Living your values is what makes achievement feel like yours.',
       levels: {
         low: 'What you say matters most and what actually gets your hours are not lining up right now. You may feel a quiet guilt or restlessness without being able to name it. The fix is not a big life change. It is naming your values clearly and moving a few hours toward them.',
@@ -49,6 +51,7 @@ export default {
       key: 'presence',
       label: 'Presence',
       desc: 'Being fully there for the people and moments your success was supposed to make room for.',
+      goal: 'Be fully present with the people you love',
       why: 'Much of what you worked for was meant to be enjoyed with the people you love. Presence is how your success actually reaches them and you.',
       levels: {
         low: 'You are often in the room but not really there. Your mind drifts to work, the phone pulls at you, and the people closest to you get what is left over. This is common for high achievers, and it changes quickly once you protect a few moments on purpose.',
@@ -67,6 +70,7 @@ export default {
       key: 'ownership',
       label: 'Ownership',
       desc: 'Pursuing a definition of success you chose, not one you inherited.',
+      goal: 'Define success in your own words',
       why: 'Success defined by someone else rarely satisfies you when you get there. Owning your definition is what turns achievement into a life that fits.',
       levels: {
         low: 'Much of what you are chasing came from someone else: a parent, a culture, a peer group, or an old version of you. That is why reaching it can feel strangely flat. The work here is to separate what you were taught to want from what you actually want.',
@@ -85,6 +89,7 @@ export default {
       key: 'direction',
       label: 'Direction',
       desc: 'Having a clear sense of what the next chapter is for, not just what comes next.',
+      goal: 'Get clear on what your next chapter is for',
       why: 'Without a clear direction, you default to more of the same, even when it no longer fits. Direction gives your next chapter a reason, not just a schedule.',
       levels: {
         low: 'You know what is next on the calendar, but not what the next chapter is for. That can leave you feeling tired when you think about the future. A clear picture does not need to be perfect. It just needs to be written down so you can start moving toward it.',

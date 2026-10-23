@@ -13,6 +13,7 @@ export default {
       key: 'prospecting',
       label: 'Prospecting Discipline',
       desc: 'Filling the pipeline on a schedule, whether or not you feel like it.',
+      goal: 'Fill your pipeline on a schedule, every week',
       why: "Today's sales come from conversations you started weeks ago. Prospecting on a schedule is what turns feast and famine into a steady pipeline.",
       levels: {
         low: 'Prospecting probably happens when pressure forces it, which makes your results swing. That is one of the most common patterns in sales, and it is a scheduling problem more than a talent problem. A small, protected daily block changes it quickly.',
@@ -31,6 +32,7 @@ export default {
       key: 'conviction',
       label: 'Belief in Your Offer',
       desc: 'Knowing your offer helps people, so asking for the business feels like service.',
+      goal: 'Present your offer with calm, honest conviction',
       why: 'People buy certainty before they buy a product. When you fully believe in what you offer, asking for the sale feels like helping, not pushing.',
       levels: {
         low: 'Asking for the business may feel awkward or pushy to you right now. That usually means you have not yet connected your offer to the real results it creates. Reconnecting with those results is what makes asking feel like service.',
@@ -49,6 +51,7 @@ export default {
       key: 'resilience',
       label: 'Handling Rejection',
       desc: 'Hearing no without taking it personally, and getting back to work quickly.',
+      goal: 'Hear no without losing your stride',
       why: 'In sales, hearing no is part of the job. How quickly you recover decides how many more chances you get to hear yes.',
       levels: {
         low: 'Rejection may feel personal right now, and a few in a row can throw off your whole week. That is human, not weakness. Building a short recovery routine and separating your worth from the outcome makes the next call easier.',
@@ -67,6 +70,7 @@ export default {
       key: 'followUp',
       label: 'Follow-Up Systems',
       desc: 'Staying in contact with every lead until they buy or clearly say no.',
+      goal: 'Follow every lead through to a clear yes or no',
       why: 'Many sales close after several touches, long after most people stop following up. A simple system captures the business that effort alone lets slip away.',
       levels: {
         low: 'Good leads are likely slipping through the cracks, not because you do not care but because there is no system holding them. One list with a next touch date for every lead will change your results faster than more prospecting.',
@@ -85,6 +89,7 @@ export default {
       key: 'discovery',
       label: 'Listening and Discovery',
       desc: 'Understanding what someone needs before you present anything.',
+      goal: 'Understand what people need before you present',
       why: 'People buy when they feel understood. Good discovery means your offer lands as the answer to their problem, not as a pitch.',
       levels: {
         low: "You may be presenting before you fully understand the prospect's need. That is common, especially when you are excited about your offer. A few prepared, open questions will slow you down in the right way.",
@@ -103,6 +108,7 @@ export default {
       key: 'goalClarity',
       label: 'Goal Clarity',
       desc: 'Knowing your numbers and the daily activity it takes to hit them.',
+      goal: 'Know your numbers and the daily activity to hit them',
       why: 'A goal without numbers is a hope. Knowing your ratios turns a big target into a daily activity you can actually control.',
       levels: {
         low: 'You may not have clear numbers for your goals, so it is hard to know if a day was productive. That is not a motivation issue. It is a missing map. Working backward from one 90 day goal makes every day clearer.',

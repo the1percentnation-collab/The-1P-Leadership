@@ -9,6 +9,26 @@
   'use strict';
   var KEY = 'cookieConsent'; // 'accepted' | 'declined'
 
+  // Meta (Facebook) pixel for ad measurement. Blank means off: paste the
+  // Pixel ID from Meta Events Manager here to turn it on. It loads only for
+  // visitors who accept cookies, never for anyone who declines or has not
+  // chosen yet. The assessment pages send Lead, CompleteRegistration and a
+  // custom PriorityLead event through it (js/assessment-page.js).
+  var META_PIXEL_ID = '';
+
+  function loadMetaPixel() {
+    if (!META_PIXEL_ID || window.fbq) return;
+    /* eslint-disable */
+    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+    n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+    document,'script','https://connect.facebook.net/en_US/fbevents.js');
+    /* eslint-enable */
+    window.fbq('init', META_PIXEL_ID);
+    window.fbq('track', 'PageView');
+  }
+
   function stored() {
     try { return localStorage.getItem(KEY); } catch (e) { return null; }
   }
@@ -18,6 +38,7 @@
 
   // Apply GA consent state if the gtag consent API is available.
   function applyConsent(choice) {
+    if (choice === 'accepted') loadMetaPixel();
     if (typeof window.gtag !== 'function') return;
     var granted = choice === 'accepted' ? 'granted' : 'denied';
     try {

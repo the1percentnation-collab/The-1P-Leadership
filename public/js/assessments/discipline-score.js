@@ -13,6 +13,7 @@ export default {
       key: 'consistency',
       label: 'Consistency',
       desc: 'Showing up for what matters on ordinary days, not just motivated ones.',
+      goal: 'Show up for what matters on ordinary days',
       why: 'One percent a day only compounds if you show up on the ordinary days. Consistency, not intensity, is what turns effort into results.',
       levels: {
         low: 'Right now, your habits rise and fall with your mood. Good weeks feel great, then a busy stretch wipes them out. That is not a lack of character. It usually means the habit is too big. Shrink it until it is easy to do on your worst day.',
@@ -31,6 +32,7 @@ export default {
       key: 'routines',
       label: 'Routines',
       desc: 'Structuring your mornings and evenings so good choices happen by default.',
+      goal: 'Build routines that make good choices automatic',
       why: 'Routines make good choices automatic, so you spend less willpower deciding. A strong start and a clean finish shape everything in between.',
       levels: {
         low: 'Your days tend to start in reaction mode, and structure gets decided on the fly. That leaves you spending willpower on choices a routine could make for you. A simple, short morning routine is the fastest way to change how your days feel.',
@@ -49,6 +51,7 @@ export default {
       key: 'followThrough',
       label: 'Follow-Through',
       desc: 'Finishing what you start and keeping the commitments you make to yourself.',
+      goal: 'Finish what you start and keep promises to yourself',
       why: 'Every promise you keep to yourself builds trust in your own word. Follow-through turns plans into proof.',
       levels: {
         low: 'You start strong, but many projects and goals are left half finished. Each unfinished thing quietly weighs on you and makes the next commitment harder to trust. The answer is not more willpower. It is fewer, smaller commitments that you actually close.',
@@ -67,6 +70,7 @@ export default {
       key: 'focus',
       label: 'Focus',
       desc: 'Giving your best attention to the few things that move you forward.',
+      goal: 'Give your best attention to the few things that matter',
       why: 'Your attention decides what actually gets built. Without focus, effort spreads thin and the most important work waits.',
       levels: {
         low: 'Your attention is being pulled in many directions, and your phone or inbox gets more of it than your priorities do. That is not a personal failing. These tools are designed to grab you. Protecting even one focused block a day will change your output.',
@@ -85,6 +89,7 @@ export default {
       key: 'recovery',
       label: 'Bounce Back',
       desc: 'Returning quickly after a missed day instead of letting one slip become a slide.',
+      goal: 'Never let one missed day become two',
       why: 'Everyone slips. What separates lasting growth from false starts is how quickly you return after a missed day.',
       levels: {
         low: 'One missed day tends to turn into a missed week, and then the whole plan feels lost. Often the slip is followed by harsh self-talk that makes restarting harder. The fix is a simple rule for missed days and a smaller version of the habit to restart with.',

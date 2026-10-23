@@ -411,3 +411,15 @@ details.dim summary .tag{font-style:normal;font-family:var(--font-mono);font-siz
 .whoami{margin-top:18px;text-align:center;font-size:13px;color:var(--gray-400);}
 .whoami b{color:var(--gray-300);font-weight:600;}
 .whoami .text-btn{font-size:13px;text-decoration:underline;color:var(--gray-300);padding:0;}
+
+/* ── Plan hand-off and retake comparison ─────────────────── */
+.plan-cta{border-color:var(--border-red);background:linear-gradient(135deg,rgba(230,3,6,0.14),rgba(230,3,6,0.02) 60%),var(--charcoal);}
+.plan-cta h3{margin:8px 0 8px;}
+.plan-cta p{margin-bottom:18px;}
+.since-list{list-style:none;display:grid;gap:8px;margin:12px 0 14px;}
+.since-list li{display:grid;grid-template-columns:1fr auto 52px;gap:12px;align-items:center;padding:10px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface);}
+.since-list b{font-family:var(--font-mono);font-size:13px;font-weight:400;color:var(--gray-300);}
+.since-list em{font-style:normal;font-family:var(--font-mono);font-size:13px;text-align:right;color:var(--gray-400);}
+.since-list li.up em{color:#8fb2ff;}
+.since-list li.down em{color:#ff6b6e;}
+.since a{color:var(--white);text-decoration:underline;}

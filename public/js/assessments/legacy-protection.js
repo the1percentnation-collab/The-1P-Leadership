@@ -14,6 +14,7 @@ export default {
       key: 'lifeCoverage',
       label: 'Life Coverage',
       desc: 'Having enough life insurance in place to care for the people who depend on your income.',
+      goal: 'Know whether your coverage would care for your family',
       why: 'If people depend on your income, life coverage is what lets them stay in their home and keep their plans if you are not there. It turns love into something practical.',
       levels: {
         low: 'Your family may not have the coverage they would need if your income stopped. That is a hard thought, and it is also one of the most solvable gaps on this list. Simply finding out what you have today is a strong first step.',
@@ -32,6 +33,7 @@ export default {
       key: 'documents',
       label: 'Estate Documents',
       desc: 'Having a will and key documents that make your wishes clear and legal.',
+      goal: 'Make your wishes clear in current, legal documents',
       why: 'Without clear documents, courts and state rules can end up making decisions your family would rather you had made. A will and the right directives keep those choices in your hands.',
       levels: {
         low: 'Your key documents may not be in place yet. You are far from alone, since many adults do not have a will. This is a one-time project that brings lasting peace of mind, and it starts with one consultation.',
@@ -50,6 +52,7 @@ export default {
       key: 'beneficiaries',
       label: 'Beneficiaries',
       desc: 'Making sure every account and policy goes to the right people, the way you intend.',
+      goal: 'Confirm every account goes to the right people',
       why: 'Beneficiary designations often override what a will says. An old or missing name can send money somewhere you never intended, and it is one of the easiest things to fix.',
       levels: {
         low: 'You may not know who is listed on some of your accounts, or some may have no one listed at all. That is very common, and it is one of the fastest gaps to close. Most changes take a few minutes online.',
@@ -68,6 +71,7 @@ export default {
       key: 'incomeProtection',
       label: 'Income Protection',
       desc: 'Knowing how your household would keep going if you could not work for a while.',
+      goal: 'Know how your household would manage without your income',
       why: 'You are more likely to miss work for months because of illness or injury than most people assume. Your ability to earn is often your largest asset, and it deserves a plan.',
       levels: {
         low: 'If you could not work for a while, your household would likely feel it quickly. That is a common gap, and naming it is how it starts to close. Knowing what coverage you have and how many months your savings would last is the first step.',
@@ -86,6 +90,7 @@ export default {
       key: 'familyConversations',
       label: 'Family Conversations',
       desc: 'Making sure the people who matter know your wishes and where to find what they need.',
+      goal: 'Make sure your loved ones know your wishes and plans',
       why: 'The best plan helps no one if no one knows it exists. A calm conversation today saves your family confusion and stress on what may be their hardest day.',
       levels: {
         low: 'Your family may not know your wishes or where to find what they would need. These conversations can feel heavy, which is why so many people wait. Starting with a simple, practical list makes the conversation much easier.',
@@ -104,6 +109,7 @@ export default {
       key: 'generationalPlan',
       label: 'Generational Plan',
       desc: 'Thinking beyond your lifetime about what you want to pass on, in money and in values.',
+      goal: 'Choose the values and resources you want to pass on',
       why: 'Legacy is more than what you leave. It is what you teach. A generational plan connects the wealth you build with the values you want it to carry forward.',
       levels: {
         low: 'Thinking beyond your own lifetime may feel far off right now, especially if today is full. That is understandable. A legacy can start with one conversation or one small, steady habit you pass on.',
