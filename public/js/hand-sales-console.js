@@ -23,7 +23,7 @@ import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 import {
   CHANNELS, PAYMENT_METHODS, STOCK_REASONS, BUCKETS, DEFAULT_SETTINGS,
   formatMoney, labelFor, mergeSettings, computeTotals, addressLines, isPaid, orderBucket,
-  invoiceMessage, shippedMessage, reviewMessage, lowStock, summarize, parseAddress
+  invoiceMessage, smsLink, dmLink, shippedMessage, reviewMessage, lowStock, summarize, parseAddress
 } from './hand-sales-core.js';
 
 const $ = (id) => document.getElementById(id);
@@ -143,7 +143,7 @@ function payBadge(o) {
   const p = o.payment || {};
   if (p.status === 'comp') return '<span class="hs-badge ok">Comp</span>';
   if (p.status === 'paid') return `<span class="hs-badge ok">Paid · ${esc(labelFor(PAYMENT_METHODS, p.method))}</span>`;
-  return `<span class="hs-badge bad">Unpaid${o.viewedAt ? ' · invoice opened' : ''}</span>`;
+  return `<span class="hs-badge bad">Unpaid${o.viewedAt ? ' · invoice opened' : (o.invoiceSentAt ? ' · invoice sent' : '')}</span>`;
 }
 
 function stageBadge(o) {
@@ -173,6 +173,8 @@ function primaryAction(o) {
   if (o.status === 'done' && !o.reviewAskedAt) return `<button class="btn btn-primary hs-act" data-act="review">Ask for review</button>`;
   return '';
 }
+
+const canSend = (o) => o.kind === 'manual' && o.status !== 'cancelled' && !isPaid(o);
 
 function orderCardHtml(o) {
   const manual = o.kind === 'manual';
@@ -208,10 +210,11 @@ function orderCardHtml(o) {
       <div class="hs-actions">
         ${manual ? `
           ${primaryAction(o)}
-          <button class="btn btn-ghost hs-act" data-act="copy-msg">Copy message</button>
+          ${canSend(o) ? '<button class="btn btn-ghost hs-act" data-act="send">Send invoice</button>' : '<button class="btn btn-ghost hs-act" data-act="copy-msg">Copy message</button>'}
           <a class="btn btn-ghost hs-act" href="${esc(invoiceUrl(o))}" target="_blank" rel="noopener">Invoice</a>
           <details class="hs-more"><summary class="btn btn-ghost hs-act">More</summary><div class="hs-menu">
             <button data-act="edit">Edit order</button>
+            ${canSend(o) ? '<button data-act="copy-msg">Copy message</button>' : ''}
             ${o.buyer && o.buyer.email ? `<button data-act="email">Email invoice${o.invoiceSentAt ? ' again' : ''}</button>` : ''}
             <button data-act="copy-link">Copy invoice link</button>
             ${o.status === 'shipped' || o.status === 'done' ? '<button data-act="copy-shipped">Copy shipped message</button><button data-act="copy-review">Copy review ask</button>' : ''}
@@ -278,6 +281,7 @@ async function onOrderAction(act, o, el) {
     case 'copy-msg': return copy(invoiceMessage(o, invoiceUrl(o)), el);
     case 'copy-shipped': return copy(shippedMessage(o), el);
     case 'copy-review': return copy(reviewMessage(o, state.settings), el);
+    case 'send': return openSendForm(o);
     case 'edit': return openOrderForm(o);
     case 'pay': return openPayForm(o);
     case 'ship': return openShipForm(o);
@@ -551,24 +555,133 @@ function openOrderForm(existing = null) {
 function showCreated(res) {
   const o = state.orders.find((x) => x.id === res.id);
   if (!o) { closeModal(); return; }
-  const msg = invoiceMessage(o, invoiceUrl(o));
-  const paid = isPaid(o);
+  if (!isPaid(o)) {
+    openSendForm(o, {
+      title: `${o.invoiceNumber} created`,
+      lead: `Send them the invoice. A reminder to collect ${formatMoney(o.amountTotal)} is in <a href="/tasks.html">Tasks</a>${res.emailed ? `, and the invoice was emailed to ${esc(o.buyer.email)}` : ''}.`
+    });
+    return;
+  }
   openModal(`${o.invoiceNumber} created`, `
-    <p class="hs-lead">${paid
-      ? `Paid and on your list to ${o.delivery === 'hand' ? 'deliver' : 'ship'}. A reminder is in <a href="/tasks.html">Tasks</a>.`
-      : `Send them the invoice. A reminder to collect ${formatMoney(o.amountTotal)} is in <a href="/tasks.html">Tasks</a>${res.emailed ? `, and the invoice was emailed to ${esc(o.buyer.email)}` : ''}.`}</p>
-    ${paid ? '' : `
-    <div class="crm-form-row"><label>Message to paste in ${esc(labelFor(CHANNELS, o.channel))}</label>
-      <textarea class="c-input" rows="7" readonly id="c-msg">${esc(msg)}</textarea></div>`}
+    <p class="hs-lead">Paid and on your list to ${o.delivery === 'hand' ? 'deliver' : 'ship'}. A reminder is in <a href="/tasks.html">Tasks</a>.</p>
     <div class="crm-modal-actions">
       <a class="btn btn-ghost" href="${esc(invoiceUrl(o))}" target="_blank" rel="noopener">Open invoice</a>
-      ${paid ? '' : '<button class="btn btn-ghost" id="c-link">Copy link only</button><button class="btn btn-primary" id="c-copy">Copy message</button>'}
-      ${paid ? '<button class="btn btn-primary" data-close>Done</button>' : ''}
+      <button class="btn btn-primary" data-close>Done</button>
     </div>`);
-  if (!paid) {
-    $('c-copy').addEventListener('click', (e) => copy(msg, e.target));
-    $('c-link').addEventListener('click', (e) => copy(invoiceUrl(o), e.target));
+}
+
+// ─── Send invoice ─────────────────────────────────────────────────────────
+// Every way to get the invoice to the buyer, straight from the order card:
+// a text from the CRM number (sendSms, so the consent gate and the
+// conversation log are the CRM's own), a text or DM from Anthony's own
+// device, email, or copy and paste. The message is editable first.
+
+const SENT_VIA = { sms: 'text', 'phone-text': 'text from your phone', messenger: 'Messenger', instagram: 'Instagram', email: 'email' };
+
+function openSendForm(o, { title, lead } = {}) {
+  const b = o.buyer || {};
+  const dm = dmLink(o);
+  const crmText = !!(o.companyId && o.contactId && b.phone);
+  const phoneText = !!smsLink(b.phone, '');
+  // Lead with the channel they ordered on.
+  const want = { facebook: 'dm', instagram: 'dm', text: 'sms', phone: 'sms', email: 'email' }[o.channel];
+  const offered = [dm && 'dm', crmText && 'sms', phoneText && 'phone', b.email && 'email'].filter(Boolean);
+  const first = offered.includes(want) ? want : (want === 'sms' && offered.includes('phone') ? 'phone' : offered[0]);
+  const cls = (k) => `btn ${k === first ? 'btn-primary' : 'btn-ghost'}`;
+  const sent = o.invoiceSentAt ? `Last sent ${day(o.invoiceSentAt)}${SENT_VIA[o.invoiceSentVia] ? ` by ${SENT_VIA[o.invoiceSentVia]}` : ''}.` : '';
+
+  const bd = openModal(title || `Send ${o.invoiceNumber}`, `
+    <div class="crm-form">
+      ${lead ? `<p class="hs-lead">${lead}</p>` : `<p class="hs-lead">${esc(b.name || 'They')} owe${b.name ? 's' : ''} <b>${formatMoney(o.amountTotal)}</b>.${sent ? ` ${sent}` : ''}</p>`}
+      <div class="crm-form-row"><label for="s-msg">Message</label>
+        <textarea class="c-input" rows="7" id="s-msg">${esc(invoiceMessage(o, invoiceUrl(o)))}</textarea></div>
+      <div class="hs-err" id="s-err"></div>
+      <div class="hs-send">
+        ${dm ? `<button type="button" class="${cls('dm')}" data-send="dm">Copy &amp; open ${esc(dm.app)}</button>` : ''}
+        ${crmText ? `<button type="button" class="${cls('sms')}" data-send="sms">Text from CRM number</button>` : ''}
+        ${phoneText ? `<button type="button" class="${cls('phone')}" data-send="phone">Text from my phone</button>` : ''}
+        ${b.email ? `<button type="button" class="${cls('email')}" data-send="email">Email ${esc(b.email)}</button>` : ''}
+        <button type="button" class="btn btn-ghost" data-send="copy">Copy message</button>
+        <button type="button" class="btn btn-ghost" data-send="link">Copy link only</button>
+      </div>
+      ${offered.length ? '' : '<p class="hs-dim" style="margin:0;">Add a phone, email or Facebook profile to the order to send it from here.</p>'}
+    </div>`);
+
+  // Same rule sendSms enforces, read ahead so the button says why before a
+  // click fails. The server still decides.
+  if (crmText) {
+    getDoc(doc(db, 'companies', o.companyId, 'contacts', o.contactId)).then((snap) => {
+      const c = snap.exists() ? snap.data() : {};
+      if (c.smsConsent === true && c.smsOptedOut !== true) return;
+      const btn = bd.querySelector('[data-send="sms"]');
+      if (!bd.isConnected || !btn) return;
+      btn.disabled = true;
+      btn.textContent = c.smsOptedOut === true ? 'CRM text: opted out' : 'CRM text: no consent on file';
+      btn.title = 'Record SMS consent on their CRM record to text from the CRM number.';
+      const alt = bd.querySelector('[data-send="phone"]');
+      if (btn.classList.contains('btn-primary') && alt) {
+        btn.classList.replace('btn-primary', 'btn-ghost');
+        alt.classList.replace('btn-ghost', 'btn-primary');
+      }
+    }).catch(() => {});
   }
+
+  const box = $('s-msg');
+  const fail = (e, extra = '') => { $('s-err').innerHTML = esc(errMsg(e)) + extra; };
+  const done = async (via, okMsg) => {
+    closeModal();
+    toast(okMsg);
+    try {
+      await call('manageHandSale', { action: 'sent', id: o.id, via });
+      await refreshOrders();
+    } catch (e) { toast(errMsg(e), true); }
+  };
+
+  bd.querySelectorAll('[data-send]').forEach((btn) => btn.addEventListener('click', async () => {
+    const text = box.value.trim();
+    $('s-err').textContent = '';
+    if (!text && ['dm', 'sms', 'phone', 'copy'].includes(btn.dataset.send)) { fail(new Error('Write a message first.')); return; }
+    switch (btn.dataset.send) {
+      case 'copy': return copy(text, btn);
+      case 'link': return copy(invoiceUrl(o), btn);
+      case 'dm': {
+        // m.me and ig.me cannot prefill a message, so it rides the clipboard.
+        await copy(text);
+        window.open(dm.url, '_blank', 'noopener');
+        return done(dm.app === 'Instagram' ? 'instagram' : 'messenger', `Message copied. Paste it in ${dm.app} and send.`);
+      }
+      case 'phone':
+        window.location.href = smsLink(b.phone, text);
+        return done('phone-text', 'Opened Messages with the invoice. Hit send there.');
+      case 'sms': {
+        btn.disabled = true; btn.textContent = 'Sending…';
+        try {
+          await call('sendSms', { companyId: o.companyId, contactId: o.contactId, body: text });
+        } catch (e) {
+          btn.disabled = false; btn.textContent = 'Text from CRM number';
+          const consent = /consent|opted out/i.test(errMsg(e));
+          fail(e, consent ? ` <a href="/contact.html?id=${encodeURIComponent(o.contactId)}" target="_blank" rel="noopener">Open their record</a>${phoneText ? ', or use Text from my phone.' : '.'}` : '');
+          return;
+        }
+        return done('sms', `Invoice texted to ${b.name || b.phone}.`);
+      }
+      case 'email': {
+        btn.disabled = true; btn.textContent = 'Sending…';
+        try {
+          await call('manageHandSale', { action: 'email', id: o.id });
+        } catch (e) {
+          btn.disabled = false; btn.textContent = `Email ${b.email}`;
+          fail(e);
+          return;
+        }
+        closeModal();
+        toast(`Invoice emailed to ${b.email}.`);
+        return refreshOrders();
+      }
+      default:
+    }
+  }));
+  setTimeout(() => box.focus(), 30);
 }
 
 function openPayForm(o) {

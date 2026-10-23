@@ -235,6 +235,17 @@ await t('a second order dips the shelf under the line and opens a reorder task',
   globalThis.second = j.result.id;
 });
 
+await t('Send invoice from the order card records how it went out, in the CRM too', async () => {
+  const bad = await call('manageHandSale', { action: 'sent', id: globalThis.second, via: 'carrier-pigeon' }, owner.token);
+  assert(bad.error && /Unknown send channel/.test(bad.error.message), JSON.stringify(bad));
+  const j = await call('manageHandSale', { action: 'sent', id: globalThis.second, via: 'phone-text' }, owner.token);
+  assert(j.result && j.result.ok, JSON.stringify(j));
+  const o = await read(`orders/${globalThis.second}`);
+  assert(o.invoiceSentAt && o.invoiceSentVia === 'phone-text', JSON.stringify({ at: o.invoiceSentAt, via: o.invoiceSentVia }));
+  const acts = await asAdmin((db) => getDocs(collection(db, `companies/${CO}/contacts/${o.contactId}/activities`)));
+  assert(acts.docs.some((d) => /Invoice INV-1002 sent by a text from your phone/.test(d.data().description)), 'no CRM activity');
+});
+
 await t('cancelling it puts the copies back and closes the reorder task', async () => {
   const j = await call('manageHandSale', { action: 'cancel', id: globalThis.second }, owner.token);
   assert(j.result && j.result.status === 'cancelled', JSON.stringify(j));

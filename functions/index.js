@@ -16564,6 +16564,8 @@ async function emailInvoice(db, order, settings) {
  *   reviewed { id }                    → the review ask went out
  *   cancel   { id } / reopen { id }    → stock follows
  *   email    { id }                    → email the invoice link to the buyer
+ *   sent     { id, via }               → the invoice went out another way
+ *                                         (text, Messenger, Instagram)
  *   note     { id, note }              → internal note
  */
 exports.manageHandSale = onCall({ secrets: [sendgridKey] }, async (request) => {
@@ -16647,8 +16649,24 @@ exports.manageHandSale = onCall({ secrets: [sendgridKey] }, async (request) => {
     if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
     const order = { id, ...snap.data() };
     await emailInvoice(db, order, await handSalesSettings(db));
-    await snap.ref.set({ invoiceSentAt: now }, { merge: true });
+    await snap.ref.set({ invoiceSentAt: now, invoiceSentVia: 'email' }, { merge: true });
     return { ...handSaleResult(order), emailed: true };
+  }
+
+  // The console sends texts through sendSms (the CRM's consent-gated path)
+  // and opens Messenger / the Messages app on Anthony's own device, then
+  // reports here so the card shows the invoice went out and how.
+  if (action === 'sent') {
+    const VIA = { sms: 'a text from the CRM', 'phone-text': 'a text from your phone', messenger: 'Messenger', instagram: 'Instagram' };
+    const via = String(data.via || '');
+    if (!VIA[via]) throw new HttpsError('invalid-argument', 'Unknown send channel.');
+    const snap = await db.collection('orders').doc(id).get();
+    if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
+    const order = { id, ...snap.data() };
+    await snap.ref.set({ invoiceSentAt: now, invoiceSentVia: via }, { merge: true });
+    // sendSms already logs its own activity on the contact.
+    if (via !== 'sms') await handSaleActivity(db, order, `Invoice ${order.invoiceNumber} sent by ${VIA[via]}`);
+    return handSaleResult(order);
   }
 
   const refuseIfCancelled = (o) => {

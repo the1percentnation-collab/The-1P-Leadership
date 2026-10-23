@@ -16,7 +16,7 @@ const core = await loadPure('hand-sales-core.js');
 const server = createRequire(import.meta.url)('../functions/hand-sales-core.js');
 const {
   computeTotals, normalizeOrder, deliveryStatus, orderBucket, stockDelta, taskPlan, parseAddress,
-  paymentOptions, invoiceMessage, summarize, invoiceNumber, isPaid, lowStock, mergeSettings
+  paymentOptions, invoiceMessage, smsLink, dmLink, summarize, invoiceNumber, isPaid, lowStock, mergeSettings
 } = core;
 
 let passed = 0;
@@ -206,6 +206,25 @@ ok('the Messenger message carries the link, card-only pay, and an address ask wh
   assert.match(msg, /pay by card right on that page\./);
   assert.doesNotMatch(msg, /Cash App|Venmo|Zelle|PayPal/);
   assert.match(msg, /address you want it shipped to/);
+});
+
+ok('Send invoice: a text opens his Messages app with the invoice filled in', () => {
+  assert.strictEqual(smsLink('417-412-1382', 'Hi & pay: https://x/i?a=1'), 'sms:+14174121382?&body=Hi%20%26%20pay%3A%20https%3A%2F%2Fx%2Fi%3Fa%3D1');
+  assert.strictEqual(smsLink('+1 (405) 826-3510', 'x'), 'sms:+14058263510?&body=x');
+  assert.strictEqual(smsLink('555-1234', 'x'), null);
+  assert.strictEqual(smsLink('', 'x'), null);
+});
+
+ok('Send invoice: the saved profile opens their Messenger or Instagram thread', () => {
+  const dm = (handle, channel = 'facebook') => dmLink({ channel, buyer: { name: 'J', handle } });
+  assert.deepStrictEqual(dm('https://www.facebook.com/TheJoshuaQuick'), { app: 'Messenger', url: 'https://m.me/TheJoshuaQuick' });
+  assert.strictEqual(dm('facebook.com/brennan.fanning.7').url, 'https://m.me/brennan.fanning.7');
+  assert.strictEqual(dm('https://www.facebook.com/profile.php?id=10001234').url, 'https://www.facebook.com/messages/t/10001234');
+  assert.strictEqual(dm('https://www.facebook.com/groups/12345'), null);
+  assert.deepStrictEqual(dm('https://instagram.com/the1pnation/'), { app: 'Instagram', url: 'https://ig.me/m/the1pnation' });
+  assert.strictEqual(dm('@the1pnation', 'instagram').url, 'https://ig.me/m/the1pnation');
+  assert.strictEqual(dm('@the1pnation', 'facebook'), null);
+  assert.strictEqual(dm(''), null);
 });
 
 ok('this month counts only paid, live orders; owed counts every unpaid one', () => {

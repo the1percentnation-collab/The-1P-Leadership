@@ -379,6 +379,33 @@ function invoiceMessage(order, url) {
   return lines.join('\n\n');
 }
 
+// Links that put the invoice back where the buyer is talking to Anthony.
+// smsLink opens his own Messages app with the text filled in (sms: works on
+// iPhone, Mac and Android); dmLink opens their Messenger or Instagram thread
+// from the profile saved on the order. Both return null when there is
+// nothing to address.
+function smsLink(phone, body) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  const to = digits.length === 10 ? `+1${digits}` : `+${digits}`;
+  return `sms:${to}?&body=${encodeURIComponent(body || '')}`;
+}
+
+const FB_NOT_PROFILES = /^(messages|groups|pages|marketplace|people|share|events|watch|photo\.php|permalink\.php)$/i;
+
+function dmLink(order) {
+  const raw = String((order && order.buyer && order.buyer.handle) || '').trim();
+  if (!raw) return null;
+  const fbId = raw.match(/(?:facebook|fb)\.com\/profile\.php\?(?:[^#]*&)?id=(\d+)/i);
+  if (fbId) return { app: 'Messenger', url: `https://www.facebook.com/messages/t/${fbId[1]}` };
+  const fb = raw.match(/(?:facebook|fb|m\.me)(?:\.com)?\/([A-Za-z0-9.]+)/i);
+  if (fb && !FB_NOT_PROFILES.test(fb[1])) return { app: 'Messenger', url: `https://m.me/${fb[1]}` };
+  const ig = raw.match(/instagram\.com\/([A-Za-z0-9._]+)/i)
+    || (order.channel === 'instagram' ? raw.match(/^@?([A-Za-z0-9._]{1,30})$/) : null);
+  if (ig) return { app: 'Instagram', url: `https://ig.me/m/${ig[1]}` };
+  return null;
+}
+
 function shippedMessage(order) {
   const hi = firstName(order.buyer && order.buyer.name);
   const t = order.tracking || {};
@@ -489,5 +516,5 @@ export {
   CHANNELS, PAYMENT_METHODS, DELIVERY_MODES, ORDER_STATUSES, STOCK_REASONS, BUCKETS, DEFAULT_SETTINGS,
   formatMoney, labelFor, mergeSettings, computeTotals, invoiceNumber, hasAddress, addressLines,
   normalizeOrder, deliveryStatus, isPaid, orderBucket, stockHeld, stockDelta, firstName, itemSummary,
-  taskPlan, invoiceMessage, shippedMessage, reviewMessage, paymentOptions, lowStock, summarize, parseAddress
+  taskPlan, invoiceMessage, smsLink, dmLink, shippedMessage, reviewMessage, paymentOptions, lowStock, summarize, parseAddress
 };
