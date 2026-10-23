@@ -166,6 +166,22 @@ await t('reminders: collect the money and get the address, both assigned to the 
   assert(c.dueAt && c.remindedAt === null, 'due/remindedAt');
 });
 
+await t('Remind: a reminder is stamped, logged, and pushes the collect task out', async () => {
+  const before = await read(`orders/${orderId}`);
+  const task0 = await read(`companies/${CO}/tasks/${before.tasks.collect}`);
+  await call('manageHandSale', { action: 'sent', id: orderId, via: 'messenger' }, owner.token);
+  const j = await call('manageHandSale', { action: 'sent', id: orderId, via: 'messenger', reminder: true }, owner.token);
+  assert(j.result && j.result.ok, JSON.stringify(j));
+  await call('manageHandSale', { action: 'sent', id: orderId, via: 'phone-text', reminder: true }, owner.token);
+  const o = await read(`orders/${orderId}`);
+  assert(o.invoiceSentVia === 'messenger' && o.remindedAt && o.remindedVia === 'phone-text' && o.reminderCount === 2,
+    JSON.stringify({ sent: o.invoiceSentVia, via: o.remindedVia, n: o.reminderCount }));
+  const task1 = await read(`companies/${CO}/tasks/${before.tasks.collect}`);
+  assert(task1.status === 'open' && task1.dueAt.toMillis() > task0.dueAt.toMillis(), 'collect task not pushed out');
+  const acts = await asAdmin((db) => getDocs(collection(db, `companies/${CO}/contacts/${o.contactId}/activities`)));
+  assert(acts.docs.some((d) => /Payment reminder for INV-1001 sent by Messenger/.test(d.data().description)), 'no CRM activity');
+});
+
 await t('the invoice opens only with the right token, and shows the buyer view', async () => {
   const bad = await call('getInvoice', { id: orderId, token: 'x'.repeat(48) });
   assert(bad.error && bad.error.status === 'NOT_FOUND', JSON.stringify(bad));
@@ -244,6 +260,11 @@ await t('Send invoice from the order card records how it went out, in the CRM to
   assert(o.invoiceSentAt && o.invoiceSentVia === 'phone-text', JSON.stringify({ at: o.invoiceSentAt, via: o.invoiceSentVia }));
   const acts = await asAdmin((db) => getDocs(collection(db, `companies/${CO}/contacts/${o.contactId}/activities`)));
   assert(acts.docs.some((d) => /Invoice INV-1002 sent by a text from your phone/.test(d.data().description)), 'no CRM activity');
+});
+
+await t('Remind: a paid order refuses a reminder', async () => {
+  const j = await call('manageHandSale', { action: 'sent', id: globalThis.second, via: 'messenger', reminder: true }, owner.token);
+  assert(j.error && /already settled/.test(j.error.message), JSON.stringify(j));
 });
 
 await t('cancelling it puts the copies back and closes the reorder task', async () => {

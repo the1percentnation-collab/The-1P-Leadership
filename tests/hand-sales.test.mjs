@@ -16,7 +16,7 @@ const core = await loadPure('hand-sales-core.js');
 const server = createRequire(import.meta.url)('../functions/hand-sales-core.js');
 const {
   computeTotals, normalizeOrder, deliveryStatus, orderBucket, stockDelta, taskPlan, parseAddress,
-  paymentOptions, invoiceMessage, smsLink, dmLink, summarize, invoiceNumber, isPaid, lowStock, mergeSettings
+  paymentOptions, invoiceMessage, reminderMessage, reminderDue, lastNudgeMs, smsLink, dmLink, summarize, invoiceNumber, isPaid, lowStock, mergeSettings
 } = core;
 
 let passed = 0;
@@ -225,6 +225,28 @@ ok('Send invoice: the saved profile opens their Messenger or Instagram thread', 
   assert.strictEqual(dm('@the1pnation', 'instagram').url, 'https://ig.me/m/the1pnation');
   assert.strictEqual(dm('@the1pnation', 'facebook'), null);
   assert.strictEqual(dm(''), null);
+});
+
+ok('Remind: due once a sent invoice sits unpaid for dueDays since the last nudge', () => {
+  const day = 86400000;
+  const sent = (extra = {}) => ({ ...manual(), invoiceSentAt: { toMillis: () => NOW - 4 * day }, ...extra });
+  assert.strictEqual(reminderDue(manual(), {}, NOW), false, 'never sent: send it first, not a reminder');
+  assert.strictEqual(reminderDue(sent(), {}, NOW), true);
+  assert.strictEqual(reminderDue(sent(), { dueDays: 5 }, NOW), false);
+  assert.strictEqual(reminderDue(sent({ remindedAt: NOW - day }), {}, NOW), false, 'a fresh reminder resets the clock');
+  assert.strictEqual(reminderDue(sent({ payment: { status: 'paid' } }), {}, NOW), false);
+  assert.strictEqual(reminderDue(sent({ status: 'cancelled' }), {}, NOW), false);
+  assert.strictEqual(lastNudgeMs(sent({ remindedAt: NOW - day })), NOW - day);
+  assert.strictEqual(lastNudgeMs(manual()), null);
+});
+
+ok('Remind: the follow-up carries the link and asks for an address when one is missing', () => {
+  const o = { ...manual({ status: 'needs-address', shipping: null }), invoiceNumber: 'INV-1001' };
+  const msg = reminderMessage(o, 'https://x/invoice?i=1&t=2');
+  assert.match(msg, /^Hey Jane, circling back/);
+  assert.match(msg, /still open here: https:\/\/x\/invoice\?i=1&t=2/);
+  assert.match(msg, /address you want it shipped to/);
+  assert.doesNotMatch(reminderMessage({ ...manual(), delivery: 'hand' }, 'u'), /address|mail/);
 });
 
 ok('this month counts only paid, live orders; owed counts every unpaid one', () => {

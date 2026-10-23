@@ -385,6 +385,38 @@ function invoiceMessage(order, url) {
   return lines.join('\n\n');
 }
 
+// Follow-ups on an invoice that went out and was not paid. "Due" means it
+// has sat quiet (no send, no reminder) for the same dueDays the collect task
+// uses, so the card and Tasks agree on when to nudge.
+const toMs = (t) => (t && typeof t.toMillis === 'function' ? t.toMillis()
+  : (typeof t === 'number' ? t : (t instanceof Date ? t.getTime() : null)));
+
+function lastNudgeMs(order) {
+  const last = Math.max(toMs(order && order.invoiceSentAt) || 0, toMs(order && order.remindedAt) || 0);
+  return last || null;
+}
+
+function reminderDue(order, settings = DEFAULT_SETTINGS, now = Date.now()) {
+  if (!order || order.kind !== 'manual' || order.status === 'cancelled' || isPaid(order)) return false;
+  const last = lastNudgeMs(order);
+  return last != null && now - last >= Number(mergeSettings(settings).dueDays) * DAY;
+}
+
+function reminderMessage(order, url) {
+  const hi = firstName(order.buyer && order.buyer.name);
+  const lines = [
+    `${hi ? `Hey ${hi}` : 'Hey'}, circling back on your order of ${itemSummary(order)}.`,
+    `Your invoice for ${formatMoney(order.amountTotal)} is still open here: ${url}`,
+    'It takes about a minute by card.'
+  ];
+  if (order.delivery === 'ship' && !hasAddress(order.shipping)) {
+    lines.push('Send me the address you want it shipped to as well, and I will get it signed and out to you.');
+  } else if (order.delivery === 'ship') {
+    lines.push('As soon as it clears I will sign it and get it in the mail.');
+  }
+  return lines.join('\n\n');
+}
+
 // Links that put the invoice back where the buyer is talking to Anthony.
 // smsLink opens his own Messages app with the text filled in (sms: works on
 // iPhone, Mac and Android); dmLink opens their Messenger or Instagram thread
@@ -520,5 +552,5 @@ function parseAddress(text) {
 
 
 module.exports = {
-  CHANNELS, PAYMENT_METHODS, DELIVERY_MODES, ORDER_STATUSES, STOCK_REASONS, BUCKETS, DEFAULT_SETTINGS, formatMoney, labelFor, mergeSettings, computeTotals, invoiceNumber, hasAddress, addressLines, normalizeOrder, deliveryStatus, isPaid, orderBucket, stockHeld, stockDelta, firstName, itemSummary, taskPlan, invoiceMessage, smsLink, dmLink, shippedMessage, reviewMessage, paymentOptions, lowStock, summarize, parseAddress
+  CHANNELS, PAYMENT_METHODS, DELIVERY_MODES, ORDER_STATUSES, STOCK_REASONS, BUCKETS, DEFAULT_SETTINGS, formatMoney, labelFor, mergeSettings, computeTotals, invoiceNumber, hasAddress, addressLines, normalizeOrder, deliveryStatus, isPaid, orderBucket, stockHeld, stockDelta, firstName, itemSummary, taskPlan, invoiceMessage, reminderMessage, reminderDue, lastNudgeMs, smsLink, dmLink, shippedMessage, reviewMessage, paymentOptions, lowStock, summarize, parseAddress
 };

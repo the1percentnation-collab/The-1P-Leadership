@@ -23,7 +23,7 @@ import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 import {
   CHANNELS, PAYMENT_METHODS, STOCK_REASONS, BUCKETS, DEFAULT_SETTINGS,
   formatMoney, labelFor, mergeSettings, computeTotals, addressLines, isPaid, orderBucket,
-  invoiceMessage, smsLink, dmLink, shippedMessage, reviewMessage, lowStock, summarize, parseAddress
+  invoiceMessage, reminderMessage, reminderDue, lastNudgeMs, smsLink, dmLink, shippedMessage, reviewMessage, lowStock, summarize, parseAddress
 } from './hand-sales-core.js';
 
 const $ = (id) => document.getElementById(id);
@@ -116,8 +116,9 @@ function renderSummary() {
   const tracked = Object.values(state.stock);
   const shelf = tracked.reduce((n, x) => n + (Number(x.onHand) || 0), 0);
   const low = tracked.filter((x) => lowStock(x.onHand, state.settings, x.reorderAt)).length;
+  const nudge = state.orders.filter((o) => reminderDue(o, state.settings)).length;
   $('hs-summary').innerHTML = `
-    <div class="hs-tile ${s.owedCount ? 'warn' : ''}"><div class="hs-tile-k">Owed to you</div><div class="hs-tile-v">${formatMoney(s.owed)}</div><div class="hs-tile-s">${s.owedCount} unpaid invoice${s.owedCount === 1 ? '' : 's'}</div></div>
+    <div class="hs-tile ${s.owedCount ? 'warn' : ''}"><div class="hs-tile-k">Owed to you</div><div class="hs-tile-v">${formatMoney(s.owed)}</div><div class="hs-tile-s">${s.owedCount} unpaid invoice${s.owedCount === 1 ? '' : 's'}${nudge ? ` · ${nudge} to remind` : ''}</div></div>
     <div class="hs-tile ${s.toShip ? 'hot' : ''}"><div class="hs-tile-k">Ready to ship</div><div class="hs-tile-v">${s.toShip}</div><div class="hs-tile-s">${s.needsAddress ? `${s.needsAddress} waiting on an address` : 'paid and waiting'}</div></div>
     <div class="hs-tile"><div class="hs-tile-k">This month</div><div class="hs-tile-v">${formatMoney(s.monthRevenue)}</div><div class="hs-tile-s">${s.monthUnits} unit${s.monthUnits === 1 ? '' : 's'} paid</div></div>
     <div class="hs-tile ${low ? 'warn' : ''}"><div class="hs-tile-k">On the shelf</div><div class="hs-tile-v">${tracked.length ? shelf : '—'}</div><div class="hs-tile-s">${tracked.length ? (low ? `${low} running low` : 'stock healthy') : 'not counting yet'}</div></div>`;
@@ -143,7 +144,9 @@ function payBadge(o) {
   const p = o.payment || {};
   if (p.status === 'comp') return '<span class="hs-badge ok">Comp</span>';
   if (p.status === 'paid') return `<span class="hs-badge ok">Paid · ${esc(labelFor(PAYMENT_METHODS, p.method))}</span>`;
-  return `<span class="hs-badge bad">Unpaid${o.viewedAt ? ' · invoice opened' : (o.invoiceSentAt ? ' · invoice sent' : '')}</span>`;
+  const reminded = o.reminderCount > 1 ? `reminded ${o.reminderCount}×` : 'reminded';
+  const seen = o.viewedAt ? 'invoice opened' : (o.remindedAt ? reminded : (o.invoiceSentAt ? 'invoice sent' : ''));
+  return `<span class="hs-badge bad">Unpaid${seen ? ` · ${seen}` : ''}</span>`;
 }
 
 function stageBadge(o) {
@@ -175,6 +178,15 @@ function primaryAction(o) {
 }
 
 const canSend = (o) => o.kind === 'manual' && o.status !== 'cancelled' && !isPaid(o);
+
+// Not sent yet: Send invoice. Sent: Remind, lit up once it has sat quiet for
+// dueDays (the same clock as the collect task in Tasks).
+function sendButton(o) {
+  if (!canSend(o)) return '<button class="btn btn-ghost hs-act" data-act="copy-msg">Copy message</button>';
+  if (!o.invoiceSentAt) return '<button class="btn btn-ghost hs-act" data-act="send">Send invoice</button>';
+  const due = reminderDue(o, state.settings);
+  return `<button class="btn btn-ghost hs-act ${due ? 'hs-nudge' : ''}" data-act="remind"${due ? ' title="Unpaid and quiet. Time to follow up."' : ''}>Remind</button>`;
+}
 
 function orderCardHtml(o) {
   const manual = o.kind === 'manual';
@@ -210,11 +222,12 @@ function orderCardHtml(o) {
       <div class="hs-actions">
         ${manual ? `
           ${primaryAction(o)}
-          ${canSend(o) ? '<button class="btn btn-ghost hs-act" data-act="send">Send invoice</button>' : '<button class="btn btn-ghost hs-act" data-act="copy-msg">Copy message</button>'}
+          ${sendButton(o)}
           <a class="btn btn-ghost hs-act" href="${esc(invoiceUrl(o))}" target="_blank" rel="noopener">Invoice</a>
           <details class="hs-more"><summary class="btn btn-ghost hs-act">More</summary><div class="hs-menu">
             <button data-act="edit">Edit order</button>
             ${canSend(o) ? '<button data-act="copy-msg">Copy message</button>' : ''}
+            ${canSend(o) && o.invoiceSentAt ? '<button data-act="send">Send original invoice</button>' : ''}
             ${o.buyer && o.buyer.email ? `<button data-act="email">Email invoice${o.invoiceSentAt ? ' again' : ''}</button>` : ''}
             <button data-act="copy-link">Copy invoice link</button>
             ${o.status === 'shipped' || o.status === 'done' ? '<button data-act="copy-shipped">Copy shipped message</button><button data-act="copy-review">Copy review ask</button>' : ''}
@@ -237,7 +250,8 @@ function renderOrderList() {
   // Work queue order: money first, then addresses, then shipping, oldest first.
   if (f.key === 'open') {
     const rank = { collect: 0, address: 1, ship: 2 };
-    rows.sort((a, b) => (rank[orderBucket(a)] - rank[orderBucket(b)]) || ((a.createdAtMs || 0) - (b.createdAtMs || 0)));
+    const due = (o) => (reminderDue(o, state.settings) ? 0 : 1);
+    rows.sort((a, b) => (rank[orderBucket(a)] - rank[orderBucket(b)]) || (due(a) - due(b)) || ((a.createdAtMs || 0) - (b.createdAtMs || 0)));
   }
   const list = $('hs-list');
   list.innerHTML = rows.length ? rows.map(orderCardHtml).join('')
@@ -282,6 +296,7 @@ async function onOrderAction(act, o, el) {
     case 'copy-shipped': return copy(shippedMessage(o), el);
     case 'copy-review': return copy(reviewMessage(o, state.settings), el);
     case 'send': return openSendForm(o);
+    case 'remind': return openSendForm(o, { reminder: true });
     case 'edit': return openOrderForm(o);
     case 'pay': return openPayForm(o);
     case 'ship': return openShipForm(o);
@@ -574,11 +589,12 @@ function showCreated(res) {
 // Every way to get the invoice to the buyer, straight from the order card:
 // a text from the CRM number (sendSms, so the consent gate and the
 // conversation log are the CRM's own), a text or DM from Anthony's own
-// device, email, or copy and paste. The message is editable first.
+// device, email, or copy and paste. The message is editable first. With
+// { reminder: true } it is the follow-up on an invoice that went unpaid.
 
 const SENT_VIA = { sms: 'text', 'phone-text': 'text from your phone', messenger: 'Messenger', instagram: 'Instagram', email: 'email' };
 
-function openSendForm(o, { title, lead } = {}) {
+function openSendForm(o, { title, lead, reminder = false } = {}) {
   const b = o.buyer || {};
   const dm = dmLink(o);
   const crmText = !!(o.companyId && o.contactId && b.phone);
@@ -588,13 +604,20 @@ function openSendForm(o, { title, lead } = {}) {
   const offered = [dm && 'dm', crmText && 'sms', phoneText && 'phone', b.email && 'email'].filter(Boolean);
   const first = offered.includes(want) ? want : (want === 'sms' && offered.includes('phone') ? 'phone' : offered[0]);
   const cls = (k) => `btn ${k === first ? 'btn-primary' : 'btn-ghost'}`;
-  const sent = o.invoiceSentAt ? `Last sent ${day(o.invoiceSentAt)}${SENT_VIA[o.invoiceSentVia] ? ` by ${SENT_VIA[o.invoiceSentVia]}` : ''}.` : '';
+  const by = (via) => (SENT_VIA[via] ? ` by ${SENT_VIA[via]}` : '');
+  const history = [
+    o.invoiceSentAt && `Invoice sent ${day(o.invoiceSentAt)}${by(o.invoiceSentVia)}.`,
+    o.remindedAt && `Last reminded ${day(o.remindedAt)}${by(o.remindedVia)}.`,
+    o.viewedAt && `They opened it ${day(o.viewedAt)}.`
+  ].filter(Boolean).join(' ');
+  const quietDays = lastNudgeMs(o) ? Math.floor((Date.now() - lastNudgeMs(o)) / 86400000) : 0;
+  const noun = reminder ? 'Reminder' : 'Invoice';
 
-  const bd = openModal(title || `Send ${o.invoiceNumber}`, `
+  const bd = openModal(title || `${reminder ? 'Remind' : 'Send'} ${o.invoiceNumber}`, `
     <div class="crm-form">
-      ${lead ? `<p class="hs-lead">${lead}</p>` : `<p class="hs-lead">${esc(b.name || 'They')} owe${b.name ? 's' : ''} <b>${formatMoney(o.amountTotal)}</b>.${sent ? ` ${sent}` : ''}</p>`}
+      ${lead ? `<p class="hs-lead">${lead}</p>` : `<p class="hs-lead">${esc(b.name || 'They')} owe${b.name ? 's' : ''} <b>${formatMoney(o.amountTotal)}</b>${reminder && quietDays ? `, quiet for ${quietDays} day${quietDays === 1 ? '' : 's'}` : ''}.${history ? ` ${esc(history)}` : ''}</p>`}
       <div class="crm-form-row"><label for="s-msg">Message</label>
-        <textarea class="c-input" rows="7" id="s-msg">${esc(invoiceMessage(o, invoiceUrl(o)))}</textarea></div>
+        <textarea class="c-input" rows="7" id="s-msg">${esc((reminder ? reminderMessage : invoiceMessage)(o, invoiceUrl(o)))}</textarea></div>
       <div class="hs-err" id="s-err"></div>
       <div class="hs-send">
         ${dm ? `<button type="button" class="${cls('dm')}" data-send="dm">Copy &amp; open ${esc(dm.app)}</button>` : ''}
@@ -632,7 +655,7 @@ function openSendForm(o, { title, lead } = {}) {
     closeModal();
     toast(okMsg);
     try {
-      await call('manageHandSale', { action: 'sent', id: o.id, via });
+      await call('manageHandSale', { action: 'sent', id: o.id, via, reminder });
       await refreshOrders();
     } catch (e) { toast(errMsg(e), true); }
   };
@@ -652,7 +675,7 @@ function openSendForm(o, { title, lead } = {}) {
       }
       case 'phone':
         window.location.href = smsLink(b.phone, text);
-        return done('phone-text', 'Opened Messages with the invoice. Hit send there.');
+        return done('phone-text', `Opened Messages with the ${noun.toLowerCase()}. Hit send there.`);
       case 'sms': {
         btn.disabled = true; btn.textContent = 'Sending…';
         try {
@@ -663,19 +686,19 @@ function openSendForm(o, { title, lead } = {}) {
           fail(e, consent ? ` <a href="/contact.html?id=${encodeURIComponent(o.contactId)}" target="_blank" rel="noopener">Open their record</a>${phoneText ? ', or use Text from my phone.' : '.'}` : '');
           return;
         }
-        return done('sms', `Invoice texted to ${b.name || b.phone}.`);
+        return done('sms', `${noun} texted to ${b.name || b.phone}.`);
       }
       case 'email': {
         btn.disabled = true; btn.textContent = 'Sending…';
         try {
-          await call('manageHandSale', { action: 'email', id: o.id });
+          await call('manageHandSale', { action: 'email', id: o.id, reminder });
         } catch (e) {
           btn.disabled = false; btn.textContent = `Email ${b.email}`;
           fail(e);
           return;
         }
         closeModal();
-        toast(`Invoice emailed to ${b.email}.`);
+        toast(`${noun} emailed to ${b.email}.`);
         return refreshOrders();
       }
       default:

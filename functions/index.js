@@ -16531,7 +16531,7 @@ function handSaleResult(order) {
   return { ok: true, id: order.id, invoiceNumber: order.invoiceNumber, url: invoiceLink(order.id, order.invoiceToken), status: order.status, payment: order.payment };
 }
 
-async function emailInvoice(db, order, settings) {
+async function emailInvoice(db, order, settings, { reminder = false } = {}) {
   const to = order.buyer && order.buyer.email;
   if (!to) throw new HttpsError('failed-precondition', 'This order has no buyer email. Copy the message and send it where they ordered.');
   if (!emailConfigured()) throw new HttpsError('failed-precondition', 'Email is not configured.');
@@ -16542,15 +16542,51 @@ async function emailInvoice(db, order, settings) {
     to,
     from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
     replyTo: REPLY_TO,
-    subject: `Invoice ${order.invoiceNumber} from ${settings.businessName}: ${total}`,
-    text: `${first ? `Hi ${first},` : 'Hello,'}\n\nThank you for ordering ${handSales.itemSummary(order)}. Your invoice for ${total} is here:\n\n${url}\n\nYou can pay by card on that page.\n\nAnthony Brown Sr.\n${settings.businessName}`,
+    subject: `${reminder ? 'Reminder: invoice' : 'Invoice'} ${order.invoiceNumber} from ${settings.businessName}: ${total}`,
+    text: reminder
+      ? `${first ? `Hi ${first},` : 'Hello,'}\n\nCircling back on your order of ${handSales.itemSummary(order)}. Your invoice for ${total} is still open here:\n\n${url}\n\nIt takes about a minute by card.\n\nAnthony Brown Sr.\n${settings.businessName}`
+      : `${first ? `Hi ${first},` : 'Hello,'}\n\nThank you for ordering ${handSales.itemSummary(order)}. Your invoice for ${total} is here:\n\n${url}\n\nYou can pay by card on that page.\n\nAnthony Brown Sr.\n${settings.businessName}`,
     html: agreementEmailHtml({
-      heading: `Invoice ${order.invoiceNumber}: ${total}`,
-      lines: [first ? `Hi ${first},` : 'Hello,', `Thank you for ordering ${handSales.itemSummary(order)}. Your invoice is ready, and you can pay by card right on the page.`],
+      heading: `${reminder ? 'Still open: invoice' : 'Invoice'} ${order.invoiceNumber}: ${total}`,
+      lines: [first ? `Hi ${first},` : 'Hello,', reminder
+        ? `Circling back on your order of ${handSales.itemSummary(order)}. Your invoice is still open, and it takes about a minute to pay by card right on the page.`
+        : `Thank you for ordering ${handSales.itemSummary(order)}. Your invoice is ready, and you can pay by card right on the page.`],
       url, button: 'View and pay invoice'
     }),
-    customArgs: { type: 'hand_sale_invoice' }
+    customArgs: { type: reminder ? 'hand_sale_reminder' : 'hand_sale_invoice' }
   });
+}
+
+const INVOICE_SEND_VIA = {
+  email: 'email', sms: 'a text from the CRM', 'phone-text': 'a text from your phone', messenger: 'Messenger', instagram: 'Instagram'
+};
+
+/**
+ * Stamp an invoice send or a reminder on the order and log it on the CRM
+ * contact (sendSms logs its own text). A reminder also pushes the open
+ * collect task out by dueDays, so Tasks shows the next follow-up instead of
+ * one that just happened.
+ */
+async function recordInvoiceSend(db, ref, order, { via, reminder, settings, now }) {
+  const FV = admin.firestore.FieldValue;
+  await ref.set(reminder
+    ? { remindedAt: now, remindedVia: via, reminderCount: FV.increment(1) }
+    : { invoiceSentAt: now, invoiceSentVia: via }, { merge: true });
+  if (via !== 'sms') {
+    await handSaleActivity(db, order, `${reminder ? 'Payment reminder for' : 'Invoice'} ${order.invoiceNumber} sent by ${INVOICE_SEND_VIA[via]}`);
+  }
+  const taskId = order.tasks && order.tasks.collect;
+  if (!reminder || !order.companyId || !taskId) return;
+  try {
+    const task = db.collection('companies').doc(order.companyId).collection('tasks').doc(taskId);
+    const t = await task.get();
+    if (t.exists && t.data().status === 'open') {
+      await task.set({
+        dueAt: admin.firestore.Timestamp.fromMillis(now.toMillis() + Number(settings.dueDays) * 86400000),
+        updatedAt: FV.serverTimestamp()
+      }, { merge: true });
+    }
+  } catch (e) { console.warn('[handSales] collect task push failed:', e && e.message); }
 }
 
 /**
@@ -16563,9 +16599,9 @@ async function emailInvoice(db, order, settings) {
  *   deliver  { id }                    → delivered / handed over
  *   reviewed { id }                    → the review ask went out
  *   cancel   { id } / reopen { id }    → stock follows
- *   email    { id }                    → email the invoice link to the buyer
- *   sent     { id, via }               → the invoice went out another way
- *                                         (text, Messenger, Instagram)
+ *   email    { id, reminder? }         → email the invoice (or a reminder)
+ *   sent     { id, via, reminder? }    → the invoice or a reminder went out
+ *                                         another way (text, Messenger, IG)
  *   note     { id, note }              → internal note
  */
 exports.manageHandSale = onCall({ secrets: [sendgridKey] }, async (request) => {
@@ -16644,29 +16680,23 @@ exports.manageHandSale = onCall({ secrets: [sendgridKey] }, async (request) => {
 
   if (!id) throw new HttpsError('invalid-argument', 'Missing order.');
 
-  if (action === 'email') {
+  // email sends it from here; for the rest the console sends through sendSms
+  // (the CRM's consent-gated path) or opens Messenger / the Messages app on
+  // Anthony's own device, then reports here so the card shows how it went out.
+  if (action === 'email' || action === 'sent') {
+    const via = action === 'email' ? 'email' : String(data.via || '');
+    if (!INVOICE_SEND_VIA[via]) throw new HttpsError('invalid-argument', 'Unknown send channel.');
+    const reminder = data.reminder === true;
     const snap = await db.collection('orders').doc(id).get();
     if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
     const order = { id, ...snap.data() };
-    await emailInvoice(db, order, await handSalesSettings(db));
-    await snap.ref.set({ invoiceSentAt: now, invoiceSentVia: 'email' }, { merge: true });
-    return { ...handSaleResult(order), emailed: true };
-  }
-
-  // The console sends texts through sendSms (the CRM's consent-gated path)
-  // and opens Messenger / the Messages app on Anthony's own device, then
-  // reports here so the card shows the invoice went out and how.
-  if (action === 'sent') {
-    const VIA = { sms: 'a text from the CRM', 'phone-text': 'a text from your phone', messenger: 'Messenger', instagram: 'Instagram' };
-    const via = String(data.via || '');
-    if (!VIA[via]) throw new HttpsError('invalid-argument', 'Unknown send channel.');
-    const snap = await db.collection('orders').doc(id).get();
-    if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
-    const order = { id, ...snap.data() };
-    await snap.ref.set({ invoiceSentAt: now, invoiceSentVia: via }, { merge: true });
-    // sendSms already logs its own activity on the contact.
-    if (via !== 'sms') await handSaleActivity(db, order, `Invoice ${order.invoiceNumber} sent by ${VIA[via]}`);
-    return handSaleResult(order);
+    if (reminder && (handSales.isPaid(order) || order.status === 'cancelled')) {
+      throw new HttpsError('failed-precondition', 'This order is already settled. No reminder needed.');
+    }
+    const settings = await handSalesSettings(db);
+    if (via === 'email') await emailInvoice(db, order, settings, { reminder });
+    await recordInvoiceSend(db, snap.ref, order, { via, reminder, settings, now });
+    return { ...handSaleResult(order), emailed: via === 'email' };
   }
 
   const refuseIfCancelled = (o) => {
