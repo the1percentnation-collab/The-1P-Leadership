@@ -6,7 +6,7 @@
   "scripts": {
     "emulator": "cd .. && firebase emulators:exec --only firestore,storage --project demo-1p \"node tests/firestore-rules.test.mjs && node tests/storage-rules.test.mjs && node tests/launch-tick.test.mjs\"",
     "test:telnyx": "node telnyx-signature.test.cjs && node telnyx-send.test.cjs && node telnyx-texml.test.cjs && node call-gate.test.cjs && node sms-consent.test.cjs && node sms-gate.test.cjs && node consent-labels.test.cjs",
-    "test:email": "node email-suppression.test.cjs && node inbound-email.test.cjs && node email-provider.test.cjs && node email-events.test.cjs",
+    "test:email": "node email-suppression.test.cjs && node inbound-email.test.cjs && node email-provider.test.cjs && node email-events.test.cjs && node brief-campaigns.test.cjs",
     "test:indexes": "node firestore-indexes.test.cjs",
     "test:deploy": "node no-scheduled-functions.test.cjs && node security-guards.test.cjs",
     "test:crm": "node crm-nav.test.mjs && node crm-freshness.test.cjs && node crm-assistant.test.cjs && node crm-ai-log.test.cjs",
@@ -22,6 +22,7 @@
     "e2e:notify": "bash run-e2e.sh notify",
     "e2e:thread": "bash run-e2e.sh thread",
     "e2e:digest": "cd .. && tests/node_modules/.bin/firebase emulators:exec --only firestore --project demo-1p \"node tests/digest-e2e.test.mjs\"",
+    "e2e:campaigns": "cd .. && tests/node_modules/.bin/firebase emulators:exec --only firestore --project demo-1p \"node tests/brief-campaigns-e2e.test.mjs\"",
     "e2e:agreement": "bash run-e2e.sh agreement",
     "e2e:membership": "bash run-e2e.sh membership",
     "e2e:hand-sales": "bash run-e2e.sh hand-sales",

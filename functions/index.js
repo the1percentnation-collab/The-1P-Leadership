@@ -2257,7 +2257,19 @@ function isEmailSuppressed(c) {
 // sendCampaign — callable
 // ────────────────────────────────────────────────────────────────
 
+// filter.excludeEnrolledIn (a course slug) drops anyone whose account is
+// already enrolled in that course, matched by email. It lets a "join before
+// the deadline" campaign skip the people who already joined.
 async function buildRecipients(db, companyId, filter) {
+  const recipients = await collectRecipients(db, companyId, filter);
+  const slug = String((filter && filter.excludeEnrolledIn) || '').trim();
+  if (!slug) return recipients;
+  const enrolled = await db.collection('users').where('enrolledCourseSlugs', 'array-contains', slug).get();
+  const skip = new Set(enrolled.docs.map((d) => normalizeEmail((d.data() || {}).email)).filter(Boolean));
+  return recipients.filter((r) => !skip.has(r.email));
+}
+
+async function collectRecipients(db, companyId, filter) {
   const mode = (filter && filter.mode) || 'all_contacts';
   const seen = new Set();
   const recipients = []; // { email, name?, firstName?, contactId?, unsubToken? }
@@ -11359,6 +11371,10 @@ async function sendCommunityDigests(db, { now = new Date(), dryRun = false } = {
       out.failed++;
       if (!out.error) out.error = String((e && e.message) || e).slice(0, 200);
       console.warn('[tick] community digest failed', d.id, e && e.message);
+      // Give the day back, so the next tick retries, and keep the last
+      // good sentAt, so the retry still lists these threads.
+      await d.ref.update({ communityDigest: last.date ? last : admin.firestore.FieldValue.delete() })
+        .catch((err) => console.warn('[tick] community digest release failed', d.id, err && err.message));
     }
   }
   return out;
@@ -16594,13 +16610,21 @@ async function sendStoreDigest(db, { now = new Date(), dryRun = false } = {}) {
   if (!claimed) return { skipped: 'already sent today' };
 
   const msg = storeDigestMessage(digest);
-  await sendEmail({
-    to: OWNER_EMAIL,
-    from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
-    replyTo: REPLY_TO,
-    subject: msg.subject, html: msg.html, text: msg.text,
-    customArgs: { type: 'hand_sale_digest' }
-  });
+  try {
+    await sendEmail({
+      to: OWNER_EMAIL,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      subject: msg.subject, html: msg.html, text: msg.text,
+      customArgs: { type: 'hand_sale_digest' }
+    });
+  } catch (e) {
+    // Give the day back, so the next tick retries instead of skipping
+    // today's email as already sent.
+    await (last.exists ? stateRef.set(last.data()) : stateRef.delete())
+      .catch((err) => console.warn('[tick] store digest release failed', err && err.message));
+    throw e;
+  }
   return { ...counts, sent: true };
 }
 

@@ -56,6 +56,17 @@ ok('the server wires every hand-sale entry point', () => {
   assert.ok(/metadata\.kind === 'invoice'\)\s*\{\s*await handleInvoiceCheckout/.test(src), 'the webhook does not mark invoices paid');
 });
 
+ok('a failed morning digest gives the day back so the next tick retries', () => {
+  const src = fs.readFileSync(new URL('../functions/index.js', import.meta.url), 'utf8');
+  const i = src.indexOf('async function sendStoreDigest(');
+  const body = src.slice(i, src.indexOf('\n}\n', i));
+  const send = body.indexOf('await sendEmail(');
+  assert.ok(body.indexOf('runTransaction') < send, 'the day is claimed after sending');
+  const release = body.slice(send).match(/catch \(e\) \{([\s\S]*?)throw e;/);
+  assert.ok(release && /stateRef\.set\(last\.data\(\)\)/.test(release[1]) && /stateRef\.delete\(\)/.test(release[1]),
+    'a failed send keeps the claim, so today\'s digest is never retried');
+});
+
 console.log('hand sales — money');
 
 ok('totals add up in cents, not floats', () => {
