@@ -75,7 +75,9 @@ const DEFAULT_SETTINGS = {
   reviewAfterDays: 10,
   reviewUrl: 'https://a.co/d/0fSUaomu',
   invoiceNote: 'Thank you for supporting the work. Every copy sold by hand is signed.',
-  lowStockAt: 5
+  lowStockAt: 5,
+  // Local hour for the morning collections email; 0 turns it off.
+  digestHour: 8
 };
 
 const MAX_ITEMS = 20;
@@ -316,7 +318,9 @@ function itemSummary(order) {
   if (!items.length) return 'order';
   const first = items[0];
   const rest = items.length - 1;
-  return `${first.qty > 1 ? first.qty + '× ' : ''}${first.name}${rest > 0 ? ` +${rest} more` : ''}`;
+  // A title's own closing period would double up in "Thank you for ordering X."
+  const name = String(first.name || '').replace(/[\s.]+$/, '');
+  return `${first.qty > 1 ? first.qty + '× ' : ''}${name}${rest > 0 ? ` +${rest} more` : ''}`;
 }
 
 /**
@@ -383,6 +387,85 @@ function invoiceMessage(order, url) {
     lines.push('As soon as it is paid I will sign it and get it in the mail.');
   }
   return lines.join('\n\n');
+}
+
+// Follow-ups on an invoice that went out and was not paid. "Due" means it
+// has sat quiet (no send, no reminder) for the same dueDays the collect task
+// uses, so the card and Tasks agree on when to nudge.
+const toMs = (t) => (t && typeof t.toMillis === 'function' ? t.toMillis()
+  : (typeof t === 'number' ? t : (t instanceof Date ? t.getTime() : null)));
+
+function lastNudgeMs(order) {
+  const last = Math.max(toMs(order && order.invoiceSentAt) || 0, toMs(order && order.remindedAt) || 0);
+  return last || null;
+}
+
+function reminderDue(order, settings = DEFAULT_SETTINGS, now = Date.now()) {
+  if (!order || order.kind !== 'manual' || order.status === 'cancelled' || isPaid(order)) return false;
+  const last = lastNudgeMs(order);
+  return last != null && now - last >= Number(mergeSettings(settings).dueDays) * DAY;
+}
+
+function reminderMessage(order, url) {
+  const hi = firstName(order.buyer && order.buyer.name);
+  const lines = [
+    `${hi ? `Hey ${hi}` : 'Hey'}, circling back on your order of ${itemSummary(order)}.`,
+    `Your invoice for ${formatMoney(order.amountTotal)} is still open here: ${url}`,
+    'It takes about a minute by card.'
+  ];
+  if (order.delivery === 'ship' && !hasAddress(order.shipping)) {
+    lines.push('Send me the address you want it shipped to as well, and I will get it signed and out to you.');
+  } else if (order.delivery === 'ship') {
+    lines.push('As soon as it clears I will sign it and get it in the mail.');
+  }
+  return lines.join('\n\n');
+}
+
+/**
+ * What the morning collections email lists: invoices due a reminder (quiet
+ * longest first), invoices never sent (oldest first), what is owed, and how
+ * many paid orders are waiting to ship. `empty` means no email is needed.
+ */
+function collectionsDigest(orders, settings = DEFAULT_SETTINGS, now = Date.now()) {
+  const s = mergeSettings(settings);
+  const manual = (orders || []).filter((o) => o && o.kind === 'manual');
+  const open = manual.filter((o) => o.status !== 'cancelled' && !isPaid(o));
+  const remind = open.filter((o) => reminderDue(o, s, now))
+    .sort((a, b) => lastNudgeMs(a) - lastNudgeMs(b))
+    .map((o) => ({ order: o, quietDays: Math.floor((now - lastNudgeMs(o)) / DAY) }));
+  const unsent = open.filter((o) => !lastNudgeMs(o))
+    .sort((a, b) => (toMs(a.createdAt) || 0) - (toMs(b.createdAt) || 0))
+    .map((o) => ({ order: o, ageDays: toMs(o.createdAt) ? Math.floor((now - toMs(o.createdAt)) / DAY) : 0 }));
+  const owed = dollars(open.reduce((c, o) => c + cents(o.amountTotal), 0));
+  const toShip = manual.filter((o) => orderBucket(o) === 'ship').length;
+  return { remind, unsent, owed, owedCount: open.length, toShip, empty: !remind.length && !unsent.length };
+}
+
+// Links that put the invoice back where the buyer is talking to Anthony.
+// smsLink opens his own Messages app with the text filled in (sms: works on
+// iPhone, Mac and Android); dmLink opens their Messenger or Instagram thread
+// from the profile saved on the order. Both return null when there is
+// nothing to address.
+function smsLink(phone, body) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  const to = digits.length === 10 ? `+1${digits}` : `+${digits}`;
+  return `sms:${to}?&body=${encodeURIComponent(body || '')}`;
+}
+
+const FB_NOT_PROFILES = /^(messages|groups|pages|marketplace|people|share|events|watch|photo\.php|permalink\.php)$/i;
+
+function dmLink(order) {
+  const raw = String((order && order.buyer && order.buyer.handle) || '').trim();
+  if (!raw) return null;
+  const fbId = raw.match(/(?:facebook|fb)\.com\/profile\.php\?(?:[^#]*&)?id=(\d+)/i);
+  if (fbId) return { app: 'Messenger', url: `https://www.facebook.com/messages/t/${fbId[1]}` };
+  const fb = raw.match(/(?:facebook|fb|m\.me)(?:\.com)?\/([A-Za-z0-9.]+)/i);
+  if (fb && !FB_NOT_PROFILES.test(fb[1])) return { app: 'Messenger', url: `https://m.me/${fb[1]}` };
+  const ig = raw.match(/instagram\.com\/([A-Za-z0-9._]+)/i)
+    || (order.channel === 'instagram' ? raw.match(/^@?([A-Za-z0-9._]{1,30})$/) : null);
+  if (ig) return { app: 'Instagram', url: `https://ig.me/m/${ig[1]}` };
+  return null;
 }
 
 function shippedMessage(order) {
@@ -493,5 +576,5 @@ function parseAddress(text) {
 
 
 module.exports = {
-  CHANNELS, PAYMENT_METHODS, DELIVERY_MODES, ORDER_STATUSES, STOCK_REASONS, BUCKETS, DEFAULT_SETTINGS, formatMoney, labelFor, mergeSettings, computeTotals, invoiceNumber, hasAddress, addressLines, normalizeOrder, deliveryStatus, isPaid, orderBucket, stockHeld, stockDelta, firstName, itemSummary, taskPlan, invoiceMessage, shippedMessage, reviewMessage, paymentOptions, lowStock, summarize, parseAddress
+  CHANNELS, PAYMENT_METHODS, DELIVERY_MODES, ORDER_STATUSES, STOCK_REASONS, BUCKETS, DEFAULT_SETTINGS, formatMoney, labelFor, mergeSettings, computeTotals, invoiceNumber, hasAddress, addressLines, normalizeOrder, deliveryStatus, isPaid, orderBucket, stockHeld, stockDelta, firstName, itemSummary, taskPlan, invoiceMessage, reminderMessage, reminderDue, lastNudgeMs, collectionsDigest, smsLink, dmLink, shippedMessage, reviewMessage, paymentOptions, lowStock, summarize, parseAddress
 };

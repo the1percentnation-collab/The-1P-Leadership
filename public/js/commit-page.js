@@ -92,6 +92,12 @@ async function boot() {
       $('cm-ch-push').checked = false;
       note.hidden = false;
       note.textContent = 'Push isn\'t enabled on this device yet. Turn it on to get reminders here.';
+    } else if (!state.channels.push && !state.channels.pushOptOut && Notification.permission === 'granted') {
+      // Push is already on for this member, and the server sends course
+      // reminders to it unless this plan opts out (courseReminderWantsPush),
+      // so the box shows that instead of an unticked default.
+      state.channels.push = true;
+      $('cm-ch-push').checked = true;
     }
   } else {
     state.channels.push = false;
@@ -286,7 +292,7 @@ function bind(user) {
   $('cm-ch-email').addEventListener('change', (e) => { state.channels.email = e.target.checked; });
   $('cm-ch-inapp').addEventListener('change', (e) => { state.channels.inapp = e.target.checked; });
   $('cm-ch-push').addEventListener('change', (e) => {
-    if (!e.target.checked) { state.channels.push = false; return; }
+    if (!e.target.checked) { state.channels.push = false; state.channels.pushOptOut = true; return; }
     const note = $('cm-push-note');
     const btn = $('cm-submit');
     // While the browser's permission prompt is open, saving would drop push
@@ -297,6 +303,7 @@ function bind(user) {
     pushPending = enablePush(user.uid).then((res) => {
       if (res.ok) {
         state.channels.push = true;
+        state.channels.pushOptOut = false;
         note.hidden = true;
       } else {
         e.target.checked = false;

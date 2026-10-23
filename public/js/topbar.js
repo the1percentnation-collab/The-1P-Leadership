@@ -136,6 +136,7 @@ const bellState = {
 const NOTIF_ICON_PATHS = {
   like: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
   comment: '<path d="M5 5h14v10h-9l-4 4v-4H5z"/>',
+  new_thread: '<path d="M4 6h16M4 12h10M4 18h7"/><path d="M18 14v6M15 17h6"/>',
   mention: '<circle cx="12" cy="12" r="3.5"/><path d="M15.5 12v1.5a2.5 2.5 0 0 0 5 0V12a8.5 8.5 0 1 0-3.3 6.7"/>',
   channel_request: '<circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M16 7l2 2M13.5 9.5l2 2"/>',
   channel_access_granted: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.7"/>',
@@ -179,6 +180,12 @@ function notifLine(n) {
   if (n.type === 'like') return `${who} liked your post`;
   if (n.type === 'comment') return `${who} commented on your post`;
   if (n.type === 'mention') return `${who} mentioned you`;
+  if (n.type === 'new_thread') {
+    const count = Number(n.threadCount) || 1;
+    return count > 1
+      ? `${count} new threads in ${channelLabel(n)}`
+      : `${who} posted in ${channelLabel(n)}`;
+  }
   if (n.type === 'channel_request') return `${who} requested access to ${channelLabel(n)}`;
   if (n.type === 'channel_access_granted') return `You now have access to ${channelLabel(n)}`;
   if (n.type === 'channel_access_denied') return `Your request for ${channelLabel(n)} wasn't approved`;

@@ -18,6 +18,8 @@ import {
   subscribeToFeed, searchMembers, renderTextWithMentions,
   avatarHtml, fmtRelative, escapeHtml, linkify
 } from './community.js';
+import { channelAlertLevel, isPrivateMember, setChannelAlert, clearThreadAlert, maybeOfferPush } from './notify-prefs.js';
+import { enablePush, isIosNotInstalled } from './push.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -52,6 +54,7 @@ function canOpenActiveChannel(key = null) {
 
 const state = {
   me: null,           // { uid, displayName, avatarUrl, role, companyId }
+  channelAlerts: {},  // users/{uid}.channelAlerts — which channels ping this member
   role: null,
   companyId: null,
   posts: [],
@@ -832,6 +835,7 @@ function renderChannelHeader() {
         <span class="c-channel-title-emoji">${escapeHtml(ch.emoji || '#')}</span>
         <span class="c-channel-title-name">${escapeHtml(ch.name)}</span>
       </div>
+      ${followButtonHtml(ch)}
       <button class="btn btn-ghost c-channel-invite" id="c-channel-invite">Invite</button>
     </div>
     ${ch.description ? `<div class="c-channel-desc">${escapeHtml(ch.description)}</div>` : ''}
@@ -844,6 +848,49 @@ function renderChannelHeader() {
   // every laptop and phone. The channel header renders at every width.
   const inviteBtn = $('c-channel-invite');
   if (inviteBtn) inviteBtn.addEventListener('click', () => openInviteModal());
+  const followBtn = $('c-channel-follow');
+  if (followBtn) followBtn.addEventListener('click', () => toggleFollow(followBtn));
+}
+
+// ─── Following a channel ─────────────────────────────────────────────────
+// Following = 'all' new threads ping you (bell + push); unfollowed = only
+// @mentions do. Private channels start followed for their members, everything
+// else doesn't; see channelAlertLevel in notify-prefs.js and functions/index.js.
+
+function activeAlertLevel() {
+  const ch = activeChannelMeta();
+  return channelAlertLevel({ channelAlerts: state.channelAlerts }, state.activeChannel, isPrivateMember(ch, state.me && state.me.uid));
+}
+
+function followButtonHtml(ch) {
+  if (!canOpenActiveChannel()) return '';
+  const on = activeAlertLevel() === 'all';
+  const name = escapeHtml(ch.name || state.activeChannel);
+  return `<button class="btn btn-ghost c-channel-follow${on ? ' is-on' : ''}" id="c-channel-follow" type="button"
+      aria-pressed="${on}" aria-label="${on ? 'Following this channel' : 'Follow this channel'}" title="${on ? `Every new thread in ${name} notifies you. Click to switch to mentions only.` : `Get notified about every new thread in ${name}.`}">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/></svg>
+      <span>${on ? 'Following' : 'Follow'}</span>
+    </button>`;
+}
+
+async function toggleFollow(btn) {
+  const key = state.activeChannel;
+  const next = activeAlertLevel() === 'all' ? 'mentions' : 'all';
+  btn.disabled = true;
+  // Ask for notification permission inside the click itself: browsers only
+  // show the prompt from a user gesture, and it must not wait on the save.
+  const asking = next === 'all' && !isIosNotInstalled() && 'Notification' in window
+    && Notification.permission === 'default'
+    ? enablePush(state.me.uid) : null;
+  try {
+    await setChannelAlert(state.me.uid, key, next);
+    state.channelAlerts = { ...state.channelAlerts, [key]: next };
+  } catch (e) {
+    alert('Could not update notifications: ' + (e.message || e));
+  }
+  renderChannelHeader();
+  if (asking) await asking;
+  else if (next === 'all') maybeOfferPush($('push-offer'), { uid: state.me.uid, reason: 'follow' });
 }
 
 function renderLeaderboard() {
@@ -1192,6 +1239,7 @@ async function switchChannel(nextKey) {
   // initial 20 posts when it lands.
   subscribeToActiveChannel();
   renderStaffChannelPanel();
+  clearThreadAlert(state.me.uid, nextKey);
 }
 
 async function submitPost() {
@@ -1232,6 +1280,7 @@ async function submitPost() {
     $('composer-filename').textContent = '';
     $('composer-preview').innerHTML = '';
     state.mentionUids = new Set();
+    maybeOfferPush($('push-offer'), { uid: state.me.uid, reason: 'reply' });
     // Stat trigger fires async — schedule a refresh so the user sees their
     // points / level update without a manual reload. Cheap (one callable).
     setTimeout(() => { refreshLeaderboard().catch(() => {}); }, 2500);
@@ -1704,6 +1753,7 @@ async function loadCommentsInto(p) {
       const cc = document.querySelector(`[data-comment-count="${p.id}"]`);
       if (cc) cc.textContent = p.commentCount;
       input.value = '';
+      maybeOfferPush($('push-offer'), { uid: state.me.uid, reason: 'reply' });
       await loadCommentsInto(p);
     } catch (e) {
       alert('Could not comment: ' + (e.message || e));
@@ -1783,6 +1833,7 @@ async function main() {
     role: info.role,
     companyId: info.companyId || null
   };
+  state.channelAlerts = (profile.channelAlerts && typeof profile.channelAlerts === 'object') ? profile.channelAlerts : {};
 
   // Load channels (Phase 1) before rendering so the sidebar + composer have data.
   state.channels = await listChannels({ isAdmin: isStaff() });
@@ -1823,6 +1874,7 @@ async function main() {
 
     // Phase 3 — replace the polling feed with a bounded realtime listener.
     subscribeToActiveChannel();
+    clearThreadAlert(state.me.uid, state.activeChannel);
   }
 
   // Notification deep-link: handle existing #post-X on initial load and any

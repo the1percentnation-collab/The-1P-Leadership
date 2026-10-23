@@ -16,7 +16,7 @@ const core = await loadPure('hand-sales-core.js');
 const server = createRequire(import.meta.url)('../functions/hand-sales-core.js');
 const {
   computeTotals, normalizeOrder, deliveryStatus, orderBucket, stockDelta, taskPlan, parseAddress,
-  paymentOptions, invoiceMessage, summarize, invoiceNumber, isPaid, lowStock, mergeSettings
+  paymentOptions, invoiceMessage, reminderMessage, reminderDue, lastNudgeMs, collectionsDigest, smsLink, dmLink, summarize, invoiceNumber, isPaid, lowStock, mergeSettings
 } = core;
 
 let passed = 0;
@@ -206,6 +206,78 @@ ok('the Messenger message carries the link, card-only pay, and an address ask wh
   assert.match(msg, /pay by card right on that page\./);
   assert.doesNotMatch(msg, /Cash App|Venmo|Zelle|PayPal/);
   assert.match(msg, /address you want it shipped to/);
+});
+
+ok('Send invoice: a text opens his Messages app with the invoice filled in', () => {
+  assert.strictEqual(smsLink('417-412-1382', 'Hi & pay: https://x/i?a=1'), 'sms:+14174121382?&body=Hi%20%26%20pay%3A%20https%3A%2F%2Fx%2Fi%3Fa%3D1');
+  assert.strictEqual(smsLink('+1 (405) 826-3510', 'x'), 'sms:+14058263510?&body=x');
+  assert.strictEqual(smsLink('555-1234', 'x'), null);
+  assert.strictEqual(smsLink('', 'x'), null);
+});
+
+ok('Send invoice: the saved profile opens their Messenger or Instagram thread', () => {
+  const dm = (handle, channel = 'facebook') => dmLink({ channel, buyer: { name: 'J', handle } });
+  assert.deepStrictEqual(dm('https://www.facebook.com/TheJoshuaQuick'), { app: 'Messenger', url: 'https://m.me/TheJoshuaQuick' });
+  assert.strictEqual(dm('facebook.com/brennan.fanning.7').url, 'https://m.me/brennan.fanning.7');
+  assert.strictEqual(dm('https://www.facebook.com/profile.php?id=10001234').url, 'https://www.facebook.com/messages/t/10001234');
+  assert.strictEqual(dm('https://www.facebook.com/groups/12345'), null);
+  assert.deepStrictEqual(dm('https://instagram.com/the1pnation/'), { app: 'Instagram', url: 'https://ig.me/m/the1pnation' });
+  assert.strictEqual(dm('@the1pnation', 'instagram').url, 'https://ig.me/m/the1pnation');
+  assert.strictEqual(dm('@the1pnation', 'facebook'), null);
+  assert.strictEqual(dm(''), null);
+});
+
+ok('Remind: due once a sent invoice sits unpaid for dueDays since the last nudge', () => {
+  const day = 86400000;
+  const sent = (extra = {}) => ({ ...manual(), invoiceSentAt: { toMillis: () => NOW - 4 * day }, ...extra });
+  assert.strictEqual(reminderDue(manual(), {}, NOW), false, 'never sent: send it first, not a reminder');
+  assert.strictEqual(reminderDue(sent(), {}, NOW), true);
+  assert.strictEqual(reminderDue(sent(), { dueDays: 5 }, NOW), false);
+  assert.strictEqual(reminderDue(sent({ remindedAt: NOW - day }), {}, NOW), false, 'a fresh reminder resets the clock');
+  assert.strictEqual(reminderDue(sent({ payment: { status: 'paid' } }), {}, NOW), false);
+  assert.strictEqual(reminderDue(sent({ status: 'cancelled' }), {}, NOW), false);
+  assert.strictEqual(lastNudgeMs(sent({ remindedAt: NOW - day })), NOW - day);
+  assert.strictEqual(lastNudgeMs(manual()), null);
+});
+
+ok('Remind: the follow-up carries the link and asks for an address when one is missing', () => {
+  const o = { ...manual({ status: 'needs-address', shipping: null }), invoiceNumber: 'INV-1001' };
+  const msg = reminderMessage(o, 'https://x/invoice?i=1&t=2');
+  assert.match(msg, /^Hey Jane, circling back/);
+  assert.match(msg, /still open here: https:\/\/x\/invoice\?i=1&t=2/);
+  assert.match(msg, /address you want it shipped to/);
+  assert.doesNotMatch(reminderMessage({ ...manual(), delivery: 'hand' }, 'u'), /address|mail/);
+});
+
+ok('Morning digest: reminders quiet longest first, unsent oldest first, paid and cancelled left out', () => {
+  const day = 86400000;
+  const at = (d) => ({ toMillis: () => NOW - d * day });
+  const o = (id, extra) => ({ ...manual(), id, ...extra });
+  const d = collectionsDigest([
+    o('fresh', { invoiceSentAt: at(1), createdAt: at(1) }),
+    o('quiet4', { invoiceSentAt: at(4), createdAt: at(5) }),
+    o('quiet9', { invoiceSentAt: at(12), remindedAt: at(9), createdAt: at(12) }),
+    o('new', { createdAt: at(0) }),
+    o('old', { createdAt: at(2) }),
+    o('paid', { invoiceSentAt: at(9), payment: { status: 'paid' } }),
+    o('gone', { invoiceSentAt: at(9), status: 'cancelled' }),
+    { id: 'site', kind: 'stripe', status: 'new', amountTotal: 30 }
+  ], {}, NOW);
+  assert.deepStrictEqual(d.remind.map((r) => [r.order.id, r.quietDays]), [['quiet9', 9], ['quiet4', 4]]);
+  assert.deepStrictEqual(d.unsent.map((r) => [r.order.id, r.ageDays]), [['old', 2], ['new', 0]]);
+  assert.strictEqual(d.owedCount, 5);
+  assert.strictEqual(d.owed, 224.9);
+  assert.strictEqual(d.toShip, 1);
+  assert.strictEqual(d.empty, false);
+  assert.strictEqual(collectionsDigest([o('fresh', { invoiceSentAt: at(1) })], {}, NOW).empty, true);
+  assert.strictEqual(mergeSettings({}).digestHour, 8);
+});
+
+ok('a title ending in a period does not double up in the messages', () => {
+  const o = { ...manual(), items: [{ qty: 1, name: "I Can't: Strategies To Overcoming Your Limiting Beliefs.", unitPrice: 14.99 }] };
+  assert.doesNotMatch(invoiceMessage(o, 'u'), /\.\./);
+  assert.doesNotMatch(reminderMessage(o, 'u'), /\.\./);
+  assert.match(reminderMessage(o, 'u'), /Limiting Beliefs\.\n/);
 });
 
 ok('this month counts only paid, live orders; owed counts every unpaid one', () => {

@@ -45,7 +45,7 @@ account key. Move them onto `lib/init.js` before running any of them.
 |---|---|---|
 | `fix-clc-slugs.js` | Moves the Leader Coach off the `1p-clc` slug onto `1p-clc-leader` with its lessons, members and purchases; resets `1p-clc` to the Life Coach identity; archives the superseded `silence-the-voice` draft. | **Yes, once.** See below. |
 | `seed-clc.js` | Writes the 8 written modules, the 48-question exam bank, the FOUNDING coupon and certification config for the $3,497 Life Coach program. | **Yes, once — but only AFTER `fix-clc-slugs.js`.** It refuses to run before that and tells you so. |
-| `seed-brief.js` | Writes The One Percent Brief course ($12/month subscription) and one module per file in `brief-content/`. Brief 1 is published, the rest are drafts. Re-runs never change status, price or a brief's published state. | **Yes**, once to create it, and again whenever a brief is added or edited. |
+| `seed-brief.js` | Writes The One Percent Brief course ($12/month subscription) and one module per file in `brief-content/`. Brief 1 is published, the rest are drafts. Re-runs never change status, price or a brief's published state. | **Automatic.** The *Seed The One Percent Brief* workflow runs it on every push to `main` that touches the briefs or the seed, and can be run by hand from the Actions tab. |
 | `seed-focus-tax.js` | Writes The Focus Tax essays to Firestore (`reads/the-focus-tax`, public archive list; `essays/{slug}`, full text for members) from `focus-tax-content/`, removes essays no longer in the folder, and keeps the old course record retired. | **Automatic.** The *Seed The Focus Tax* workflow runs it on every push to `main` that touches the essays or the seed, and can be run by hand from the Actions tab. |
 | `build-reads.js` | Generates the public `/reads` pages from the same markdown: the archive and one page per essay with its opening. `--check` reports stale pages. | **Yes**, after editing an essay. Commit the output. |
 | `upload-book.js` | Uploads an EPUB (and cover) to the digital library and writes `books/{id}`. See `docs/digital-library.md`. | **Yes**, once the final EPUB is ready, and again for each new edition. |
@@ -131,3 +131,20 @@ The essays only work as acquisition if the thing they point at can be
 bought. Set `one-percent-brief` to live in `/manage-courses.html` when it is
 ready; until then the pointers in essays 1 and 3 land on a Notify me button,
 which still captures interest.
+
+## Keynote closing slide (no credentials needed)
+
+A 1920x1080 slide with a QR code to the Team Alignment Assessment, tagged with
+the host organization. Every result from that room reaches the CRM tagged
+`Campaign: keynote-<org>`, so you can walk into the follow-up meeting with
+how many of their people took it.
+
+```bash
+cd scripts && npm install
+node keynote-slide.mjs --org "Acme Corp" --out ./slides
+```
+
+It writes `keynote-slide-acme-corp.html` and, when Playwright is installed, a
+PNG for Keynote, PowerPoint, Google Slides or Canva. Without `--org` it makes
+the generic slide, also kept at `docs/keynote/keynote-slide.png`. The spoken
+link on the slide, the1pnation.com/myteam, is a redirect in `firebase.json`.

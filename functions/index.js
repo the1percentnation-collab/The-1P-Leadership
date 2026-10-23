@@ -41,6 +41,7 @@ const sgMail = require('@sendgrid/mail');
 const { computeFocusTax, WORK_WEEKS: FOCUS_TAX_WEEKS } = require('./focus-tax.js');
 const { careerTags } = require('./careers.js');
 const handSales = require('./hand-sales-core.js');
+const messenger = require('./messenger.js');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
@@ -4163,6 +4164,17 @@ function clampPreview(text) {
 }
 
 /**
+ * Where a push about a post opens. Same shape as the bell's notifHref
+ * (topbar.js): the channel in the query, the post in the hash, which is what
+ * community-page.js reads. `?post=` alone is ignored there and lands the
+ * reader in #general.
+ */
+function communityPostUrl(category, postId) {
+  const channel = encodeURIComponent(category || 'general');
+  return `${APP_BASE_URL}/community.html?channel=${channel}#post-${encodeURIComponent(postId || '')}`;
+}
+
+/**
  * Send a multicast FCM push to a user's registered tokens. Best-effort:
  * never throws. Prunes tokens that come back as not-registered.
  */
@@ -4309,13 +4321,189 @@ async function fanOutMentions(db, mentionedUids, ctx) {
         title: `${ctx.fromName || 'Someone'} mentioned you`,
         body: clampPreview(ctx.preview),
         data: {
-          url: `${APP_BASE_URL}/community.html?post=${encodeURIComponent(ctx.postId)}`,
+          url: communityPostUrl(ctx.category, ctx.postId),
           type: 'mention',
           postId: ctx.postId
         }
       }).catch(() => {});
     }
   }
+}
+
+// ── New threads → everyone following the channel ────────────────────
+// A new post rings the bell (and the phone) of each member who follows its
+// channel. Following is users/{uid}.channelAlerts[channelKey]:
+//   'all'      — every new thread
+//   'mentions' — only @mentions (which fanOutMentions already covers)
+// Absent means the channel's default: members of a private channel asked to
+// join a small room, so they default to 'all'. Everyone else, including staff
+// who can read a private channel without being in it, defaults to 'mentions',
+// or a growing community buzzes every phone on every post.
+// notifPrefs.newThreads === false turns thread alerts off everywhere.
+//
+// One rolling bell row per channel (`thread_{channelKey}`) counts up while it
+// sits unread, so a busy hour reads "4 new threads in Wins", not four rows.
+// The phone hears about the first one, then at most once per
+// THREAD_ALERT_THROTTLE_MS until the member opens the row.
+
+const THREAD_ALERT_THROTTLE_MS = 15 * 60 * 1000;
+
+/** 'all' | 'mentions' for this member in this channel. */
+function channelAlertLevel(user, channelKey, isPrivateMember) {
+  const v = user && user.channelAlerts && user.channelAlerts[channelKey];
+  if (v === 'all' || v === 'mentions') return v;
+  return isPrivateMember ? 'all' : 'mentions';
+}
+
+/**
+ * Should `uid` hear about this new thread? Never the author, never someone
+ * the post @mentions (they get the mention instead), and never anyone who
+ * could not open the post: the same read rules as firestore.rules, so a
+ * company post never pings another company and a private channel never
+ * pings a non-member.
+ */
+function threadAlertShouldNotify(uid, user, { post, isPrivate, channelKey, memberUids }) {
+  if (!uid || !user || !post) return false;
+  if (uid === post.authorUid) return false;
+  if (Array.isArray(post.mentionedUids) && post.mentionedUids.includes(uid)) return false;
+  const prefs = user.notifPrefs || {};
+  if (prefs.newThreads === false) return false;
+  const isMember = isPrivate && Array.isArray(memberUids) && memberUids.includes(uid);
+  if (channelAlertLevel(user, channelKey, isMember) !== 'all') return false;
+  return canReadThread(uid, user, { post, isPrivate, memberUids });
+}
+
+/**
+ * Could `uid` open this post? The read rules from firestore.rules: private
+ * channels are members and staff; public posts are global, or the post's
+ * company, or the owner.
+ */
+function canReadThread(uid, user, { post, isPrivate, memberUids }) {
+  const role = (user && user.role) || 'user';
+  if (isPrivate) {
+    return role === 'owner' || role === 'admin' || (Array.isArray(memberUids) && memberUids.includes(uid));
+  }
+  return post.companyId == null || role === 'owner' || (!!user.companyId && user.companyId === post.companyId);
+}
+
+/**
+ * Next state of a member's rolling thread row, from the existing row (or
+ * null). { count, push, wasUnread }.
+ */
+function threadAlertNext(existing, nowMs) {
+  if (!existing || existing.read !== false) return { count: 1, push: true, wasUnread: false };
+  const count = (Number(existing.threadCount) || 1) + 1;
+  const p = existing.pushedAt;
+  const last = p && typeof p.toMillis === 'function' ? p.toMillis() : Number(p) || 0;
+  return { count, push: !last || nowMs - last >= THREAD_ALERT_THROTTLE_MS, wasUnread: true };
+}
+
+/** Push title and body for a thread alert. */
+function threadAlertCopy({ channelName, fromName, preview, count }) {
+  const who = fromName || 'Someone';
+  const where = channelName || 'the community';
+  if (count > 1) {
+    return {
+      title: `${count} new threads in ${where}`,
+      body: clampPreview(preview ? `Latest from ${who}: ${preview}` : `Latest from ${who}.`)
+    };
+  }
+  return { title: `${who} posted in ${where}`, body: clampPreview(preview) || 'Tap to read the new thread.' };
+}
+
+/** Upsert one member's rolling row in a transaction; returns threadAlertNext's result. */
+async function notifyThread(db, uid, ctx, nowMs) {
+  const userRef = db.collection('users').doc(uid);
+  const notifRef = userRef.collection('notifications').doc(`thread_${ctx.channelKey}`);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(notifRef);
+    const next = threadAlertNext(snap.exists ? snap.data() : null, nowMs);
+    tx.set(notifRef, {
+      type: 'new_thread',
+      fromUid: ctx.fromUid || null,
+      fromName: ctx.fromName || '',
+      fromAvatar: ctx.fromAvatar || null,
+      title: null,
+      postId: ctx.postId,
+      commentId: null,
+      category: ctx.channelKey,
+      channelName: ctx.channelName || null,
+      preview: clampPreview(ctx.preview),
+      link: null,
+      image: null,
+      threadCount: next.count,
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      ...(next.push ? { pushedAt: admin.firestore.Timestamp.fromMillis(nowMs) } : {})
+    }, { merge: true });
+    if (!next.wasUnread) {
+      tx.set(userRef, { unreadNotifCount: admin.firestore.FieldValue.increment(1) }, { merge: true });
+    }
+    return next;
+  });
+}
+
+const THREAD_FANOUT_CONCURRENCY = 20;
+
+async function fanOutNewThread(db, postId, post, channelKey) {
+  const key = channelKey || post.category || 'general';
+  const isPrivate = !!channelKey;
+  let chan = {};
+  try {
+    const s = await db.collection('channels').doc(key).get();
+    if (s.exists) chan = s.data() || {};
+  } catch (e) { /* the four core channels may have no doc */ }
+  const channelName = chan.name || key.charAt(0).toUpperCase() + key.slice(1);
+  const memberUids = Array.isArray(chan.memberUids) ? chan.memberUids : [];
+
+  // Candidates: everyone who chose 'all' here, plus (private) every member,
+  // whose default is 'all'. The filter below settles each one.
+  const users = new Map();
+  const optIns = await db.collection('users')
+    .where(new admin.firestore.FieldPath('channelAlerts', key), '==', 'all').get();
+  optIns.forEach((d) => users.set(d.id, d.data() || {}));
+  if (isPrivate) {
+    const missing = memberUids.filter((u) => typeof u === 'string' && u && !users.has(u));
+    for (let i = 0; i < missing.length; i += 100) {
+      const snaps = await db.getAll(...missing.slice(i, i + 100).map((u) => db.collection('users').doc(u)));
+      snaps.forEach((s) => { if (s.exists) users.set(s.id, s.data() || {}); });
+    }
+  }
+
+  const ctx = {
+    channelKey: key,
+    channelName,
+    postId,
+    fromUid: post.authorUid,
+    fromName: post.authorName || '',
+    fromAvatar: post.authorAvatar || null,
+    preview: post.text || ''
+  };
+  const recipients = [...users.keys()].filter((uid) =>
+    threadAlertShouldNotify(uid, users.get(uid), { post, isPrivate, channelKey: key, memberUids }));
+  const nowMs = Date.now();
+  let notified = 0;
+  let pushed = 0;
+  for (let i = 0; i < recipients.length; i += THREAD_FANOUT_CONCURRENCY) {
+    await Promise.all(recipients.slice(i, i + THREAD_FANOUT_CONCURRENCY).map(async (uid) => {
+      try {
+        const next = await notifyThread(db, uid, ctx, nowMs);
+        notified += 1;
+        if (!next.push) return;
+        const copy = threadAlertCopy({ channelName, fromName: ctx.fromName, preview: ctx.preview, count: next.count });
+        const r = await pushToUser(db, uid, {
+          title: copy.title,
+          body: copy.body,
+          data: { url: communityPostUrl(key, postId), type: 'new_thread', postId, channel: key }
+        });
+        pushed += r.sent || 0;
+      } catch (err) {
+        console.error(`[thread] notify ${uid} failed:`, err && err.message);
+      }
+    }));
+  }
+  console.log(`[thread] ${key}/${postId} → ${notified} member(s), ${pushed} push(es)`);
+  return { notified, pushed };
 }
 
 // ── Announcements → the bell ────────────────────────────────────────
@@ -4527,6 +4715,13 @@ async function handlePostCreated(event, channelKey) {
     } catch (err) {
       console.error('[onPostCreated] mention fan-out failed:', err && err.message);
     }
+
+    // New-thread alerts for everyone following the channel.
+    try {
+      await fanOutNewThread(db, snap.id, post, channelKey);
+    } catch (err) {
+      console.error('[onPostCreated] thread fan-out failed:', err && err.message);
+    }
 }
 
 exports.onPostCreated = onDocumentCreated(
@@ -4580,7 +4775,7 @@ async function handleCommentCreated(event, channelKey) {
             title: `${comment.authorName || 'Someone'} commented on your post`,
             body: clampPreview(comment.text || ''),
             data: {
-              url: `${APP_BASE_URL}/community.html?post=${encodeURIComponent(postId)}`,
+              url: communityPostUrl(postData.category, postId),
               type: 'comment',
               postId
             }
@@ -4689,7 +4884,7 @@ async function handleLikeWritten(event, channelKey) {
               title: `${likerName || 'Someone'} liked your post`,
               body: clampPreview(post.text || ''),
               data: {
-                url: `${APP_BASE_URL}/community.html?post=${encodeURIComponent(postId)}`,
+                url: communityPostUrl(post.category, postId),
                 type: 'like',
                 postId
               }
@@ -5444,10 +5639,19 @@ async function isAdminCaller(db, request) {
   return snap.exists && snap.data().role === 'admin';
 }
 
-function effectivePriceDollars(course) {
+// Mirrors priceInfo in public/js/pricing.js: a sale only counts until its
+// saleEndsAt. Without the end check a $0 sale never closed server-side, so
+// enrollFree kept joining people free and checkout refused to charge after
+// the page had gone back to the regular price.
+function effectivePriceDollars(course, now = Date.now()) {
   const base = typeof course.price === 'number' ? course.price : null;
   const sale = typeof course.salePrice === 'number' && course.salePrice >= 0 ? course.salePrice : null;
-  if (sale != null && base != null && sale < base) return sale;
+  const endsAt = course.saleEndsAt;
+  const endsMs = !endsAt ? null
+    : typeof endsAt.toMillis === 'function' ? endsAt.toMillis()
+    : new Date(endsAt).getTime();
+  const ended = Number.isFinite(endsMs) && endsMs <= now;
+  if (sale != null && base != null && sale < base && !ended) return sale;
   return base;
 }
 
@@ -10795,8 +10999,31 @@ function validateCommitmentInput(data, today) {
   const reminderTime = String(d.reminderTime || '');
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(reminderTime)) return { error: 'Pick a reminder time.' };
   const ch = d.channels || {};
-  const channels = { email: ch.email !== false, inapp: ch.inapp !== false, push: ch.push === true };
+  const push = ch.push === true;
+  // pushOptOut is written every time, so a merge-save never keeps an old
+  // opt-out alive under a plan that now wants push. See courseReminderWantsPush.
+  const channels = { email: ch.email !== false, inapp: ch.inapp !== false, push, pushOptOut: !push && ch.pushOptOut === true };
   return { value: { goalDate, weeklyMinutes, sessionMinutes, days, reminderTime, channels } };
+}
+
+/**
+ * Does this course reminder go to the member's phone too?
+ *
+ * Push follows the member's notification settings, not just the commit-page
+ * checkbox: anyone who has turned push on (on the community page, their
+ * profile, or here) gets their course reminders there. `channels.push` was
+ * false by default for every plan saved before that, including plans made
+ * on a device that could not show the toggle, so a stored false is not a
+ * refusal. Only `pushOptOut` (unticked for this course) or
+ * notifPrefs.courseReminders === false (off everywhere) is. Members with no
+ * registered device are skipped by pushToUser itself.
+ */
+function courseReminderWantsPush(channels, notifPrefs) {
+  const prefs = notifPrefs || {};
+  if (prefs.courseReminders === false) return false;
+  const ch = channels || {};
+  if (ch.push === true) return true;
+  return ch.pushOptOut !== true;
 }
 
 const PARKINSON_LINES = [
@@ -10948,7 +11175,7 @@ async function sendCourseWorkReminders(db, { now = new Date() } = {}) {
         } catch (e) { console.warn('[tick] course reminder in-app failed', e && e.message); }
       }
 
-      if (ch.push === true) {
+      if (courseReminderWantsPush(ch, u.notifPrefs)) {
         const r = await pushToUser(db, uid, {
           title: msg.subject,
           body: msg.body,
@@ -10962,6 +11189,216 @@ async function sendCourseWorkReminders(db, { now = new Date() } = {}) {
   }
   return out;
 }
+
+// ════════════════════════════════════════════════════════════════
+// Community digest — the daily email for members without push.
+// Push reaches members in real time; everyone with no push device instead
+// gets one evening email listing the new threads they can read, and only on
+// days that have some. Once per Eastern date, from DIGEST_HOUR on (the tick
+// runs about hourly). The claim on users/{uid}.communityDigest.date makes it
+// once-only even when ticks overlap. notifPrefs.digest === false, or an
+// opt-out on the member's CRM contact (unsubscribe, bounce, spam report),
+// stops it.
+// ════════════════════════════════════════════════════════════════
+
+const DIGEST_TIMEZONE = 'America/New_York';
+const DIGEST_HOUR = 18;
+const DIGEST_LOOKBACK_MS = 24 * 3600 * 1000;
+const DIGEST_MAX_THREADS = 6;
+
+function digestEligible(u) {
+  if (!u || !u.email) return false;
+  if (u.notifPrefs && u.notifPrefs.digest === false) return false;
+  return !(Array.isArray(u.fcmTokens) && u.fcmTokens.length);
+}
+
+/**
+ * The threads one member's digest lists. `threads` rows are
+ * { id, post, channelKey, channelName, isPrivate, memberUids }. Drops the
+ * member's own posts, anything older than `sinceMs` and anything they could
+ * not open; liveliest first, then newest. { total, top }.
+ */
+function digestThreadsFor(uid, user, threads, sinceMs) {
+  const ms = (t) => (t && typeof t.toMillis === 'function' ? t.toMillis() : Number(t) || 0);
+  const mine = threads.filter((t) => t.post.authorUid !== uid
+    && ms(t.post.createdAt) > sinceMs
+    && canReadThread(uid, user, t));
+  const heat = (t) => (Number(t.post.commentCount) || 0) + (Number(t.post.likeCount) || 0);
+  mine.sort((a, b) => heat(b) - heat(a) || ms(b.post.createdAt) - ms(a.post.createdAt));
+  return { total: mine.length, top: mine.slice(0, DIGEST_MAX_THREADS) };
+}
+
+/** Signed per-member token for the one-click digest unsubscribe. */
+function digestUnsubToken(uid, secret) {
+  return crypto.createHmac('sha256', String(secret)).update(`digest:${uid}`).digest('hex').slice(0, 32);
+}
+
+function digestUnsubscribeUrl(uid, secret) {
+  const q = new URLSearchParams({ u: uid, t: digestUnsubToken(uid, secret) });
+  return `${APP_BASE_URL}/digest-unsubscribe.html?${q.toString()}`;
+}
+
+/** Subject, HTML and text for one digest. Pure, so the copy is testable. */
+function communityDigestMessage({ total, top }, unsubUrl) {
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  const first = top[0];
+  const subject = total === 1
+    ? `${first.post.authorName || 'Someone'} posted in ${first.channelName}`
+    : `${total} new threads in the community`;
+  const more = total - top.length;
+  const settingsUrl = `${APP_BASE_URL}/profile.html#notifications`;
+  const rows = top.map((t) => {
+    const url = communityPostUrl(t.channelKey, t.id);
+    const replies = Number(t.post.commentCount) || 0;
+    return { t, url, replies, preview: clampPreview(t.post.text || '') || 'Shared an image.' };
+  });
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:8px;">
+    <h2 style="color:#E60306;margin:0 0 6px;font-size:22px;">Today in the community</h2>
+    <p style="font-size:15px;color:#444;margin:0 0 20px;">${total === 1 ? 'A new thread' : `${total} new threads`} since yesterday.</p>
+    ${rows.map((r) => `<a href="${esc(r.url)}" style="display:block;text-decoration:none;color:#222;border:1px solid #eee;border-radius:10px;padding:14px 16px;margin:0 0 10px;">
+      <div style="font-size:12px;color:#888;margin:0 0 4px;">${esc(r.t.channelName)} · ${esc(r.t.post.authorName || 'A member')}${r.replies ? ` · ${r.replies} repl${r.replies === 1 ? 'y' : 'ies'}` : ''}</div>
+      <div style="font-size:15px;line-height:1.45;">${esc(r.preview)}</div>
+    </a>`).join('')}
+    ${more > 0 ? `<p style="font-size:14px;color:#444;margin:4px 0 0;">Plus ${more} more.</p>` : ''}
+    <p style="margin:22px 0 24px;"><a href="${APP_BASE_URL}/community.html" style="display:inline-block;background:#E60306;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px;">Open the community →</a></p>
+    <p style="font-size:12px;color:#888;margin:0;">You get this because push notifications are off for you. <a href="${esc(settingsUrl)}" style="color:#888;">Turn on push</a> to hear in real time, or <a href="${esc(unsubUrl)}" style="color:#888;">stop the daily digest</a>.</p>
+    <p style="font-size:12px;color:#888;margin:6px 0 0;">The One Percent Academy</p>
+  </div>`;
+  const text = [
+    `Today in the community: ${total === 1 ? 'a new thread' : `${total} new threads`} since yesterday.`,
+    '',
+    ...rows.map((r) => `${r.t.channelName} · ${r.t.post.authorName || 'A member'}\n${r.preview}\n${r.url}\n`),
+    more > 0 ? `Plus ${more} more.\n` : '',
+    `Open the community: ${APP_BASE_URL}/community.html`,
+    '',
+    `Turn on push: ${settingsUrl}`,
+    `Stop the daily digest: ${unsubUrl}`
+  ].join('\n');
+  return { subject, html, text };
+}
+
+/** Every thread posted since `sinceMs`, public and private, tagged with its channel. */
+async function loadDigestThreads(db, sinceMs) {
+  const since = admin.firestore.Timestamp.fromMillis(sinceMs);
+  const chanSnap = await db.collection('channels').get();
+  const chans = new Map(chanSnap.docs.map((d) => [d.id, d.data() || {}]));
+  const nameOf = (key) => (chans.get(key) && chans.get(key).name) || key.charAt(0).toUpperCase() + key.slice(1);
+  const out = [];
+
+  const pub = await db.collection('posts').where('createdAt', '>', since).get();
+  pub.forEach((d) => {
+    const post = d.data() || {};
+    const key = post.category || 'general';
+    out.push({ id: d.id, post, channelKey: key, channelName: nameOf(key), isPrivate: false, memberUids: [] });
+  });
+
+  for (const [key, c] of chans) {
+    if (c.visibility !== 'private') continue;
+    const snap = await db.collection('channels').doc(key).collection('posts').where('createdAt', '>', since).get();
+    const memberUids = Array.isArray(c.memberUids) ? c.memberUids : [];
+    snap.forEach((d) => out.push({ id: d.id, post: d.data() || {}, channelKey: key, channelName: nameOf(key), isPrivate: true, memberUids }));
+  }
+  return out;
+}
+
+/** Tick step: send today's community digests, once the evening has arrived. */
+async function sendCommunityDigests(db, { now = new Date(), dryRun = false } = {}) {
+  const clock = commitmentLocalClock(now, DIGEST_TIMEZONE);
+  if (!clock || clock.minutes < DIGEST_HOUR * 60) return { skipped: 'before send time' };
+  const secret = (process.env.CRM_TICK_SECRET || '').trim();
+  if (!secret) return { skipped: 'CRM_TICK_SECRET is not set' };
+
+  const out = { eligible: 0, empty: 0, sent: 0, suppressed: 0, failed: 0, notConfigured: 0 };
+  const nowMs = now.getTime();
+  const threads = await loadDigestThreads(db, nowMs - DIGEST_LOOKBACK_MS);
+  if (!threads.length) return { ...out, threads: 0 };
+  out.threads = threads.length;
+
+  const usersSnap = await db.collection('users').get();
+  for (const d of usersSnap.docs) {
+    const u = d.data() || {};
+    if (!digestEligible(u)) continue;
+    const last = u.communityDigest || {};
+    if (last.date === clock.date) continue;
+    out.eligible++;
+    const lastMs = last.sentAt && typeof last.sentAt.toMillis === 'function' ? last.sentAt.toMillis() : 0;
+    const picked = digestThreadsFor(d.id, u, threads, Math.max(lastMs, nowMs - DIGEST_LOOKBACK_MS));
+    if (!picked.total) { out.empty++; continue; }
+
+    // A member whose CRM contact opted out (unsubscribe link, bounce, spam
+    // report) gets no digest either. Checked before the dry-run exit so a
+    // dry run reports who would really get one.
+    if (u.crmCompanyId && u.crmContactId) {
+      try {
+        const c = await db.collection('companies').doc(u.crmCompanyId).collection('contacts').doc(u.crmContactId).get();
+        if (c.exists && isEmailSuppressed(c.data())) { out.suppressed++; continue; }
+      } catch (e) { /* no contact: nothing to honor */ }
+    }
+    if (dryRun) { out.wouldSend = (out.wouldSend || 0) + 1; continue; }
+    if (!emailConfigured()) { out.notConfigured++; continue; }
+
+    // Claim the day before sending, so overlapping ticks can't double-send.
+    let claimed = false;
+    try {
+      claimed = await db.runTransaction(async (tx) => {
+        const s = await tx.get(d.ref);
+        if (((s.data() || {}).communityDigest || {}).date === clock.date) return false;
+        tx.set(d.ref, { communityDigest: { date: clock.date, sentAt: admin.firestore.Timestamp.fromMillis(nowMs) } }, { merge: true });
+        return true;
+      });
+    } catch (e) { claimed = false; }
+    if (!claimed) continue;
+
+    const unsub = digestUnsubscribeUrl(d.id, secret);
+    const msg = communityDigestMessage(picked, unsub);
+    try {
+      await sendEmail({
+        to: u.email, from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
+        subject: msg.subject, html: msg.html, text: msg.text,
+        headers: {
+          'List-Unsubscribe': `<${APP_BASE_URL}/api/digest-unsubscribe?u=${encodeURIComponent(d.id)}&t=${digestUnsubToken(d.id, secret)}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+        },
+        customArgs: { type: 'community_digest', uid: d.id }
+      });
+      out.sent++;
+    } catch (e) {
+      out.failed++;
+      if (!out.error) out.error = String((e && e.message) || e).slice(0, 200);
+      console.warn('[tick] community digest failed', d.id, e && e.message);
+    }
+  }
+  return out;
+}
+
+/**
+ * digestUnsubscribe — POST /api/digest-unsubscribe?u=&t=
+ *
+ * Stops the daily digest for one member. POST only: mail scanners prefetch
+ * GET links, and a prefetch must not unsubscribe anyone. The email's footer
+ * opens /digest-unsubscribe.html, which POSTs here on a click; mail clients
+ * POST here directly through List-Unsubscribe-Post. A bad token and an
+ * unknown member both answer { ok: false }.
+ */
+exports.digestUnsubscribe = onRequest({ cors: false }, async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).json({ ok: false }); return; }
+  const uid = String(req.query.u || '').trim();
+  const token = String(req.query.t || '').trim();
+  const secret = (process.env.CRM_TICK_SECRET || '').trim();
+  if (!uid || !token || !secret || !timingSafeEqualStr(token, digestUnsubToken(uid, secret))) {
+    res.status(200).json({ ok: false });
+    return;
+  }
+  try {
+    const ref = admin.firestore().collection('users').doc(uid);
+    if (!(await ref.get()).exists) { res.status(200).json({ ok: false }); return; }
+    await ref.set({ notifPrefs: { digest: false } }, { merge: true });
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error('[digestUnsubscribe] failed:', err && err.message);
+    res.status(200).json({ ok: false });
+  }
+});
 
 // Constant-time string compare that tolerates unequal lengths.
 //
@@ -10997,7 +11434,7 @@ async function runTick(db, { dryRun = false } = {}) {
     return { error: (e && e.message) || String(e) };
   });
 
-  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, planReminders] = await Promise.all([
+  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest, planReminders] = await Promise.all([
     step('sequences', processDueEnrollments(db, { dryRun })),
     // These only ever renew or send; there is nothing to preview, so a dry
     // run skips them rather than pretending to measure something.
@@ -11007,10 +11444,13 @@ async function runTick(db, { dryRun = false } = {}) {
     step('launches', promoteLaunchedItems(db, { dryRun })),
     step('announcements', fanOutDueAnnouncements(db, { dryRun })),
     step('reviewNudges', dryRun ? { skipped: 'dryRun' } : sendReviewNudges(db)),
+    // A dry run counts who would get a digest today without sending or claiming.
+    step('communityDigest', sendCommunityDigests(db, { dryRun })),
+    step('storeDigest', sendStoreDigest(db, { dryRun })),
     step('planReminders', dryRun ? { skipped: 'dryRun' } : sendPlanReminders(db))
   ]);
 
-  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, planReminders };
+  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest, planReminders };
   const failedSteps = Object.keys(steps).filter((k) => steps[k] && steps[k].error);
   const summary = { ok: failedSteps.length === 0, dryRun, ms: Date.now() - startedAt, ...steps };
   if (failedSteps.length) summary.failedSteps = failedSteps;
@@ -16691,7 +17131,7 @@ function handSaleResult(order) {
   return { ok: true, id: order.id, invoiceNumber: order.invoiceNumber, url: invoiceLink(order.id, order.invoiceToken), status: order.status, payment: order.payment };
 }
 
-async function emailInvoice(db, order, settings) {
+async function emailInvoice(db, order, settings, { reminder = false } = {}) {
   const to = order.buyer && order.buyer.email;
   if (!to) throw new HttpsError('failed-precondition', 'This order has no buyer email. Copy the message and send it where they ordered.');
   if (!emailConfigured()) throw new HttpsError('failed-precondition', 'Email is not configured.');
@@ -16702,15 +17142,298 @@ async function emailInvoice(db, order, settings) {
     to,
     from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
     replyTo: REPLY_TO,
-    subject: `Invoice ${order.invoiceNumber} from ${settings.businessName}: ${total}`,
-    text: `${first ? `Hi ${first},` : 'Hello,'}\n\nThank you for ordering ${handSales.itemSummary(order)}. Your invoice for ${total} is here:\n\n${url}\n\nYou can pay by card on that page.\n\nAnthony Brown Sr.\n${settings.businessName}`,
+    subject: `${reminder ? 'Reminder: invoice' : 'Invoice'} ${order.invoiceNumber} from ${settings.businessName}: ${total}`,
+    text: reminder
+      ? `${first ? `Hi ${first},` : 'Hello,'}\n\nCircling back on your order of ${handSales.itemSummary(order)}. Your invoice for ${total} is still open here:\n\n${url}\n\nIt takes about a minute by card.\n\nAnthony Brown Sr.\n${settings.businessName}`
+      : `${first ? `Hi ${first},` : 'Hello,'}\n\nThank you for ordering ${handSales.itemSummary(order)}. Your invoice for ${total} is here:\n\n${url}\n\nYou can pay by card on that page.\n\nAnthony Brown Sr.\n${settings.businessName}`,
     html: agreementEmailHtml({
-      heading: `Invoice ${order.invoiceNumber}: ${total}`,
-      lines: [first ? `Hi ${first},` : 'Hello,', `Thank you for ordering ${handSales.itemSummary(order)}. Your invoice is ready, and you can pay by card right on the page.`],
+      heading: `${reminder ? 'Still open: invoice' : 'Invoice'} ${order.invoiceNumber}: ${total}`,
+      lines: [first ? `Hi ${first},` : 'Hello,', reminder
+        ? `Circling back on your order of ${handSales.itemSummary(order)}. Your invoice is still open, and it takes about a minute to pay by card right on the page.`
+        : `Thank you for ordering ${handSales.itemSummary(order)}. Your invoice is ready, and you can pay by card right on the page.`],
       url, button: 'View and pay invoice'
     }),
-    customArgs: { type: 'hand_sale_invoice' }
+    customArgs: { type: reminder ? 'hand_sale_reminder' : 'hand_sale_invoice' }
   });
+}
+
+/**
+ * The morning collections email: one a day to the owner, at settings
+ * digestHour (DIGEST_TIMEZONE), listing invoices due a reminder and invoices
+ * never sent, each linking straight to its Remind / Send sheet in the store
+ * console. Nothing to chase, no email. Runs from the tick, so it lands on the
+ * first tick after the hour (the tick is roughly hourly).
+ */
+async function sendStoreDigest(db, { now = new Date(), dryRun = false } = {}) {
+  const settings = await handSalesSettings(db);
+  const hour = Number(settings.digestHour);
+  if (!hour) return { skipped: 'turned off' };
+  const clock = commitmentLocalClock(now, DIGEST_TIMEZONE);
+  if (!clock || clock.minutes < hour * 60) return { skipped: 'before send time' };
+  const stateRef = db.collection('config').doc('handSalesDigest');
+  const last = await stateRef.get();
+  if (last.exists && last.data().date === clock.date) return { skipped: 'already sent today' };
+
+  const snap = await db.collection('orders').where('kind', '==', 'manual').get();
+  const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const digest = handSales.collectionsDigest(orders, settings, now.getTime());
+  const counts = { remind: digest.remind.length, unsent: digest.unsent.length, owed: digest.owed };
+  if (digest.empty) return { ...counts, skipped: 'nothing to chase' };
+  if (dryRun) return { ...counts, wouldSend: true };
+  if (!emailConfigured()) return { ...counts, skipped: 'email not configured' };
+
+  // Claim the day first, so overlapping ticks cannot double-send.
+  const claimed = await db.runTransaction(async (tx) => {
+    const s = await tx.get(stateRef);
+    if (s.exists && s.data().date === clock.date) return false;
+    tx.set(stateRef, { date: clock.date, sentAt: admin.firestore.Timestamp.fromDate(now), ...counts });
+    return true;
+  });
+  if (!claimed) return { skipped: 'already sent today' };
+
+  const msg = storeDigestMessage(digest);
+  await sendEmail({
+    to: OWNER_EMAIL,
+    from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+    replyTo: REPLY_TO,
+    subject: msg.subject, html: msg.html, text: msg.text,
+    customArgs: { type: 'hand_sale_digest' }
+  });
+  return { ...counts, sent: true };
+}
+
+function storeDigestMessage(digest) {
+  const money = handSales.formatMoney;
+  const orders = `${APP_BASE_URL}/manage-store.html?tab=orders`;
+  const day = (t) => (t && t.toDate ? t.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: DIGEST_TIMEZONE }) : '');
+  const who = (o) => (o.buyer && o.buyer.name) || 'Buyer';
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const remindLine = ({ order: o, quietDays }) => {
+    const sent = o.remindedAt ? `reminded ${day(o.remindedAt)}` : `sent ${day(o.invoiceSentAt)}`;
+    return { o, link: `${orders}&remind=${encodeURIComponent(o.id)}`, cta: 'Remind', note: `${sent}${o.viewedAt ? ', opened' : ', not opened'} · ${plural(quietDays, 'day')} quiet` };
+  };
+  const unsentLine = ({ order: o, ageDays }) => ({
+    o, link: `${orders}&send=${encodeURIComponent(o.id)}`, cta: 'Send', note: ageDays ? `created ${plural(ageDays, 'day')} ago, never sent` : 'created today, never sent'
+  });
+  const sections = [
+    digest.remind.length && { title: `Remind (${digest.remind.length})`, rows: digest.remind.map(remindLine) },
+    digest.unsent.length && { title: `Not sent yet (${digest.unsent.length})`, rows: digest.unsent.map(unsentLine) }
+  ].filter(Boolean);
+  const head = [
+    digest.remind.length && plural(digest.remind.length, 'invoice') + ' to remind',
+    digest.unsent.length && plural(digest.unsent.length, 'invoice') + ' to send'
+  ].filter(Boolean).join(', ');
+  const subject = `Collect today: ${head} · ${money(digest.owed)} owed`;
+  const esc = escapeHtmlBasic;
+  const rowHtml = (r) => `<tr>
+      <td style="padding:10px 0;border-bottom:1px solid #eee;font-size:14px;color:#222;">
+        <strong>${esc(who(r.o))}</strong> · ${esc(money(r.o.amountTotal))} <span style="color:#888;">${esc(r.o.invoiceNumber)}</span><br>
+        <span style="font-size:12px;color:#888;">${esc(r.note)}</span>
+      </td>
+      <td style="padding:10px 0;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;">
+        <a href="${r.link}" style="background:#E60306;color:#fff;text-decoration:none;font-weight:bold;font-size:13px;padding:7px 14px;border-radius:6px;">${r.cta} →</a>
+      </td></tr>`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
+    <h2 style="color:#E60306;margin:0 0 4px;">${esc(money(digest.owed))} owed across ${esc(plural(digest.owedCount, 'invoice'))}</h2>
+    <p style="font-size:14px;color:#555;margin:0 0 16px;">Each button opens the message ready to go. One tap, paste or send, done.</p>
+    ${sections.map((sec) => `<h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#888;margin:18px 0 0;">${esc(sec.title)}</h3>
+      <table style="width:100%;border-collapse:collapse;">${sec.rows.map(rowHtml).join('')}</table>`).join('')}
+    ${digest.toShip ? `<p style="font-size:14px;color:#222;margin:18px 0 0;">Also: ${esc(plural(digest.toShip, 'paid order'))} waiting to ship. <a href="${orders}" style="color:#E60306;">Open Orders →</a></p>` : ''}
+    <p style="font-size:12px;color:#888;margin-top:22px;">The One Percent Nation store. Change the time or turn this off in Orders → Settings.</p>
+  </div>`;
+  const text = [
+    `${money(digest.owed)} owed across ${plural(digest.owedCount, 'invoice')}.`,
+    ...sections.map((sec) => `\n${sec.title}\n` + sec.rows.map((r) => `- ${who(r.o)}, ${money(r.o.amountTotal)} ${r.o.invoiceNumber} (${r.note}): ${r.link}`).join('\n')),
+    digest.toShip ? `\nAlso: ${plural(digest.toShip, 'paid order')} waiting to ship: ${orders}` : ''
+  ].join('\n');
+  return { subject, html, text };
+}
+
+// ─── Facebook Page Messenger ──────────────────────────────────────────────
+// Pure pieces and the full picture are in functions/messenger.js.
+
+const messengerThreadsCol = (db) => db.collection('messengerThreads');
+
+function threadView(doc, cfg) {
+  const t = doc.data() || {};
+  const last = t.lastInboundAt && t.lastInboundAt.toMillis ? t.lastInboundAt.toMillis() : null;
+  return {
+    psid: doc.id,
+    name: t.name || 'Messenger user',
+    lastText: t.lastText || '',
+    lastInboundMs: last,
+    closesAt: messenger.windowClosesAt(last, Date.now(), cfg),
+    contactId: t.contactId || null
+  };
+}
+
+async function orderContactRef(db, order) {
+  if (!order.companyId || !order.contactId) {
+    throw new HttpsError('failed-precondition', 'This order has no CRM contact yet. Save the order again and retry.');
+  }
+  return db.collection('companies').doc(order.companyId).collection('contacts').doc(order.contactId);
+}
+
+async function messengerThreadsFor(db, order) {
+  const cfg = messenger.messengerConfig();
+  const out = { configured: cfg.ok, missing: cfg.missing, humanAgent: cfg.humanAgent, linked: null, threads: [] };
+  if (!cfg.ok) return out;
+  let psid = null;
+  if (order.companyId && order.contactId) {
+    const c = await (await orderContactRef(db, order)).get();
+    psid = c.exists ? c.data().messengerPsid || null : null;
+  }
+  if (psid) {
+    const t = await messengerThreadsCol(db).doc(psid).get();
+    if (t.exists) out.linked = threadView(t, cfg);
+  }
+  const recent = await messengerThreadsCol(db).orderBy('lastInboundAt', 'desc').limit(30).get();
+  const buyer = order.buyer && order.buyer.name;
+  out.threads = messenger.rankThreads(recent.docs.map((d) => threadView(d, cfg)), buyer).slice(0, 20);
+  return out;
+}
+
+async function linkMessengerThread(db, order, psid) {
+  if (!psid) throw new HttpsError('invalid-argument', 'Pick a conversation.');
+  const tRef = messengerThreadsCol(db).doc(psid);
+  const t = await tRef.get();
+  if (!t.exists) throw new HttpsError('not-found', 'That conversation is gone.');
+  const cRef = await orderContactRef(db, order);
+  const FV = admin.firestore.FieldValue;
+  await cRef.set({ messengerPsid: psid, messengerName: t.data().name || null, updatedAt: FV.serverTimestamp() }, { merge: true });
+  await tRef.set({ contactId: order.contactId, companyId: order.companyId, linkedAt: FV.serverTimestamp() }, { merge: true });
+  await handSaleActivity(db, order, `Linked to the Facebook Page conversation with ${t.data().name || 'them'}`, 'messenger');
+}
+
+/**
+ * Send one message to the order's buyer through the Page, inside Meta's
+ * window (messenger.sendPlan). Throws an HttpsError that says why when it
+ * cannot, so the console can offer copy-and-paste instead.
+ */
+async function sendOrderOnMessenger(db, order, body, byUid) {
+  const text = String(body || '').trim();
+  if (!text) throw new HttpsError('invalid-argument', 'Write a message first.');
+  const cfg = messenger.messengerConfig();
+  if (!cfg.ok) throw new HttpsError('failed-precondition', `Facebook Page messaging is not set up yet (missing ${cfg.missing.join(', ')}).`);
+  const c = await (await orderContactRef(db, order)).get();
+  const psid = c.exists ? c.data().messengerPsid : null;
+  if (!psid) throw new HttpsError('failed-precondition', 'Link their Page conversation first.');
+  const tRef = messengerThreadsCol(db).doc(psid);
+  const t = await tRef.get();
+  const last = t.exists && t.data().lastInboundAt ? t.data().lastInboundAt.toMillis() : null;
+  const plan = messenger.sendPlan(last, Date.now(), cfg);
+  if (plan.error) throw new HttpsError('failed-precondition', plan.error);
+  let sent;
+  try {
+    sent = await messenger.sendText(cfg, psid, text, plan);
+  } catch (e) {
+    // 10 / 2018278: outside the window by Meta's own clock. 551: they blocked the Page or are unavailable.
+    if (e.code === 10 || e.subcode === 2018278) {
+      throw new HttpsError('failed-precondition', 'Facebook says the messaging window with them is closed. Copy the message and send it from your own Messenger.');
+    }
+    throw new HttpsError('failed-precondition', `Messenger refused it: ${e.message}`);
+  }
+  const FV = admin.firestore.FieldValue;
+  await tRef.collection('messages').doc(sent.mid || `out_${Date.now()}`).set({
+    direction: 'out', text, at: FV.serverTimestamp(), byUid: byUid || null, orderId: order.id, tag: plan.tag || null
+  });
+  await tRef.set({ lastOutboundAt: FV.serverTimestamp(), lastText: text.slice(0, 200), lastDirection: 'out', updatedAt: FV.serverTimestamp() }, { merge: true });
+  return sent;
+}
+
+/**
+ * metaMessengerWebhook — the Page's webhook in the Meta app.
+ *   GET  ?hub.mode=subscribe&hub.verify_token=…&hub.challenge=…  (setup handshake)
+ *   POST message events, signed with X-Hub-Signature-256.
+ * Every sender becomes messengerThreads/{psid}; a sender already linked to a
+ * CRM contact also lands on that contact's timeline. Always answers 200 to a
+ * signed delivery, since Meta retries and then disables a failing webhook.
+ */
+exports.metaMessengerWebhook = onRequest({ cors: false, invoker: 'public' }, async (req, res) => {
+  const cfg = messenger.messengerConfig();
+  if (req.method === 'GET') {
+    const okMode = req.query['hub.mode'] === 'subscribe';
+    const given = String(req.query['hub.verify_token'] || '');
+    if (okMode && cfg.verifyToken && given && timingSafeEqualStr(given, cfg.verifyToken)) {
+      res.status(200).send(String(req.query['hub.challenge'] || ''));
+    } else {
+      res.status(403).send('forbidden');
+    }
+    return;
+  }
+  if (req.method !== 'POST') { res.status(405).send('method not allowed'); return; }
+  if (!messenger.signatureOk(req.rawBody, req.get('X-Hub-Signature-256'), cfg.appSecret)) {
+    res.status(403).send('invalid signature');
+    return;
+  }
+  const db = admin.firestore();
+  const FV = admin.firestore.FieldValue;
+  for (const m of messenger.inboundMessages(req.body)) {
+    try {
+      const ref = messengerThreadsCol(db).doc(m.psid);
+      const snap = await ref.get();
+      const t = snap.exists ? snap.data() : {};
+      const profile = !t.name && cfg.token ? await messenger.fetchProfile(cfg, m.psid) : null;
+      const at = admin.firestore.Timestamp.fromMillis(m.at);
+      await ref.set({
+        psid: m.psid,
+        pageId: m.pageId || null,
+        ...(profile ? { name: profile.name } : {}),
+        lastInboundAt: at,
+        lastText: m.text.slice(0, 200),
+        lastDirection: 'in',
+        updatedAt: FV.serverTimestamp(),
+        ...(snap.exists ? {} : { createdAt: FV.serverTimestamp(), contactId: null })
+      }, { merge: true });
+      await ref.collection('messages').doc(m.mid).set({ direction: 'in', text: m.text, at });
+      if (t.contactId && t.companyId) {
+        const cRef = db.collection('companies').doc(t.companyId).collection('contacts').doc(t.contactId);
+        await cRef.collection('activities').add({
+          type: 'messenger', description: `Messenger: ${m.text.slice(0, 120)}`,
+          actorUid: 'system', actorName: 'Facebook Page', createdAt: FV.serverTimestamp(), meta: { direction: 'in', psid: m.psid }
+        });
+        await cRef.set({ lastActivityAt: FV.serverTimestamp(), ...lastContactedFields('messenger', 'in') }, { merge: true });
+      }
+    } catch (e) {
+      console.warn('[messenger] inbound failed:', m.psid, e && e.message);
+    }
+  }
+  res.status(200).send('ok');
+});
+
+const INVOICE_SEND_VIA = {
+  email: 'email', sms: 'a text from the CRM', 'phone-text': 'a text from your phone', messenger: 'Messenger', instagram: 'Instagram',
+  // Sent before the console tracked it (pasted by hand); marked so Remind can take over.
+  manual: 'hand, outside the console',
+  page: 'your Facebook Page on Messenger'
+};
+
+/**
+ * Stamp an invoice send or a reminder on the order and log it on the CRM
+ * contact (sendSms logs its own text). A reminder also pushes the open
+ * collect task out by dueDays, so Tasks shows the next follow-up instead of
+ * one that just happened.
+ */
+async function recordInvoiceSend(db, ref, order, { via, reminder, settings, now }) {
+  const FV = admin.firestore.FieldValue;
+  await ref.set(reminder
+    ? { remindedAt: now, remindedVia: via, reminderCount: FV.increment(1) }
+    : { invoiceSentAt: now, invoiceSentVia: via }, { merge: true });
+  if (via !== 'sms') {
+    await handSaleActivity(db, order, `${reminder ? 'Payment reminder for' : 'Invoice'} ${order.invoiceNumber} sent by ${INVOICE_SEND_VIA[via]}`);
+  }
+  const taskId = order.tasks && order.tasks.collect;
+  if (!reminder || !order.companyId || !taskId) return;
+  try {
+    const task = db.collection('companies').doc(order.companyId).collection('tasks').doc(taskId);
+    const t = await task.get();
+    if (t.exists && t.data().status === 'open') {
+      await task.set({
+        dueAt: admin.firestore.Timestamp.fromMillis(now.toMillis() + Number(settings.dueDays) * 86400000),
+        updatedAt: FV.serverTimestamp()
+      }, { merge: true });
+    }
+  } catch (e) { console.warn('[handSales] collect task push failed:', e && e.message); }
 }
 
 /**
@@ -16723,7 +17446,9 @@ async function emailInvoice(db, order, settings) {
  *   deliver  { id }                    → delivered / handed over
  *   reviewed { id }                    → the review ask went out
  *   cancel   { id } / reopen { id }    → stock follows
- *   email    { id }                    → email the invoice link to the buyer
+ *   email    { id, reminder? }         → email the invoice (or a reminder)
+ *   sent     { id, via, reminder? }    → the invoice or a reminder went out
+ *                                         another way (text, Messenger, IG)
  *   note     { id, note }              → internal note
  */
 exports.manageHandSale = onCall({ secrets: [sendgridKey] }, async (request) => {
@@ -16802,13 +17527,35 @@ exports.manageHandSale = onCall({ secrets: [sendgridKey] }, async (request) => {
 
   if (!id) throw new HttpsError('invalid-argument', 'Missing order.');
 
-  if (action === 'email') {
+  // email sends it from here; for the rest the console sends through sendSms
+  // (the CRM's consent-gated path) or opens Messenger / the Messages app on
+  // Anthony's own device, then reports here so the card shows how it went out.
+  if (action === 'email' || action === 'sent' || action === 'messenger') {
+    const via = { email: 'email', messenger: 'page' }[action] || String(data.via || '');
+    // 'page' is only ever recorded by a real Page send below.
+    if (!INVOICE_SEND_VIA[via] || (action === 'sent' && via === 'page')) throw new HttpsError('invalid-argument', 'Unknown send channel.');
+    const reminder = data.reminder === true;
     const snap = await db.collection('orders').doc(id).get();
     if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
     const order = { id, ...snap.data() };
-    await emailInvoice(db, order, await handSalesSettings(db));
-    await snap.ref.set({ invoiceSentAt: now }, { merge: true });
-    return { ...handSaleResult(order), emailed: true };
+    if (reminder && (handSales.isPaid(order) || order.status === 'cancelled')) {
+      throw new HttpsError('failed-precondition', 'This order is already settled. No reminder needed.');
+    }
+    const settings = await handSalesSettings(db);
+    if (via === 'email') await emailInvoice(db, order, settings, { reminder });
+    if (via === 'page') await sendOrderOnMessenger(db, order, data.body, byUid);
+    await recordInvoiceSend(db, snap.ref, order, { via, reminder, settings, now });
+    return { ...handSaleResult(order), emailed: via === 'email' };
+  }
+
+  // The Page conversations to link this order to, best guess first, and the
+  // one already linked (on the CRM contact, so every order of theirs shares it).
+  if (action === 'messenger-threads' || action === 'link-messenger') {
+    const snap = await db.collection('orders').doc(id).get();
+    if (!snap.exists || snap.data().kind !== 'manual') throw new HttpsError('not-found', 'Order not found.');
+    const order = { id, ...snap.data() };
+    if (action === 'link-messenger') await linkMessengerThread(db, order, String(data.psid || ''));
+    return messengerThreadsFor(db, order);
   }
 
   const refuseIfCancelled = (o) => {

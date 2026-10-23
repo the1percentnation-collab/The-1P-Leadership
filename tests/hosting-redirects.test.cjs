@@ -36,6 +36,13 @@ ok('it does not catch other paths', () => {
   for (const u of ['/icantpreviewx', '/icant', '/read', '/x/icantpreview']) assert.strictEqual(target(u), null, u);
 });
 
+ok('/myteam, said from stage, opens the Team Alignment Assessment tagged as a keynote', () => {
+  for (const u of ['/myteam', '/myteam/', '/MyTeam', '/MYTEAM']) {
+    assert.strictEqual(target(u), '/assessments/team-alignment?utm_source=keynote&utm_medium=stage', u);
+  }
+  for (const u of ['/myteams', '/team', '/x/myteam']) assert.strictEqual(target(u), null, u);
+});
+
 ok('every redirect pattern compiles as the emulator compiles it', () => {
   for (const r of hosting.redirects || []) if (r.regex) toJs(r.regex);
 });
