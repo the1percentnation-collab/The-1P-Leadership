@@ -79,7 +79,8 @@ const list = (p) => admin(async (db) => (await getDocs(collection(db, p))).docs.
 // A zone where it is daytime now, so the tick's 9 AM to 9 PM window is open.
 const ZONES = ['America/New_York', 'America/Los_Angeles', 'Europe/London', 'Asia/Tokyo', 'Asia/Kolkata', 'Australia/Sydney', 'Pacific/Honolulu', 'America/Sao_Paulo'];
 const hourIn = (tz) => Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
-const DAY_TZ = ZONES.find((z) => hourIn(z) >= 10 && hourIn(z) <= 19) || 'America/New_York';
+const DAY_TZ = ZONES.find((z) => hourIn(z) >= 10 && hourIn(z) <= 16) || 'America/New_York';
+const localDay = (tz, offsetDays = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + offsetDays * 86400000));
 
 const owner = await account('the1percentnation@gmail.com');
 const member = await account('morgan@e2e.test');
@@ -243,6 +244,25 @@ await t('the hourly tick sends a due review once, by email and the bell', async 
   assert(emails.slice(before).some((e) => /Time to review/.test(e.subject || '')), 'no review email');
   const two = await tick();
   assert(two.planReminders && two.planReminders.reviews === 0, `sent twice: ${JSON.stringify(two.planReminders)}`);
+});
+
+await t('three days into a team plan, a priority lead gets one Audit note from Anthony', async () => {
+  const goals = await list(`users/${member.uid}/goals`);
+  const g = goals.find((x) => x.status === 'active' && x.slug === 'team-alignment');
+  assert(g, 'no active team goal left');
+  await admin((db) => updateDoc(doc(db, `users/${member.uid}/goals/${g.id}`), { startDate: localDay(DAY_TZ, -3), timezone: DAY_TZ, auditNudgeFor: null }));
+  const before = emails.length;
+  const tick = async () => (await fetch(`${FN}/runAutomationTick`, { method: 'POST', headers: { 'X-Tick-Secret': 'e2e-tick-secret' } })).json();
+  const one = await tick();
+  assert(one.planReminders && one.planReminders.auditNotes === 1, JSON.stringify(one.planReminders));
+  const sent = emails.slice(before).filter((e) => /results, and your team/.test(e.subject || ''));
+  assert(sent.length === 1, `notes sent: ${sent.length}`);
+  assert(/corporate#audit/.test(sent[0].text_body || '') && /Unsubscribe/.test(sent[0].text_body || ''), 'no Audit link or unsubscribe');
+  const u = await read(`users/${member.uid}`);
+  assert(u.auditNudgeSentAt, 'the member was not marked');
+  await admin((db) => updateDoc(doc(db, `users/${member.uid}/goals/${g.id}`), { auditNudgeFor: null }));
+  const two = await tick();
+  assert(two.planReminders.auditNotes === 0, 'sent twice');
 });
 
 await t('deleting the account takes the plan, journal and results with it', async () => {

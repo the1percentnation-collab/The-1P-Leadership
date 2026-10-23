@@ -63,6 +63,13 @@ at day 90.
   offering the Alignment Audit.
 - When a Priority Lead's goal goes 14 days with no activity, a CRM task
   suggests a short note.
+- **The Alignment Audit note.** Three to 21 days into a plan built from Team
+  Alignment, the Delegation Audit or the Sales Mindset Score, a Priority
+  Lead who has not asked for an Audit gets one plain email from Anthony
+  offering it. It goes once per member, ever, during business hours in their
+  timezone. It carries an unsubscribe link, respects earlier unsubscribes,
+  logs to their CRM contact and adds the **Audit Note Sent** tag. Replies go
+  to the usual reply-to address.
 
 ## Behind the scenes
 

@@ -652,6 +652,53 @@ function planReminderMessage(goal, due, { base = 'https://the1pnation.com', goal
   };
 }
 
+// ── The Alignment Audit follow-up ──────────────────────────────────────────
+// A leader who builds a plan from a team assessment has said their team is
+// the problem worth working on. A self-assessment only shows their view from
+// the top, so a few days in, Anthony writes once to offer the Audit. Sent at
+// most once per member (the server checks that, the priority-lead rule, an
+// Audit already requested, and unsubscribes).
+
+const AUDIT_NUDGE_AFTER_DAYS = 3;
+const AUDIT_NUDGE_UNTIL_DAYS = 21;
+
+/** Is this goal one the Audit follow-up is written for, and is it time? */
+function auditNudgeDue(goal, today) {
+  const g = goal || {};
+  if (g.source !== 'assessment' || !TEAM_ASSESSMENTS.includes(g.slug)) return false;
+  if (g.status !== 'active' || g.auditNudgeFor || !isIsoDay(g.startDate)) return false;
+  const d = dayDiff(g.startDate, today);
+  return d >= AUDIT_NUDGE_AFTER_DAYS && d <= AUDIT_NUDGE_UNTIL_DAYS;
+}
+
+/** The note itself: plain, personal, from Anthony. */
+function auditNudgeMessage(goal, { firstName = '', base = 'https://the1pnation.com' } = {}) {
+  const g = goal || {};
+  const title = g.assessmentTitle || 'your assessment';
+  const area = g.areaLabel ? `${g.areaLabel} score` : 'score';
+  const day = DAY_NAMES[g.checkinDay] || 'your check-in day';
+  const lines = [
+    firstName ? `Hi ${firstName},` : 'Hi,',
+    '',
+    `You built a plan from ${title} a few days ago, starting with "${g.title}." That is the right move. Most leaders read their score and stop there.`,
+    '',
+    `Here is what a self-assessment cannot show you: how your team would answer the same questions. Your ${area} is your view from the top. The gap between that and what your team sees is usually where the real work is.`,
+    '',
+    'That is what the Alignment Audit is for. It is a free 45-minute session on Zoom, with your whole team or with you one-on-one, and within 48 hours you get a one-page written scorecard you can act on.',
+    '',
+    `If that would help, pick a time here: ${base}/corporate#audit`,
+    '',
+    `If not, keep going with your plan. Your next check-in is ${day}.`,
+    '',
+    'Anthony Brown Sr.',
+    'The One Percent'
+  ];
+  return {
+    subject: `Your ${title.replace(/^The /, '')} results, and your team`,
+    text: lines.join('\n')
+  };
+}
+
 // ── Team summary ───────────────────────────────────────────────────────────
 
 /**
@@ -701,5 +748,5 @@ function summarizeTeam(members, { today } = {}) {
 }
 
 module.exports = {
-  MAX_ACTIVE, MAX_AREAS_PER_BUILD, MAX_TASKS, MAX_GOALS, TITLE_MAX, TEXT_MAX, NOTE_MAX, MAX_CHECKINS, REVIEW_DAYS, PLANNER_REVIEW_DAYS, STALL_DAYS, TEAM_MIN, TEAM_ASSESSMENTS, GOAL_STATUSES, REVIEW_DECISIONS, DAY_NAMES, isIsoDay, todayIso, plusDays, dayDiff, weekdayOf, fmtDay, cleanText, oneLine, targetFor, scoreChange, weeklyDueDates, wizardAreas, goalsFromPicks, goalFromPlanner, progressOf, nextTask, overdueTasks, checkinDue, reviewDue, isStalled, orderGoals, activeCount, planNextSteps, icsForGoals, cleanReminders, validateNewGoal, applyGoalOp, planReminderDue, planReminderMessage, summarizeTeam
+  MAX_ACTIVE, MAX_AREAS_PER_BUILD, MAX_TASKS, MAX_GOALS, TITLE_MAX, TEXT_MAX, NOTE_MAX, MAX_CHECKINS, REVIEW_DAYS, PLANNER_REVIEW_DAYS, STALL_DAYS, TEAM_MIN, TEAM_ASSESSMENTS, GOAL_STATUSES, REVIEW_DECISIONS, DAY_NAMES, isIsoDay, todayIso, plusDays, dayDiff, weekdayOf, fmtDay, cleanText, oneLine, targetFor, scoreChange, weeklyDueDates, wizardAreas, goalsFromPicks, goalFromPlanner, progressOf, nextTask, overdueTasks, checkinDue, reviewDue, isStalled, orderGoals, activeCount, planNextSteps, icsForGoals, cleanReminders, validateNewGoal, applyGoalOp, planReminderDue, planReminderMessage, summarizeTeam, AUDIT_NUDGE_AFTER_DAYS, AUDIT_NUDGE_UNTIL_DAYS, auditNudgeDue, auditNudgeMessage
 };

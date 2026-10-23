@@ -400,4 +400,47 @@ ok('member-facing plan copy has no em dashes', () => {
   }
 });
 
+// ── The Alignment Audit note ───────────────────────────────────────────────
+
+ok('the Audit note is for team assessments, three to 21 days in, once per goal', () => {
+  const g = (o) => Object.assign({ source: 'assessment', slug: 'team-alignment', status: 'active', startDate: '2026-10-18' }, o);
+  assert.ok(P.auditNudgeDue(g(), TODAY), 'day 3');
+  assert.ok(!P.auditNudgeDue(g({ startDate: '2026-10-19' }), TODAY), 'day 2 is too soon');
+  assert.ok(!P.auditNudgeDue(g({ startDate: '2026-09-29' }), TODAY), 'day 22 is too late');
+  assert.ok(!P.auditNudgeDue(g({ slug: 'burnout-check' }), TODAY), 'not a team assessment');
+  assert.ok(!P.auditNudgeDue(g({ source: 'custom' }), TODAY));
+  assert.ok(!P.auditNudgeDue(g({ status: 'later' }), TODAY));
+  assert.ok(!P.auditNudgeDue(g({ auditNudgeFor: 'sent' }), TODAY));
+  P.TEAM_ASSESSMENTS.forEach((slug) => assert.ok(SLUGS[slug], `${slug} is not a real assessment`));
+});
+
+ok('the Audit note is personal, links to the Audit and has no em dash', () => {
+  const m = P.auditNudgeMessage({ title: 'Give every key outcome one clear owner', assessmentTitle: 'The Team Alignment Assessment', areaLabel: 'Clarity of Roles', checkinDay: 1 }, { firstName: 'Morgan' });
+  assert.strictEqual(m.subject, 'Your Team Alignment Assessment results, and your team');
+  assert.match(m.text, /^Hi Morgan,/);
+  assert.match(m.text, /"Give every key outcome one clear owner\."/);
+  assert.match(m.text, /Your Clarity of Roles score is your view from the top/);
+  assert.match(m.text, /https:\/\/the1pnation\.com\/corporate#audit/);
+  assert.match(m.text, /next check-in is Monday/);
+  assert.ok(!/[\u2014\u2013]/.test(m.subject + m.text));
+});
+
+ok('the Audit note is claimed once per member and respects opt-outs', () => {
+  const b = block(fn, 'async function sendAuditNudge', '\n/**\n * Tick step');
+  assert.ok(/auditNudgeSentAt/.test(b) && /runTransaction/.test(b), 'not claimed once per member');
+  assert.ok(/isEmailSuppressed\(contact\)/.test(b), 'an unsubscribe is ignored');
+  assert.ok(/'Alignment Audit'/.test(b), 'people who already asked for an Audit get it anyway');
+  assert.ok(/isPriorityPlanMember/.test(b), 'not limited to priority leads');
+  assert.ok(/List-Unsubscribe/.test(b) && /unsubscribeUrl/.test(b), 'no unsubscribe link');
+  assert.ok(/sendAuditNudge\(db, d\.ref/.test(block(fn, 'async function sendPlanReminders', '\n}\n')), 'the tick never sends it');
+});
+
+ok('the Meta pixel loads only after a visitor accepts cookies', () => {
+  const c = read('public/js/consent-banner.js');
+  assert.ok(/if \(choice === 'accepted'\) loadMetaPixel\(\);/.test(c));
+  assert.strictEqual((c.match(/loadMetaPixel\(\);/g) || []).length, 1, 'the pixel is loaded from somewhere else too');
+  assert.ok(/if \(!META_PIXEL_ID \|\| window\.fbq\) return;/.test(c));
+  assert.ok(/PriorityLead/.test(read('public/js/assessment-page.js')));
+});
+
 console.log(`\n${passed} checks passed.`);

@@ -16055,12 +16055,82 @@ function planReminderHtml(msg) {
 }
 
 /**
- * Tick step: weekly check-in and review reminders for active goals, plus
- * the two-week stall note to the CRM for priority leads.
+ * The one-time Alignment Audit note (planCore.auditNudgeDue): a priority lead
+ * a few days into a plan from a team assessment, who has not asked for an
+ * Audit, gets one personal email from Anthony. Once per member, ever. The
+ * goal is stamped either way so it is not looked at again. Returns 'sent' or
+ * why it was skipped.
+ */
+async function sendAuditNudge(db, goalRef, g, today) {
+  const FV = admin.firestore.FieldValue;
+  const userRef = goalRef.parent.parent;
+  const uid = userRef.id;
+  // Claim the member before anything else, so overlapping ticks or two
+  // goals from team assessments can never send it twice.
+  const claimed = await db.runTransaction(async (tx) => {
+    const u = await tx.get(userRef);
+    if (!u.exists || (u.data() || {}).auditNudgeSentAt) return null;
+    tx.update(userRef, { auditNudgeSentAt: FV.serverTimestamp() });
+    return u.data() || {};
+  });
+  const stamp = (why) => goalRef.update({ auditNudgeFor: why }).then(() => why);
+  if (!claimed) return stamp('already-sent');
+  const release = () => userRef.update({ auditNudgeSentAt: FV.delete() });
+  if (!(await isPriorityPlanMember(db, uid))) { await release(); return stamp('not-priority'); }
+  const user = claimed;
+  if (!user.crmCompanyId || !user.crmContactId) { await release(); return stamp('no-contact'); }
+  const cRef = db.collection('companies').doc(user.crmCompanyId).collection('contacts').doc(user.crmContactId);
+  const cSnap = await cRef.get();
+  const contact = cSnap.exists ? Object.assign({ id: cSnap.id }, cSnap.data()) : null;
+  if (!contact || !contact.email) { await release(); return stamp('no-contact'); }
+  // Already asked for an Audit: the note would be noise. Keep the claim so
+  // it is never sent later either.
+  if (Array.isArray(contact.tags) && contact.tags.includes('Alignment Audit')) return stamp('audit-requested');
+  if (isEmailSuppressed(contact)) return stamp('unsubscribed');
+  if (!emailConfigured()) { await release(); return 'email-not-configured'; }
+
+  // Marketing mail, so it carries the same opt-out a campaign does.
+  let unsubLink = null;
+  try { unsubLink = unsubscribeUrl(user.crmCompanyId, contact.id, await ensureUnsubToken(cRef, contact.unsubToken)); }
+  catch (e) { console.warn('[plan] audit note unsub token failed:', e && e.message); }
+  const firstName = String(user.displayName || contact.name || '').trim().split(/\s+/)[0] || '';
+  const msg = planCore.auditNudgeMessage(g, { firstName, base: APP_BASE_URL });
+  const footerHtml = unsubLink
+    ? `<hr style="margin:28px 0 14px;border:none;border-top:1px solid #ddd;"><p style="font-size:12px;color:#777;line-height:1.6;"><a href="${unsubLink}" style="color:#777;">Unsubscribe from these emails</a>.</p>`
+    : '';
+  try {
+    await sendEmail({
+      to: contact.email,
+      from: { email: FROM_EMAIL, name: 'Anthony Brown Sr.' },
+      replyTo: REPLY_TO,
+      subject: msg.subject,
+      text: msg.text + (unsubLink ? `\n\n--\nUnsubscribe: ${unsubLink}` : ''),
+      html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;font-size:15px;line-height:1.55;">${textToHtml(msg.text)}${footerHtml}</div>`,
+      ...(unsubLink ? { headers: { 'List-Unsubscribe': `<${unsubLink}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } } : {}),
+      customArgs: { type: 'audit-nudge', companyId: user.crmCompanyId, contactId: contact.id, uid }
+    });
+  } catch (e) {
+    await release();
+    console.warn('[plan] audit note failed:', e && e.message);
+    return 'email-failed';
+  }
+  await cRef.collection('activities').add({
+    type: 'manual_email', description: `Alignment Audit note after their ${g.assessmentTitle || 'assessment'} plan: ${msg.subject}`,
+    actorUid: 'system', actorName: 'My Plan', createdAt: FV.serverTimestamp(),
+    meta: { kind: 'audit-nudge', slug: g.slug || null }
+  });
+  await cRef.set(Object.assign({ tags: FV.arrayUnion('Audit Note Sent') }, lastContactedFields('email', 'out')), { merge: true });
+  return stamp('sent');
+}
+
+/**
+ * Tick step: weekly check-in and review reminders for active goals, the
+ * two-week stall note to the CRM for priority leads, and the one-time
+ * Alignment Audit note.
  */
 async function sendPlanReminders(db, { now = new Date() } = {}) {
   const FV = admin.firestore.FieldValue;
-  const out = { due: 0, checkins: 0, reviews: 0, email: 0, emailFailed: 0, emailNotConfigured: 0, inapp: 0, push: 0, stalled: 0 };
+  const out = { due: 0, checkins: 0, reviews: 0, email: 0, emailFailed: 0, emailNotConfigured: 0, inapp: 0, push: 0, stalled: 0, auditNotes: 0 };
   const snap = await db.collectionGroup('goals').where('status', '==', 'active').limit(3000).get();
   for (const d of snap.docs) {
     const g = d.data() || {};
@@ -16075,6 +16145,13 @@ async function sendPlanReminders(db, { now = new Date() } = {}) {
         await d.ref.update({ stallNoticeFor: quietSince });
         if (await planCrmEvent(db, uid, g, 'stalled')) out.stalled++;
       } catch (e) { console.warn('[tick] plan stall note failed', e && e.message); }
+    }
+
+    // Business hours in the member's own timezone, like the reminders.
+    if (planCore.auditNudgeDue(g, clock.date) && clock.minutes >= 9 * 60 && clock.minutes < 18 * 60) {
+      try {
+        if (await sendAuditNudge(db, d.ref, g, clock.date) === 'sent') out.auditNotes++;
+      } catch (e) { console.warn('[tick] audit note failed', e && e.message); }
     }
 
     const due = planCore.planReminderDue(g, clock);

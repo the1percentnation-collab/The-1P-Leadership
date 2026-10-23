@@ -24,6 +24,18 @@ const track = (name, params) => {
   try { if (typeof fbq === 'function' && params && params.fb) fbq('track', params.fb, { content_name: params.assessment }); } catch (e) { /* optional */ }
 };
 
+// A leader of 11+ people, or someone running an organization with a team:
+// the people an annual program is for. Sent to Meta as its own event so ad
+// delivery can learn to find more of them, not just more form fills. Once
+// per result on this device.
+function trackPriorityLead() {
+  if (state.priorityTracked || !isPriorityLead(cleanProfile(state.profile))) return;
+  state.priorityTracked = true;
+  save();
+  try { if (typeof gtag === 'function') gtag('event', 'priority_lead', { assessment: slug }); } catch (e) { /* optional */ }
+  try { if (typeof fbq === 'function') fbq('trackCustom', 'PriorityLead', { content_name: slug }); } catch (e) { /* optional */ }
+}
+
 // ── Which assessment ───────────────────────────────────────────────────────
 const fromPath = location.pathname.replace(/\/+$/, '').split('/').pop();
 const slug = /^assessments?$/.test(fromPath) || fromPath === 'assessment.html'
@@ -424,6 +436,7 @@ function showClaimed() {
   renderFull(r, cleanProfile(state.profile), claimedNote(state.claimed), state.answers);
   show('s-result');
   track('assessment_unlocked', { assessment: slug, fb: 'Lead' });
+  trackPriorityLead();
 }
 
 // What the server needs to save a result, from either unlock path.
@@ -454,6 +467,7 @@ async function unlock(user) {
   renderFull(r, profile, 'saving', state.answers);
   show('s-result');
   track('assessment_unlocked', { assessment: slug, fb: 'Lead' });
+  trackPriorityLead();
   // Coming back to a result that is already saved (a refresh, or returning
   // from login) shows it without writing it, and its CRM activity, again.
   if (savedOnce || state.savedFor === user.uid) {
