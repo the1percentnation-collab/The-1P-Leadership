@@ -2257,7 +2257,19 @@ function isEmailSuppressed(c) {
 // sendCampaign — callable
 // ────────────────────────────────────────────────────────────────
 
+// filter.excludeEnrolledIn (a course slug) drops anyone whose account is
+// already enrolled in that course, matched by email. It lets a "join before
+// the deadline" campaign skip the people who already joined.
 async function buildRecipients(db, companyId, filter) {
+  const recipients = await collectRecipients(db, companyId, filter);
+  const slug = String((filter && filter.excludeEnrolledIn) || '').trim();
+  if (!slug) return recipients;
+  const enrolled = await db.collection('users').where('enrolledCourseSlugs', 'array-contains', slug).get();
+  const skip = new Set(enrolled.docs.map((d) => normalizeEmail((d.data() || {}).email)).filter(Boolean));
+  return recipients.filter((r) => !skip.has(r.email));
+}
+
+async function collectRecipients(db, companyId, filter) {
   const mode = (filter && filter.mode) || 'all_contacts';
   const seen = new Set();
   const recipients = []; // { email, name?, firstName?, contactId?, unsubToken? }

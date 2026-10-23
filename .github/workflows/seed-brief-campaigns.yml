@@ -1,0 +1,48 @@
+name: Seed The One Percent Brief campaigns
+# Writes the three free-window campaign drafts for The One Percent Brief
+# (launch, one week left, final day) into the CRM by running
+# scripts/seed-brief-campaigns.js with the deploy service account.
+#
+# Safe to run on every push: it writes drafts only, never sends, and never
+# touches a campaign that is sending or sent. Each draft is sent by hand from
+# /campaigns.html on the date shown next to it.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/seed-brief-campaigns.js'
+      - '.github/workflows/seed-brief-campaigns.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: seed-brief-campaigns
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Write service account key
+        id: sa
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP }}
+        run: |
+          echo "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+          echo "path=$RUNNER_TEMP/sa.json" >> "$GITHUB_OUTPUT"
+
+      - name: Install script dependencies
+        working-directory: scripts
+        run: npm ci
+
+      - name: Seed
+        working-directory: scripts
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.sa.outputs.path }}
+        run: node seed-brief-campaigns.js

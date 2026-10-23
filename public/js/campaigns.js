@@ -91,7 +91,7 @@ function renderCampaignList() {
       <td><a href="#" class="camp-name-link" data-view="${escapeHtml(c.id)}">${escapeHtml(c.name || '(untitled)')}</a></td>
       <td style="color:var(--white-dim);">${escapeHtml(c.subject || '—')}</td>
       <td>${statusBadge(c.status)}</td>
-      <td style="font-family:var(--font-mono); font-size:11px; color:var(--gray-light);">${fmtDateTime(c.sentAt)}</td>
+      <td style="font-family:var(--font-mono); font-size:11px; color:var(--gray-light);">${!c.sentAt && c.sendOn ? 'Send ' + escapeHtml(c.sendOn) : fmtDateTime(c.sentAt)}</td>
       <td class="num">${rcpt}</td>
       <td class="num">${opens} <span style="color:var(--gray-mid); font-size:10px;">${openRate !== '—' ? '(' + openRate + ')' : ''}</span></td>
       <td class="num">${clicks} <span style="color:var(--gray-mid); font-size:10px;">${clickRate !== '—' ? '(' + clickRate + ')' : ''}</span></td>
@@ -174,6 +174,9 @@ function renderDetail() {
   if (c.fromName) bits.push('From: ' + c.fromName);
   if (c.createdAt) bits.push('Created ' + fmtDateTime(c.createdAt));
   if (c.sentAt) bits.push('Sent ' + fmtDateTime(c.sentAt));
+  if (c.sendOn && !c.sentAt) bits.push('Send on ' + c.sendOn);
+  const rf = c.recipientFilter || {};
+  if (rf.excludeEnrolledIn) bits.push('Skips anyone already in ' + (rf.excludeEnrolledLabel || rf.excludeEnrolledIn));
   $('camp-d-sub').textContent = bits.join(' · ');
   const st = $('camp-d-status');
   const s = c.status || 'draft';
