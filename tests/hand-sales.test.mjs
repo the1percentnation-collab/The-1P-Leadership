@@ -16,7 +16,7 @@ const core = await loadPure('hand-sales-core.js');
 const server = createRequire(import.meta.url)('../functions/hand-sales-core.js');
 const {
   computeTotals, normalizeOrder, deliveryStatus, orderBucket, stockDelta, taskPlan, parseAddress,
-  paymentOptions, invoiceMessage, reminderMessage, reminderDue, lastNudgeMs, smsLink, dmLink, summarize, invoiceNumber, isPaid, lowStock, mergeSettings
+  paymentOptions, invoiceMessage, reminderMessage, reminderDue, lastNudgeMs, collectionsDigest, smsLink, dmLink, summarize, invoiceNumber, isPaid, lowStock, mergeSettings
 } = core;
 
 let passed = 0;
@@ -247,6 +247,30 @@ ok('Remind: the follow-up carries the link and asks for an address when one is m
   assert.match(msg, /still open here: https:\/\/x\/invoice\?i=1&t=2/);
   assert.match(msg, /address you want it shipped to/);
   assert.doesNotMatch(reminderMessage({ ...manual(), delivery: 'hand' }, 'u'), /address|mail/);
+});
+
+ok('Morning digest: reminders quiet longest first, unsent oldest first, paid and cancelled left out', () => {
+  const day = 86400000;
+  const at = (d) => ({ toMillis: () => NOW - d * day });
+  const o = (id, extra) => ({ ...manual(), id, ...extra });
+  const d = collectionsDigest([
+    o('fresh', { invoiceSentAt: at(1), createdAt: at(1) }),
+    o('quiet4', { invoiceSentAt: at(4), createdAt: at(5) }),
+    o('quiet9', { invoiceSentAt: at(12), remindedAt: at(9), createdAt: at(12) }),
+    o('new', { createdAt: at(0) }),
+    o('old', { createdAt: at(2) }),
+    o('paid', { invoiceSentAt: at(9), payment: { status: 'paid' } }),
+    o('gone', { invoiceSentAt: at(9), status: 'cancelled' }),
+    { id: 'site', kind: 'stripe', status: 'new', amountTotal: 30 }
+  ], {}, NOW);
+  assert.deepStrictEqual(d.remind.map((r) => [r.order.id, r.quietDays]), [['quiet9', 9], ['quiet4', 4]]);
+  assert.deepStrictEqual(d.unsent.map((r) => [r.order.id, r.ageDays]), [['old', 2], ['new', 0]]);
+  assert.strictEqual(d.owedCount, 5);
+  assert.strictEqual(d.owed, 224.9);
+  assert.strictEqual(d.toShip, 1);
+  assert.strictEqual(d.empty, false);
+  assert.strictEqual(collectionsDigest([o('fresh', { invoiceSentAt: at(1) })], {}, NOW).empty, true);
+  assert.strictEqual(mergeSettings({}).digestHour, 8);
 });
 
 ok('this month counts only paid, live orders; owed counts every unpaid one', () => {

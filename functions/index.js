@@ -11426,7 +11426,7 @@ async function runTick(db, { dryRun = false } = {}) {
     return { error: (e && e.message) || String(e) };
   });
 
-  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest] = await Promise.all([
+  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest] = await Promise.all([
     step('sequences', processDueEnrollments(db, { dryRun })),
     // These only ever renew or send; there is nothing to preview, so a dry
     // run skips them rather than pretending to measure something.
@@ -11437,10 +11437,11 @@ async function runTick(db, { dryRun = false } = {}) {
     step('announcements', fanOutDueAnnouncements(db, { dryRun })),
     step('reviewNudges', dryRun ? { skipped: 'dryRun' } : sendReviewNudges(db)),
     // A dry run counts who would get a digest today without sending or claiming.
-    step('communityDigest', sendCommunityDigests(db, { dryRun }))
+    step('communityDigest', sendCommunityDigests(db, { dryRun })),
+    step('storeDigest', sendStoreDigest(db, { dryRun }))
   ]);
 
-  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest };
+  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest };
   const failedSteps = Object.keys(steps).filter((k) => steps[k] && steps[k].error);
   const summary = { ok: failedSteps.length === 0, dryRun, ms: Date.now() - startedAt, ...steps };
   if (failedSteps.length) summary.failedSteps = failedSteps;
@@ -16555,6 +16556,98 @@ async function emailInvoice(db, order, settings, { reminder = false } = {}) {
     }),
     customArgs: { type: reminder ? 'hand_sale_reminder' : 'hand_sale_invoice' }
   });
+}
+
+/**
+ * The morning collections email: one a day to the owner, at settings
+ * digestHour (DIGEST_TIMEZONE), listing invoices due a reminder and invoices
+ * never sent, each linking straight to its Remind / Send sheet in the store
+ * console. Nothing to chase, no email. Runs from the tick, so it lands on the
+ * first tick after the hour (the tick is roughly hourly).
+ */
+async function sendStoreDigest(db, { now = new Date(), dryRun = false } = {}) {
+  const settings = await handSalesSettings(db);
+  const hour = Number(settings.digestHour);
+  if (!hour) return { skipped: 'turned off' };
+  const clock = commitmentLocalClock(now, DIGEST_TIMEZONE);
+  if (!clock || clock.minutes < hour * 60) return { skipped: 'before send time' };
+  const stateRef = db.collection('config').doc('handSalesDigest');
+  const last = await stateRef.get();
+  if (last.exists && last.data().date === clock.date) return { skipped: 'already sent today' };
+
+  const snap = await db.collection('orders').where('kind', '==', 'manual').get();
+  const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const digest = handSales.collectionsDigest(orders, settings, now.getTime());
+  const counts = { remind: digest.remind.length, unsent: digest.unsent.length, owed: digest.owed };
+  if (digest.empty) return { ...counts, skipped: 'nothing to chase' };
+  if (dryRun) return { ...counts, wouldSend: true };
+  if (!emailConfigured()) return { ...counts, skipped: 'email not configured' };
+
+  // Claim the day first, so overlapping ticks cannot double-send.
+  const claimed = await db.runTransaction(async (tx) => {
+    const s = await tx.get(stateRef);
+    if (s.exists && s.data().date === clock.date) return false;
+    tx.set(stateRef, { date: clock.date, sentAt: admin.firestore.Timestamp.fromDate(now), ...counts });
+    return true;
+  });
+  if (!claimed) return { skipped: 'already sent today' };
+
+  const msg = storeDigestMessage(digest);
+  await sendEmail({
+    to: OWNER_EMAIL,
+    from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+    replyTo: REPLY_TO,
+    subject: msg.subject, html: msg.html, text: msg.text,
+    customArgs: { type: 'hand_sale_digest' }
+  });
+  return { ...counts, sent: true };
+}
+
+function storeDigestMessage(digest) {
+  const money = handSales.formatMoney;
+  const orders = `${APP_BASE_URL}/manage-store.html?tab=orders`;
+  const day = (t) => (t && t.toDate ? t.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: DIGEST_TIMEZONE }) : '');
+  const who = (o) => (o.buyer && o.buyer.name) || 'Buyer';
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const remindLine = ({ order: o, quietDays }) => {
+    const sent = o.remindedAt ? `reminded ${day(o.remindedAt)}` : `sent ${day(o.invoiceSentAt)}`;
+    return { o, link: `${orders}&remind=${encodeURIComponent(o.id)}`, cta: 'Remind', note: `${sent}${o.viewedAt ? ', opened' : ', not opened'} · ${plural(quietDays, 'day')} quiet` };
+  };
+  const unsentLine = ({ order: o, ageDays }) => ({
+    o, link: `${orders}&send=${encodeURIComponent(o.id)}`, cta: 'Send', note: ageDays ? `created ${plural(ageDays, 'day')} ago, never sent` : 'created today, never sent'
+  });
+  const sections = [
+    digest.remind.length && { title: `Remind (${digest.remind.length})`, rows: digest.remind.map(remindLine) },
+    digest.unsent.length && { title: `Not sent yet (${digest.unsent.length})`, rows: digest.unsent.map(unsentLine) }
+  ].filter(Boolean);
+  const head = [
+    digest.remind.length && plural(digest.remind.length, 'invoice') + ' to remind',
+    digest.unsent.length && plural(digest.unsent.length, 'invoice') + ' to send'
+  ].filter(Boolean).join(', ');
+  const subject = `Collect today: ${head} · ${money(digest.owed)} owed`;
+  const esc = escapeHtmlBasic;
+  const rowHtml = (r) => `<tr>
+      <td style="padding:10px 0;border-bottom:1px solid #eee;font-size:14px;color:#222;">
+        <strong>${esc(who(r.o))}</strong> · ${esc(money(r.o.amountTotal))} <span style="color:#888;">${esc(r.o.invoiceNumber)}</span><br>
+        <span style="font-size:12px;color:#888;">${esc(r.note)}</span>
+      </td>
+      <td style="padding:10px 0;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;">
+        <a href="${r.link}" style="background:#E60306;color:#fff;text-decoration:none;font-weight:bold;font-size:13px;padding:7px 14px;border-radius:6px;">${r.cta} →</a>
+      </td></tr>`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
+    <h2 style="color:#E60306;margin:0 0 4px;">${esc(money(digest.owed))} owed across ${esc(plural(digest.owedCount, 'invoice'))}</h2>
+    <p style="font-size:14px;color:#555;margin:0 0 16px;">Each button opens the message ready to go. One tap, paste or send, done.</p>
+    ${sections.map((sec) => `<h3 style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#888;margin:18px 0 0;">${esc(sec.title)}</h3>
+      <table style="width:100%;border-collapse:collapse;">${sec.rows.map(rowHtml).join('')}</table>`).join('')}
+    ${digest.toShip ? `<p style="font-size:14px;color:#222;margin:18px 0 0;">Also: ${esc(plural(digest.toShip, 'paid order'))} waiting to ship. <a href="${orders}" style="color:#E60306;">Open Orders →</a></p>` : ''}
+    <p style="font-size:12px;color:#888;margin-top:22px;">The One Percent Nation store. Change the time or turn this off in Orders → Settings.</p>
+  </div>`;
+  const text = [
+    `${money(digest.owed)} owed across ${plural(digest.owedCount, 'invoice')}.`,
+    ...sections.map((sec) => `\n${sec.title}\n` + sec.rows.map((r) => `- ${who(r.o)}, ${money(r.o.amountTotal)} ${r.o.invoiceNumber} (${r.note}): ${r.link}`).join('\n')),
+    digest.toShip ? `\nAlso: ${plural(digest.toShip, 'paid order')} waiting to ship: ${orders}` : ''
+  ].join('\n');
+  return { subject, html, text };
 }
 
 const INVOICE_SEND_VIA = {

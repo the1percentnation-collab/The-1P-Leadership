@@ -270,7 +270,7 @@ function wireTabs() {
 async function main() {
   if (!firebaseReady) { gate('Firebase is unavailable.'); return; }
   const u = await onAuthReady();
-  if (!u) { location.replace('/login.html?next=' + encodeURIComponent('/manage-store.html')); return; }
+  if (!u) { location.replace('/login.html?next=' + encodeURIComponent('/manage-store.html' + location.search)); return; }
   const info = await getRoleInfo(true);
   renderTopbar({ user: u, role: info.role, currentPage: null });
   if (!info.isAdmin) { location.replace('/index.html'); return; }

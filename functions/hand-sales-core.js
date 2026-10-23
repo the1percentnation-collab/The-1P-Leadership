@@ -75,7 +75,9 @@ const DEFAULT_SETTINGS = {
   reviewAfterDays: 10,
   reviewUrl: 'https://a.co/d/0fSUaomu',
   invoiceNote: 'Thank you for supporting the work. Every copy sold by hand is signed.',
-  lowStockAt: 5
+  lowStockAt: 5,
+  // Local hour for the morning collections email; 0 turns it off.
+  digestHour: 8
 };
 
 const MAX_ITEMS = 20;
@@ -417,6 +419,26 @@ function reminderMessage(order, url) {
   return lines.join('\n\n');
 }
 
+/**
+ * What the morning collections email lists: invoices due a reminder (quiet
+ * longest first), invoices never sent (oldest first), what is owed, and how
+ * many paid orders are waiting to ship. `empty` means no email is needed.
+ */
+function collectionsDigest(orders, settings = DEFAULT_SETTINGS, now = Date.now()) {
+  const s = mergeSettings(settings);
+  const manual = (orders || []).filter((o) => o && o.kind === 'manual');
+  const open = manual.filter((o) => o.status !== 'cancelled' && !isPaid(o));
+  const remind = open.filter((o) => reminderDue(o, s, now))
+    .sort((a, b) => lastNudgeMs(a) - lastNudgeMs(b))
+    .map((o) => ({ order: o, quietDays: Math.floor((now - lastNudgeMs(o)) / DAY) }));
+  const unsent = open.filter((o) => !lastNudgeMs(o))
+    .sort((a, b) => (toMs(a.createdAt) || 0) - (toMs(b.createdAt) || 0))
+    .map((o) => ({ order: o, ageDays: toMs(o.createdAt) ? Math.floor((now - toMs(o.createdAt)) / DAY) : 0 }));
+  const owed = dollars(open.reduce((c, o) => c + cents(o.amountTotal), 0));
+  const toShip = manual.filter((o) => orderBucket(o) === 'ship').length;
+  return { remind, unsent, owed, owedCount: open.length, toShip, empty: !remind.length && !unsent.length };
+}
+
 // Links that put the invoice back where the buyer is talking to Anthony.
 // smsLink opens his own Messages app with the text filled in (sms: works on
 // iPhone, Mac and Android); dmLink opens their Messenger or Instagram thread
@@ -552,5 +574,5 @@ function parseAddress(text) {
 
 
 module.exports = {
-  CHANNELS, PAYMENT_METHODS, DELIVERY_MODES, ORDER_STATUSES, STOCK_REASONS, BUCKETS, DEFAULT_SETTINGS, formatMoney, labelFor, mergeSettings, computeTotals, invoiceNumber, hasAddress, addressLines, normalizeOrder, deliveryStatus, isPaid, orderBucket, stockHeld, stockDelta, firstName, itemSummary, taskPlan, invoiceMessage, reminderMessage, reminderDue, lastNudgeMs, smsLink, dmLink, shippedMessage, reviewMessage, paymentOptions, lowStock, summarize, parseAddress
+  CHANNELS, PAYMENT_METHODS, DELIVERY_MODES, ORDER_STATUSES, STOCK_REASONS, BUCKETS, DEFAULT_SETTINGS, formatMoney, labelFor, mergeSettings, computeTotals, invoiceNumber, hasAddress, addressLines, normalizeOrder, deliveryStatus, isPaid, orderBucket, stockHeld, stockDelta, firstName, itemSummary, taskPlan, invoiceMessage, reminderMessage, reminderDue, lastNudgeMs, collectionsDigest, smsLink, dmLink, shippedMessage, reviewMessage, paymentOptions, lowStock, summarize, parseAddress
 };

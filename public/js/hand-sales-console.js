@@ -783,7 +783,9 @@ function openSettings() {
         ${f('shipWithinDays', 'Ship within (days)', s.shipWithinDays, 'type="number" min="0" step="1"')}
         ${f('reviewAfterDays', 'Review ask after (days)', s.reviewAfterDays, 'type="number" min="0" step="1"')}
         ${f('lowStockAt', 'Low stock at', s.lowStockAt, 'type="number" min="0" step="1"')}
+        ${f('digestHour', 'Collections email at (hour, 0 = off)', s.digestHour, 'type="number" min="0" max="23" step="1"')}
       </div>
+      <p class="hs-dim" style="margin:0;">Each morning (Eastern), one email lists the invoices to remind and the ones never sent, each a tap from its send screen. Nothing to chase, no email.</p>
       ${f('reviewUrl', 'Review link (Amazon)', s.reviewUrl)}
       <div class="hs-err" id="st-err"></div>
       <div class="crm-modal-actions"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" type="submit">Save settings</button></div>
@@ -917,5 +919,19 @@ export async function initHandSales() {
     $('hs-list').innerHTML = `<div class="hs-err">${esc(errMsg(e))}</div>`;
   }
   // /manage-store.html?new=1 opens the form straight away (phone shortcut).
-  if (new URLSearchParams(location.search).get('new') === '1') openOrderForm();
+  const params = new URLSearchParams(location.search);
+  if (params.get('new') === '1') openOrderForm();
+  // ?remind=<id> / ?send=<id>: the collections email's buttons.
+  const linked = params.get('remind') || params.get('send');
+  if (linked) openLinkedOrder(linked, !!params.get('remind'));
+}
+
+function openLinkedOrder(id, reminder) {
+  const u = new URL(location.href);
+  u.searchParams.delete('remind'); u.searchParams.delete('send');
+  history.replaceState(null, '', u);
+  const o = state.orders.find((x) => x.id === id);
+  if (!o) { toast('That order is gone.', true); return; }
+  if (!canSend(o)) { toast(`${o.invoiceNumber} is ${isPaid(o) ? 'already paid' : 'cancelled'}. Nothing to send.`); return; }
+  openSendForm(o, { reminder: reminder && !!o.invoiceSentAt });
 }

@@ -290,6 +290,30 @@ await t('the client cannot move a hand sale around the callable', async () => {
   assert(refused, 'owner wrote a hand sale directly');
 });
 
+await t('Morning digest: one collections email a day, each order a tap from its send sheet', async () => {
+  await asAdmin((db) => setDoc(doc(db, 'config/handSales'), { digestHour: 1 }, { merge: true }));
+  const j = await call('manageHandSale', { action: 'create', order: { ...ORDER, buyer: { name: 'Dana Fox', phone: '+15555550199' } } }, owner.token);
+  assert(j.result && j.result.invoiceNumber === 'INV-1003', JSON.stringify(j));
+  const tick = async (q = '') => {
+    const r = await fetch(`${FN}/runAutomationTick${q}`, { method: 'POST', headers: { 'X-Tick-Secret': 'e2e-tick-secret' } });
+    return (await r.json()).storeDigest;
+  };
+  const dry = await tick('?dryRun=1');
+  if (dry && dry.skipped === 'before send time') { console.log('   (before 1am Eastern: digest timing not exercised)'); return; }
+  assert(dry && dry.wouldSend && dry.unsent === 1, 'dry run: ' + JSON.stringify(dry));
+  const before = emails.length;
+  const real = await tick();
+  assert(real && real.sent && real.unsent === 1, 'tick: ' + JSON.stringify(real));
+  const mail = emails.slice(before).find((m) => /^Collect today/.test(m.subject));
+  assert(mail, 'no digest email: ' + emails.slice(before).map((m) => m.subject).join(' | '));
+  assert(/1 invoice to send/.test(mail.subject), mail.subject);
+  // The Telnyx provider carries bodies as html_body / text_body.
+  assert(mail.html_body.includes(`manage-store.html?tab=orders&send=${j.result.id}`), 'no Send link in the email');
+  assert(/Dana Fox/.test(mail.html_body) && /Dana Fox/.test(mail.text_body), 'buyer missing');
+  const again = await tick();
+  assert(again && again.skipped === 'already sent today', 'second tick: ' + JSON.stringify(again));
+});
+
 await env.cleanup();
 capture.close();
 const failed = results.filter((r) => r[0] === 'FAIL').length;
