@@ -10,7 +10,7 @@ import { firebaseReady, db } from './firebase.js';
 import { getUserProfile } from './community.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import { renderShell } from './academy-shell.js';
-import { libraryAccess, getBook, loadAllPositions } from './books.js';
+import { libraryAccess, getBook, loadAllPositions, isAudioBook, bookHref } from './books.js';
 import {
   collection, getDocs
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -31,7 +31,7 @@ function cover(book, cls = 'lib-cover') {
 }
 
 function readHref(book) {
-  return `/read?book=${encodeURIComponent(book.id)}`;
+  return bookHref(book);
 }
 
 function pct(pos) {
@@ -40,17 +40,19 @@ function pct(pos) {
 
 function continueCard(book, pos) {
   const p = pct(pos);
-  const where = pos && pos.chapter ? pos.chapter : (p ? 'Continue reading' : 'Start at the beginning');
+  const audio = isAudioBook(book);
+  const verb = audio ? 'listening' : 'reading';
+  const where = pos && pos.chapter ? pos.chapter : (p ? `Continue ${verb}` : 'Start at the beginning');
   return `
     <a class="lib-continue" href="${readHref(book)}">
       ${cover(book, '')}
       <div>
-        <div class="lib-kicker">${p ? 'Continue reading' : 'Start reading'}</div>
+        <div class="lib-kicker">${p ? `Continue ${verb}` : (audio ? 'Start listening' : 'Start reading')}${audio ? ' · Audiobook' : ''}</div>
         <h2 class="lib-title">${escapeHtml(book.title || '')}</h2>
         <div class="lib-where">${escapeHtml(where)}</div>
         <div class="lib-bar"><i style="width:${p}%"></i></div>
         <div class="lib-meta"><span>${escapeHtml(book.author || '')}</span><span>${p}%</span></div>
-        <span class="lib-cta">${p ? 'Resume' : 'Open book'} →</span>
+        <span class="lib-cta">${p ? 'Resume' : (audio ? 'Play' : 'Open book')} →</span>
       </div>
     </a>`;
 }
@@ -61,7 +63,7 @@ function shelfItem(book, pos) {
     <a class="lib-book" href="${readHref(book)}">
       ${cover(book)}
       <div class="lib-book-title">${escapeHtml(book.title || '')}</div>
-      <div class="lib-book-sub">${p ? `${p}% read` : escapeHtml(book.author || 'Not started')}</div>
+      <div class="lib-book-sub">${isAudioBook(book) ? 'Audiobook · ' : ''}${p ? `${p}% ${isAudioBook(book) ? 'listened' : 'read'}` : escapeHtml(book.author || 'Not started')}</div>
       ${p ? `<div class="lib-bar"><i style="width:${p}%"></i></div>` : ''}
     </a>`;
 }

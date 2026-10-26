@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Audiobook | The One Percent Library</title>
+  <meta name="description" content="Listen to Anthony Brown Sr.'s audiobook in your browser or your podcast app.">
+  <meta name="theme-color" content="#000000">
+  <!-- Its own manifest, so "Add to Home Screen" opens the player, not the dashboard. -->
+  <link rel="manifest" href="/listen.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="1P Listen">
+  <link rel="apple-touch-icon" href="/assets/app-icon-180.png">
+  <link rel="icon" href="/assets/favicon.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --black: #000000; --ink: #0b0b0b; --panel: #141414; --panel-2: #1c1c1c; --line: #2a2a2a;
+      --white: #ffffff; --dim: #b9b9b9; --mute: #8a8a8a; --blue: #155eef; --red: #e60306;
+      --font-display: 'Bebas Neue', 'Outfit', system-ui, sans-serif;
+      --font-ui: 'Outfit', system-ui, -apple-system, sans-serif;
+      --font-mono: 'Space Mono', ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--black); color: var(--white); }
+    body { font-family: var(--font-ui); -webkit-font-smoothing: antialiased; min-height: 100vh;
+      padding-bottom: env(safe-area-inset-bottom); }
+    a { color: inherit; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    .ls-top { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: calc(14px + env(safe-area-inset-top)) 20px 14px; max-width: 760px; margin: 0 auto; }
+    .ls-back { text-decoration: none; font-size: 14px; color: var(--dim); }
+    .ls-back:hover { color: var(--white); }
+    .ls-brand { font-family: var(--font-mono); font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--mute); }
+    main { max-width: 760px; margin: 0 auto; padding: 8px 20px 60px; }
+
+    .ls-hero { display: grid; grid-template-columns: 180px 1fr; gap: 28px; align-items: center; margin: 10px 0 30px; }
+    .ls-cover { width: 100%; aspect-ratio: 1/1; object-fit: cover; border-radius: 10px; display: block;
+      background: var(--panel-2); box-shadow: 0 18px 40px rgba(0,0,0,.6); }
+    .ls-cover-fallback { display: grid; place-items: center; padding: 14px; text-align: center; font-family: var(--font-display);
+      font-size: 28px; line-height: 1; letter-spacing: .03em; border: 1px solid var(--line); }
+    .ls-kicker { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .22em; text-transform: uppercase; color: var(--red); margin-bottom: 10px; }
+    .ls-title { font-family: var(--font-display); font-weight: 400; font-size: clamp(34px, 6vw, 52px); line-height: .95; letter-spacing: .02em; text-transform: uppercase; margin: 0 0 8px; }
+    .ls-author { color: var(--dim); font-size: 15px; }
+    .ls-meta { margin-top: 12px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; color: var(--mute); }
+
+    .ls-card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px; margin-bottom: 18px; }
+    .ls-card h2 { font-family: var(--font-display); font-weight: 400; font-size: 26px; letter-spacing: .03em; margin: 0 0 6px; }
+    .ls-sub { color: var(--dim); font-size: 14px; line-height: 1.55; margin: 0 0 16px; }
+
+    /* Player */
+    .ls-now { font-size: 15px; font-weight: 600; margin-bottom: 14px; min-height: 22px; }
+    .ls-seek { width: 100%; accent-color: var(--red); height: 28px; margin: 0; }
+    .ls-times { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--mute); margin-top: 2px; }
+    .ls-controls { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 16px 0 8px; }
+    .ls-btn { background: none; border: 1px solid var(--line); border-radius: 999px; width: 48px; height: 48px; display: grid; place-items: center; }
+    .ls-btn:hover { border-color: var(--white); }
+    .ls-btn:disabled { opacity: .35; cursor: default; }
+    .ls-btn svg { width: 22px; height: 22px; }
+    .ls-skip { position: relative; }
+    .ls-skip span { position: absolute; inset: 0; display: grid; place-items: center; padding-top: 1px;
+      font-size: 7.5px; font-weight: 700; font-family: var(--font-mono); pointer-events: none; }
+    .ls-play { width: 72px; height: 72px; background: var(--red); border-color: var(--red); }
+    .ls-play:hover { border-color: var(--red); filter: brightness(1.08); }
+    .ls-play svg { width: 30px; height: 30px; }
+    .ls-extras { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    .ls-pill { background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; font-size: 13px; color: var(--dim); }
+    .ls-pill:hover { color: var(--white); border-color: var(--mute); }
+    .ls-pill b { color: var(--white); font-weight: 600; }
+    .ls-status { text-align: center; font-size: 13px; color: var(--mute); min-height: 18px; margin-top: 10px; }
+
+    .ls-chapters { list-style: none; margin: 0; padding: 0; }
+    .ls-chapters li button { width: 100%; display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; text-align: left;
+      background: none; border: 0; border-top: 1px solid var(--line); padding: 13px 4px; color: var(--dim); }
+    .ls-chapters li:first-child button { border-top: 0; }
+    .ls-chapters li button:hover { color: var(--white); }
+    .ls-chapters .n { font-family: var(--font-mono); font-size: 11px; color: var(--mute); }
+    .ls-chapters .d { font-family: var(--font-mono); font-size: 11px; color: var(--mute); }
+    .ls-chapters li.is-current button { color: var(--white); font-weight: 600; }
+    .ls-chapters li.is-current .n { color: var(--red); }
+
+    .ls-apps { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .ls-app { display: block; text-align: center; text-decoration: none; padding: 13px 10px; border-radius: 12px; background: var(--panel-2);
+      border: 1px solid var(--line); font-weight: 600; font-size: 14px; }
+    .ls-app:hover { border-color: var(--blue); }
+    .ls-feed-row { display: flex; gap: 8px; margin-top: 12px; }
+    .ls-feed-row input { flex: 1; min-width: 0; background: var(--ink); border: 1px solid var(--line); border-radius: 10px; color: var(--dim);
+      padding: 11px 12px; font-family: var(--font-mono); font-size: 11px; }
+    .ls-note { font-size: 12px; color: var(--mute); line-height: 1.5; margin-top: 10px; }
+    .ls-link { background: none; border: 0; padding: 0; color: var(--dim); text-decoration: underline; font-size: 12px; }
+
+    .ls-cta { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 12px; padding: 15px 22px;
+      background: var(--red); color: var(--white); font-weight: 700; font-size: 16px; text-decoration: none; width: 100%; }
+    .ls-cta:disabled { opacity: .6; cursor: default; }
+    .ls-cta-ghost { background: var(--panel-2); border: 1px solid var(--line); }
+    .ls-ghost { display: inline-block; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 13px; background: var(--panel-2); }
+    .ls-points { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 10px; }
+    .ls-points li { padding-left: 22px; position: relative; color: var(--dim); font-size: 14px; line-height: 1.5; }
+    .ls-points li::before { content: ''; position: absolute; left: 4px; top: 8px; width: 7px; height: 7px; border-radius: 2px; background: var(--red); }
+    .ls-sample audio { width: 100%; margin-top: 4px; }
+    .ls-desc { color: var(--dim); font-size: 15px; line-height: 1.65; white-space: pre-line; margin: 0; }
+
+    .ls-toast { background: #0f2a1e; border: 1px solid #1f6b48; color: #c9f2dc; border-radius: 12px; padding: 14px 16px; font-size: 14px; margin-bottom: 18px; }
+    .ls-empty { text-align: center; padding: 50px 20px; color: var(--dim); line-height: 1.6; }
+    .ls-empty h1 { font-family: var(--font-display); font-weight: 400; font-size: 34px; color: var(--white); margin: 0 0 8px; }
+    .ls-skel { height: 220px; border-radius: 16px; background: linear-gradient(90deg, var(--panel), var(--panel-2), var(--panel)); background-size: 200% 100%; animation: lssk 1.4s infinite; }
+    @keyframes lssk { to { background-position: -200% 0; } }
+    .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+    @media (max-width: 560px) {
+      .ls-hero { grid-template-columns: 1fr; gap: 18px; text-align: center; }
+      .ls-cover { max-width: 240px; margin: 0 auto; }
+      .ls-card { padding: 18px; }
+      .ls-controls { gap: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="ls-top">
+    <a class="ls-back" id="ls-back" href="/library">&larr; My library</a>
+    <span class="ls-brand">The One Percent</span>
+  </header>
+  <main id="ls-root"><div class="ls-skel"></div></main>
+  <script type="module" src="js/listen-page.js"></script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs an emulator e2e: `tests/run-e2e.sh purchase`, `reader` or `notify`
+# Runs an emulator e2e: `tests/run-e2e.sh purchase`, `reader`, `audiobook` or `notify`
 # (the reader one needs READER_E2E_EPUB=/path/to/sample.epub).
 # The Functions emulator needs fake secrets and an email provider it can
 # reach; both files are gitignored and removed afterwards.
@@ -19,6 +19,7 @@ META_PAGE_ACCESS_TOKEN=e2e-page-token
 META_APP_SECRET=e2e-meta-secret
 META_VERIFY_TOKEN=e2e-verify
 META_GRAPH_BASE=http://127.0.0.1:8766
+FUNCTIONS_BASE_URL=http://127.0.0.1:5001/demo-1p/us-central1
 ENV
 cat > functions/.secret.local <<SEC
 STRIPE_SECRET_KEY=sk_test_fake
