@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advance Reader Copy | I Can't: Is Not A Strategy</title>
+  <meta name="description" content="Read the full digital edition of I Can't: Is Not A Strategy by Anthony Brown Sr. before it reaches everyone else. Free for advance readers who leave an honest review.">
+  <meta property="og:title" content="Read I Can't before everyone else">
+  <meta property="og:description" content="The full digital edition, free for advance readers who leave an honest review.">
+  <meta property="og:image" content="https://the1pnation.com/assets/i-cant-book-poster.jpg">
+  <meta property="og:url" content="https://the1pnation.com/arc">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --red: #E60306; --red-dark: #B30205; --blue: #155EEF;
+      --black: #080808; --surface: #141414; --surface-2: #1C1C1C;
+      --border: rgba(255,255,255,0.08); --border-red: rgba(230,3,6,0.3);
+      --white: #FFFFFF; --gray-300: #C8C8C8; --gray-400: #A0A0A0; --gray-600: #606060;
+      --ok: #56D4A8;
+      --font-display: 'Bebas Neue', Impact, sans-serif;
+      --font-body: 'Outfit', system-ui, sans-serif;
+      --font-mono: 'Space Mono', monospace;
+      --nav-h: 68px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--black); color: var(--white); font-family: var(--font-body); overflow-x: hidden; line-height: 1.5; }
+    a { color: inherit; }
+    [hidden] { display: none !important; }
+
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: var(--nav-h);
+      background: rgba(8,8,8,0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner { max-width: 1120px; margin: 0 auto; padding: 0 24px; height: 100%; display: flex; align-items: center; justify-content: space-between; }
+    .nav-logo { font-family: var(--font-display); font-size: 17px; letter-spacing: 0.06em; text-decoration: none; }
+    .nav-back { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gray-400); text-decoration: none; }
+    .nav-back:hover { color: var(--white); }
+
+    .page {
+      max-width: 1120px; margin: 0 auto; padding: calc(var(--nav-h) + 56px) 24px 72px;
+      display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: start;
+    }
+    .eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--red); margin-bottom: 18px; }
+    h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(52px, 7vw, 88px); line-height: 0.92; letter-spacing: 0.01em; }
+    h1 .red { color: var(--red); }
+    .lede { margin-top: 22px; font-size: 18px; color: var(--gray-300); max-width: 34em; }
+    .lede em { color: var(--white); font-style: normal; font-weight: 600; }
+
+    .book-row { display: flex; gap: 22px; align-items: center; margin-top: 34px; }
+    .book-row img { width: 112px; aspect-ratio: 2/3; object-fit: cover; border-radius: 4px; box-shadow: 0 18px 40px rgba(0,0,0,0.6), 0 0 0 1px var(--border); flex: none; }
+    .book-row .t { font-family: var(--font-display); font-size: 26px; letter-spacing: 0.02em; line-height: 1; }
+    .book-row .a { font-size: 14px; color: var(--gray-400); margin-top: 6px; }
+    .book-row .pill { display: inline-block; margin-top: 10px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ok); border: 1px solid rgba(86,212,168,0.35); border-radius: 999px; padding: 4px 10px; }
+
+    .deal { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 36px; }
+    .deal-col { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    .deal-col h2 { font-family: var(--font-mono); font-size: 11px; font-weight: 400; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gray-400); margin-bottom: 12px; }
+    .deal-col ul { list-style: none; display: grid; gap: 10px; }
+    .deal-col li { font-size: 15px; color: var(--gray-300); padding-left: 18px; position: relative; }
+    .deal-col li::before { content: ''; position: absolute; left: 0; top: 0.62em; width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+    .deal-col li strong { color: var(--white); font-weight: 600; }
+
+    .author { display: flex; gap: 14px; align-items: center; margin-top: 30px; }
+    .author img { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border-red); }
+    .author .n { font-weight: 600; }
+    .author .r { font-size: 13px; color: var(--gray-400); }
+
+    /* Panel */
+    .panel { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--red); border-radius: 14px; padding: 30px 28px; position: sticky; top: calc(var(--nav-h) + 24px); }
+    .panel-title { font-family: var(--font-display); font-size: 36px; line-height: 1; letter-spacing: 0.02em; }
+    .panel-sub { font-size: 14px; color: var(--gray-400); margin-top: 8px; }
+    .seats { margin-top: 12px; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gray-300); }
+
+    form { margin-top: 22px; display: grid; gap: 14px; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    label.f { display: grid; gap: 6px; font-size: 13px; font-weight: 500; color: var(--gray-300); }
+    input[type=text], input[type=email], input[type=password], select {
+      width: 100%; font: inherit; font-size: 15px; color: var(--white); background: var(--black);
+      border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 12px 13px; outline: none;
+      transition: border-color .15s;
+    }
+    select { appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--gray-400) 50%), linear-gradient(135deg, var(--gray-400) 50%, transparent 50%); background-position: calc(100% - 18px) 52%, calc(100% - 13px) 52%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+    input:focus, select:focus { border-color: var(--blue); }
+    input[aria-invalid=true] { border-color: var(--red); }
+    .check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--gray-300); cursor: pointer; }
+    .check input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--red); flex: none; }
+    .check strong { color: var(--white); font-weight: 600; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; font: inherit; font-weight: 600; font-size: 15px; border-radius: 8px; padding: 14px 18px; cursor: pointer; border: 1px solid transparent; text-decoration: none; transition: background .15s, border-color .15s, opacity .15s; }
+    .btn-primary { background: var(--red); color: var(--white); }
+    .btn-primary:hover { background: var(--red-dark); }
+    .btn-ghost { background: transparent; color: var(--white); border-color: rgba(255,255,255,0.18); }
+    .btn-ghost:hover { border-color: rgba(255,255,255,0.4); }
+    .btn[disabled] { opacity: 0.55; cursor: wait; }
+    .divider { display: flex; align-items: center; gap: 12px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.16em; color: var(--gray-600); text-transform: uppercase; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    .err { font-size: 13px; color: #FF8A8C; background: rgba(230,3,6,0.08); border: 1px solid var(--border-red); border-radius: 8px; padding: 10px 12px; }
+    .switch { font-size: 13px; color: var(--gray-400); text-align: center; }
+    .switch button, .linkish { font: inherit; color: var(--white); background: none; border: 0; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 0; }
+    .signed-in { font-size: 14px; color: var(--gray-300); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 11px 13px; }
+    .signed-in strong { color: var(--white); }
+    .fine { font-size: 12px; color: var(--gray-600); text-align: center; }
+
+    .state { text-align: center; padding: 18px 0 6px; }
+    .state .icon { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; background: rgba(86,212,168,0.12); color: var(--ok); }
+    .state .icon.off { background: rgba(255,255,255,0.06); color: var(--gray-400); }
+    .state h3 { font-family: var(--font-display); font-weight: 400; font-size: 34px; letter-spacing: 0.02em; line-height: 1; }
+    .state p { font-size: 15px; color: var(--gray-300); margin: 10px 0 20px; }
+    .state .btn + .btn { margin-top: 10px; }
+
+    .jump { display: none; margin-top: 24px; }
+    footer { border-top: 1px solid var(--border); padding: 26px 24px; text-align: center; font-size: 12px; color: var(--gray-600); }
+    footer a { color: var(--gray-400); }
+
+    @media (max-width: 900px) {
+      .page { grid-template-columns: 1fr; gap: 36px; padding: calc(var(--nav-h) + 32px) 16px 56px; }
+      .panel { position: static; padding: 24px 18px; scroll-margin-top: calc(var(--nav-h) + 12px); }
+      .jump { display: flex; }
+    }
+    @media (max-width: 520px) {
+      .deal { grid-template-columns: 1fr; }
+      .row2 { grid-template-columns: 1fr; }
+      .lede { font-size: 16px; }
+      .book-row img { width: 88px; }
+      .nav-inner { padding: 0 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a class="nav-logo" href="/">THE ONE PERCENT NATION</a>
+    <a class="nav-back" href="/books">The Books</a>
+  </div>
+</nav>
+
+<main class="page">
+  <section>
+    <div class="eyebrow">Advance Reader Copy</div>
+    <h1>Read It <span class="red">First.</span><br>Tell It Straight.</h1>
+    <p class="lede">
+      <em>I Can't: Is Not A Strategy</em> is for the person who is successful on paper and still hears that voice.
+      Get the full digital edition free, before it reaches everyone else. In return, read it and leave an honest review.
+    </p>
+    <a class="btn btn-primary jump" href="#claim">Claim my advance copy</a>
+
+    <div class="book-row">
+      <img src="/assets/i-cant-book-poster.jpg" alt="I Can't: Is Not A Strategy by Anthony Brown Sr.">
+      <div>
+        <div class="t">I Can't<br>Is Not A Strategy</div>
+        <div class="a">Anthony Brown Sr. · Eleven Legacy Press</div>
+        <span class="pill">Full digital edition · Free</span>
+      </div>
+    </div>
+
+    <div class="deal">
+      <div class="deal-col">
+        <h2>What you get</h2>
+        <ul>
+          <li><strong>The whole book.</strong> Every chapter and every exercise. Not a sample.</li>
+          <li><strong>Read anywhere.</strong> Phone, tablet or computer. It remembers your page.</li>
+          <li><strong>It stays yours.</strong> The book lives in your One Percent library. No link to keep track of.</li>
+        </ul>
+      </div>
+      <div class="deal-col">
+        <h2>What we ask</h2>
+        <ul>
+          <li><strong>Read at your pace.</strong> No deadline pressure.</li>
+          <li><strong>Leave an honest review</strong> on Amazon or Goodreads when you finish.</li>
+          <li><strong>Tell us the truth.</strong> What landed and what did not.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="author">
+      <img src="/assets/founder-headshot-square.jpg" alt="Anthony Brown Sr.">
+      <div>
+        <div class="n">Anthony Brown Sr.</div>
+        <div class="r">Founder, The One Percent Nation · Speaker · Coach</div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel" id="claim" aria-live="polite">
+    <!-- Loading -->
+    <div id="st-loading" class="state">
+      <p>Loading…</p>
+    </div>
+
+    <!-- Sign-up form -->
+    <div id="st-form" hidden>
+      <div class="panel-title">Claim Your Copy</div>
+      <div class="panel-sub" id="form-sub">Create your free account and the book opens right away.</div>
+      <div class="seats" id="seats" hidden></div>
+
+      <form id="arc-form" novalidate>
+        <div class="row2" id="name-row">
+          <label class="f">First name
+            <input type="text" id="first" autocomplete="given-name" maxlength="60">
+          </label>
+          <label class="f">Last name
+            <input type="text" id="last" autocomplete="family-name" maxlength="60">
+          </label>
+        </div>
+        <div id="account-fields">
+          <label class="f">Email
+            <input type="email" id="email" autocomplete="email" maxlength="160">
+          </label>
+          <label class="f" style="margin-top:14px;"><span id="pw-label">Create a password (8+ characters)</span>
+            <input type="password" id="password" autocomplete="new-password" minlength="8">
+          </label>
+        </div>
+        <div id="signed-in" class="signed-in" hidden></div>
+
+        <label class="f">Where will you post your review?
+          <select id="platform">
+            <option>Amazon</option>
+            <option>Goodreads</option>
+            <option>Amazon and Goodreads</option>
+            <option>Social media</option>
+            <option>Not sure yet</option>
+          </select>
+        </label>
+
+        <label class="check"><input type="checkbox" id="agree">
+          <span><strong>I'll read it and leave an honest review.</strong> Honest beats kind. That is the point of reading early.</span>
+        </label>
+        <label class="check"><input type="checkbox" id="updates">
+          <span>Email me about Anthony's new books, courses and free tools. Unsubscribe anytime.</span>
+        </label>
+
+        <div id="err" class="err" hidden></div>
+
+        <button class="btn btn-primary" type="submit" id="submit">Get my advance copy</button>
+        <div class="divider" id="or">or</div>
+        <button class="btn btn-ghost" type="button" id="google">Continue with Google</button>
+
+        <div class="switch" id="switch-wrap">
+          <span id="switch-text">Already have a One Percent account?</span>
+          <button type="button" id="switch">Sign in instead</button>
+        </div>
+        <div class="switch" id="reset-wrap" hidden><button type="button" id="reset">Forgot your password?</button></div>
+        <p class="fine">Free. No card. We never sell your information.</p>
+      </form>
+    </div>
+
+    <!-- Success -->
+    <div id="st-done" class="state" hidden>
+      <div class="icon">✓</div>
+      <h3>You're In.</h3>
+      <p id="done-msg">Your advance copy is in your library. Opening it now.</p>
+      <a class="btn btn-primary" id="read-link" href="/read?book=i-cant">Start reading</a>
+    </div>
+
+    <!-- Closed or full -->
+    <div id="st-closed" class="state" hidden>
+      <div class="icon off">✕</div>
+      <h3 id="closed-title">Sign-ups Are Closed</h3>
+      <p id="closed-msg">Advance copies are not open right now. You can still read chapter one free.</p>
+      <a class="btn btn-primary" href="/icantpreview">Read chapter one free</a>
+      <a class="btn btn-ghost" href="/books">See the book</a>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  © The One Percent Nation · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+</footer>
+
+<script type="module" src="js/arc-page.js"></script>
+<script src="/js/consent-banner.js" defer></script>
+</body>
+</html>

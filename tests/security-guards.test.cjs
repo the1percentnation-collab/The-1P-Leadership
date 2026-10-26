@@ -43,7 +43,7 @@ ok('deleting an account cancels its subscriptions before deleting anything', () 
 });
 
 ok('public and search callables are rate-limited', () => {
-  for (const name of ['registerForEvent', 'registerProductInterest', 'joinEarlyAccess', 'searchMembers', 'searchPosts', 'shareEventToContacts']) {
+  for (const name of ['registerForEvent', 'registerProductInterest', 'joinEarlyAccess', 'searchMembers', 'searchPosts', 'shareEventToContacts', 'claimArcCopy']) {
     const b = block(fn, `exports.${name} =`, '\nexports.');
     assert.ok(new RegExp(`rateLimitCaller\\([\\s\\S]{0,120}?action: '${name}'`).test(b), `${name} has no rate limit`);
   }

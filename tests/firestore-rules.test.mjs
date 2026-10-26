@@ -559,6 +559,32 @@ await t('admin CAN save hand-sale settings',
 await t('anyone signed out CANNOT read hand-sale settings',
   () => assertFails(getDoc(doc(anon, 'config/handSales'))));
 
+// ── ARC readers (/arc) ─────────────────────────────────────────────────────
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'config/arc'), { open: true, bookId: 'i-cant', limit: 50, claimed: 3 });
+  await setDoc(doc(db, 'arcReaders/solo'), { uid: 'solo', email: 'solo@x.com', bookId: 'i-cant', reviewedAt: null });
+});
+await t('anyone CAN read whether ARC sign-ups are open',
+  () => assertSucceeds(getDoc(doc(anon, 'config/arc'))));
+await t('a member CANNOT open ARC sign-ups or raise the limit',
+  () => assertFails(setDoc(doc(solo, 'config/arc'), { open: true, limit: 9999 }, { merge: true })));
+await t('admin CAN close ARC sign-ups',
+  () => assertSucceeds(setDoc(doc(adm, 'config/arc'), { open: false }, { merge: true })));
+await t('admin CAN read the ARC reader list',
+  () => assertSucceeds(getDocs(collection(adm, 'arcReaders'))));
+await t('an ARC reader CANNOT read the list, even their own record',
+  () => assertFails(getDoc(doc(solo, 'arcReaders/solo'))));
+await t('admin CAN mark an ARC review as in',
+  () => assertSucceeds(updateDoc(doc(adm, 'arcReaders/solo'), { reviewedAt: serverTimestamp() })));
+await t('admin CANNOT change which book an ARC reader got',
+  () => assertFails(updateDoc(doc(adm, 'arcReaders/solo'), { bookId: 'other' })));
+await t('nobody CAN add an ARC reader from the client (claimArcCopy only)',
+  () => Promise.all([
+    assertFails(setDoc(doc(solo, 'arcReaders/emp'), { uid: 'emp', bookId: 'i-cant' })),
+    assertFails(setDoc(doc(owner, 'arcReaders/emp'), { uid: 'emp', bookId: 'i-cant' }))
+  ]));
+
 await env.cleanup();
 
 let failed = 0;

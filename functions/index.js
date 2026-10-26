@@ -8082,6 +8082,166 @@ exports.syncBookGrants = onCall(async (request) => {
   return { ok: true, granted, checked: seen.size, courses: grantingSlugs };
 });
 
+// ── ARC readers (/arc) ──────────────────────────────────────────────────
+// One public link for advance readers: they create an account on /arc, the
+// full digital edition lands in their library, and they read it in /read.
+// No link to remember to send by hand. config/arc (admin-written from
+// /manage-library.html) holds the switch; with no record the sign-up is open
+// for the I Can't digital edition and uncapped.
+//   config/arc     { open, bookId, limit, claimed, reviewUrl }
+//   arcReaders/{uid} one per reader (Admin SDK writes only)
+const ARC_PLATFORMS = ['Amazon', 'Goodreads', 'Amazon and Goodreads', 'Social media', 'Not sure yet'];
+
+function arcConfig(raw) {
+  const c = raw && typeof raw === 'object' ? raw : {};
+  const bookId = /^[a-z0-9][a-z0-9-]{1,60}$/.test(String(c.bookId || '')) ? String(c.bookId) : 'i-cant';
+  const limit = Number.isFinite(Number(c.limit)) && Number(c.limit) > 0 ? Math.floor(Number(c.limit)) : null;
+  const claimed = Math.max(0, Math.floor(Number(c.claimed) || 0));
+  const reviewUrl = /^https:\/\//.test(String(c.reviewUrl || '')) ? String(c.reviewUrl).slice(0, 500) : null;
+  return { open: c.open !== false, bookId, limit, claimed, reviewUrl, full: limit != null && claimed >= limit };
+}
+
+function arcEmailContent({ firstName, bookTitle, bookId, reviewUrl }) {
+  const readUrl = `${APP_BASE_URL}/read?book=${encodeURIComponent(bookId)}`;
+  const hi = firstName ? `Hi ${firstName},` : 'Hi,';
+  const reviewLine = reviewUrl
+    ? `When you finish, leave your honest review here: ${reviewUrl}`
+    : 'When you finish, leave your honest review on Amazon or Goodreads. A few sentences is plenty.';
+  const subject = `Your advance copy of ${bookTitle} is ready`;
+  const text = [
+    hi, '',
+    `Thank you for reading ${bookTitle} early. Your advance copy is in your One Percent library now.`, '',
+    `Open it here: ${readUrl}`,
+    'Sign in with the account you just created. It works on your phone, tablet or computer, and it remembers your page.', '',
+    'What I ask in return:',
+    '1. Read at your own pace.',
+    `2. ${reviewLine}`,
+    '3. Tell me what landed and what did not. Just reply to this email.', '',
+    'Honest beats kind. That is the whole point of an early read.', '',
+    'Anthony Brown Sr.', 'The One Percent'
+  ].join('\n');
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;">
+    <p style="font-size:15px;">${textToHtml(hi)}</p>
+    <p style="font-size:15px;">Thank you for reading <em>${textToHtml(bookTitle)}</em> early. Your advance copy is in your One Percent library now.</p>
+    <p style="margin:22px 0;"><a href="${readUrl}" style="background:#E60306;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;">Start reading</a></p>
+    <p style="font-size:14px;color:#555;">Sign in with the account you just created. It works on your phone, tablet or computer, and it remembers your page.</p>
+    <h3 style="font-size:16px;margin:24px 0 0;">What I ask in return</h3>
+    <ol style="font-size:14px;color:#333;padding-left:20px;margin:8px 0 0;">
+      <li style="margin:4px 0;">Read at your own pace.</li>
+      <li style="margin:4px 0;">${reviewUrl
+        ? `When you finish, <a href="${escapeHtmlBasic(reviewUrl)}" style="color:#E60306;">leave your honest review here</a>.`
+        : 'When you finish, leave your honest review on Amazon or Goodreads. A few sentences is plenty.'}</li>
+      <li style="margin:4px 0;">Tell me what landed and what did not. Just reply to this email.</li>
+    </ol>
+    <p style="font-size:15px;margin-top:20px;">Honest beats kind. That is the whole point of an early read.</p>
+    <p style="font-size:14px;margin-top:24px;">Anthony Brown Sr.<br>The One Percent</p>
+  </div>`;
+  return { subject, text, html, readUrl };
+}
+
+// claimArcCopy — called by /arc once the reader is signed in. Idempotent: a
+// reader who signs up twice keeps one record and gets one email. `secrets`
+// is required for the welcome and owner emails.
+exports.claimArcCopy = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Create your account first.');
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'claimArcCopy', max: 10, windowSec: 600 });
+
+  const data = request.data || {};
+  if (data.agreesToReview !== true) {
+    throw new HttpsError('invalid-argument', 'Advance copies go to readers who agree to leave an honest review.');
+  }
+  const platform = ARC_PLATFORMS.includes(data.reviewPlatform) ? data.reviewPlatform : 'Not sure yet';
+  const user = await admin.auth().getUser(uid);
+  const email = normalizeEmail(user.email);
+  if (!EMAIL_RE.test(email)) throw new HttpsError('failed-precondition', 'Your account needs an email address.');
+  const name = String(data.name || user.displayName || '').trim().slice(0, 120) || email;
+
+  const FV = admin.firestore.FieldValue;
+  const cfgRef = db.collection('config').doc('arc');
+  const readerRef = db.collection('arcReaders').doc(uid);
+  const userRef = db.collection('users').doc(uid);
+
+  // The cap and the grant are one transaction, so two readers taking the
+  // last spot at once can't both get in.
+  const result = await db.runTransaction(async (tx) => {
+    const [cfgSnap, readerSnap] = await Promise.all([tx.get(cfgRef), tx.get(readerRef)]);
+    const cfg = arcConfig(cfgSnap.exists ? cfgSnap.data() : null);
+    if (readerSnap.exists) {
+      const r = readerSnap.data() || {};
+      return { already: true, bookId: r.bookId || cfg.bookId, cfg };
+    }
+    if (!cfg.open) throw new HttpsError('failed-precondition', 'Advance reader sign-ups are closed right now.');
+    if (cfg.full) throw new HttpsError('resource-exhausted', 'Every advance copy has been claimed. Thank you for your interest.');
+    const bookSnap = await tx.get(db.collection('books').doc(cfg.bookId));
+    if (!bookSnap.exists) throw new HttpsError('failed-precondition', 'The advance copy is not ready yet. Please try again soon.');
+    tx.set(userRef, { ownedBookIds: FV.arrayUnion(cfg.bookId) }, { merge: true });
+    tx.set(readerRef, {
+      uid, email, name, bookId: cfg.bookId, reviewPlatform: platform,
+      claimedAt: FV.serverTimestamp(), reviewedAt: null
+    });
+    tx.set(cfgRef, { claimed: FV.increment(1) }, { merge: true });
+    return { already: false, bookId: cfg.bookId, cfg, bookTitle: (bookSnap.data() || {}).title || 'I Can’t' };
+  });
+
+  const readUrl = `/read?book=${encodeURIComponent(result.bookId)}`;
+  if (result.already) return { ok: true, already: true, readUrl };
+
+  // The book is granted. Everything below is best-effort and must not fail
+  // the claim, or a retry would find the record and skip it anyway.
+  try {
+    const companyId = await resolveAcademyCompanyId(db);
+    if (companyId) {
+      const ref = await upsertCrmContact(db, companyId, {
+        name, email, source: 'ARC Reader', memberUid: uid,
+        tags: ['ARC Reader', 'Book Reader', `ARC: ${String(result.bookTitle).slice(0, 60)}`]
+          .concat(data.consent === true ? ['Opt-In: Calls/SMS/Email'] : [])
+      });
+      await recordFormConsent(db, ref, {
+        parsed: parseFormConsent({ consent: data.consent === true }),
+        source: 'ARC Reader', channel: 'arc',
+        fallbackText: 'Opted in to email updates on the ARC sign-up form'
+      });
+      await ref.collection('activities').add({
+        type: 'lead_form',
+        description: `ARC Reader: claimed ${result.bookTitle}. Will review on ${platform}.`,
+        actorUid: 'system', actorName: 'ARC sign-up',
+        createdAt: FV.serverTimestamp(),
+        meta: { formType: 'arc', bookId: result.bookId, reviewPlatform: platform }
+      });
+      await readerRef.set({ crmContactId: ref.id }, { merge: true });
+    }
+  } catch (e) {
+    console.error('[claimArcCopy] CRM record failed:', e && e.message);
+  }
+
+  if (emailConfigured()) {
+    try {
+      const msg = arcEmailContent({
+        firstName: name.split(/\s+/)[0], bookTitle: result.bookTitle,
+        bookId: result.bookId, reviewUrl: result.cfg.reviewUrl
+      });
+      await sendEmail({
+        to: email,
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject: msg.subject, text: msg.text, html: msg.html,
+        customArgs: { type: 'arc_welcome' }
+      });
+    } catch (e) {
+      console.warn('[claimArcCopy] welcome email failed:', e && e.message);
+    }
+  }
+  await notifyOwnerOfLead({
+    source: 'ARC Reader', name, email, phone: null,
+    fields: { book: result.bookTitle, review_on: platform },
+    contactUrl: `${APP_BASE_URL}/manage-library.html#arc`
+  });
+
+  return { ok: true, already: false, readUrl };
+});
+
 // stripeWebhook — enrolls buyers after checkout and revokes subscription
 // access on cancellation. Configure the endpoint in the Stripe dashboard to
 // send: checkout.session.completed, customer.subscription.deleted,
