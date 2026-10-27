@@ -183,6 +183,14 @@ ok('a Drive share link or bare id resolves to the file id', () => {
   assert.strictEqual(S.driveFileId('https://example.com/x.mp3'), null);
 });
 
+ok('the confirmed chapter starts for this recording parse into one cut per track, in order', () => {
+  const v = cfg.verifiedCuts;
+  const cuts = S.parseCutOverride(v.cuts, { tracks: cfg.tracks.length, duration: v.sourceSeconds });
+  assert.strictEqual(cuts.length, cfg.tracks.length);
+  assert.strictEqual(S.fmt(cuts[8].at), '1:25:44', 'Chapter 7 where its heading was heard');
+  assert.strictEqual(S.fmt(cuts[10].at), '1:58:34', 'Chapter 9 where its heading was heard');
+});
+
 ok('the I Can\'t config is the 13 narrated tracks, sample on the Introduction', () => {
   assert.strictEqual(cfg.tracks.length, 13);
   assert.strictEqual(cfg.tracks[cfg.sampleTrack].title, 'Introduction');
