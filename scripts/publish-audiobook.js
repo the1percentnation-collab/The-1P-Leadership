@@ -19,6 +19,7 @@
 //   --cuts="0:00:58, 0:06:10, ..."  hand-set chapter starts, after track 1,
 //                    when a cut in the report needs moving
 //   --dry-run        split and report only; nothing is written to Firebase
+//   --relisten       ignore the config's verifiedCuts and find the chapters again
 //   --no-listen      cut by pauses and word counts alone, without transcribing
 //                    (only for a narration whose chapter pauses stand out)
 //   --out=DIR        where the tracks are written (default: a temp dir)
@@ -134,9 +135,15 @@ async function main() {
   const duration = probeDuration(src);
 
   // ── Where the chapters start ──
-  const override = parseCutOverride(arg('cuts'), { tracks: words.length, duration });
+  // Chapter starts already confirmed for this recording (the config's
+  // verifiedCuts) beat listening again: the speech model can hear a little
+  // differently on another machine. They apply only while the source is the
+  // same length, so a new export is listened to afresh. --relisten ignores them.
+  const saved = cfg.verifiedCuts && !flag('relisten') && Math.abs(Number(cfg.verifiedCuts.sourceSeconds) - duration) <= 2
+    ? cfg.verifiedCuts.cuts : null;
+  const override = parseCutOverride(arg('cuts') || saved, { tracks: words.length, duration });
   let cuts = override;
-  let how = 'Chapter starts set by hand.';
+  let how = arg('cuts') ? 'Chapter starts set by hand.' : 'Chapter starts from the times already confirmed for this recording.';
   if (!cuts) {
     const silences = parseSilences(run('ffmpeg', ['-hide_banner', '-nostats', '-i', src, '-af', 'silencedetect=noise=-40dB:d=0.6', '-f', 'null', '-'], { capture: 'stderr' }));
     if (flag('no-listen')) {
