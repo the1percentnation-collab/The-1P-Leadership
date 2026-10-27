@@ -1,6 +1,7 @@
 {
   "_comment": "How the I Can't audiobook is cut and published by scripts/publish-audiobook.js. Track word counts come from the ElevenLabs narration script (Drive: 'I CANT Audiobook Script - ElevenLabs'); they only steer where the cuts land, the pauses decide.",
   "bookId": "i-cant-audio",
+  "coverImage": "../public/assets/i-cant-audio-cover.jpg",
   "title": "I Can't: Strategies To Overcoming Your Limiting Beliefs",
   "author": "Anthony Brown Sr.",
   "sampleTrack": 1,
