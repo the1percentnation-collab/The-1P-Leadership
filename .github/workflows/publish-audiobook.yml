@@ -1,0 +1,80 @@
+# Publishes the I Can't audiobook from the single MP3 ElevenLabs exports.
+#
+# Actions → "Publish audiobook" → Run workflow. Paste the Google Drive link to
+# the MP3 (shared "Anyone with the link" for the few minutes this runs, then
+# set back to Restricted). The run cuts it into chapter tracks at the pauses
+# between chapters, uploads them, and creates the $9.99 product. Its summary
+# lists every cut with a "listen" flag on any that deserve a check.
+#
+# Leave Publish unticked the first time: the book is uploaded hidden so an
+# admin can play it at /listen?book=i-cant-audio. Run again with Publish
+# ticked to put it on sale. A cut in the wrong place is fixed by pasting the
+# chapter start times into "Chapter starts" and running again.
+name: Publish audiobook
+
+on:
+  workflow_dispatch:
+    inputs:
+      drive_link:
+        description: 'Google Drive link to the audiobook MP3'
+        required: true
+        type: string
+      publish:
+        description: 'Put it on sale now (untick to upload hidden for a listen-through)'
+        type: boolean
+        default: false
+      cuts:
+        description: 'Optional: chapter start times to use instead, after track 1 (e.g. 0:00:58, 0:06:10, ...)'
+        required: false
+        type: string
+      config:
+        description: 'Book config in scripts/audiobooks/'
+        type: string
+        default: 'audiobooks/i-cant.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-audiobook
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Make sure ffmpeg is there
+        run: command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+
+      - name: Write service account key
+        id: sa
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP }}
+        run: |
+          echo "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+          echo "path=$RUNNER_TEMP/sa.json" >> "$GITHUB_OUTPUT"
+
+      - name: Install script dependencies
+        working-directory: scripts
+        run: npm ci
+
+      - name: Cut, upload and publish
+        working-directory: scripts
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.sa.outputs.path }}
+          DRIVE_LINK: ${{ inputs.drive_link }}
+          CUTS: ${{ inputs.cuts }}
+          CONFIG: ${{ inputs.config }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          args=(--config="$CONFIG" --drive="$DRIVE_LINK" --out="$RUNNER_TEMP/audiobook")
+          [ -n "$CUTS" ] && args+=(--cuts="$CUTS")
+          [ "$PUBLISH" = "true" ] && args+=(--publish)
+          node publish-audiobook.js "${args[@]}"

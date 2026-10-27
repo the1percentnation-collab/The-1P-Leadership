@@ -67,6 +67,10 @@ function toUrlOrNull(v) {
   return s || null;
 }
 
+function cleanBookIds(v) {
+  return Array.isArray(v) ? [...new Set(v.map(String).filter((id) => /^[a-z0-9][a-z0-9-]{1,80}$/.test(id)))] : [];
+}
+
 function productsCol() { return collection(db, 'products'); }
 function productRef(id) { return doc(db, 'products', id); }
 
@@ -114,6 +118,9 @@ export async function createProduct(data = {}) {
     preorderMode: ['interest', 'deposit', 'prepay'].includes(data.preorderMode) ? data.preorderMode : 'interest',
     depositAmount: data.depositAmount ? Number(data.depositAmount) : null,
     sortOrder: Number(data.sortOrder) || 0,
+    // Library books (an audiobook, an ebook) checkout puts on the buyer's
+    // shelf. A product with any is delivered digitally the moment it is paid.
+    grantsBooks: cleanBookIds(data.grantsBooks),
     // The publishing contract, shared with courses/{slug}. Channels are
     // default-true opt-outs so an existing product needs no backfill; the
     // rest are null until set. `launchAt` used to sit here, written as null
@@ -143,7 +150,7 @@ export async function updateProduct(id, patch = {}) {
     'price', 'sellable', 'requiresShipping', 'inventory',
     'preorderMode', 'depositAmount', 'sortOrder',
     'showOnSite', 'showInDashboard', 'launchDate', 'salePrice', 'saleEndsAt',
-    'externalUrl', 'videoUrl', 'posterUrl'];
+    'externalUrl', 'videoUrl', 'posterUrl', 'grantsBooks'];
   const clean = {};
   allowed.forEach((k) => {
     if (patch[k] === undefined) return;
@@ -157,6 +164,8 @@ export async function updateProduct(id, patch = {}) {
       clean[k] = toUrlOrNull(patch[k]);
     } else if (k === 'sortOrder') {
       clean[k] = Number(patch[k]) || 0;
+    } else if (k === 'grantsBooks') {
+      clean[k] = cleanBookIds(patch[k]);
     } else {
       clean[k] = patch[k];
     }

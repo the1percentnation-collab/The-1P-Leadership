@@ -451,6 +451,11 @@ async function open() {
   } catch (e) {
     book = null;
   }
+  // An audiobook has no pages: its home is the player.
+  if (book && book.format === 'audio') {
+    location.replace(`/listen?book=${encodeURIComponent(BOOK_ID)}`);
+    return;
+  }
   const free = isOpenAccess(book);
   if (!user && !free) { toLogin(); return; }
   if (free) {

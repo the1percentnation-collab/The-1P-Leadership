@@ -14,6 +14,11 @@
                                     "type": 302
                         },
                         {
+                                    "regex": "^/[Ii][Cc][Aa][Nn][Tt][Aa][Uu][Dd][Ii][Oo]/?$",
+                                    "destination": "/listen?book=i-cant-audio",
+                                    "type": 302
+                        },
+                        {
                                     "regex": "^/[Mm][Yy][Tt][Ee][Aa][Mm]/?$",
                                     "destination": "/assessments/team-alignment?utm_source=keynote&utm_medium=stage",
                                     "type": 302
@@ -56,6 +61,20 @@
                                     "source": "/api/book-file",
                                     "function": {
                                               "functionId": "bookFile",
+                                              "region": "us-central1"
+                                    }
+                        },
+                        {
+                                    "source": "/api/book-audio",
+                                    "function": {
+                                              "functionId": "bookAudio",
+                                              "region": "us-central1"
+                                    }
+                        },
+                        {
+                                    "source": "/api/audio-feed",
+                                    "function": {
+                                              "functionId": "audioFeed",
                                               "region": "us-central1"
                                     }
                         },

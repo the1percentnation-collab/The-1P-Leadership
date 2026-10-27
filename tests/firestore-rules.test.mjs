@@ -362,6 +362,22 @@ await t('member CAN save their reading position',
     cfi: 'epubcfi(/6/4!/4/2/1:0)', fraction: 0.12, chapter: 'Chapter 1', bookmarks: [], updatedAt: serverTimestamp()
   })));
 
+await t('member CAN save their place in an audiobook',
+  () => assertSucceeds(setDoc(doc(reader, 'users/reader/bookProgress/i-cant-audio'), {
+    cfi: '', fraction: 0.4, chapter: 'Chapter 3', bookmarks: [], track: 2, time: 312.5, updatedAt: serverTimestamp()
+  })));
+
+await t('member CANNOT save a non-integer audiobook chapter',
+  () => assertFails(setDoc(doc(reader, 'users/reader/bookProgress/i-cant-audio'), {
+    fraction: 0.4, track: 'two', time: 3
+  })));
+
+await t('member CANNOT read listening passes or feed links',
+  () => assertFails(getDoc(doc(reader, 'audioPasses/reader_i-cant-audio'))));
+
+await t('member CANNOT write a feed link',
+  () => assertFails(setDoc(doc(reader, 'audioFeeds/reader_i-cant-audio'), { uid: 'reader', bookId: 'i-cant-audio', token: 'x' })));
+
 await t('member CANNOT stash arbitrary fields in a reading position',
   () => assertFails(setDoc(doc(reader, 'users/reader/bookProgress/i-cant'), {
     cfi: 'x', fraction: 0.1, ownedBookIds: ['other']
