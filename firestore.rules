@@ -1276,9 +1276,27 @@ service cloud.firestore {
     // (certification thresholds, lead routing) stays admin-only.
     match /config/{docId} {
       // config/membership (included courses, founding count) is public so
-      // the membership page can show it, and server-written only.
-      allow read: if docId == 'booking' || docId == 'membership' || isAnyAdmin();
+      // the membership page can show it, and server-written only. config/arc
+      // is public so /arc can say it is closed before anyone signs up.
+      allow read: if docId == 'booking' || docId == 'membership' || docId == 'arc' || isAnyAdmin();
       allow write: if isAnyAdmin() && docId != 'membership';
+    }
+
+    // ARC readers who claimed an advance copy on /arc. Written only by the
+    // claimArcCopy Cloud Function (Admin SDK); admins read the list in
+    // /manage-library.html and mark a review as in. A reader can read their
+    // own record, which puts their name on every page of the copy (/read).
+    match /arcReaders/{uid} {
+      allow read: if isAnyAdmin() || (isSignedIn() && request.auth.uid == uid);
+      allow update: if isAnyAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reviewedAt']);
+      allow create, delete: if false;
+    }
+
+    // ARC sign-up forms waiting for their email link to be opened. Written
+    // and read only by requestArcLink / claimArcCopy (Admin SDK).
+    match /arcRequests/{id} {
+      allow read, write: if false;
     }
 
     // ────────────────────────────────────────────────────────────────
