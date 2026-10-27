@@ -66,5 +66,10 @@
       "title": "Conclusion: Embracing Your Limitless Potential",
       "words": 1246
     }
-  ]
+  ],
+  "verifiedCuts": {
+    "_comment": "Chapter starts confirmed for the 2:35:26 ElevenLabs export (run 3 heard every heading but Chapter 5, which Anthony checked by ear). Used instead of listening while the source is this length; a new export of a different length is listened to afresh.",
+    "sourceSeconds": 9326,
+    "cuts": "0:00:51.5, 0:03:41.5, 0:14:34.5, 0:26:09.5, 0:43:53.5, 0:58:50.5, 1:11:11.5, 1:25:43.5, 1:44:45.5, 1:58:33.5, 2:13:35.5, 2:28:17.5"
+  }
 }
