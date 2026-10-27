@@ -374,6 +374,33 @@ function emailAddrList(v) {
 }
 
 /**
+ * An address as Telnyx takes it: { email, name? }. Telnyx rejects the
+ * "Name <addr>" string form with 422 "from_email has invalid format", so a
+ * display name always travels as its own field. Accepts a bare address, a
+ * "Name <addr>" string or { email, name }.
+ */
+function telnyxAddr(a) {
+  if (!a) return null;
+  let email;
+  let name;
+  if (typeof a === 'string') {
+    const m = a.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+    email = (m ? m[2] : a).trim();
+    name = m ? m[1].replace(/^["']|["']$/g, '').trim() : '';
+  } else {
+    email = String(a.email || '').trim();
+    name = String(a.name || '').trim();
+  }
+  if (!email) return null;
+  return name ? { email, name } : { email };
+}
+
+function telnyxAddrList(v) {
+  if (!v) return [];
+  return (Array.isArray(v) ? v : [v]).map(telnyxAddr).filter(Boolean);
+}
+
+/**
  * Apply a personalization's substitutions to a rendered body.
  *
  * SendGrid does this server-side from `substitutions` + `substitutionWrappers`.
@@ -412,15 +439,15 @@ async function sendEmailViaSendGrid(msg) {
 
 function telnyxEmailBody(msg) {
   const body = {
-    from: emailAddrString(msg.from),
-    to: emailAddrList(msg.to),
+    from: telnyxAddr(msg.from),
+    to: telnyxAddrList(msg.to),
     subject: msg.subject || ''
   };
   if (msg.text) body.text_body = msg.text;
   if (msg.html) body.html_body = msg.html;
   if (msg.replyTo) body.reply_to = emailAddrOnly(msg.replyTo);
-  if (msg.cc) body.cc = emailAddrList(msg.cc);
-  if (msg.bcc) body.bcc = emailAddrList(msg.bcc);
+  if (msg.cc) body.cc = telnyxAddrList(msg.cc);
+  if (msg.bcc) body.bcc = telnyxAddrList(msg.bcc);
   if (msg.headers && Object.keys(msg.headers).length) body.headers = msg.headers;
   if (msg.customArgs && Object.keys(msg.customArgs).length) {
     body.metadata = msg.customArgs;
