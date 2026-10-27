@@ -86,8 +86,9 @@ const CRM_FROM_NAME = 'Anthony Brown';
 
 /**
  * The subdomain whose MX points at SendGrid Inbound Parse. Outbound CRM email
- * carries Reply-To: reply+<companyId>.<contactId>@<this domain>, which is what
- * makes an inbound reply land on the right contact card with no guessing.
+ * sent through SendGrid carries Reply-To: reply+<companyId>.<contactId>@<this
+ * domain>, which is what makes an inbound reply land on the right contact
+ * card with no guessing.
  *
  * It MUST be a subdomain, never the1pnation.com itself — repointing the root
  * MX would take the real mailbox offline.
@@ -96,8 +97,17 @@ function inboundEmailDomain() {
   return (process.env.INBOUND_EMAIL_DOMAIN || '').trim().toLowerCase().replace(/^@/, '');
 }
 
-/** The per-contact Reply-To, or null when inbound parse is not configured. */
+/**
+ * The per-contact Reply-To, or null to use the company's Reply-To setting.
+ *
+ * Only SendGrid Inbound Parse accepts reply+<token> addresses. Telnyx inboxes
+ * are fixed addresses (no "+"), so on Telnyx this is null: replies go to the
+ * Reply-To in CRM Settings > Email, which is the real mailbox until it is
+ * pointed at a Telnyx inbox, and telnyxEmailEventWebhook matches the reply to
+ * a contact by sender instead.
+ */
 function replyAddressFor(companyId, contactId) {
+  if (emailProvider() !== 'sendgrid') return null;
   const domain = inboundEmailDomain();
   if (!domain || !companyId || !contactId) return null;
   return `reply+${companyId}.${contactId}@${domain}`;
@@ -1989,6 +1999,153 @@ function stripQuotedReply(text) {
   return trimmed || s.trim();
 }
 
+/**
+ * Put one inbound email on the right contact card. Shared by both providers'
+ * webhooks, which only differ in how they hand the message over.
+ *
+ *   msg = { from: {name, email}, subject, text, html, recipients: [raw],
+ *           messageId, inReplyTo, spamScore, spf, dkim, dedupeId }
+ *
+ * `dedupeId` (the provider's id for the message) makes a retried webhook a
+ * no-op instead of a second copy of the reply. Returns null when the message
+ * has no usable sender or there is no company to put it on.
+ */
+async function recordInboundEmail(db, msg) {
+  const FV = admin.firestore.FieldValue;
+  const from = msg.from || {};
+  if (!from.email) return null;
+  const subject = String(msg.subject || '(no subject)').slice(0, 300);
+  const textRaw = String(msg.text || '') || htmlToText(String(msg.html || ''));
+  const bodyText = stripQuotedReply(textRaw).slice(0, 20000);
+  const recipients = msg.recipients || [];
+  const messageId = msg.messageId || null;
+  const inReplyTo = msg.inReplyTo || null;
+
+  // 1) Routing token wins: it names the contact outright.
+  let companyId = null;
+  let contactRef = null;
+  const routed = parseReplyRouting(recipients);
+  if (routed) {
+    const ref = db.collection('companies').doc(routed.companyId)
+      .collection('contacts').doc(routed.contactId);
+    const snap = await ref.get();
+    if (snap.exists) { companyId = routed.companyId; contactRef = ref; }
+  }
+
+  // 2) Otherwise match the sender against the contacts of the academy
+  // company — a lead who emails in cold, or replies from their phone's
+  // other address, still reaches a card.
+  if (!contactRef) {
+    companyId = await resolveAcademyCompanyId(db);
+    if (!companyId) return null;
+    const contactsRef = db.collection('companies').doc(companyId).collection('contacts');
+    const q = await contactsRef.where('email', '==', from.email).limit(1).get();
+    if (!q.empty) {
+      contactRef = q.docs[0].ref;
+    } else {
+      const created = await contactsRef.add({
+        name: from.name || from.email, email: from.email, phone: null, companyName: null,
+        source: 'Email', stage: 'new', tags: [], ownerUid: null,
+        createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp(),
+        createdBy: 'inbound-email', lastActivityAt: FV.serverTimestamp()
+      });
+      contactRef = created;
+      await contactRef.collection('activities').add({
+        type: 'contact_created', description: 'Created from an inbound email.',
+        actorUid: 'inbound-email', actorName: from.email, createdAt: FV.serverTimestamp()
+      });
+    }
+  }
+
+  const emailRef = msg.dedupeId
+    ? contactRef.collection('emails').doc('in_' + crypto.createHash('sha256').update(String(msg.dedupeId)).digest('hex').slice(0, 32))
+    : contactRef.collection('emails').doc();
+
+  // Thread it onto the message it answers: the newest recent email with the
+  // same subject or the Message-ID it replies to. Not just the latest one, so
+  // a reply to last week's email still joins that conversation after newer
+  // sends went out. Otherwise it opens its own thread.
+  let threadKey = emailRef.id;
+  try {
+    const bare = (x) => String(x || '').replace(/^((re|fwd?):\s*)+/i, '').trim().toLowerCase();
+    const recent = await contactRef.collection('emails')
+      .orderBy('createdAt', 'desc').limit(20).get();
+    const match = recent.docs.map((d) => d.data()).find((prev) => prev.threadKey && (
+      bare(prev.subject) === bare(subject)
+      || (inReplyTo && prev.messageId && inReplyTo.includes(prev.messageId))));
+    if (match) threadKey = match.threadKey;
+  } catch (e) { /* an unthreaded message is still a delivered message */ }
+
+  try {
+    await emailRef.create({
+      direction: 'in',
+      threadKey,
+      subject,
+      bodyText,
+      // Stored for the record but never injected into the page: the
+      // timeline renders bodyText escaped, so untrusted remote HTML has no
+      // path to the DOM.
+      bodyHtml: String(msg.html || '').slice(0, 100000) || null,
+      snippet: bodyText.slice(0, 200),
+      fromEmail: from.email,
+      fromName: from.name || null,
+      toEmail: (parseAddress(recipients[0]) || {}).email || null,
+      messageId,
+      inReplyTo,
+      spamScore: msg.spamScore != null && msg.spamScore !== '' ? Number(msg.spamScore) : null,
+      spf: msg.spf || null,
+      dkim: msg.dkim || null,
+      status: 'received',
+      read: false,
+      createdAt: FV.serverTimestamp()
+    });
+  } catch (e) {
+    // ALREADY_EXISTS: the provider retried a message we already recorded.
+    if (e && (e.code === 6 || /already exists/i.test(e.message || ''))) {
+      return { companyId, contactId: contactRef.id, emailId: emailRef.id, duplicate: true };
+    }
+    throw e;
+  }
+
+  await contactRef.collection('activities').add({
+    type: 'email_received',
+    description: subject,
+    actorUid: 'inbound-email',
+    actorName: from.name || from.email,
+    createdAt: FV.serverTimestamp(),
+    meta: { subject, bodyPreview: bodyText.slice(0, 200), emailId: emailRef.id, threadKey }
+  });
+
+  await contactRef.set({
+    lastActivityAt: FV.serverTimestamp(),
+    lastEmailAt: FV.serverTimestamp(),
+    ...lastContactedFields('email', 'in'),
+    emailUnreadCount: FV.increment(1)
+  }, { merge: true });
+
+  // A reply is the lead engaging. Same rule as an inbound text: no
+  // automated cadence should keep firing over a live conversation.
+  try { await stopEnrollmentsForContact(db, companyId, contactRef.id, 'replied by email'); } catch (e) {}
+
+  // Optional courtesy copy, so the CRM is not the only place the reply
+  // exists and the mailbox owner still sees it on their phone.
+  try {
+    const identity = await getCompanyEmailIdentity(db, companyId);
+    if (identity.forwardInboundTo) {
+      await sendEmail({
+        to: identity.forwardInboundTo,
+        from: { email: identity.fromEmail, name: identity.fromName },
+        replyTo: from.email,
+        subject: `[CRM] ${subject}`,
+        text: `From: ${from.name ? from.name + ' ' : ''}<${from.email}>\n`
+          + `Contact: ${APP_BASE_URL}/contact.html?id=${contactRef.id}&compose=email\n\n${bodyText}`
+      });
+    }
+  } catch (e) { console.warn('[inboundEmail] forward failed:', e && e.message); }
+
+  return { companyId, contactId: contactRef.id, emailId: emailRef.id, duplicate: false };
+}
+
 exports.inboundEmailWebhook = onRequest(
   { cors: false, invoker: 'public', secrets: [sendgridKey] },
   async (req, res) => {
@@ -2010,20 +2167,11 @@ exports.inboundEmailWebhook = onRequest(
     }
     if (req.method !== 'POST') { res.status(405).send('method not allowed'); return; }
 
-    const db = admin.firestore();
-    const FV = admin.firestore.FieldValue;
-
     try {
       const ct = req.get('content-type') || '';
       const fields = ct.includes('multipart/form-data')
         ? parseMultipartFields(req.rawBody ? Buffer.from(req.rawBody) : null, ct)
         : (req.body || {});
-
-      const from = parseAddress(fields.from);
-      const subject = String(fields.subject || '(no subject)').slice(0, 300);
-      const textRaw = String(fields.text || '') || htmlToText(String(fields.html || ''));
-      const bodyText = stripQuotedReply(textRaw).slice(0, 20000);
-      if (!from.email) { res.status(200).send('ok'); return; }
 
       // Every address the message was addressed to, so the reply+ routing
       // token is found wherever the lead's client put it.
@@ -2039,120 +2187,19 @@ exports.inboundEmailWebhook = onRequest(
       const headerBlob = String(fields.headers || '');
       const midMatch = /^Message-ID:\s*(<[^>]+>)/im.exec(headerBlob);
       const irtMatch = /^In-Reply-To:\s*(<[^>]+>)/im.exec(headerBlob);
-      const messageId = midMatch ? midMatch[1] : null;
-      const inReplyTo = irtMatch ? irtMatch[1] : null;
 
-      // 1) Routing token wins: it names the contact outright.
-      let companyId = null;
-      let contactRef = null;
-      const routed = parseReplyRouting(recipients);
-      if (routed) {
-        const ref = db.collection('companies').doc(routed.companyId)
-          .collection('contacts').doc(routed.contactId);
-        const snap = await ref.get();
-        if (snap.exists) { companyId = routed.companyId; contactRef = ref; }
-      }
-
-      // 2) Otherwise match the sender against the contacts of the academy
-      // company — a lead who emails in cold, or replies from their phone's
-      // other address, still reaches a card.
-      if (!contactRef) {
-        companyId = await resolveAcademyCompanyId(db);
-        if (!companyId) { res.status(200).send('ok'); return; }
-        const contactsRef = db.collection('companies').doc(companyId).collection('contacts');
-        const q = await contactsRef.where('email', '==', from.email).limit(1).get();
-        if (!q.empty) {
-          contactRef = q.docs[0].ref;
-        } else {
-          const created = await contactsRef.add({
-            name: from.name || from.email, email: from.email, phone: null, companyName: null,
-            source: 'Email', stage: 'new', tags: [], ownerUid: null,
-            createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp(),
-            createdBy: 'inbound-email', lastActivityAt: FV.serverTimestamp()
-          });
-          contactRef = created;
-          await contactRef.collection('activities').add({
-            type: 'contact_created', description: 'Created from an inbound email.',
-            actorUid: 'inbound-email', actorName: from.email, createdAt: FV.serverTimestamp()
-          });
-        }
-      }
-
-      // Thread it onto the most recent outbound message to this contact when
-      // the lead is replying to something we sent; otherwise it opens its own.
-      const emailRef = contactRef.collection('emails').doc();
-      let threadKey = emailRef.id;
-      try {
-        const recent = await contactRef.collection('emails')
-          .orderBy('createdAt', 'desc').limit(1).get();
-        if (!recent.empty) {
-          const prev = recent.docs[0].data();
-          const sameSubject = String(prev.subject || '').replace(/^(re|fwd):\s*/i, '').trim().toLowerCase()
-            === subject.replace(/^(re|fwd):\s*/i, '').trim().toLowerCase();
-          if (prev.threadKey && (sameSubject || (inReplyTo && prev.messageId && inReplyTo.includes(prev.messageId)))) {
-            threadKey = prev.threadKey;
-          }
-        }
-      } catch (e) { /* an unthreaded message is still a delivered message */ }
-
-      await emailRef.set({
-        direction: 'in',
-        threadKey,
-        subject,
-        bodyText,
-        // Stored for the record but never injected into the page: the
-        // timeline renders bodyText escaped, so untrusted remote HTML has no
-        // path to the DOM.
-        bodyHtml: String(fields.html || '').slice(0, 100000) || null,
-        snippet: bodyText.slice(0, 200),
-        fromEmail: from.email,
-        fromName: from.name,
-        toEmail: (parseAddress(recipients[0]) || {}).email || null,
-        messageId,
-        inReplyTo,
-        spamScore: fields.spam_score ? Number(fields.spam_score) : null,
-        spf: fields.SPF || null,
-        dkim: fields.dkim || null,
-        status: 'received',
-        read: false,
-        createdAt: FV.serverTimestamp()
+      await recordInboundEmail(admin.firestore(), {
+        from: parseAddress(fields.from),
+        subject: fields.subject,
+        text: fields.text,
+        html: fields.html,
+        recipients,
+        messageId: midMatch ? midMatch[1] : null,
+        inReplyTo: irtMatch ? irtMatch[1] : null,
+        spamScore: fields.spam_score,
+        spf: fields.SPF,
+        dkim: fields.dkim
       });
-
-      await contactRef.collection('activities').add({
-        type: 'email_received',
-        description: subject,
-        actorUid: 'inbound-email',
-        actorName: from.name || from.email,
-        createdAt: FV.serverTimestamp(),
-        meta: { subject, bodyPreview: bodyText.slice(0, 200), emailId: emailRef.id, threadKey }
-      });
-
-      await contactRef.set({
-        lastActivityAt: FV.serverTimestamp(),
-        lastEmailAt: FV.serverTimestamp(),
-        ...lastContactedFields('email', 'in'),
-        emailUnreadCount: FV.increment(1)
-      }, { merge: true });
-
-      // A reply is the lead engaging. Same rule as an inbound text: no
-      // automated cadence should keep firing over a live conversation.
-      try { await stopEnrollmentsForContact(db, companyId, contactRef.id, 'replied by email'); } catch (e) {}
-
-      // Optional courtesy copy, so the CRM is not the only place the reply
-      // exists and the mailbox owner still sees it on their phone.
-      try {
-        const identity = await getCompanyEmailIdentity(db, companyId);
-        if (identity.forwardInboundTo) {
-          await sendEmail({
-            to: identity.forwardInboundTo,
-            from: { email: identity.fromEmail, name: identity.fromName },
-            replyTo: from.email,
-            subject: `[CRM] ${subject}`,
-            text: `From: ${from.name ? from.name + ' ' : ''}<${from.email}>\n`
-              + `Contact: ${APP_BASE_URL}/contact.html?id=${contactRef.id}&compose=email\n\n${bodyText}`
-          });
-        }
-      } catch (e) { console.warn('[inboundEmail] forward failed:', e && e.message); }
     } catch (e) {
       // Never 5xx: the parse webhook retries hard, and a retry storm on a bug
       // would replay the same message onto the card dozens of times.
@@ -3673,6 +3720,65 @@ function telnyxEmailEvent(body) {
   };
 }
 
+/**
+ * A Telnyx `email.received` webhook → the shape recordInboundEmail takes.
+ *
+ * Telnyx's inbound payload is new and lightly documented, so this reads the
+ * field names it is likely to use (and the nesting its outbound events use)
+ * rather than one exact shape. Addresses may be strings or {email|address,
+ * name}; headers may be an object, a [{name, value}] list, or a raw blob.
+ */
+function telnyxInboundEmail(body) {
+  const data = (body && body.data) || body || {};
+  const payload = data.payload || {};
+  const m = payload.email || payload.message || payload;
+  const get = (path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), m);
+  const pick = (...paths) => {
+    for (const p of paths) {
+      const v = get(p);
+      if (v != null && v !== '') return v;
+    }
+    return null;
+  };
+  const addr = (v) => {
+    if (!v) return null;
+    if (typeof v === 'string') return v;
+    const email = v.email || v.address;
+    if (!email) return null;
+    return v.name ? `${v.name} <${email}>` : email;
+  };
+  const list = (v) => (Array.isArray(v) ? v : (v ? String(v).split(',') : [])).map(addr).filter(Boolean);
+
+  const rawHeaders = m.headers;
+  const header = (name) => {
+    if (!rawHeaders) return null;
+    if (typeof rawHeaders === 'string') {
+      const hit = new RegExp(`^${name}:\\s*(<[^>]+>)`, 'im').exec(rawHeaders);
+      return hit ? hit[1] : null;
+    }
+    if (Array.isArray(rawHeaders)) {
+      const hit = rawHeaders.find((h) => h && String(h.name || h.key || '').toLowerCase() === name);
+      return hit ? String(hit.value || '') || null : null;
+    }
+    const key = Object.keys(rawHeaders).find((k) => k.toLowerCase() === name);
+    return key ? String(rawHeaders[key] || '') || null : null;
+  };
+
+  const messageId = pick('message_id', 'messageId', 'internet_message_id') || header('message-id');
+  return {
+    from: parseAddress(addr(m.from || m.sender) || ''),
+    subject: pick('subject'),
+    text: pick('text', 'text_body', 'body_text', 'plain_text', 'body.text', 'content.text'),
+    html: pick('html', 'html_body', 'body_html', 'body.html', 'content.html'),
+    recipients: [...list(m.to), ...list(m.cc), ...list(m.recipients)],
+    messageId,
+    inReplyTo: pick('in_reply_to', 'inReplyTo') || header('in-reply-to'),
+    spamScore: pick('spam_score'),
+    dedupeId: m.id || payload.id || messageId || data.id || null,
+    fieldNames: Object.keys(m || {})
+  };
+}
+
 exports.telnyxEmailEventWebhook = onRequest(
   { cors: false, invoker: 'public' },
   async (req, res) => {
@@ -3681,8 +3787,27 @@ exports.telnyxEmailEventWebhook = onRequest(
     // something to accept on trust.
     if (!telnyxSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
 
+    const e = telnyxEmailEvent(req.body);
+    if (e.rawType === 'received' || e.rawType === 'inbound') {
+      // A reply from a lead. Unlike a delivery event, losing one matters, so
+      // a failure answers 500 and Telnyx retries; the message's id makes the
+      // retry a no-op if the first attempt got as far as saving it.
+      try {
+        const msg = telnyxInboundEmail(req.body);
+        if (!msg.text && !msg.html) {
+          console.warn('[telnyxInbound] no message body in the payload; fields:', msg.fieldNames.join(','));
+          msg.text = 'Reply received, but its text did not come through. Open it in Telnyx Mission Control > Email.';
+        }
+        await recordInboundEmail(admin.firestore(), msg);
+        res.status(200).send('ok');
+      } catch (err) {
+        console.error('[telnyxInbound] failed:', err && err.message);
+        res.status(500).send('retry');
+      }
+      return;
+    }
+
     try {
-      const e = telnyxEmailEvent(req.body);
       if (!e.rawType) { res.status(200).send('ignored'); return; }
 
       const md = e.metadata || {};

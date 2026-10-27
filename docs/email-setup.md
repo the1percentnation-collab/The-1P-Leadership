@@ -20,9 +20,9 @@ the same change in reverse. No code edit, no redeploy of logic.
 both write the same CRM timeline; section 5 has the Telnyx endpoint, and it
 should be configured at the same time as the switch.
 
-**Inbound replies are still SendGrid Inbound Parse.** Outbound and inbound are
-independent, and moving inbound means changing an MX record, so it is a
-separate step. Section 6 covers it.
+**Inbound replies follow the provider too.** On Telnyx they go to the Reply-to
+in CRM Settings (the real mailbox by default) and, once a Telnyx reply inbox is
+set up, onto the contact card via `telnyxEmailEventWebhook`. Section 6 covers it.
 
 ---
 
@@ -221,16 +221,37 @@ compliance problem rather than a cosmetic one.
 
 ---
 
-## 6. What is still on SendGrid
+## 6. Inbound replies (Telnyx)
 
-One thing: **reply capture**. `reply.the1pnation.com` has an MX record pointing
-at `mx.sendgrid.net`, and `inboundEmailWebhook` parses what SendGrid posts.
-Moving it to a Telnyx inbox means a new MX record and a new handler, and while
-the MX is changing, replies can be lost. Do it on its own, in a quiet window,
-not alongside the outbound cutover.
+Telnyx inboxes are fixed addresses (no `reply+token@`), so on Telnyx a CRM
+email's Reply-To is the **Reply-to** in CRM → Settings → Email. Out of the box
+that is `anthonybrown@the1pnation.com`, so replies land in the real mailbox and
+nothing is lost. To also log them on the contact card:
 
-Until then SendGrid stays in the stack for inbound only, which costs nothing
-and breaks nothing.
+1. **Add the reply subdomain in Telnyx.** Mission Control → Email → Domains →
+   Add Domain → `reply.the1pnation.com`, with inbound enabled. Add the records
+   it gives, including its **MX**, at the DNS host. The MX goes on
+   `reply.the1pnation.com` only, replacing the old `mx.sendgrid.net` one.
+   **Never add a Telnyx MX on `the1pnation.com` itself**: that would pull the
+   real mailbox's mail away.
+2. **Create the inbox** `reply@reply.the1pnation.com` on that domain.
+3. **Webhook.** Make sure `email.received` events post to the same
+   `telnyxEmailEventWebhook` URL as delivery events (section 5). It is signed
+   with `TELNYX_PUBLIC_KEY`, records each message once even when Telnyx
+   retries, and matches the reply to a contact by sender address, threading it
+   onto the email it answers by subject or In-Reply-To.
+4. **CRM → Settings → Email:** set Reply-to to `reply@reply.the1pnation.com`
+   and Forward inbound replies to `anthonybrown@the1pnation.com`, so every
+   reply is on the card and still reaches your phone.
+5. **Test:** email a contact you control from their card, reply from that
+   inbox, and confirm the reply shows on the card and arrives as a `[CRM]`
+   copy. If the card shows "its text did not come through", the function log
+   (`[telnyxInbound]`) lists the payload's field names.
+
+**Rollback:** with `EMAIL_PROVIDER=sendgrid`, CRM sends go back to the
+per-contact `reply+<companyId>.<contactId>@reply.the1pnation.com` address and
+`inboundEmailWebhook` (SendGrid Inbound Parse) takes them, which needs the
+SendGrid MX on the reply subdomain again.
 
 ---
 

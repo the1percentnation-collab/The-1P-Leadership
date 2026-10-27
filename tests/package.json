@@ -20,6 +20,7 @@
     "e2e:purchase": "bash run-e2e.sh purchase",
     "e2e:reader": "bash run-e2e.sh reader",
     "e2e:arc": "bash run-e2e.sh arc",
+    "e2e:inbound": "bash run-e2e.sh inbound",
     "e2e:notify": "bash run-e2e.sh notify",
     "e2e:thread": "bash run-e2e.sh thread",
     "e2e:digest": "cd .. && tests/node_modules/.bin/firebase emulators:exec --only firestore --project demo-1p \"node tests/digest-e2e.test.mjs\"",
