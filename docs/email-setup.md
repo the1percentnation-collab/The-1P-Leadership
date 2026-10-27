@@ -7,8 +7,11 @@ decided by one environment variable.
 
 | `EMAIL_PROVIDER` | Provider | Key |
 | --- | --- | --- |
-| unset or `sendgrid` | SendGrid (`@sendgrid/mail`) | `SENDGRID_API_KEY` (Secret Manager) |
-| `telnyx` | Telnyx Email API (REST) | `TELNYX_API_KEY` (the same key the SMS path uses) |
+| unset or `telnyx` | Telnyx Email API (REST) | `TELNYX_API_KEY` (the same key the SMS path uses) |
+| `sendgrid` | SendGrid (`@sendgrid/mail`) | `SENDGRID_API_KEY` (Secret Manager) |
+
+Telnyx became the default in October 2026, when SendGrid moved to a paid-only
+plan. Telnyx is pay-per-send with no monthly minimum.
 
 Because it is one variable, the cutover is a config change and the rollback is
 the same change in reverse. No code edit, no redeploy of logic.
@@ -45,8 +48,9 @@ makes the switch reversible.
 
 ## 0. Switching to Telnyx
 
-In order. Do not set `EMAIL_PROVIDER=telnyx` before the domain verifies, or
-every send is rejected.
+Telnyx is now the default, so with `EMAIL_PROVIDER` unset the platform sends
+through it. The domain must be verified first (steps 1 and 2), or every send is
+rejected.
 
 1. **Authenticate the domain.** Telnyx Mission Control → **Email → Domains →
    Add Domain**, enter `the1pnation.com`. Telnyx returns SPF, DKIM and DMARC
@@ -58,9 +62,10 @@ every send is rejected.
 3. **Confirm the key.** `TELNYX_API_KEY` is already a repository secret for
    SMS. The same bearer token covers the Email API, so there is nothing new to
    create.
-4. **Flip the switch.** Add a repository secret `EMAIL_PROVIDER` with the value
-   `telnyx`, then re-run *Deploy Firestore rules + Storage rules + Cloud
-   Functions*. The workflow writes it into `functions/.env`.
+4. **Flip the switch.** Nothing to set: unset means Telnyx. Re-run *Deploy
+   Firestore rules + Storage rules + Cloud Functions* so the functions pick it
+   up. (If an `EMAIL_PROVIDER` repository secret exists, it wins; delete it or
+   set it to `telnyx`.)
    Register the delivery-event webhook in the same sitting (section 5), or
    every send after this point looks stuck at "sent" in the CRM.
 5. **Send one real test.** Grant course access to an address you control, or
@@ -70,14 +75,15 @@ every send is rejected.
    expected batches before a large campaign; a first send to 900 addresses is
    how a new domain gets throttled.
 
-**Rollback:** set `EMAIL_PROVIDER` back to `sendgrid` and re-run the deploy.
+**Rollback:** add a repository secret `EMAIL_PROVIDER` = `sendgrid` and re-run
+the deploy.
 Nothing else changes, because nothing else moved.
 
 ---
 
 ## 1. Authenticate the sending domain in SendGrid
 
-Only needed while `EMAIL_PROVIDER` is `sendgrid` (the default). For Telnyx, see
+Only needed while `EMAIL_PROVIDER` is `sendgrid`. For Telnyx, see
 section 0 above.
 
 SendGrid → **Settings → Sender Authentication → Authenticate Your Domain**.

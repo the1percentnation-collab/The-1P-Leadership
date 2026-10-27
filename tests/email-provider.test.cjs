@@ -74,12 +74,14 @@ const MSG = {
 (async () => {
   // ── Provider selection ──────────────────────────────────────────────────
   delete process.env.EMAIL_PROVIDER;
-  t('defaults to sendgrid when unset', emailProvider() === 'sendgrid');
+  t('defaults to telnyx when unset', emailProvider() === 'telnyx');
   process.env.EMAIL_PROVIDER = 'TELNYX';
   t('is case and space insensitive', emailProvider() === 'telnyx');
   process.env.EMAIL_PROVIDER = 'mailchimp';
   t('an unknown provider falls back rather than failing to send',
-    emailProvider() === 'sendgrid');
+    emailProvider() === 'telnyx');
+  process.env.EMAIL_PROVIDER = 'sendgrid';
+  t('sendgrid is still one setting away (rollback)', emailProvider() === 'sendgrid');
 
   // ── SendGrid path ───────────────────────────────────────────────────────
   process.env.EMAIL_PROVIDER = 'sendgrid';

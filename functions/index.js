@@ -302,11 +302,12 @@ async function sendTelnyxSms({ to, body }) {
 //
 // Every email in this file goes through sendEmail() or sendEmailBatch(). The
 // provider behind them is chosen by EMAIL_PROVIDER at call time, so moving
-// from SendGrid to Telnyx is an environment change, not a code change, and
-// rolling back is the same switch in the other direction.
+// between SendGrid and Telnyx is an environment change, not a code change.
+// Telnyx is the default since SendGrid moved to a paid-only plan (Oct 2026);
+// setting EMAIL_PROVIDER=sendgrid is the rollback.
 //
-//   EMAIL_PROVIDER=sendgrid   (default) — @sendgrid/mail, SENDGRID_API_KEY
-//   EMAIL_PROVIDER=telnyx               — REST, TELNYX_API_KEY
+//   EMAIL_PROVIDER=telnyx     (default) — REST, TELNYX_API_KEY
+//   EMAIL_PROVIDER=sendgrid             — @sendgrid/mail, SENDGRID_API_KEY
 //
 // The message shape is the SendGrid one the call sites already wrote, because
 // changing 20-odd call sites and the wire format in the same step would make
@@ -323,8 +324,8 @@ async function sendTelnyxSms({ to, body }) {
 const EMAIL_PROVIDERS = ['sendgrid', 'telnyx'];
 
 function emailProvider() {
-  const p = (process.env.EMAIL_PROVIDER || 'sendgrid').trim().toLowerCase();
-  return EMAIL_PROVIDERS.includes(p) ? p : 'sendgrid';
+  const p = (process.env.EMAIL_PROVIDER || 'telnyx').trim().toLowerCase();
+  return EMAIL_PROVIDERS.includes(p) ? p : 'telnyx';
 }
 
 /**
