@@ -15,7 +15,7 @@ import { getUserProfile } from './community.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import { renderShell } from './academy-shell.js';
 import { libraryAccess, getBook, loadAllPositions, isAudioBook, bookHref } from './books.js';
-import { fmtMoney } from './pricing.js';
+import { priceInfo } from './pricing.js';
 import {
   collection, getDocs, query, where
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -114,7 +114,7 @@ function availableItem({ product, book }) {
     <a class="lib-book lib-avail" href="${escapeHtml(href)}">
       ${cover({ ...book, coverUrl: book.coverUrl || product.imageUrl })}
       <div class="lib-book-title">${escapeHtml(book.title || product.name || '')}</div>
-      <div class="lib-book-sub">${kind} · ${escapeHtml(fmtMoney(product.price))}</div>
+      <div class="lib-book-sub">${kind} · ${(() => { const p = priceInfo(product); return p.onSale ? `<s>${escapeHtml(p.originalLabel)}</s> ${escapeHtml(p.label)}` : escapeHtml(p.label); })()}</div>
       <span class="lib-avail-cta">${escapeHtml(product.pageCta || 'See details')} →</span>
     </a>`;
 }

@@ -7720,7 +7720,7 @@ exports.validateCoupon = onCall(async (request) => {
   } else {
     const snap = await db.collection('products').doc(id).get();
     if (!snap.exists) throw new HttpsError('not-found', 'Unknown product.');
-    priceDollars = typeof snap.data().price === 'number' ? snap.data().price : null;
+    priceDollars = effectivePriceDollars(snap.data());
   }
   if (priceDollars == null || priceDollars <= 0) {
     throw new HttpsError('failed-precondition', 'This item doesn\'t have a promo-eligible price.');
@@ -7872,7 +7872,9 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
     if (!['live', 'preorder'].includes(product.status) || product.sellable !== true) {
       throw new HttpsError('failed-precondition', 'This product isn\'t available to buy yet.');
     }
-    const basePrice = typeof product.price === 'number' ? product.price : null;
+    // The sale price while a sale is running (Manage Products → On sale),
+    // the same rule courses follow; a promo code then comes off that.
+    const basePrice = effectivePriceDollars(product);
     if (basePrice == null || basePrice <= 0) {
       throw new HttpsError('failed-precondition', 'This product doesn\'t have a price yet.');
     }
