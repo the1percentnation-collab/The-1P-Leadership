@@ -16,7 +16,8 @@
 import '../vendor/foliate-js/view.js';
 import * as CFI from '../vendor/foliate-js/epubcfi.js';
 import { onAuthReady } from './auth.js';
-import { firebaseReady } from './firebase.js';
+import { db, firebaseReady } from './firebase.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import {
   getBook, ownsBook, isOpenAccess, getBookFile, loadPosition, createPositionSaver
 } from './books.js';
@@ -413,6 +414,23 @@ function chapterHref(n) {
   return hit ? hit.href : null;
 }
 
+// ── Advance reader copy ─────────────────────────────────────────────────
+// An ARC carries its reader's name on every page, so a screenshot or a
+// shared login says whose copy it is. arcReaders/{uid} is readable by its
+// own reader; anyone else simply gets no mark.
+
+async function showArcMark(user) {
+  try {
+    const snap = await getDoc(doc(db, 'arcReaders', user.uid));
+    const r = snap.exists() ? snap.data() : null;
+    if (!r || r.bookId !== BOOK_ID) return;
+    $('arc-mark').textContent = `Advance copy for ${r.name || user.email || 'you'}  ·  Not for sharing`;
+    document.body.classList.add('has-arc-mark');
+  } catch (e) {
+    console.warn('[reader] could not check for an advance copy', e);
+  }
+}
+
 // ── Open ────────────────────────────────────────────────────────────────
 
 async function open() {
@@ -469,6 +487,7 @@ async function open() {
       busy: false, actions: `${buy}<a class="btn" href="/library">My library</a>` });
     return;
   }
+  if (user && !free) showArcMark(user);
 
   // A free preview is the top of the funnel, so it asks who is reading it
   // before it opens. Members and warm-DM links skip the wall (reader-lead.js).

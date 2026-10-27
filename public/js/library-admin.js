@@ -209,3 +209,42 @@ export async function syncBookGrants(bookId) {
   const res = await httpsCallable(functions, 'syncBookGrants')({ bookId });
   return res.data;
 }
+
+// ── ARC readers (/arc) ──────────────────────────────────────────────────
+// config/arc is the switch for the public advance-reader sign-up; the
+// claimArcCopy callable writes arcReaders/{uid} and grants the book. Admins
+// may change the settings here, and only `reviewedAt` on a reader.
+
+export async function loadArc() {
+  const [cfgSnap, readersSnap] = await Promise.all([
+    getDoc(doc(db, 'config', 'arc')),
+    getDocs(collection(db, 'arcReaders'))
+  ]);
+  const readers = readersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const ms = (t) => (t && t.toMillis ? t.toMillis() : 0);
+  readers.sort((a, b) => ms(b.claimedAt) - ms(a.claimedAt));
+  return { cfg: cfgSnap.exists() ? cfgSnap.data() : {}, readers };
+}
+
+export async function saveArcConfig(patch) {
+  const out = { updatedAt: serverTimestamp() };
+  if ('open' in patch) out.open = patch.open === true;
+  if ('limit' in patch) {
+    const n = Math.floor(Number(patch.limit));
+    out.limit = Number.isFinite(n) && n > 0 ? n : null;
+  }
+  if ('reviewUrl' in patch) {
+    const u = String(patch.reviewUrl || '').trim();
+    if (u && !/^https:\/\//.test(u)) throw new Error('The review link must start with https://.');
+    out.reviewUrl = u || null;
+  }
+  if ('bookId' in patch) {
+    if (!ID_RE.test(String(patch.bookId || ''))) throw new Error('Pick the book advance readers get.');
+    out.bookId = patch.bookId;
+  }
+  await setDoc(doc(db, 'config', 'arc'), out, { merge: true });
+}
+
+export async function markArcReviewed(uid, reviewed) {
+  await setDoc(doc(db, 'arcReaders', uid), { reviewedAt: reviewed ? serverTimestamp() : null }, { merge: true });
+}

@@ -9,7 +9,8 @@ import { escapeHtml } from './products.js';
 import {
   ID_RE, slugify, validateEpub, validateCover, uploadEpub, uploadCover,
   listBooks, saveBook, listCourseGrants, setCourseGrants, syncBookGrants,
-  validateAudio, sortAudioFiles, titleFromFileName, probeDuration, uploadAudioTrack
+  validateAudio, sortAudioFiles, titleFromFileName, probeDuration, uploadAudioTrack,
+  loadArc, saveArcConfig, markArcReviewed
 } from './library-admin.js';
 
 const $ = (id) => document.getElementById(id);
@@ -389,6 +390,82 @@ async function reload() {
   render();
 }
 
+// ── Advance readers ─────────────────────────────────────────────────────
+// The switch and the list for /arc. claimArcCopy enforces all of this on
+// the server; the page only reads config/arc to say "closed" up front.
+
+const fmtDate = (t) => (t && t.toDate
+  ? t.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
+
+function renderArc({ cfg, readers }) {
+  const host = $('arc-panel');
+  const open = cfg.open !== false;
+  const bookId = cfg.bookId || 'i-cant';
+  const limit = Number(cfg.limit) > 0 ? Math.floor(Number(cfg.limit)) : '';
+  const reviewed = readers.filter((r) => r.reviewedAt).length;
+  const hasBook = state.books.some((b) => b.id === bookId);
+  const bookOpts = state.books.filter((b) => !b.openAccess).map((b) =>
+    `<option value="${escapeHtml(b.id)}" ${b.id === bookId ? 'selected' : ''}>${escapeHtml(b.title || b.id)}</option>`).join('');
+
+  host.innerHTML = `
+    <div class="card" style="margin-bottom:14px;">
+      ${hasBook ? '' : `<div class="auth-error" style="margin-bottom:12px;">The ARC book <code>${escapeHtml(bookId)}</code> is not in the Library yet. Upload the full EPUB above with that id, or pick another book, before you share the link.</div>`}
+      <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;">
+        <div>
+          <div style="font-size:12px;color:var(--gray-light);margin-bottom:6px;">Sign-ups</div>
+          <button class="btn ${open ? 'btn-primary' : 'btn-ghost'}" id="arc-toggle" type="button">${open ? 'Open · click to close' : 'Closed · click to open'}</button>
+        </div>
+        <div class="crm-form-row" style="margin:0;min-width:220px;"><label>Book they get</label>
+          <select class="c-input" id="arc-book">${bookOpts || `<option value="${escapeHtml(bookId)}">${escapeHtml(bookId)}</option>`}</select></div>
+        <div class="crm-form-row" style="margin:0;width:140px;"><label>Copy limit</label>
+          <input class="c-input" id="arc-limit" type="number" min="1" placeholder="No limit" value="${escapeHtml(limit)}"></div>
+        <div class="crm-form-row" style="margin:0;flex:1;min-width:240px;"><label>Review link (optional, in their email)</label>
+          <input class="c-input" id="arc-review" type="url" placeholder="https://www.amazon.com/review/create-review?asin=…" value="${escapeHtml(cfg.reviewUrl || '')}"></div>
+        <button class="btn btn-ghost" id="arc-save" type="button">Save</button>
+      </div>
+      <div id="arc-err" class="auth-error" style="display:none;margin-top:12px;"></div>
+      <div style="margin-top:14px;font-size:13px;color:var(--gray-light);">
+        <strong style="color:var(--white);">${readers.length}</strong> claimed${limit ? ` of ${limit}` : ''} ·
+        <strong style="color:var(--white);">${reviewed}</strong> reviewed
+      </div>
+    </div>
+    <div class="card crm-list-card">${readers.length ? `<table class="data-table crm-list-table">
+      <thead><tr><th>Reader</th><th>Review on</th><th>Claimed</th><th>Review</th></tr></thead>
+      <tbody>${readers.map((r) => `<tr>
+        <td><div style="font-weight:600;">${escapeHtml(r.name || r.email || r.id)}</div>
+            <div style="font-size:12px;color:var(--gray-light);">${escapeHtml(r.email || '')}</div></td>
+        <td>${escapeHtml(r.reviewPlatform || '—')}</td>
+        <td>${fmtDate(r.claimedAt)}</td>
+        <td>${r.reviewedAt
+          ? `<span style="color:#56D4A8;font-weight:600;">in · ${fmtDate(r.reviewedAt)}</span> <a href="#" data-unreview="${escapeHtml(r.id)}" style="font-size:12px;">undo</a>`
+          : `<button class="btn btn-ghost" data-review="${escapeHtml(r.id)}" type="button">Mark reviewed</button>`}</td>
+      </tr>`).join('')}</tbody></table>`
+      : '<div class="crm-subpanel-empty">No advance readers yet. Share the1pnation.com/arc and they will show up here.</div>'}
+    </div>`;
+
+  const arcErr = (m) => { const el = $('arc-err'); el.textContent = m || ''; el.style.display = m ? '' : 'none'; };
+  const run = async (fn) => {
+    arcErr('');
+    try { await fn(); await reloadArc(); } catch (e) { arcErr(e.message || String(e)); }
+  };
+  $('arc-toggle').addEventListener('click', () => run(() => saveArcConfig({ open: !open })));
+  $('arc-save').addEventListener('click', () => run(() => saveArcConfig({
+    bookId: $('arc-book').value, limit: $('arc-limit').value, reviewUrl: $('arc-review').value
+  })));
+  host.querySelectorAll('[data-review]').forEach((b) => b.addEventListener('click', () => run(() => markArcReviewed(b.dataset.review, true))));
+  host.querySelectorAll('[data-unreview]').forEach((a) => a.addEventListener('click', (e) => {
+    e.preventDefault();
+    run(() => markArcReviewed(a.dataset.unreview, false));
+  }));
+}
+
+async function reloadArc() {
+  try { renderArc(await loadArc()); }
+  catch (e) {
+    $('arc-panel').innerHTML = `<div class="card"><div class="auth-error">Could not load advance readers: ${escapeHtml(e.message || String(e))}</div></div>`;
+  }
+}
+
 async function main() {
   if (!firebaseReady) { gate('Firebase is unavailable.'); return; }
   const u = await onAuthReady();
@@ -403,6 +480,12 @@ async function main() {
   addBtn.disabled = true;
   addBtn.addEventListener('click', () => openModal(null));
   try { await reload(); addBtn.disabled = false; } catch (e) { gate('Could not load the library: ' + (e.message || e)); }
+  $('arc-copy').addEventListener('click', async () => {
+    const url = `${location.origin}/arc`;
+    try { await navigator.clipboard.writeText(url); $('arc-copy').textContent = 'Copied ✓'; }
+    catch (_) { window.prompt('Copy this link', url); }
+  });
+  await reloadArc();
 }
 
 main();

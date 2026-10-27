@@ -34,8 +34,11 @@ t('sequence sender uses the gate', /smsSendBlockReason\(contact\)/.test(seq));
 // ── 2. Opt-in is additive ──
 const lead = slice(fn, 'function parseFormConsent(', 'exports.submitLeadForm = onCall(');
 t('the shared helper reads prior smsConsent before deciding', /priorSms/.test(lead));
+// Each named form must call the helper. Other forms may reuse it too (the
+// ARC sign-up does), so this checks the two callers, not a total count.
 t('submitLeadForm and registerServiceInterest both use the shared helper',
-  (fn.match(/await recordFormConsent\(db, ref/g) || []).length === 2);
+  ['exports.submitLeadForm = onCall(', 'exports.registerServiceInterest = onCall(']
+    .every((from) => /await recordFormConsent\(db, ref/.test(slice(fn, from, '\nexports.'))));
 t('a decline is written only when there is no prior true', /else if \(priorSms !== true\)/.test(lead));
 t('a decline is never written when the SMS box was ticked',
   /if \(smsConsent\) \{[^}]*smsConsent = true/.test(lead));

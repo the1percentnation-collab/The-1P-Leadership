@@ -71,6 +71,14 @@
     #run-head { top: calc(var(--safe-t) + 16px); text-transform: uppercase; }
     #run-foot { bottom: calc(var(--safe-b) + 14px); }
     body.chrome #run-head, body.chrome #run-foot { opacity: 0; }
+    /* Advance reader copy: the reader's name under the page footer */
+    #arc-mark {
+      position: fixed; left: 0; right: 0; bottom: calc(var(--safe-b) + 4px); text-align: center; pointer-events: none;
+      font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .06em; color: var(--muted); opacity: .85;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 24px; transition: opacity .2s var(--ease);
+    }
+    body.has-arc-mark #run-foot { bottom: calc(var(--safe-b) + 19px); }
+    body.chrome #arc-mark { opacity: 0; }
 
     /* ── Chrome (tap the middle to show) ─────────────────── */
     .bar {
@@ -319,6 +327,7 @@
 <div id="stage"></div>
 <div id="run-head"></div>
 <div id="run-foot"></div>
+<div id="arc-mark" aria-hidden="true"></div>
 <a class="buy-link" id="buy-pill" href="/books" target="_blank" rel="noopener" hidden>Get the book</a>
 
 <header class="bar" id="top-bar">
