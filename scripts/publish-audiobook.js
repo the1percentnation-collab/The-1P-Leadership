@@ -1,0 +1,236 @@
+#!/usr/bin/env node
+// ─────────────────────────────────────────────────────────────────────────
+// Publish an audiobook from one long MP3.
+//
+// Takes the single file a narration tool exports (ElevenLabs), cuts it into
+// chapter tracks at the pauses between chapters, makes each a 64 kbps mono
+// MP3, pulls out the embedded cover art, uploads it all to Storage under
+// books/{bookId}/, writes books/{bookId} (format 'audio'), and creates the
+// product that sells it. Run by .github/workflows/publish-audiobook.yml, so
+// the owner never splits or uploads a chapter by hand.
+//
+// USAGE
+//   cd scripts && npm ci
+//   node publish-audiobook.js --config=audiobooks/i-cant.json \
+//     --drive="https://drive.google.com/file/d/<id>/view"   (or --file=/path.mp3)
+//
+//   --publish        put the book and product live (default: hidden for a
+//                    listen-through by an admin, product in draft)
+//   --cuts="0:00:58, 0:06:10, ..."  hand-set chapter starts, after track 1,
+//                    when a cut in the report needs moving
+//   --dry-run        split and report only; nothing is written to Firebase
+//   --out=DIR        where the tracks are written (default: a temp dir)
+//
+// The Drive file must be shared "Anyone with the link" while this runs; set
+// it back to Restricted afterwards. Needs ffmpeg and ffprobe on PATH.
+// ─────────────────────────────────────────────────────────────────────────
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const crypto = require('crypto');
+const { spawnSync } = require('child_process');
+const { parseSilences, chooseCuts, parseCutOverride, driveFileId, fmt } = require('./lib/audiobook-split');
+
+function arg(name) {
+  const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
+  return hit ? hit.slice(name.length + 3) : null;
+}
+const flag = (name) => process.argv.includes(`--${name}`);
+const DRY = flag('dry-run');
+const PUBLISH = flag('publish');
+
+const summary = [];
+const note = (line = '') => { console.log(line); summary.push(line); };
+function writeSummary() {
+  if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary.join('\n') + '\n');
+}
+function fail(msg) {
+  note(`\n**Stopped:** ${msg}`);
+  writeSummary();
+  process.exit(1);
+}
+
+function run(cmd, args, { capture = 'stdout' } = {}) {
+  const r = spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  if (r.error) fail(`${cmd} could not run: ${r.error.message}`);
+  if (r.status !== 0) fail(`${cmd} ${args.slice(0, 6).join(' ')} … exited ${r.status}\n${(r.stderr || '').slice(-1500)}`);
+  return capture === 'stderr' ? r.stderr : r.stdout;
+}
+
+function probeDuration(file) {
+  const d = Number(run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]).trim());
+  if (!(d > 0)) fail(`could not read the length of ${path.basename(file)}`);
+  return d;
+}
+
+// Drive's direct-download host serves a link-shared file to anyone. A file
+// still set to Restricted comes back as an HTML sign-in page instead, which
+// is caught here rather than fed to ffmpeg.
+async function downloadFromDrive(link, dest) {
+  const id = driveFileId(link);
+  if (!id) fail('that does not look like a Google Drive file link.');
+  const url = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(id)}&export=download&confirm=t`;
+  console.log(`Downloading Drive file ${id} …`);
+  const r = await fetch(url, { redirect: 'follow' });
+  const type = r.headers.get('content-type') || '';
+  if (!r.ok || /text\/html/.test(type)) {
+    fail('Google Drive would not hand over the file. In Drive, open Share on the MP3, set General access to "Anyone with the link", and run again.');
+  }
+  const out = fs.createWriteStream(dest);
+  const reader = r.body.getReader();
+  let bytes = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.length;
+    if (!out.write(value)) await new Promise((res) => out.once('drain', res));
+  }
+  await new Promise((res) => out.end(res));
+  const head = fs.readFileSync(dest).subarray(0, 3);
+  const isMp3 = head.toString('latin1') === 'ID3' || (head[0] === 0xff && (head[1] & 0xe0) === 0xe0);
+  if (!isMp3) fail('the Drive file is not an MP3.');
+  console.log(`  ${(bytes / 1024 / 1024).toFixed(1)} MB`);
+}
+
+async function main() {
+  const cfgPath = arg('config');
+  if (!cfgPath) fail('pass --config=audiobooks/<book>.json');
+  const cfg = JSON.parse(fs.readFileSync(path.resolve(__dirname, cfgPath), 'utf8'));
+  const words = cfg.tracks.map((t) => t.words);
+  const outDir = arg('out') || fs.mkdtempSync(path.join(os.tmpdir(), 'audiobook-'));
+  fs.mkdirSync(outDir, { recursive: true });
+
+  // ── The source file ──
+  let src = arg('file');
+  if (!src) {
+    if (!arg('drive')) fail('pass --drive=<Google Drive link> or --file=<path to the MP3>');
+    src = path.join(outDir, 'source.mp3');
+    await downloadFromDrive(arg('drive'), src);
+  }
+  const duration = probeDuration(src);
+
+  // ── Where the chapters start ──
+  const override = parseCutOverride(arg('cuts'), { tracks: words.length, duration });
+  const cuts = override || chooseCuts({
+    words, duration,
+    silences: parseSilences(run('ffmpeg', ['-hide_banner', '-nostats', '-i', src, '-af', 'silencedetect=noise=-40dB:d=0.6', '-f', 'null', '-'], { capture: 'stderr' }))
+  });
+
+  note(`## ${cfg.title}`);
+  note(`Source: ${fmt(duration)} long. ${override ? 'Chapter starts set by hand.' : 'Chapter starts found at the pauses between chapters.'}`);
+  note('');
+  note('| # | Track | Starts at | Length | Pause | Check |');
+  note('|---|---|---|---|---|---|');
+
+  // ── Cut, shrink, tag ──
+  const tracks = [];
+  for (let i = 0; i < cuts.length; i++) {
+    const start = cuts[i].at;
+    const end = i + 1 < cuts.length ? cuts[i + 1].at : duration;
+    const file = path.join(outDir, `audio-${String(i + 1).padStart(2, '0')}.mp3`);
+    run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(start), '-t', String(end - start), '-i', src,
+      '-map', '0:a', '-ac', '1', '-ar', '44100', '-b:a', '64k', '-map_metadata', '-1', '-id3v2_version', '3',
+      '-metadata', `title=${cfg.tracks[i].title}`, '-metadata', `album=${cfg.title}`, '-metadata', `artist=${cfg.author}`,
+      '-metadata', `track=${i + 1}/${cuts.length}`, file]);
+    const len = probeDuration(file);
+    tracks.push({ title: cfg.tracks[i].title, file, duration: Math.round(len), size: fs.statSync(file).size });
+    const c = cuts[i];
+    const check = i === 0 || override ? '' : (c.confidence === 0 ? 'listen: no clear pause nearby'
+      : (c.confidence != null && c.confidence < 1.25 ? 'listen: a similar pause is close by' : 'ok'));
+    note(`| ${i + 1} | ${cfg.tracks[i].title} | ${fmt(start)} | ${fmt(len)} | ${c.silence ? `${c.silence.duration.toFixed(1)}s` : ''} | ${check} |`);
+  }
+
+  // ── Cover art embedded in the source ──
+  const cover = path.join(outDir, 'cover.jpg');
+  const art = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', src, '-an', '-frames:v', '1', '-q:v', '2', cover]);
+  const hasCover = art.status === 0 && fs.existsSync(cover) && fs.statSync(cover).size > 1000;
+  note('');
+  note(hasCover ? 'Cover art: taken from the MP3.' : 'Cover art: none in the MP3; the book keeps its current cover.');
+  note(`Tracks written to ${outDir}`);
+
+  if (DRY) {
+    note('\nDry run: nothing was uploaded.');
+    writeSummary();
+    return;
+  }
+
+  // ── Upload and publish ──
+  const { initAdmin, assertCredentials } = require('./lib/init');
+  const { admin, db, projectId } = initAdmin();
+  await assertCredentials(db, projectId);
+  const bucketName = process.env.STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
+  const bucket = admin.storage().bucket(bucketName);
+  const id = cfg.bookId;
+
+  const stored = [];
+  for (let i = 0; i < tracks.length; i++) {
+    const t = tracks[i];
+    const dest = `books/${id}/audio-${String(i + 1).padStart(2, '0')}.mp3`;
+    console.log(`Uploading ${dest} …`);
+    await bucket.upload(t.file, { destination: dest, resumable: true, metadata: { contentType: 'audio/mpeg', cacheControl: 'private, max-age=0' } });
+    stored.push({ title: t.title, path: dest, duration: t.duration, size: t.size });
+  }
+  const book = {
+    title: cfg.title,
+    author: cfg.author,
+    format: 'audio',
+    status: PUBLISH ? 'live' : 'hidden',
+    openAccess: false,
+    description: cfg.description,
+    sampleTrack: Number.isInteger(cfg.sampleTrack) ? cfg.sampleTrack : null,
+    buyHref: `/listen?book=${id}`,
+    tracks: stored,
+    version: String(Date.now()),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+  if (hasCover) {
+    const token = crypto.randomUUID();
+    const dest = `books/${id}/cover.jpg`;
+    await bucket.upload(cover, { destination: dest, metadata: { contentType: 'image/jpeg', metadata: { firebaseStorageDownloadTokens: token } } });
+    book.coverUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(dest)}?alt=media&token=${token}`;
+  }
+  const bookRef = db.collection('books').doc(id);
+  const existed = (await bookRef.get()).exists;
+  await bookRef.set({ ...book, ...(existed ? {} : { createdAt: admin.firestore.FieldValue.serverTimestamp() }) }, { merge: true });
+
+  // The product that sells it: reuse one already unlocking this book.
+  const prodSnap = await db.collection('products').where('grantsBooks', 'array-contains', id).limit(1).get();
+  const prod = {
+    name: cfg.product.name,
+    type: 'book',
+    status: PUBLISH ? 'live' : 'planned',
+    summary: cfg.product.summary,
+    description: cfg.description,
+    price: cfg.product.price,
+    sellable: true,
+    requiresShipping: false,
+    grantsBooks: [id],
+    showOnSite: true,
+    showInDashboard: true,
+    ...(book.coverUrl ? { imageUrl: book.coverUrl } : {}),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+  let productId;
+  if (prodSnap.empty) {
+    const ref = await db.collection('products').add({
+      ...prod, slug: null, inventory: null, preorderMode: 'interest', depositAmount: null, sortOrder: 0,
+      launchDate: null, salePrice: null, saleEndsAt: null, externalUrl: null, videoUrl: null, posterUrl: null,
+      interestCount: 0, preorderCount: 0, depositTotal: 0, launchNotifiedAt: null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    productId = ref.id;
+  } else {
+    productId = prodSnap.docs[0].id;
+    await prodSnap.docs[0].ref.set(prod, { merge: true });
+  }
+
+  note('');
+  note(PUBLISH
+    ? `**Live.** The audiobook and its $${cfg.product.price} product are on sale: https://the1pnation.com/listen?book=${id}`
+    : `**Uploaded for a listen-through.** Admins can play it now at https://the1pnation.com/listen?book=${id}. Run again with Publish ticked to put it on sale.`);
+  note(`Book: books/${id} · Product: products/${productId}`);
+  writeSummary();
+}
+
+main().catch((e) => fail(e && e.stack ? e.stack.split('\n').slice(0, 4).join(' ') : String(e)));
