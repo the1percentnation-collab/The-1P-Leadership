@@ -120,6 +120,52 @@ ok('a heading never heard falls back near its word-count position, without dragg
   assert.strictEqual(cuts[3].by, 'heard');
 });
 
+// Timed words as the transcriber returns them, from "said" phrases.
+function timedWords(phrases) {
+  const out = [];
+  for (const [t, text] of phrases) text.split(' ').forEach((w, j) => out.push({ word: ` ${w}`, start: t + 0.35 * j, end: t + 0.35 * j + 0.3 }));
+  return out;
+}
+
+ok('listening windows sit around each chapter\'s word-count position, inside the book', () => {
+  const w = S.headingWindows({ words: [100, 400, 500], duration: 1000, span: 240 });
+  assert.deepStrictEqual(w, [{ track: 1, from: 0, to: 340, expected: 100 }, { track: 2, from: 260, to: 740, expected: 500 }]);
+});
+
+ok('a heading is found in timed words, as one token or two, words or digits', () => {
+  const t = timedWords([[10, 'and so on'], [20, 'Chapter Seven. Building resilience'], [40, 'Chapter 7, again']]);
+  assert.deepStrictEqual(S.findHeading(t, 'Chapter 7: Building Resilience', 8).map((h) => h.start), [20, 40]);
+  assert.deepStrictEqual(S.findHeading([{ word: ' Chapter 7.', start: 5, end: 6 }], 'Chapter 7: X', 8).map((h) => h.start), [5]);
+  assert.deepStrictEqual(S.findHeading(t, 'Chapter 6: Six Weeks Deep', 7), []);
+  assert.deepStrictEqual(S.findHeading(timedWords([[3, 'Conclusion. Embracing']]), 'Conclusion: Embracing Your Limitless Potential', 12).map((h) => h.start), [3]);
+});
+
+ok('a heading read with no pause before it is still cut right before its first word', () => {
+  const titles = ['Opening Credits', 'Introduction', 'Chapter 1: Understanding Limiting Beliefs', 'Chapter 2: The Neuroscience of Belief'];
+  const heardWords = {
+    1: timedWords([[45, 'Introduction. If you have']]),
+    2: timedWords([[290, 'and that was it'], [300, 'Chapter One. Understanding limiting beliefs'], [420, 'In chapter one we name it']]),
+    3: timedWords([[702, 'Chapter Two. The neuroscience']])
+  };
+  // Pauses only before the Introduction and the decoy; the chapters have none.
+  const silences = [{ start: 42, end: 44.8, duration: 2.8 }, { start: 418, end: 419.8, duration: 1.8 }];
+  const cuts = S.cutsByWords({ titles, words: [100, 600, 900, 700], duration: 1000, silences, heardWords });
+  assert.deepStrictEqual(cuts.map((c) => c.by), ['start', 'heard', 'heard', 'heard']);
+  assert.strictEqual(cuts[1].at, 44.45, 'snaps to the pause before the Introduction');
+  assert.strictEqual(cuts[2].at, 299.6, 'right before "Chapter One", not at the decoy');
+  assert.strictEqual(cuts[3].at, 701.6);
+});
+
+ok('a heading never said is placed near its position and reports what was said there', () => {
+  const titles = ['Opening Credits', 'Introduction', 'Chapter 1: A'];
+  const heardWords = { 1: timedWords([[100, 'Introduction.']]), 2: timedWords([[600, 'the next part begins here']]) };
+  const silences = [{ start: 97, end: 99.5, duration: 2.5 }, { start: 598, end: 600, duration: 2 }];
+  const cuts = S.cutsByWords({ titles, words: [100, 500, 400], duration: 1000, silences, heardWords });
+  assert.strictEqual(cuts[2].by, 'pause');
+  assert.strictEqual(cuts[2].at, 600 - S.LEAD_IN);
+  assert.ok(/next part begins/.test(cuts[2].near), cuts[2].near);
+});
+
 ok('hand-set cuts accept seconds or clock times and are checked', () => {
   const r = S.parseCutOverride('58, 0:06:10, 1:00:00', { tracks: 4, duration: 4000 });
   assert.deepStrictEqual(r.map((c) => c.at), [0, 58, 370, 3600]);
