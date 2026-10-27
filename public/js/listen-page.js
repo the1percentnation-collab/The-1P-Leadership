@@ -154,7 +154,7 @@ function loadTrack(i, startAt = 0, autoplay = false) {
 }
 
 function renderNow() {
-  $('ls-now').textContent = `${S.current + 1}. ${trackTitle(S.current)}`;
+  $('ls-now').textContent = trackTitle(S.current);
   document.querySelectorAll('.ls-chapters li').forEach((li) => {
     li.classList.toggle('is-current', Number(li.dataset.i) === S.current);
   });
@@ -319,7 +319,6 @@ async function renderPlayer() {
       <ol class="ls-chapters">
         ${S.tracks.map((t, i) => `
           <li data-i="${i}"><button data-track="${i}">
-            <span class="n">${String(i + 1).padStart(2, '0')}</span>
             <span>${escapeHtml(t.title || `Chapter ${i + 1}`)}</span>
             <span class="d">${Number(t.duration) > 0 ? fmtTime(t.duration) : ''}</span>
           </button></li>`).join('')}
@@ -373,8 +372,10 @@ async function renderPlayer() {
   loadTrack(rp.track, rp.time, false);
   // Held until a chapter is loaded: a tap before then had nothing to play.
   $('ls-play').disabled = false;
-  if (rp.time > 0) setStatus(`Picking up at ${fmtTime(rp.time)} in chapter ${rp.track + 1}.`);
-  else if (rp.track > 0) setStatus(`Picking up at chapter ${rp.track + 1}.`);
+  // Named by title: track numbers are not chapter numbers (credits and the
+  // Introduction come first), so "chapter 2" would point at the wrong one.
+  if (rp.time > 0) setStatus(`Picking up at ${fmtTime(rp.time)} in ${trackTitle(rp.track)}.`);
+  else if (rp.track > 0) setStatus(`Picking up at ${trackTitle(rp.track)}.`);
   lsSet(LS_LAST, S.bookId);
 
   renderFeed();
