@@ -2,6 +2,10 @@
 //
 // Ownership is users/{uid}.ownedBookIds (see books.js). Courses put books
 // here through `grantsBooks`; the shelf itself never looks at courses.
+//
+// Below the shelf, "Also available" lists the books a member can buy on
+// their own (a live product that unlocks a library book, like the I Can't
+// audiobook) and does not own yet, each linking to its page.
 
 import { onAuthReady, currentUser } from './auth.js';
 import { ensureOnboarded } from './onboarding-guard.js';
@@ -11,8 +15,9 @@ import { getUserProfile } from './community.js';
 import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import { renderShell } from './academy-shell.js';
 import { libraryAccess, getBook, loadAllPositions, isAudioBook, bookHref } from './books.js';
+import { fmtMoney } from './pricing.js';
 import {
-  collection, getDocs
+  collection, getDocs, query, where
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const $ = (id) => document.getElementById(id);
@@ -81,11 +86,57 @@ async function loadShelf() {
   return books.filter((b) => admin || b.status !== 'hidden');
 }
 
+// Live products that unlock a library book the member does not own yet.
+// A failure here never costs the member their own shelf, so it is quiet.
+async function loadAvailable(ownedIds) {
+  try {
+    const snap = await getDocs(query(collection(db, 'products'), where('status', '==', 'live')));
+    const out = [];
+    for (const d of snap.docs) {
+      const p = { id: d.id, ...d.data() };
+      const want = (Array.isArray(p.grantsBooks) ? p.grantsBooks : []).filter((b) => !ownedIds.includes(b));
+      if (p.sellable !== true || !(p.price > 0) || p.showInDashboard === false || !want.length) continue;
+      const book = await getBook(want[0]).catch(() => null);
+      if (!book || book.status === 'hidden') continue;
+      out.push({ product: p, book });
+    }
+    return out.sort((a, b) => (a.product.sortOrder || 0) - (b.product.sortOrder || 0));
+  } catch (e) {
+    console.warn('[library] available books did not load', e);
+    return [];
+  }
+}
+
+function availableItem({ product, book }) {
+  const href = /^\/(?!\/)/.test(String(product.pageUrl || '')) ? product.pageUrl : bookHref(book);
+  const kind = isAudioBook(book) ? 'Audiobook' : 'Ebook';
+  return `
+    <a class="lib-book lib-avail" href="${escapeHtml(href)}">
+      ${cover({ ...book, coverUrl: book.coverUrl || product.imageUrl })}
+      <div class="lib-book-title">${escapeHtml(book.title || product.name || '')}</div>
+      <div class="lib-book-sub">${kind} · ${escapeHtml(fmtMoney(product.price))}</div>
+      <span class="lib-avail-cta">${escapeHtml(product.pageCta || 'See details')} →</span>
+    </a>`;
+}
+
+function availableSection(list) {
+  if (!list.length) return '';
+  return `
+    <div class="lib-shelf-label" style="margin-top:44px;">Also available</div>
+    <div class="lib-grid">${list.map(availableItem).join('')}</div>`;
+}
+
 async function renderLibrary() {
   const root = $('lib-root');
   let books = [];
+  let available = [];
   try {
-    books = await loadShelf();
+    const access = await libraryAccess({ fresh: true });
+    [books, available] = await Promise.all([
+      loadShelf(),
+      // Admins already see every book on the shelf.
+      access.admin ? Promise.resolve([]) : loadAvailable(access.ids)
+    ]);
   } catch (e) {
     console.warn('[library] load failed', e);
     root.innerHTML = '<div class="lib-empty"><h2>Your library didn\'t load</h2>Check your connection and refresh the page.</div>';
@@ -96,9 +147,10 @@ async function renderLibrary() {
     root.innerHTML = `
       <div class="lib-empty">
         <h2>Your shelf is empty, for now</h2>
-        Books come with the courses and bundles you enroll in. When you get one, it appears here, ready to read on any device.
+        Books and audiobooks you own live here, ready on any device. They come with the courses and bundles you enroll in, or on their own below.
         <div style="margin-top:22px;"><a class="btn btn-primary" href="/bundle.html">See The Complete I Can't Experience →</a></div>
-      </div>`;
+      </div>
+      ${availableSection(available)}`;
     return;
   }
 
@@ -111,7 +163,8 @@ async function renderLibrary() {
     ${continueCard(recent, positions[recent.id])}
     ${books.length > 1 ? `
       <div class="lib-shelf-label">All books · ${books.length}</div>
-      <div class="lib-grid">${books.map((b) => shelfItem(b, positions[b.id])).join('')}</div>` : ''}`;
+      <div class="lib-grid">${books.map((b) => shelfItem(b, positions[b.id])).join('')}</div>` : ''}
+    ${availableSection(available)}`;
 }
 
 async function main() {

@@ -258,9 +258,12 @@ function bookBlockHtml(item, i) {
       : '');
 
   const cta = ctaFor(item);
-  const href = item.externalUrl ? item.externalUrl : `/upcoming.html#p-${encodeURIComponent(item.id)}`;
+  // A product with its own page (the audiobook) links there; anything else
+  // goes off-site or to its /upcoming anchor as before.
+  const href = item.pageUrl || item.externalUrl || `/upcoming.html#p-${encodeURIComponent(item.id)}`;
   const ext = isExternal(href);
-  const label = cta.kind === 'notify' ? 'Notify me →' : (cta.kind === 'soldout' ? 'Sold out' : 'Get Your Copy →');
+  const label = cta.kind === 'notify' ? 'Notify me →'
+    : (cta.kind === 'soldout' ? 'Sold out' : (item.pageUrl && item.pageCta ? `${item.pageCta} →` : 'Get Your Copy →'));
 
   const live = item.status === 'live' || item.status === 'preorder';
   const tag = item.onSale ? 'On Sale' : (item.status === 'live' ? 'Now Available' : (item.status === 'preorder' ? 'Pre-order' : 'Coming Soon'));
@@ -274,7 +277,7 @@ function bookBlockHtml(item, i) {
 
   const when = !live && item.launchDateMs && launchCountdown(item.launchDateMs)
     ? `Opens ${escapeHtml(fmtLaunchDate(item.launchDateMs))} — ${escapeHtml(launchCountdown(item.launchDateMs))}.`
-    : (!live ? 'A New Book by Anthony Brown — Coming Soon.' : '30-Day Money-Back Guarantee. Zero Risk.');
+    : (!live ? 'A New Book by Anthony Brown — Coming Soon.' : (item.pageNote || '30-Day Money-Back Guarantee. Zero Risk.'));
 
   // Bebas Neue is caps-only, so the title reads as the old hand-set caps did.
   return `

@@ -208,13 +208,19 @@ async function main() {
     grantsBooks: [id],
     showOnSite: true,
     showInDashboard: true,
+    // Its own page: the /books shop and the member Store send people to the
+    // audiobook page, which plays the free chapter before the buy button.
+    pageUrl: `/listen?book=${id}`,
+    pageCta: cfg.product.pageCta || 'Listen free',
+    pageNote: cfg.product.pageNote || null,
+    sortOrder: Number.isFinite(cfg.product.sortOrder) ? cfg.product.sortOrder : 0,
     ...(book.coverUrl ? { imageUrl: book.coverUrl } : {}),
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   };
   let productId;
   if (prodSnap.empty) {
     const ref = await db.collection('products').add({
-      ...prod, slug: null, inventory: null, preorderMode: 'interest', depositAmount: null, sortOrder: 0,
+      ...prod, slug: null, inventory: null, preorderMode: 'interest', depositAmount: null,
       launchDate: null, salePrice: null, saleEndsAt: null, externalUrl: null, videoUrl: null, posterUrl: null,
       interestCount: 0, preorderCount: 0, depositTotal: 0, launchNotifiedAt: null,
       createdAt: admin.firestore.FieldValue.serverTimestamp()
