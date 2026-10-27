@@ -11,15 +11,23 @@
 # admin can play it at /listen?book=i-cant-audio. Run again with Publish
 # ticked to put it on sale. A cut in the wrong place is fixed by pasting the
 # chapter start times into "Chapter starts" and running again.
+#
+# To change only the cover, tick "Cover only" and leave the Drive link
+# blank: it uploads the config's coverImage (scripts/audiobooks/*.json) to
+# the book and its product, and leaves the audio alone.
 name: Publish audiobook
 
 on:
   workflow_dispatch:
     inputs:
       drive_link:
-        description: 'Google Drive link to the audiobook MP3'
-        required: true
+        description: 'Google Drive link to the audiobook MP3 (blank for Cover only)'
+        required: false
         type: string
+      cover_only:
+        description: 'Cover only: update the cover art, leave the audio as it is'
+        type: boolean
+        default: false
       publish:
         description: 'Put it on sale now (untick to upload hidden for a listen-through)'
         type: boolean
@@ -57,10 +65,12 @@ jobs:
       # The cut lands where the narrator says each chapter's heading, so the
       # run transcribes the opening seconds after every pause.
       - uses: actions/setup-python@v5
+        if: ${{ !inputs.cover_only }}
         with:
           python-version: '3.11'
 
       - name: Install the speech model library
+        if: ${{ !inputs.cover_only }}
         run: pip install --quiet faster-whisper==1.2.1
 
       - name: Write service account key
@@ -83,7 +93,12 @@ jobs:
           CUTS: ${{ inputs.cuts }}
           CONFIG: ${{ inputs.config }}
           PUBLISH: ${{ inputs.publish }}
+          COVER_ONLY: ${{ inputs.cover_only }}
         run: |
+          if [ "$COVER_ONLY" = "true" ]; then
+            node publish-audiobook.js --config="$CONFIG" --cover-only
+            exit
+          fi
           args=(--config="$CONFIG" --drive="$DRIVE_LINK" --out="$RUNNER_TEMP/audiobook")
           [ -n "$CUTS" ] && args+=(--cuts="$CUTS")
           [ "$PUBLISH" = "true" ] && args+=(--publish)

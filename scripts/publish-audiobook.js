@@ -4,7 +4,8 @@
 //
 // Takes the single file a narration tool exports (ElevenLabs), cuts it into
 // chapter tracks at the pauses between chapters, makes each a 64 kbps mono
-// MP3, pulls out the embedded cover art, uploads it all to Storage under
+// MP3, takes the cover (the config's coverImage, else the art embedded in
+// the MP3), uploads it all to Storage under
 // books/{bookId}/, writes books/{bookId} (format 'audio'), and creates the
 // product that sells it. Run by .github/workflows/publish-audiobook.yml, so
 // the owner never splits or uploads a chapter by hand.
@@ -23,6 +24,8 @@
 //   --no-listen      cut by pauses and word counts alone, without transcribing
 //                    (only for a narration whose chapter pauses stand out)
 //   --out=DIR        where the tracks are written (default: a temp dir)
+//   --cover-only     just upload the config's coverImage and point the book
+//                    and its product at it; no MP3 needed, nothing else changes
 //
 // The Drive file must be shared "Anyone with the link" while this runs; set
 // it back to Restricted afterwards. Needs ffmpeg and ffprobe on PATH.
@@ -117,10 +120,47 @@ function listenAround(src, words, duration, outDir) {
   return heard;
 }
 
+// The cover goes to books/{id}/cover.jpg with a fresh download token, so the
+// new URL is never served from an old cache (players, podcast apps, Stripe).
+async function uploadCover(bucket, bucketName, id, file) {
+  const token = crypto.randomUUID();
+  const dest = `books/${id}/cover.jpg`;
+  await bucket.upload(file, { destination: dest, metadata: { contentType: 'image/jpeg', metadata: { firebaseStorageDownloadTokens: token } } });
+  return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(dest)}?alt=media&token=${token}`;
+}
+
+async function connect() {
+  const { initAdmin, assertCredentials } = require('./lib/init');
+  const { admin, db, projectId } = initAdmin();
+  await assertCredentials(db, projectId);
+  const bucketName = process.env.STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
+  return { admin, db, bucketName, bucket: admin.storage().bucket(bucketName) };
+}
+
+async function coverOnly(cfg, coverFile) {
+  if (!coverFile) fail('the config has no coverImage, or the file is missing.');
+  const { admin, db, bucket, bucketName } = await connect();
+  const id = cfg.bookId;
+  const bookRef = db.collection('books').doc(id);
+  if (!(await bookRef.get()).exists) fail(`books/${id} does not exist yet. Publish the audiobook first.`);
+  const coverUrl = await uploadCover(bucket, bucketName, id, coverFile);
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  await bookRef.set({ coverUrl, updatedAt: now }, { merge: true });
+  const prods = await db.collection('products').where('grantsBooks', 'array-contains', id).get();
+  for (const d of prods.docs) await d.ref.set({ imageUrl: coverUrl, updatedAt: now }, { merge: true });
+  note(`## ${cfg.title}`);
+  note(`**Cover updated** from ${path.basename(coverFile)} on books/${id}${prods.size ? ` and ${prods.docs.map((d) => `products/${d.id}`).join(', ')}` : ''}. The audio was not touched.`);
+  writeSummary();
+}
+
 async function main() {
   const cfgPath = arg('config');
   if (!cfgPath) fail('pass --config=audiobooks/<book>.json');
   const cfg = JSON.parse(fs.readFileSync(path.resolve(__dirname, cfgPath), 'utf8'));
+  // A cover kept in the repo beats whatever art the narration tool embedded.
+  const coverFile = cfg.coverImage ? path.resolve(__dirname, cfg.coverImage) : null;
+  const hasCoverFile = !!coverFile && fs.existsSync(coverFile);
+  if (flag('cover-only')) return coverOnly(cfg, hasCoverFile ? coverFile : null);
   const words = cfg.tracks.map((t) => t.words);
   const outDir = arg('out') || fs.mkdtempSync(path.join(os.tmpdir(), 'audiobook-'));
   fs.mkdirSync(outDir, { recursive: true });
@@ -187,12 +227,16 @@ async function main() {
     note(`| ${i + 1} | ${cfg.tracks[i].title} | ${fmt(start)} | ${fmt(len)} | ${check} |`);
   }
 
-  // ── Cover art embedded in the source ──
-  const cover = path.join(outDir, 'cover.jpg');
-  const art = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', src, '-an', '-frames:v', '1', '-q:v', '2', cover]);
-  const hasCover = art.status === 0 && fs.existsSync(cover) && fs.statSync(cover).size > 1000;
+  // ── Cover: the config's image, else the art embedded in the source ──
+  let cover = hasCoverFile ? coverFile : path.join(outDir, 'cover.jpg');
+  let hasCover = hasCoverFile;
+  if (!hasCover) {
+    const art = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', src, '-an', '-frames:v', '1', '-q:v', '2', cover]);
+    hasCover = art.status === 0 && fs.existsSync(cover) && fs.statSync(cover).size > 1000;
+  }
   note('');
-  note(hasCover ? 'Cover art: taken from the MP3.' : 'Cover art: none in the MP3; the book keeps its current cover.');
+  note(hasCoverFile ? `Cover art: ${path.basename(coverFile)}.`
+    : hasCover ? 'Cover art: taken from the MP3.' : 'Cover art: none in the MP3; the book keeps its current cover.');
   note(`Tracks written to ${outDir}`);
 
   if (DRY) {
@@ -202,11 +246,7 @@ async function main() {
   }
 
   // ── Upload and publish ──
-  const { initAdmin, assertCredentials } = require('./lib/init');
-  const { admin, db, projectId } = initAdmin();
-  await assertCredentials(db, projectId);
-  const bucketName = process.env.STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
-  const bucket = admin.storage().bucket(bucketName);
+  const { admin, db, bucket, bucketName } = await connect();
   const id = cfg.bookId;
 
   const stored = [];
@@ -230,12 +270,7 @@ async function main() {
     version: String(Date.now()),
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   };
-  if (hasCover) {
-    const token = crypto.randomUUID();
-    const dest = `books/${id}/cover.jpg`;
-    await bucket.upload(cover, { destination: dest, metadata: { contentType: 'image/jpeg', metadata: { firebaseStorageDownloadTokens: token } } });
-    book.coverUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(dest)}?alt=media&token=${token}`;
-  }
+  if (hasCover) book.coverUrl = await uploadCover(bucket, bucketName, id, cover);
   const bookRef = db.collection('books').doc(id);
   const existed = (await bookRef.get()).exists;
   await bookRef.set({ ...book, ...(existed ? {} : { createdAt: admin.firestore.FieldValue.serverTimestamp() }) }, { merge: true });
