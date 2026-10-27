@@ -280,6 +280,49 @@ await t('a member who has not bought it sees it under Also available in their Li
   await S.ctx.close();
 });
 
+// ── Sales and promo codes ─────────────────────────────────────────────────
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'coupons/HALFAUDIO'), { percentOff: 50, amountOff: null, active: true, redemptions: 0, appliesTo: { kind: 'product', ids: [PRODUCT] } });
+  await setDoc(doc(db, 'coupons/COURSEONLY'), { percentOff: 20, amountOff: null, active: true, redemptions: 0, appliesTo: { kind: 'course', ids: [] } });
+  await setDoc(doc(db, 'coupons/ALLFREE'), { percentOff: 100, amountOff: null, active: true, redemptions: 0, appliesTo: { kind: 'product', ids: [] } });
+});
+const setSale = (salePrice) => env.withSecurityRulesDisabled((ctx) =>
+  setDoc(doc(ctx.firestore(), `products/${PRODUCT}`), { salePrice }, { merge: true }));
+
+await t('a promo code for the audiobook comes off the sale price while a sale runs', async () => {
+  const tok = (await authUser('stranger@e2e.test', PW, false)).idToken;
+  await setSale(7.99);
+  const r = await callable('validateCoupon', { code: 'HALFAUDIO', kind: 'product', id: PRODUCT }, tok);
+  assert(r.result && r.result.originalPrice === 7.99 && r.result.discountedPrice === 4, JSON.stringify(r));
+  const wrong = await callable('validateCoupon', { code: 'COURSEONLY', kind: 'product', id: PRODUCT }, tok);
+  assert(wrong.error && /doesn.t apply/.test(wrong.error.message), JSON.stringify(wrong));
+  await setSale(null);
+  const full = await callable('validateCoupon', { code: 'HALFAUDIO', kind: 'product', id: PRODUCT }, tok);
+  assert(full.result && full.result.discountedPrice === 5, JSON.stringify(full));
+});
+
+await t('the audiobook page shows the sale price and applies a code from the link', async () => {
+  await setSale(7.99);
+  const P = await makeContext({ email: 'stranger@e2e.test', password: PW });
+  await P.page.goto(`${ORIGIN}/listen?book=${BOOK}`);
+  await P.page.waitForSelector('#ls-buy', { timeout: 30000 });
+  const sale = await P.page.$eval('#ls-buy', (b) => b.innerHTML);
+  assert(/<s[^>]*>\$9\.99<\/s>/.test(sale) && /\$7\.99/.test(sale), sale);
+  await P.page.goto(`${ORIGIN}/listen?book=${BOOK}&promo=halfaudio`);
+  await P.page.waitForFunction(() => /HALFAUDIO/.test((document.getElementById('ls-promo-msg') || {}).textContent || ''), null, { timeout: 30000 });
+  const withCode = await P.page.$eval('#ls-buy', (b) => b.textContent);
+  assert(/\$4\b/.test(withCode) && /\$7\.99/.test(withCode), withCode);
+  // A code typed in by hand, and one that would make it free, which the page refuses up front.
+  await P.page.click('#ls-promo-remove');
+  await P.page.fill('#ls-promo-code', 'ALLFREE');
+  await P.page.click('#ls-promo-apply');
+  await P.page.waitForFunction(() => /under 100%/.test((document.getElementById('ls-promo-msg') || {}).textContent || ''), null, { timeout: 20000 });
+  assert(/\$7\.99/.test(await P.page.$eval('#ls-buy', (b) => b.textContent)), 'price unchanged after a refused code');
+  await P.ctx.close();
+  await setSale(null);
+});
+
 // ── 2. The purchase ───────────────────────────────────────────────────────
 await t('a paid checkout for the product puts the audiobook on the shelf', async () => {
   const session = {

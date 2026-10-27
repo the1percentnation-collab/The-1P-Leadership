@@ -14,7 +14,7 @@ import { firebaseReady, auth, db, functions } from './firebase.js';
 import { onAuthReady } from './auth.js';
 import { getBook, libraryAccess, loadPosition, createPositionSaver } from './books.js';
 import { captureRef, getRefCode } from './referral.js';
-import { fmtMoney } from './pricing.js';
+import { fmtMoney, priceInfo } from './pricing.js';
 import {
   nextSpeed, fmtTime, totalDuration, overallFraction, resumePoint, podcastLinks, productForBook
 } from './listen-core.js';
@@ -460,18 +460,65 @@ async function findProduct() {
   }
 }
 
-async function startCheckout(product, btn) {
-  if (!S.user) {
-    location.assign('/login.html?next=' + encodeURIComponent(`/listen?book=${S.bookId}&buy=1`));
-    return;
+// ── Price, sale and promo code ──────────────────────────────────────────
+// The button shows what checkout will charge: the sale price while a sale
+// runs (Manage Products → On sale), less a promo code once one is applied.
+// The server prices it again from the same records; this is only the label.
+// A code can arrive in the link (?promo=LAUNCH20) so a discount can be shared.
+const promo = { code: (params.get('promo') || '').trim().toUpperCase(), price: null, note: '' };
+
+function buyLabel(product) {
+  const info = priceInfo(product);
+  const now = promo.price != null ? fmtMoney(promo.price) : info.label;
+  const was = promo.price != null ? info.label : (info.onSale ? info.originalLabel : '');
+  return `Get the audiobook · ${was ? `<s style="opacity:.65;font-weight:500;margin-right:4px;">${escapeHtml(was)}</s>` : ''}${escapeHtml(now)}`;
+}
+
+function signInFirst(extra) {
+  const code = promo.code ? `&promo=${encodeURIComponent(promo.code)}` : '';
+  location.assign('/login.html?next=' + encodeURIComponent(`/listen?book=${S.bookId}${code}${extra}`));
+}
+
+async function applyPromo(product) {
+  const msg = $('ls-promo-msg');
+  const code = ($('ls-promo-code').value || '').trim().toUpperCase();
+  if (!code) { msg.textContent = 'Type the code first.'; return; }
+  promo.code = code;
+  if (!S.user) { signInFirst(''); return; }
+  const btn = $('ls-promo-apply');
+  btn.disabled = true;
+  msg.textContent = 'Checking…';
+  try {
+    const r = await httpsCallable(functions, 'validateCoupon')({ code, kind: 'product', id: product.id });
+    if (r.data.isFree) throw new Error('This code takes the whole price off, and audiobook codes have to leave something to pay. Ask for a code under 100%.');
+    promo.price = r.data.discountedPrice;
+    const off = r.data.percentOff ? `${r.data.percentOff}% off` : `${fmtMoney(r.data.amountOff)} off`;
+    msg.innerHTML = `<b>${escapeHtml(r.data.code)}</b> applied: ${escapeHtml(off)}. <button class="ls-link" id="ls-promo-remove">Remove</button>`;
+    $('ls-promo-remove').addEventListener('click', () => {
+      promo.code = ''; promo.price = null;
+      $('ls-promo-code').value = '';
+      msg.textContent = '';
+      $('ls-buy').innerHTML = buyLabel(product);
+    });
+  } catch (e) {
+    promo.code = ''; promo.price = null;
+    msg.textContent = (e && e.message) || 'That code did not work.';
+  } finally {
+    btn.disabled = false;
+    $('ls-buy').innerHTML = buyLabel(product);
   }
-  const label = btn.textContent;
+}
+
+async function startCheckout(product, btn) {
+  if (!S.user) { signInFirst('&buy=1'); return; }
+  const label = btn.innerHTML;
   btn.disabled = true;
   btn.textContent = 'Opening checkout…';
   try {
     const res = await httpsCallable(functions, 'createCheckoutSession')({
       productId: product.id,
       refCode: getRefCode() || undefined,
+      couponCode: promo.price != null ? promo.code : undefined,
       returnTo: `/listen?book=${S.bookId}`
     });
     if (!res.data || !res.data.url) throw new Error('Checkout could not be started.');
@@ -479,7 +526,7 @@ async function startCheckout(product, btn) {
   } catch (e) {
     if (e && /already-exists/.test(e.code || '')) { location.replace(`/listen?book=${encodeURIComponent(S.bookId)}`); return; }
     btn.disabled = false;
-    btn.textContent = label;
+    btn.innerHTML = label;
     alert(e.message || 'Could not start checkout. Please try again.');
   }
 }
@@ -490,13 +537,21 @@ async function renderSales() {
   $('ls-back').innerHTML = S.user ? '&larr; My library' : '&larr; Home';
   const product = await findProduct();
   const sample = Number.isInteger(book.sampleTrack) && book.sampleTrack < S.tracks.length ? book.sampleTrack : null;
-  const priceLabel = product ? fmtMoney(product.price) : '';
 
   $('ls-root').innerHTML = `
     ${heroHtml(book)}
     <section class="ls-card">
       ${product
-        ? `<button class="ls-cta" id="ls-buy">Get the audiobook · ${escapeHtml(priceLabel)}</button>`
+        ? `<button class="ls-cta" id="ls-buy">${buyLabel(product)}</button>
+           <div class="ls-promo">
+             <button class="ls-link" id="ls-promo-open"${promo.code ? ' hidden' : ''}>Have a promo code?</button>
+             <div class="ls-promo-row" id="ls-promo-row"${promo.code ? '' : ' hidden'}>
+               <label class="sr" for="ls-promo-code">Promo code</label>
+               <input id="ls-promo-code" autocomplete="off" autocapitalize="characters" placeholder="Promo code" value="${escapeHtml(promo.code)}">
+               <button class="ls-ghost" id="ls-promo-apply">Apply</button>
+             </div>
+             <div class="ls-note" id="ls-promo-msg" role="status"></div>
+           </div>`
         : '<button class="ls-cta" disabled>Coming soon</button>'}
       <ul class="ls-points">
         <li>Plays right here in your browser on your phone, tablet or laptop. No app to install.</li>
@@ -520,6 +575,15 @@ async function renderSales() {
   if (product) {
     const btn = $('ls-buy');
     btn.addEventListener('click', () => startCheckout(product, btn));
+    $('ls-promo-open').addEventListener('click', () => {
+      $('ls-promo-open').hidden = true;
+      $('ls-promo-row').hidden = false;
+      $('ls-promo-code').focus();
+    });
+    $('ls-promo-apply').addEventListener('click', () => applyPromo(product));
+    $('ls-promo-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') applyPromo(product); });
+    // A code from the link (or carried through sign-in) is checked right away.
+    if (promo.code && S.user) await applyPromo(product);
     // Back from sign-in with the intent to buy: go straight to checkout.
     if (params.get('buy') === '1' && S.user) startCheckout(product, btn);
   }
