@@ -19,6 +19,8 @@
 //   --cuts="0:00:58, 0:06:10, ..."  hand-set chapter starts, after track 1,
 //                    when a cut in the report needs moving
 //   --dry-run        split and report only; nothing is written to Firebase
+//   --no-listen      cut by pauses and word counts alone, without transcribing
+//                    (only for a narration whose chapter pauses stand out)
 //   --out=DIR        where the tracks are written (default: a temp dir)
 //
 // The Drive file must be shared "Anyone with the link" while this runs; set
@@ -30,7 +32,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
-const { parseSilences, chooseCuts, parseCutOverride, driveFileId, fmt } = require('./lib/audiobook-split');
+const { parseSilences, chooseCuts, parseCutOverride, driveFileId, fmt, cutsByHeading } = require('./lib/audiobook-split');
 
 function arg(name) {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -93,6 +95,26 @@ async function downloadFromDrive(link, dest) {
   console.log(`  ${(bytes / 1024 / 1024).toFixed(1)} MB`);
 }
 
+// Transcribe the first seconds after every real pause, so the cut can land
+// where the heading is said. Returns { silenceIndex: transcript }.
+// AUDIOBOOK_TRANSCRIBER swaps in another script with the same arguments
+// (tests use a stand-in, since the model cannot be downloaded everywhere).
+function listen(src, silences, outDir) {
+  const picked = silences.map((s, k) => ({ s, k })).filter(({ s }) => s.duration >= 0.8);
+  const startsFile = path.join(outDir, 'pause-ends.json');
+  const heardFile = path.join(outDir, 'heard.json');
+  fs.writeFileSync(startsFile, JSON.stringify(picked.map(({ s }) => Math.max(0, s.end - 0.3))));
+  const script = process.env.AUDIOBOOK_TRANSCRIBER || path.join(__dirname, 'transcribe-snippets.py');
+  console.log(`Listening to the opening of ${picked.length} pauses …`);
+  const r = spawnSync('python3', [script, src, startsFile, heardFile, '--model', process.env.AUDIOBOOK_STT_MODEL || 'base.en'],
+    { encoding: 'utf8', stdio: ['ignore', 'inherit', 'inherit'] });
+  if (r.status !== 0) fail('could not transcribe the chapter openings (speech model step failed; see the log above). Nothing was uploaded.');
+  const texts = JSON.parse(fs.readFileSync(heardFile, 'utf8'));
+  const heard = {};
+  picked.forEach(({ k }, j) => { heard[k] = texts[j] || ''; });
+  return heard;
+}
+
 async function main() {
   const cfgPath = arg('config');
   if (!cfgPath) fail('pass --config=audiobooks/<book>.json');
@@ -112,16 +134,24 @@ async function main() {
 
   // ── Where the chapters start ──
   const override = parseCutOverride(arg('cuts'), { tracks: words.length, duration });
-  const cuts = override || chooseCuts({
-    words, duration,
-    silences: parseSilences(run('ffmpeg', ['-hide_banner', '-nostats', '-i', src, '-af', 'silencedetect=noise=-40dB:d=0.6', '-f', 'null', '-'], { capture: 'stderr' }))
-  });
+  let cuts = override;
+  let how = 'Chapter starts set by hand.';
+  if (!cuts) {
+    const silences = parseSilences(run('ffmpeg', ['-hide_banner', '-nostats', '-i', src, '-af', 'silencedetect=noise=-40dB:d=0.6', '-f', 'null', '-'], { capture: 'stderr' }));
+    if (flag('no-listen')) {
+      cuts = chooseCuts({ words, duration, silences });
+      how = 'Chapter starts placed by pauses and word counts alone.';
+    } else {
+      cuts = cutsByHeading({ titles: cfg.tracks.map((t) => t.title), words, duration, silences, heard: listen(src, silences, outDir) });
+      how = 'Chapter starts found where the narrator says each heading.';
+    }
+  }
 
   note(`## ${cfg.title}`);
-  note(`Source: ${fmt(duration)} long. ${override ? 'Chapter starts set by hand.' : 'Chapter starts found at the pauses between chapters.'}`);
+  note(`Source: ${fmt(duration)} long. ${how}`);
   note('');
-  note('| # | Track | Starts at | Length | Pause | Check |');
-  note('|---|---|---|---|---|---|');
+  note('| # | Track | Starts at | Length | Check |');
+  note('|---|---|---|---|---|');
 
   // ── Cut, shrink, tag ──
   const tracks = [];
@@ -136,9 +166,17 @@ async function main() {
     const len = probeDuration(file);
     tracks.push({ title: cfg.tracks[i].title, file, duration: Math.round(len), size: fs.statSync(file).size });
     const c = cuts[i];
-    const check = i === 0 || override ? '' : (c.confidence === 0 ? 'listen: no clear pause nearby'
-      : (c.confidence != null && c.confidence < 1.25 ? 'listen: a similar pause is close by' : 'ok'));
-    note(`| ${i + 1} | ${cfg.tracks[i].title} | ${fmt(start)} | ${fmt(len)} | ${c.silence ? `${c.silence.duration.toFixed(1)}s` : ''} | ${check} |`);
+    // A length far from what the word count predicts means a cut is off.
+    const predicted = duration * (words[i] / words.reduce((a, b) => a + b, 0));
+    const odd = len < predicted * 0.6 || len > predicted * 1.6;
+    let check;
+    if (i === 0 || override) check = '';
+    else if (c.by === 'heard') check = `heard “${String(c.heard).slice(0, 48)}${String(c.heard).length > 48 ? '…' : ''}”`;
+    else if (c.by === 'pause') check = 'listen: heading not heard';
+    else check = c.confidence === 0 ? 'listen: no clear pause nearby'
+      : (c.confidence != null && c.confidence < 1.25 ? 'listen: a similar pause is close by' : 'ok');
+    if (odd && i) check += `${check ? '; ' : ''}listen: length looks off (expected about ${fmt(predicted)})`;
+    note(`| ${i + 1} | ${cfg.tracks[i].title} | ${fmt(start)} | ${fmt(len)} | ${check} |`);
   }
 
   // ── Cover art embedded in the source ──

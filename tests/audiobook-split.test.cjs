@@ -78,6 +78,48 @@ ok('two equally long pauses near a cut are flagged for a listen', () => {
   assert.ok(cuts[1].confidence < 1.25);
 });
 
+ok('a chapter heading is heard in words or digits, and nothing else passes for it', () => {
+  const ch7 = S.headingMatcher('Chapter 7: Building Resilience and Overcoming Setbacks', 8);
+  assert.ok(ch7('Chapter Seven. Building resilience and overcoming setbacks.'));
+  assert.ok(ch7('Chapter 7, building resilience'));
+  assert.ok(ch7('...Chapter seven.'));
+  assert.ok(!ch7('Chapter Six. Six Weeks Deep.'));
+  assert.ok(!ch7('Chapter seventeen'));
+  assert.ok(!ch7('The setback is not the problem.'));
+  const ch10 = S.headingMatcher('Chapter 10: The Journey of Continuous Growth', 11);
+  assert.ok(ch10('Chapter Ten. The journey of continuous growth.') && !ch10('Chapter One. Understanding limiting beliefs.'));
+  assert.ok(S.headingMatcher('Introduction', 1)('Introduction.'));
+  assert.ok(S.headingMatcher('Conclusion: Embracing Your Limitless Potential', 12)('Conclusion. Embracing your limitless potential.'));
+  assert.strictEqual(S.headingMatcher('Opening Credits', 0), null);
+});
+
+ok('cutting by heading lands on the pause where the heading is said, even when every pause looks alike', () => {
+  // Four tracks; every pause is 1.5 s, chapter or section alike.
+  const silences = [
+    { start: 40, end: 41.5, duration: 1.5 },   // -> Introduction
+    { start: 160, end: 161.5, duration: 1.5 }, // section inside the Introduction
+    { start: 300, end: 301.5, duration: 1.5 }, // -> Chapter 1
+    { start: 420, end: 421.5, duration: 1.5 }, // section: "In chapter one we..." (decoy)
+    { start: 700, end: 701.5, duration: 1.5 }  // -> Chapter 2
+  ];
+  const heard = { 0: 'Introduction.', 1: 'How to use this book.', 2: 'Chapter One. Understanding limiting beliefs.',
+    3: 'In chapter one we name it.', 4: 'Chapter Two. The neuroscience of belief.' };
+  const titles = ['Opening Credits', 'Introduction', 'Chapter 1: Understanding Limiting Beliefs', 'Chapter 2: The Neuroscience of Belief'];
+  const cuts = S.cutsByHeading({ titles, words: [100, 600, 900, 700], duration: 1000, silences, heard });
+  assert.deepStrictEqual(cuts.map((c) => c.at), [0, 41.5 - S.LEAD_IN, 301.5 - S.LEAD_IN, 701.5 - S.LEAD_IN]);
+  assert.deepStrictEqual(cuts.map((c) => c.by), ['start', 'heard', 'heard', 'heard']);
+});
+
+ok('a heading never heard falls back near its word-count position, without dragging the rest', () => {
+  const silences = [{ start: 100, end: 102, duration: 2 }, { start: 480, end: 482, duration: 2 }, { start: 760, end: 762, duration: 2 }];
+  const heard = { 0: 'Introduction.', 1: 'and then', 2: 'Chapter Two.' };
+  const titles = ['Opening Credits', 'Introduction', 'Chapter 1: A', 'Chapter 2: B'];
+  const cuts = S.cutsByHeading({ titles, words: [100, 400, 250, 250], duration: 1000, silences, heard });
+  assert.strictEqual(cuts[2].by, 'pause');
+  assert.strictEqual(cuts[2].at, 482 - S.LEAD_IN);
+  assert.strictEqual(cuts[3].by, 'heard');
+});
+
 ok('hand-set cuts accept seconds or clock times and are checked', () => {
   const r = S.parseCutOverride('58, 0:06:10, 1:00:00', { tracks: 4, duration: 4000 });
   assert.deepStrictEqual(r.map((c) => c.at), [0, 58, 370, 3600]);

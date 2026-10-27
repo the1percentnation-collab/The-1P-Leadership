@@ -106,4 +106,79 @@ function fmt(sec) {
 
 function round(x) { return Math.round(x * 100) / 100; }
 
-module.exports = { parseSilences, chooseCuts, parseCutOverride, driveFileId, fmt, LEAD_IN };
+// ── Cutting by what is said ─────────────────────────────────────────────
+// Pause length alone cannot tell a chapter break from a section break when
+// the narration pauses the same before both. So the publisher transcribes
+// the first seconds after each pause and cuts where the narrator says the
+// chapter's own heading: "Introduction", "Chapter Seven", "Conclusion".
+
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+
+/** Lowercase words only: "Chapter 7. Building…" -> "chapter 7 building…". */
+function normalizeHeard(text) {
+  return String(text || '').toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * What the narrator says at the top of a track, as a test on the normalized
+ * transcript, from the track's title: "Chapter 7: …" hears "chapter seven"
+ * or "chapter 7"; anything else hears its first words ("introduction",
+ * "conclusion"). The first track always starts at 0, so it needs none.
+ */
+function headingMatcher(title, index) {
+  if (index === 0) return null;
+  const ch = /^chapter\s+(\d+)\b/i.exec(String(title || ''));
+  if (ch) {
+    const n = Number(ch[1]);
+    const alts = [String(n), NUMBER_WORDS[n]].filter(Boolean);
+    const re = new RegExp(`^(?:\\w+ ){0,2}chapter (?:${alts.join('|')})\\b`);
+    return (heard) => re.test(normalizeHeard(heard));
+  }
+  const lead = normalizeHeard(String(title || '').split(/[:.]/)[0]);
+  if (!lead) return null;
+  const re = new RegExp(`^(?:\\w+ ){0,2}${lead.replace(/ /g, ' ')}\\b`);
+  return (heard) => re.test(normalizeHeard(heard));
+}
+
+/**
+ * cutsByHeading({ titles, words, duration, silences, heard })
+ *   heard[k] is the transcript just after silences[k] (missing = not checked).
+ * Each track starts at the pause where its heading is heard, taking the one
+ * nearest the word-count estimate when it is heard more than once. A track
+ * whose heading is never heard falls back to chooseCuts' pause and is marked
+ * so the report says to listen to it.
+ */
+function cutsByHeading({ titles, words, duration, silences, heard, minTrack = 20 }) {
+  const n = titles.length;
+  const total = words.reduce((a, b) => a + b, 0);
+  const sorted = (silences || []).map((s, k) => ({ ...s, k })).sort((a, b) => a.start - b.start);
+  const out = [{ at: 0, silence: null, expected: 0, confidence: null, heard: null, by: 'start' }];
+  let cum = 0;
+  for (let i = 1; i < n; i++) {
+    cum += words[i - 1];
+    const expected = duration * (cum / total);
+    const prev = out[i - 1].at;
+    const match = headingMatcher(titles[i], i);
+    const hits = match ? sorted.filter((s) => s.start > prev + minTrack && heard[s.k] != null && match(heard[s.k])) : [];
+    if (hits.length) {
+      const pick = hits.sort((a, b) => Math.abs(a.end - expected) - Math.abs(b.end - expected))[0];
+      out.push({ at: round(Math.max(pick.start, pick.end - LEAD_IN)), silence: pick, expected: round(expected), confidence: null, heard: heard[pick.k], by: 'heard' });
+    } else {
+      // Not heard: the longest pause near the plain word-count position.
+      // Never re-measured from earlier cuts, so one miss cannot drag the
+      // rest of the book with it.
+      const near = sorted.filter((s) => s.start > prev + minTrack && Math.abs(s.end - expected) <= 120)
+        .sort((a, b) => (b.duration - a.duration) || (Math.abs(a.end - expected) - Math.abs(b.end - expected)));
+      const pick = near[0] || null;
+      const at = pick ? Math.max(pick.start, pick.end - LEAD_IN) : Math.max(expected, prev + minTrack);
+      out.push({ at: round(at), silence: pick, expected: round(expected), confidence: 0, heard: null, by: 'pause' });
+    }
+  }
+  return out;
+}
+
+module.exports = {
+  parseSilences, chooseCuts, parseCutOverride, driveFileId, fmt, LEAD_IN,
+  normalizeHeard, headingMatcher, cutsByHeading
+};
