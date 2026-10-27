@@ -2,9 +2,10 @@
 #
 # Actions → "Publish audiobook" → Run workflow. Paste the Google Drive link to
 # the MP3 (shared "Anyone with the link" for the few minutes this runs, then
-# set back to Restricted). The run cuts it into chapter tracks at the pauses
-# between chapters, uploads them, and creates the $9.99 product. Its summary
-# lists every cut with a "listen" flag on any that deserve a check.
+# set back to Restricted). The run cuts it into chapter tracks where the
+# narrator says each heading ("Chapter Seven"), uploads them, and creates
+# the $9.99 product. Its summary shows what it heard at every cut, with a
+# "listen" flag on any it could not confirm.
 #
 # Leave Publish unticked the first time: the book is uploaded hidden so an
 # admin can play it at /listen?book=i-cant-audio. Run again with Publish
@@ -52,6 +53,15 @@ jobs:
 
       - name: Make sure ffmpeg is there
         run: command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+
+      # The cut lands where the narrator says each chapter's heading, so the
+      # run transcribes the opening seconds after every pause.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install the speech model library
+        run: pip install --quiet faster-whisper==1.2.1
 
       - name: Write service account key
         id: sa
