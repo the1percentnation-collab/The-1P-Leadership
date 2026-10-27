@@ -178,7 +178,97 @@ function cutsByHeading({ titles, words, duration, silences, heard, minTrack = 20
   return out;
 }
 
+// ── Cutting by the heading's spoken words, with timestamps ─────────────
+// Listening only after long pauses misses a heading the narrator reads
+// without one. So each chapter's neighbourhood (a few minutes either side of
+// where its word count puts it) is transcribed whole, with a time for every
+// word, and the cut goes right before the words "chapter seven".
+
+/** Where to listen for each track's heading: [{ track, from, to, expected }]. */
+function headingWindows({ words, duration, span = 240 }) {
+  const total = words.reduce((a, b) => a + b, 0);
+  const out = [];
+  let cum = 0;
+  for (let i = 1; i < words.length; i++) {
+    cum += words[i - 1];
+    const expected = duration * (cum / total);
+    out.push({ track: i, from: round(Math.max(0, expected - span)), to: round(Math.min(duration, expected + span)), expected: round(expected) });
+  }
+  return out;
+}
+
+// The words that open a track: ['chapter', '7'|'seven'] or the title's first
+// word ('introduction', 'conclusion').
+function headingWords(title, index) {
+  if (index === 0) return null;
+  const ch = /^chapter\s+(\d+)\b/i.exec(String(title || ''));
+  if (ch) { const n = Number(ch[1]); return { first: 'chapter', next: [String(n), NUMBER_WORDS[n]].filter(Boolean) }; }
+  const first = normalizeHeard(String(title || '').split(/[:.]/)[0]).split(' ')[0];
+  return first ? { first, next: null } : null;
+}
+
+/** Every place in a timed word list where the heading is said: [{ start, text }]. */
+function findHeading(timed, title, index) {
+  const want = headingWords(title, index);
+  if (!want || !Array.isArray(timed)) return [];
+  const toks = timed.map((w) => normalizeHeard(w.word));
+  const hits = [];
+  for (let k = 0; k < toks.length; k++) {
+    // "Chapter 7." can arrive as one token ("chapter 7") or two.
+    const parts = toks[k].split(' ');
+    if (parts[0] !== want.first) continue;
+    if (want.next) {
+      const nxt = parts[1] != null ? parts[1] : (toks[k + 1] || '').split(' ')[0];
+      if (!want.next.includes(nxt)) continue;
+    }
+    hits.push({ start: timed[k].start, text: timed.slice(k, k + 9).map((w) => w.word.trim()).join(' ') });
+  }
+  return hits;
+}
+
+/**
+ * cutsByWords({ titles, words, duration, silences, heardWords })
+ *   heardWords[i]: timed words [{ word, start, end }] (seconds in the book)
+ *   heard around track i's expected start.
+ * A track starts just before its heading, preferring a saying of it that
+ * follows a pause and sits nearest the word-count position; the cut snaps
+ * to that pause. Not heard: the longest pause near the position, flagged,
+ * with what was said there kept for the report.
+ */
+function cutsByWords({ titles, words, duration, silences, heardWords, minTrack = 20 }) {
+  const n = titles.length;
+  const total = words.reduce((a, b) => a + b, 0);
+  const sil = [...(silences || [])].sort((a, b) => a.start - b.start);
+  const out = [{ at: 0, silence: null, expected: 0, heard: null, by: 'start', near: null }];
+  let cum = 0;
+  for (let i = 1; i < n; i++) {
+    cum += words[i - 1];
+    const expected = duration * (cum / total);
+    const prev = out[i - 1].at;
+    const timed = (heardWords && heardWords[i]) || [];
+    const pauseBefore = (t) => sil.filter((s) => s.end >= t - 1.5 && s.end <= t + 0.4 && s.start < t)
+      .sort((a, b) => b.end - a.end)[0] || null;
+    const hits = findHeading(timed, titles[i], i).filter((h) => h.start > prev + minTrack)
+      .map((h) => ({ ...h, pause: pauseBefore(h.start) }))
+      .sort((a, b) => ((a.pause ? 0 : 90) + Math.abs(a.start - expected)) - ((b.pause ? 0 : 90) + Math.abs(b.start - expected)));
+    if (hits.length) {
+      const h = hits[0];
+      const at = h.pause ? Math.min(h.start, Math.max(h.pause.start, h.pause.end - LEAD_IN)) : Math.max(prev + minTrack, h.start - 0.4);
+      out.push({ at: round(at), silence: h.pause, expected: round(expected), heard: h.text, by: 'heard', near: null });
+      continue;
+    }
+    const near = sil.filter((s) => s.start > prev + minTrack && Math.abs(s.end - expected) <= 120)
+      .sort((a, b) => (b.duration - a.duration) || (Math.abs(a.end - expected) - Math.abs(b.end - expected)));
+    const pick = near[0] || null;
+    const at = pick ? Math.max(pick.start, pick.end - LEAD_IN) : Math.max(expected, prev + minTrack);
+    const said = timed.filter((w) => Math.abs(w.start - at) <= 12).map((w) => w.word.trim()).join(' ').slice(0, 160);
+    out.push({ at: round(at), silence: pick, expected: round(expected), heard: null, by: 'pause', near: said || null });
+  }
+  return out;
+}
+
 module.exports = {
   parseSilences, chooseCuts, parseCutOverride, driveFileId, fmt, LEAD_IN,
-  normalizeHeard, headingMatcher, cutsByHeading
+  normalizeHeard, headingMatcher, cutsByHeading,
+  headingWindows, headingWords, findHeading, cutsByWords
 };

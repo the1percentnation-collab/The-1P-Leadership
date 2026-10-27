@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
-"""Transcribe a few seconds after each pause in an audiobook.
+"""Transcribe parts of an audiobook to find where its chapters start.
 
-Used by publish-audiobook.js to hear where each chapter starts: the narrator
-says "Chapter Seven" right after the pause that opens chapter seven, and a
-section heading inside a chapter sounds different.
+Used by publish-audiobook.js: the narrator says "Chapter Seven" where
+chapter seven starts, so the cut goes right before those words. It listens
+to a few minutes around each chapter's expected start (--windows), or, in
+the older mode, to a few seconds after each pause.
 
   python3 transcribe-snippets.py AUDIO.mp3 STARTS.json OUT.json [--model base.en] [--seconds 6]
+  python3 transcribe-snippets.py AUDIO.mp3 WINDOWS.json OUT.json --windows [--model base.en]
 
 STARTS.json is a list of start times in seconds. OUT.json gets a list of the
-same length, each the transcript of [start, start + seconds). The audio is
-decoded once by ffmpeg to 16 kHz mono; the model is faster-whisper on CPU.
+same length, each the transcript of [start, start + seconds).
+
+With --windows, WINDOWS.json is a list of [from, to] in seconds, and OUT.json
+gets, for each window, every word heard in it with its time in the book:
+[[{"word": " Chapter", "start": 812.4, "end": 812.9}, ...], ...]. That is
+how a heading read without a pause before it is still found.
+
+The audio is decoded once by ffmpeg to 16 kHz mono; the model is
+faster-whisper on CPU.
 """
 import json
 import subprocess
@@ -43,6 +52,22 @@ def main():
     t0 = time.time()
     audio = decode(audio_path)
     model = WhisperModel(model_name, device='cpu', compute_type='int8')
+    if '--windows' in sys.argv:
+        out = []
+        for a, b in starts:
+            clip = audio[max(0, int(float(a) * RATE)):int(float(b) * RATE)]
+            words = []
+            if len(clip) >= RATE // 2:
+                segments, _ = model.transcribe(clip, language='en', beam_size=1, vad_filter=False,
+                                               condition_on_previous_text=False, word_timestamps=True)
+                for seg in segments:
+                    for w in (seg.words or []):
+                        words.append({'word': w.word, 'start': round(float(a) + w.start, 2), 'end': round(float(a) + w.end, 2)})
+            out.append(words)
+        json.dump(out, open(out_path, 'w'))
+        minutes = sum(b - a for a, b in starts) / 60
+        print(f'Transcribed {len(starts)} windows ({minutes:.0f} min of audio) with {model_name} in {time.time() - t0:.0f}s', file=sys.stderr)
+        return
     out = []
     for s in starts:
         a = max(0, int(float(s) * RATE))

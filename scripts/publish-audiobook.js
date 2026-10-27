@@ -32,7 +32,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
-const { parseSilences, chooseCuts, parseCutOverride, driveFileId, fmt, cutsByHeading } = require('./lib/audiobook-split');
+const { parseSilences, chooseCuts, parseCutOverride, driveFileId, fmt, headingWindows, cutsByWords } = require('./lib/audiobook-split');
 
 function arg(name) {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -95,23 +95,24 @@ async function downloadFromDrive(link, dest) {
   console.log(`  ${(bytes / 1024 / 1024).toFixed(1)} MB`);
 }
 
-// Transcribe the first seconds after every real pause, so the cut can land
-// where the heading is said. Returns { silenceIndex: transcript }.
-// AUDIOBOOK_TRANSCRIBER swaps in another script with the same arguments
-// (tests use a stand-in, since the model cannot be downloaded everywhere).
-function listen(src, silences, outDir) {
-  const picked = silences.map((s, k) => ({ s, k })).filter(({ s }) => s.duration >= 0.8);
-  const startsFile = path.join(outDir, 'pause-ends.json');
-  const heardFile = path.join(outDir, 'heard.json');
-  fs.writeFileSync(startsFile, JSON.stringify(picked.map(({ s }) => Math.max(0, s.end - 0.3))));
+// Transcribe a few minutes either side of where each chapter should start,
+// with a time for every word, so the cut can go right before its heading.
+// Returns { track: [{ word, start, end }] }. AUDIOBOOK_TRANSCRIBER swaps in
+// another script with the same arguments (tests use a stand-in, since the
+// model cannot be downloaded everywhere).
+function listenAround(src, words, duration, outDir) {
+  const windows = headingWindows({ words, duration, span: Number(process.env.AUDIOBOOK_LISTEN_SPAN) || 240 });
+  const winFile = path.join(outDir, 'windows.json');
+  const heardFile = path.join(outDir, 'heard-words.json');
+  fs.writeFileSync(winFile, JSON.stringify(windows.map((w) => [w.from, w.to])));
   const script = process.env.AUDIOBOOK_TRANSCRIBER || path.join(__dirname, 'transcribe-snippets.py');
-  console.log(`Listening to the opening of ${picked.length} pauses …`);
-  const r = spawnSync('python3', [script, src, startsFile, heardFile, '--model', process.env.AUDIOBOOK_STT_MODEL || 'base.en'],
+  console.log(`Listening around ${windows.length} chapter starts …`);
+  const r = spawnSync('python3', [script, src, winFile, heardFile, '--windows', '--model', process.env.AUDIOBOOK_STT_MODEL || 'base.en'],
     { encoding: 'utf8', stdio: ['ignore', 'inherit', 'inherit'] });
-  if (r.status !== 0) fail('could not transcribe the chapter openings (speech model step failed; see the log above). Nothing was uploaded.');
-  const texts = JSON.parse(fs.readFileSync(heardFile, 'utf8'));
+  if (r.status !== 0) fail('could not transcribe around the chapter starts (speech model step failed; see the log above). Nothing was uploaded.');
+  const lists = JSON.parse(fs.readFileSync(heardFile, 'utf8'));
   const heard = {};
-  picked.forEach(({ k }, j) => { heard[k] = texts[j] || ''; });
+  windows.forEach((w, j) => { heard[w.track] = lists[j] || []; });
   return heard;
 }
 
@@ -142,7 +143,7 @@ async function main() {
       cuts = chooseCuts({ words, duration, silences });
       how = 'Chapter starts placed by pauses and word counts alone.';
     } else {
-      cuts = cutsByHeading({ titles: cfg.tracks.map((t) => t.title), words, duration, silences, heard: listen(src, silences, outDir) });
+      cuts = cutsByWords({ titles: cfg.tracks.map((t) => t.title), words, duration, silences, heardWords: listenAround(src, words, duration, outDir) });
       how = 'Chapter starts found where the narrator says each heading.';
     }
   }
@@ -172,7 +173,7 @@ async function main() {
     let check;
     if (i === 0 || override) check = '';
     else if (c.by === 'heard') check = `heard “${String(c.heard).slice(0, 48)}${String(c.heard).length > 48 ? '…' : ''}”`;
-    else if (c.by === 'pause') check = 'listen: heading not heard';
+    else if (c.by === 'pause') check = `listen: heading not heard${c.near ? ` (said here: “${c.near.slice(0, 90)}”)` : ''}`;
     else check = c.confidence === 0 ? 'listen: no clear pause nearby'
       : (c.confidence != null && c.confidence < 1.25 ? 'listen: a similar pause is close by' : 'ok');
     if (odd && i) check += `${check ? '; ' : ''}listen: length looks off (expected about ${fmt(predicted)})`;
