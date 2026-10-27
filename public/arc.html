@@ -113,6 +113,9 @@
     .signed-in { font-size: 14px; color: var(--gray-300); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 11px 13px; }
     .signed-in strong { color: var(--white); }
     .fine { font-size: 12px; color: var(--gray-600); text-align: center; }
+    .steps-title { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gray-400); margin-top: 6px; }
+    .steps { margin: 12px 0 0; padding-left: 20px; display: grid; gap: 10px; font-size: 14px; color: var(--gray-300); line-height: 1.5; }
+    .steps strong { color: var(--white); font-weight: 600; }
 
     .state { text-align: center; padding: 18px 0 6px; }
     .state .icon { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; background: rgba(86,212,168,0.12); color: var(--ok); }
@@ -198,15 +201,14 @@
   <aside class="panel" id="claim" aria-live="polite">
     <!-- Loading -->
     <div id="st-loading" class="state">
-      <p>Loading…</p>
+      <p id="loading-msg">Loading…</p>
     </div>
 
-    <!-- Sign-up form -->
+    <!-- Sign-up form. Also the "fresh reading link" form (resend mode). -->
     <div id="st-form" hidden>
-      <div class="panel-title">Claim Your Copy</div>
-      <div class="panel-sub" id="form-sub">Create your free account and the book opens right away.</div>
+      <div class="panel-title" id="form-title">Claim Your Copy</div>
+      <div class="panel-sub" id="form-sub">Tell us where to send it. We email you a link that opens the book. No password needed.</div>
       <div class="seats" id="seats" hidden></div>
-
       <form id="arc-form" novalidate>
         <div class="row2" id="name-row">
           <label class="f">First name
@@ -216,45 +218,59 @@
             <input type="text" id="last" autocomplete="family-name" maxlength="60">
           </label>
         </div>
-        <div id="account-fields">
-          <label class="f">Email
-            <input type="email" id="email" autocomplete="email" maxlength="160">
-          </label>
-          <label class="f" style="margin-top:14px;"><span id="pw-label">Create a password (8+ characters)</span>
-            <input type="password" id="password" autocomplete="new-password" minlength="8">
-          </label>
-        </div>
+        <label class="f" id="email-row">Email
+          <input type="email" id="email" autocomplete="email" maxlength="160" inputmode="email">
+        </label>
         <div id="signed-in" class="signed-in" hidden></div>
-
-        <label class="f">Where will you post your review?
-          <select id="platform">
-            <option>Amazon</option>
-            <option>Goodreads</option>
-            <option>Amazon and Goodreads</option>
-            <option>Social media</option>
-            <option>Not sure yet</option>
-          </select>
-        </label>
-
-        <label class="check"><input type="checkbox" id="agree">
-          <span><strong>I'll read it and leave an honest review.</strong> Honest beats kind. That is the point of reading early.</span>
-        </label>
-        <label class="check"><input type="checkbox" id="updates">
-          <span>Email me about Anthony's new books, courses and free tools. Unsubscribe anytime.</span>
-        </label>
-
-        <div id="err" class="err" hidden></div>
-
-        <button class="btn btn-primary" type="submit" id="submit">Get my advance copy</button>
-        <div class="divider" id="or">or</div>
-        <button class="btn btn-ghost" type="button" id="google">Continue with Google</button>
-
-        <div class="switch" id="switch-wrap">
-          <span id="switch-text">Already have a One Percent account?</span>
-          <button type="button" id="switch">Sign in instead</button>
+        <div id="promise-rows">
+          <label class="check"><input type="checkbox" id="agree">
+            <span><strong>I'll read it and leave an honest review.</strong> Honest beats kind. That is the point of reading early.</span>
+          </label>
+          <label class="check" style="margin-top:12px;"><input type="checkbox" id="updates">
+            <span>Email me about Anthony's new books, courses and free tools. Unsubscribe anytime.</span>
+          </label>
         </div>
-        <div class="switch" id="reset-wrap" hidden><button type="button" id="reset">Forgot your password?</button></div>
+        <div id="err" class="err" hidden></div>
+        <button class="btn btn-primary" type="submit" id="submit">Send my advance copy</button>
+        <div class="switch" id="switch-wrap">
+          <span id="switch-text">Already have your copy?</span>
+          <button type="button" id="switch">Get a fresh reading link</button>
+        </div>
         <p class="fine">Free. No card. We never sell your information.</p>
+      </form>
+    </div>
+
+    <!-- Link sent: check your email, and the ARC terms on screen -->
+    <div id="st-sent" hidden>
+      <div class="state">
+        <div class="icon">✉</div>
+        <h3>Check Your Email</h3>
+        <p id="sent-msg">We sent your reading link. Tap Start reading in that email and the book opens.</p>
+      </div>
+      <div class="steps-title">How your advance copy works</div>
+      <ol class="steps">
+        <li><strong>Open the email and tap Start reading.</strong> It signs you in and opens the book. The button works once, so come back here for a fresh one anytime.</li>
+        <li><strong>Read at your own pace.</strong> Phone, tablet or computer. It remembers your page.</li>
+        <li><strong>Keep it to yourself.</strong> This early copy is for you only. Please don't forward the email or share the book.</li>
+        <li><strong>Leave an honest review</strong> on Amazon, Goodreads or both when you finish. A few sentences is plenty.</li>
+        <li><strong>Add one line to your review:</strong> “I received a free advance copy in exchange for an honest review.” It keeps your review within Amazon's rules.</li>
+        <li><strong>Tell us the truth.</strong> Reply to the email with what landed and what did not.</li>
+      </ol>
+      <p class="fine" style="margin-top:18px;">Nothing yet? Check spam or promotions, then
+        <button type="button" class="linkish" id="resend">send it again</button> or
+        <button type="button" class="linkish" id="change-email">use a different email</button>.</p>
+    </div>
+
+    <!-- Opened the link on a different device: confirm the email -->
+    <div id="st-confirm" hidden>
+      <div class="panel-title">One More Step</div>
+      <div class="panel-sub">You opened the link on a different device. Confirm the email you signed up with and the book opens.</div>
+      <form id="confirm-form" novalidate>
+        <label class="f">Email
+          <input type="email" id="confirm-email" autocomplete="email" maxlength="160" inputmode="email">
+        </label>
+        <div id="confirm-err" class="err" hidden></div>
+        <button class="btn btn-primary" type="submit" id="confirm-submit">Open my book</button>
       </form>
     </div>
 
@@ -273,6 +289,8 @@
       <p id="closed-msg">Advance copies are not open right now. You can still read chapter one free.</p>
       <a class="btn btn-primary" href="/icantpreview">Read chapter one free</a>
       <a class="btn btn-ghost" href="/books">See the book</a>
+      <p class="fine" style="margin-top:18px;">Already have your copy?
+        <button type="button" class="linkish" id="closed-switch">Get a fresh reading link</button></p>
     </div>
   </aside>
 </main>

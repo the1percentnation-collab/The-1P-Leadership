@@ -573,8 +573,19 @@ await t('admin CAN close ARC sign-ups',
   () => assertSucceeds(setDoc(doc(adm, 'config/arc'), { open: false }, { merge: true })));
 await t('admin CAN read the ARC reader list',
   () => assertSucceeds(getDocs(collection(adm, 'arcReaders'))));
-await t('an ARC reader CANNOT read the list, even their own record',
-  () => assertFails(getDoc(doc(solo, 'arcReaders/solo'))));
+await t('an ARC reader CAN read their own record (their name marks the copy)',
+  () => assertSucceeds(getDoc(doc(solo, 'arcReaders/solo'))));
+await t('an ARC reader CANNOT read another reader or the list',
+  () => Promise.all([
+    assertFails(getDoc(doc(solo, 'arcReaders/other'))),
+    assertFails(getDocs(collection(solo, 'arcReaders')))
+  ]));
+await t('nobody CAN read or write ARC sign-up requests from the client',
+  () => Promise.all([
+    assertFails(getDoc(doc(anon, 'arcRequests/abc'))),
+    assertFails(setDoc(doc(anon, 'arcRequests/abc'), { email: 'x@x.com' })),
+    assertFails(getDoc(doc(owner, 'arcRequests/abc')))
+  ]));
 await t('admin CAN mark an ARC review as in',
   () => assertSucceeds(updateDoc(doc(adm, 'arcReaders/solo'), { reviewedAt: serverTimestamp() })));
 await t('admin CANNOT change which book an ARC reader got',

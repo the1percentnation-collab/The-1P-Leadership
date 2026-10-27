@@ -1,24 +1,53 @@
-// /arc: the advance reader sign-up. One public link for readers: create an
-// account (or sign in), agree to leave a review, and claimArcCopy puts the
-// full digital edition in their library. Then straight into the reader.
+// /arc: the advance reader sign-up. One public link for readers: first name,
+// last name, email and a review promise. requestArcLink emails a one-tap
+// sign-in link with the ARC terms; the link comes back here (?claim=1),
+// signs them in with no password, claimArcCopy puts the full digital
+// edition in their library, and they go straight into the reader.
+//
+// The same form, in resend mode, sends a fresh link to a reader who already
+// has the book (new device, signed out, expired link).
 //
 // config/arc is public so a closed or full sign-up says so before anyone
-// makes an account for nothing. The server checks again on claim.
+// types anything. The server checks again on every request and claim.
 
-import { db, functions, firebaseReady } from './firebase.js';
-import { onAuthReady, signupEmail, loginEmail, loginGoogle, resetPassword, signOut } from './auth.js';
+import { auth, db, functions, firebaseReady } from './firebase.js';
+import { onAuthReady, ensureUserDoc, signOut } from './auth.js';
+import {
+  isSignInWithEmailLink, signInWithEmailLink
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 const $ = (id) => document.getElementById(id);
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-// 'new' creates an account, 'signin' uses an existing one, 'member' is
-// already signed in and only needs to claim.
+const PROMISE_MSG = 'Advance copies go to readers who agree to leave an honest review.';
+// The email the link was sent to, so opening it on this device needs no
+// retyping. Firebase asks for it to finish an email-link sign-in.
+const LS_EMAIL = 'arc:email';
+const STATES = ['st-loading', 'st-form', 'st-sent', 'st-confirm', 'st-done', 'st-closed'];
+
+// 'new' sends a sign-up link, 'resend' a fresh link for an existing reader,
+// 'member' is already signed in and only needs to claim.
 let mode = 'new';
 let user = null;
+// 'open', 'closed' or 'full', from config/arc.
+let signups = 'open';
+let seatsText = '';
+// The last link request, for "send it again".
+let lastRequest = null;
+
+function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } }
+function lsDel(k) { try { localStorage.removeItem(k); } catch (e) { /* private mode */ } }
+function track(name, params) { try { gtag('event', name, params || {}); } catch (e) { /* no analytics */ } }
 
 function show(state) {
-  for (const id of ['st-loading', 'st-form', 'st-done', 'st-closed']) $(id).hidden = id !== state;
+  for (const id of STATES) $(id).hidden = id !== state;
+}
+
+function loading(msg) {
+  $('loading-msg').textContent = msg;
+  show('st-loading');
 }
 
 function closed(title, msg) {
@@ -27,35 +56,50 @@ function closed(title, msg) {
   show('st-closed');
 }
 
+function showClosedFor(state) {
+  if (state === 'full') {
+    closed('All Copies Claimed', 'Every advance copy has been claimed. Thank you for your interest. Chapter one is still free.');
+  } else {
+    closed('Sign-ups Are Closed', 'Advance copies are not open right now. You can still read chapter one free.');
+  }
+}
+
 function setErr(msg, fieldId) {
-  for (const id of ['first', 'last', 'email', 'password']) $(id).removeAttribute('aria-invalid');
+  for (const id of ['first', 'last', 'email']) $(id).removeAttribute('aria-invalid');
   $('err').hidden = !msg;
   $('err').textContent = msg || '';
   if (fieldId) { $(fieldId).setAttribute('aria-invalid', 'true'); $(fieldId).focus(); }
 }
 
+function submitLabel() {
+  if (mode === 'member') return 'Get my advance copy';
+  if (mode === 'resend') return 'Send my reading link';
+  return 'Send my advance copy';
+}
+
 function busy(on, label) {
   $('submit').disabled = on;
-  $('google').disabled = on;
-  $('submit').textContent = on ? label : 'Get my advance copy';
+  $('submit').textContent = on ? label : submitLabel();
 }
 
 function setMode(next) {
   mode = next;
   const member = mode === 'member';
-  $('name-row').hidden = mode === 'signin' || member;
-  $('account-fields').hidden = member;
+  const resend = mode === 'resend';
+  $('name-row').hidden = member || resend;
+  $('email-row').hidden = member;
   $('signed-in').hidden = !member;
-  $('or').hidden = member;
-  $('google').hidden = member;
-  $('reset-wrap').hidden = mode !== 'signin';
-  $('pw-label').textContent = mode === 'signin' ? 'Password' : 'Create a password (8+ characters)';
-  $('password').autocomplete = mode === 'signin' ? 'current-password' : 'new-password';
+  $('promise-rows').hidden = resend;
+  $('seats').hidden = resend || !seatsText;
+  $('form-title').textContent = resend ? 'Get A Fresh Link' : 'Claim Your Copy';
   $('form-sub').textContent = member
     ? 'You are signed in. Confirm below and the book opens right away.'
-    : mode === 'signin'
-      ? 'Sign in with your One Percent account and the book opens right away.'
-      : 'Create your free account and the book opens right away.';
+    : resend
+      ? 'Enter the email you signed up with. We will send a new link that opens your book.'
+      : 'Tell us where to send it. We email you a link that opens the book. No password needed.';
+  $('switch-wrap').hidden = member;
+  $('switch-text').textContent = resend ? 'New here?' : 'Already have your copy?';
+  $('switch').textContent = resend ? 'Claim an advance copy' : 'Get a fresh reading link';
   if (member) {
     $('signed-in').innerHTML = '';
     const who = document.createElement('span');
@@ -65,54 +109,62 @@ function setMode(next) {
     out.type = 'button'; out.className = 'linkish'; out.textContent = 'Not you?';
     out.addEventListener('click', async () => { await signOut(); user = null; setMode('new'); });
     $('signed-in').append(who, out);
-    $('switch-wrap').hidden = true;
-  } else {
-    $('switch-wrap').hidden = false;
-    $('switch-text').textContent = mode === 'signin' ? 'New here?' : 'Already have a One Percent account?';
-    $('switch').textContent = mode === 'signin' ? 'Create an account' : 'Sign in instead';
   }
+  busy(false);
   setErr('');
 }
 
-function authMessage(e) {
-  const code = (e && e.code) || '';
-  if (code === 'auth/invalid-email') return ['Please enter a valid email address.', 'email'];
-  if (code === 'auth/weak-password') return ['Choose a password with at least 8 characters.', 'password'];
-  if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
-    return ['That email and password do not match. Try again or reset your password.', 'password'];
-  }
-  if (code === 'auth/too-many-requests') return ['Too many attempts. Wait a minute and try again.', null];
-  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return ['', null];
-  if (code === 'auth/network-request-failed') return ['No connection. Check your internet and try again.', null];
-  return [(e && e.message) || 'Something went wrong. Please try again.', null];
+// From the form: back to the right screen for a new reader.
+function toSignup() {
+  if (signups !== 'open') { showClosedFor(signups); return; }
+  setMode(user ? 'member' : 'new');
+  show('st-form');
 }
 
-async function claim(name) {
-  busy(true, 'Opening your copy…');
+function toResend(email) {
+  setMode('resend');
+  if (email) $('email').value = email;
+  show('st-form');
+  $('email').focus();
+}
+
+function functionsMessage(e, fallback) {
+  const code = (e && e.code) || '';
+  if (code === 'functions/resource-exhausted' && /too many|rate/i.test(e.message || '')) {
+    return 'Too many tries. Wait a few minutes and try again.';
+  }
+  if (code === 'functions/unavailable' || code === 'functions/internal') {
+    return (e && e.message && code === 'functions/unavailable') ? e.message : 'We could not reach the server. Please try again.';
+  }
+  return (e && e.message) || fallback;
+}
+
+// A closed or full answer from the server wins over what config/arc said.
+function handleClosed(e) {
+  const code = (e && e.code) || '';
+  const msg = (e && e.message) || '';
+  if (code === 'functions/failed-precondition' && /closed/i.test(msg)) { signups = 'closed'; closed('Sign-ups Are Closed', msg); return true; }
+  if (code === 'functions/resource-exhausted' && /claimed/i.test(msg)) { signups = 'full'; closed('All Copies Claimed', msg); return true; }
+  return false;
+}
+
+// ── Step 1: the form emails a sign-in link ──────────────────────────────
+
+async function requestLink(payload) {
+  busy(true, 'Sending…');
   try {
-    const res = await httpsCallable(functions, 'claimArcCopy')({
-      name,
-      reviewPlatform: $('platform').value,
-      agreesToReview: true,
-      consent: $('updates').checked
-    });
-    const readUrl = (res.data && res.data.readUrl) || '/read?book=i-cant';
-    $('read-link').href = readUrl;
-    $('done-msg').textContent = res.data && res.data.already
-      ? 'Your advance copy is already in your library. Opening it now.'
-      : 'Your advance copy is in your library, and the link is in your inbox too. Opening it now.';
-    show('st-done');
-    try { gtag('event', 'arc_claim', { already: !!(res.data && res.data.already) }); } catch (e) {}
-    setTimeout(() => location.assign(readUrl), 1800);
+    await httpsCallable(functions, 'requestArcLink')(payload);
+    lsSet(LS_EMAIL, payload.email);
+    lastRequest = payload;
+    $('sent-msg').textContent = payload.resend
+      ? `If ${payload.email} has an advance copy, a fresh reading link is on its way. Tap Start reading in that email and your book opens.`
+      : `We sent your reading link to ${payload.email}. Tap Start reading in that email and the book opens.`;
+    show('st-sent');
+    track(payload.resend ? 'arc_link_resent' : 'arc_link_requested');
+    return true;
   } catch (e) {
-    const code = (e && e.code) || '';
-    if (code === 'functions/failed-precondition' && /closed/i.test(e.message || '')) {
-      closed('Sign-ups Are Closed', e.message);
-    } else if (code === 'functions/resource-exhausted') {
-      closed('All Copies Claimed', e.message);
-    } else {
-      setErr((e && e.message) || 'We could not claim your copy. Please try again.');
-    }
+    if (!handleClosed(e)) setErr(functionsMessage(e, 'We could not send your link. Please try again.'));
+    return false;
   } finally {
     busy(false);
   }
@@ -121,81 +173,117 @@ async function claim(name) {
 async function onSubmit(ev) {
   ev.preventDefault();
   setErr('');
-  if (!$('agree').checked) { setErr('Advance copies go to readers who agree to leave an honest review.'); return; }
 
-  if (mode === 'member') { await claim(user.displayName || ''); return; }
+  if (mode === 'member') {
+    if (!$('agree').checked) { setErr(PROMISE_MSG); return; }
+    await claimAndOpen({ agreesToReview: true, consent: $('updates').checked, name: user.displayName || '' });
+    return;
+  }
 
-  const first = $('first').value.trim();
-  const last = $('last').value.trim();
   const email = $('email').value.trim().toLowerCase();
-  const password = $('password').value;
-  if (mode === 'new' && !first) { setErr('Please enter your first name.', 'first'); return; }
-  if (mode === 'new' && !last) { setErr('Please enter your last name.', 'last'); return; }
+  if (mode === 'resend') {
+    if (!EMAIL_RE.test(email)) { setErr('Please enter a valid email address.', 'email'); return; }
+    await requestLink({ email, resend: true });
+    return;
+  }
+
+  const firstName = $('first').value.trim();
+  const lastName = $('last').value.trim();
+  if (!firstName) { setErr('Please enter your first name.', 'first'); return; }
+  if (!lastName) { setErr('Please enter your last name.', 'last'); return; }
   if (!EMAIL_RE.test(email)) { setErr('Please enter a valid email address.', 'email'); return; }
-  if (mode === 'new' && password.length < 8) { setErr('Choose a password with at least 8 characters.', 'password'); return; }
-  if (mode === 'signin' && !password) { setErr('Enter your password.', 'password'); return; }
+  if (!$('agree').checked) { setErr(PROMISE_MSG); return; }
+  await requestLink({ firstName, lastName, email, agreesToReview: true, consent: $('updates').checked });
+}
 
-  const displayName = `${first} ${last}`.trim();
-  busy(true, mode === 'new' ? 'Creating your account…' : 'Signing in…');
+async function onResend() {
+  if (!lastRequest) { toResend(lsGet(LS_EMAIL)); return; }
+  const btn = $('resend');
+  btn.disabled = true;
+  const sent = await requestLink(lastRequest);
+  btn.disabled = false;
+  if (sent) $('sent-msg').textContent += ' We just sent it again.';
+  else { show('st-form'); }
+}
+
+// ── Step 2: the link comes back here and opens the book ─────────────────
+
+async function finishLink(email, fromConfirm) {
+  if (!email) {
+    show('st-confirm');
+    $('confirm-email').focus();
+    return;
+  }
+  loading('Opening your advance copy…');
   try {
-    if (mode === 'new') {
-      try {
-        user = await signupEmail({ email, password, displayName });
-      } catch (e) {
-        if (e && e.code !== 'auth/email-already-in-use') throw e;
-        // They already have an account. The password they typed may be it.
-        try {
-          user = await loginEmail(email, password);
-        } catch (e2) {
-          setMode('signin');
-          $('email').value = email;
-          setErr('That email already has a One Percent account. Enter its password, or reset it below.', 'password');
-          busy(false);
-          return;
-        }
-      }
-    } else {
-      user = await loginEmail(email, password);
+    const cred = await signInWithEmailLink(auth, email, location.href);
+    user = cred.user;
+  } catch (e) {
+    const code = (e && e.code) || '';
+    if (code === 'auth/invalid-email' || code === 'auth/missing-email') {
+      show('st-confirm');
+      $('confirm-err').hidden = false;
+      $('confirm-err').textContent = fromConfirm
+        ? 'That email does not match the link. Use the email you signed up with.'
+        : 'Confirm the email you signed up with.';
+      $('confirm-email').focus();
+      return;
     }
-  } catch (e) {
-    const [msg, field] = authMessage(e);
-    setErr(msg, field);
-    busy(false);
+    if (code === 'auth/network-request-failed') {
+      show('st-confirm');
+      $('confirm-email').value = email;
+      $('confirm-err').hidden = false;
+      $('confirm-err').textContent = 'No connection. Check your internet and try again.';
+      return;
+    }
+    // Expired, already used, or mangled by an email scanner.
+    history.replaceState(null, '', '/arc');
+    toResend(email);
+    setErr('That link has expired or was already used. Tap below and we will send a fresh one.');
     return;
   }
-  // Signed in from here on, so a failed claim retries without a new account.
-  setMode('member');
-  await claim(displayName || user.displayName || '');
+  lsDel(LS_EMAIL);
+  history.replaceState(null, '', '/arc');
+  try { await ensureUserDoc(user); } catch (e) { console.warn('[arc] profile setup failed', e); }
+  await claimAndOpen({});
 }
 
-async function onGoogle() {
-  setErr('');
-  if (!$('agree').checked) { setErr('Advance copies go to readers who agree to leave an honest review.'); return; }
-  busy(true, 'Signing in…');
-  try {
-    user = await loginGoogle();
-  } catch (e) {
-    const [msg, field] = authMessage(e);
-    setErr(msg, field);
-    busy(false);
+async function onConfirm(ev) {
+  ev.preventDefault();
+  $('confirm-err').hidden = true;
+  const email = $('confirm-email').value.trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) {
+    $('confirm-err').hidden = false;
+    $('confirm-err').textContent = 'Please enter a valid email address.';
     return;
   }
-  setMode('member');
-  await claim(user.displayName || '');
+  await finishLink(email, true);
 }
 
-async function onReset() {
-  const email = $('email').value.trim().toLowerCase();
-  if (!EMAIL_RE.test(email)) { setErr('Enter your email above, then tap reset.', 'email'); return; }
+async function claimAndOpen(data) {
+  loading('Opening your advance copy…');
   try {
-    await resetPassword(email);
-    setErr('');
-    $('err').hidden = false;
-    $('err').textContent = `If ${email} has an account, a reset link is on its way. Come back to this page after you set a new password.`;
+    const res = await httpsCallable(functions, 'claimArcCopy')(data);
+    const already = !!(res.data && res.data.already);
+    const readUrl = (res.data && res.data.readUrl) || '/read?book=i-cant';
+    $('read-link').href = readUrl;
+    $('done-msg').textContent = already
+      ? 'Welcome back. Opening your book now.'
+      : 'Your advance copy is in your library. Opening it now.';
+    show('st-done');
+    track('arc_claim', { already });
+    setTimeout(() => location.assign(readUrl), 1500);
   } catch (e) {
-    setErr(authMessage(e)[0]);
+    if (handleClosed(e)) return;
+    // Signed in from here on, so a retry claims without a new link.
+    setMode('member');
+    show('st-form');
+    if ((e && e.code) === 'functions/invalid-argument') setErr('Confirm the review promise below to get your copy.');
+    else setErr(functionsMessage(e, 'We could not open your copy. Please try again.'));
   }
 }
+
+// ── Start ───────────────────────────────────────────────────────────────
 
 async function main() {
   if (!firebaseReady) {
@@ -203,32 +291,37 @@ async function main() {
     return;
   }
   $('arc-form').addEventListener('submit', onSubmit);
-  $('google').addEventListener('click', onGoogle);
-  $('switch').addEventListener('click', () => setMode(mode === 'signin' ? 'new' : 'signin'));
-  $('reset').addEventListener('click', onReset);
+  $('confirm-form').addEventListener('submit', onConfirm);
+  $('switch').addEventListener('click', () => { if (mode === 'resend') toSignup(); else toResend($('email').value.trim()); });
+  $('closed-switch').addEventListener('click', () => toResend(''));
+  $('resend').addEventListener('click', onResend);
+  $('change-email').addEventListener('click', () => {
+    if (lastRequest && lastRequest.resend) toResend('');
+    else { toSignup(); $('email').value = ''; $('email').focus(); }
+  });
 
+  if (isSignInWithEmailLink(auth, location.href)) {
+    await finishLink(lsGet(LS_EMAIL), false);
+    return;
+  }
+
+  const params = new URLSearchParams(location.search);
   const [cfgSnap, u] = await Promise.all([
     getDoc(doc(db, 'config', 'arc')).catch(() => null),
     onAuthReady()
   ]);
+  user = u;
   const cfg = cfgSnap && cfgSnap.exists() ? cfgSnap.data() : {};
-  if (cfg.open === false) {
-    closed('Sign-ups Are Closed', 'Advance copies are not open right now. You can still read chapter one free.');
-    return;
-  }
   const limit = Number(cfg.limit) > 0 ? Math.floor(Number(cfg.limit)) : null;
   const claimed = Math.max(0, Math.floor(Number(cfg.claimed) || 0));
-  if (limit != null && claimed >= limit) {
-    closed('All Copies Claimed', 'Every advance copy has been claimed. Thank you for your interest. Chapter one is still free.');
-    return;
+  signups = cfg.open === false ? 'closed' : (limit != null && claimed >= limit ? 'full' : 'open');
+  if (limit != null && signups === 'open') {
+    seatsText = `${limit - claimed} of ${limit} copies left`;
+    $('seats').textContent = seatsText;
   }
-  if (limit != null) {
-    $('seats').textContent = `${limit - claimed} of ${limit} copies left`;
-    $('seats').hidden = false;
-  }
-  user = u;
-  setMode(user ? 'member' : 'new');
-  show('st-form');
+
+  if (params.get('resend') === '1') { toResend(lsGet(LS_EMAIL)); return; }
+  toSignup();
 }
 
 main();
