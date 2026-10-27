@@ -4,8 +4,11 @@
 // signs them in with no password, claimArcCopy puts the full digital
 // edition in their library, and they go straight into the reader.
 //
-// The same form, in resend mode, sends a fresh link to a reader who already
-// has the book (new device, signed out, expired link).
+// /arc is also the one link a reader keeps for coming back. Signed in with
+// the book already: straight into the reader at their page. Signed out on a
+// device that has read before: the fresh-link form, email filled in. An old
+// sign-in link tapped where they are still signed in opens the book instead
+// of an "expired" error.
 //
 // config/arc is public so a closed or full sign-up says so before anyone
 // types anything. The server checks again on every request and claim.
@@ -24,6 +27,9 @@ const PROMISE_MSG = 'Advance copies go to readers who agree to leave an honest r
 // The email the link was sent to, so opening it on this device needs no
 // retyping. Firebase asks for it to finish an email-link sign-in.
 const LS_EMAIL = 'arc:email';
+// Set once this device has opened the book, so a signed-out return lands on
+// the fresh-link form with the email filled in, not the sign-up form.
+const LS_READER = 'arc:reader';
 const STATES = ['st-loading', 'st-form', 'st-sent', 'st-confirm', 'st-done', 'st-closed'];
 
 // 'new' sends a sign-up link, 'resend' a fresh link for an existing reader,
@@ -148,6 +154,31 @@ function handleClosed(e) {
   return false;
 }
 
+// A signed-in reader who already has their copy goes straight back into it.
+// arcReaders/{uid} is readable by its own reader. Resolves false otherwise.
+async function resumeIfReader(u) {
+  if (!u) return false;
+  try {
+    const snap = await getDoc(doc(db, 'arcReaders', u.uid));
+    if (!snap.exists()) return false;
+    const bookId = (snap.data() || {}).bookId;
+    if (!bookId) return false;
+    lsSet(LS_READER, u.email || '1');
+    openBook(`/read?book=${encodeURIComponent(bookId)}`, 'Welcome back. Opening your book where you left off.');
+    track('arc_resume');
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function openBook(readUrl, msg) {
+  $('read-link').href = readUrl;
+  $('done-msg').textContent = msg;
+  show('st-done');
+  setTimeout(() => location.assign(readUrl), 1200);
+}
+
 // ── Step 1: the form emails a sign-in link ──────────────────────────────
 
 async function requestLink(payload) {
@@ -210,6 +241,12 @@ async function onResend() {
 
 async function finishLink(email, fromConfirm) {
   if (!email) {
+    // No email saved here: most often an old link tapped again on the device
+    // that already opened the book, so try that before asking.
+    if (!fromConfirm) {
+      loading('Opening your advance copy…');
+      if (await resumeIfReader(await onAuthReady())) { history.replaceState(null, '', '/arc'); return; }
+    }
     show('st-confirm');
     $('confirm-email').focus();
     return;
@@ -236,8 +273,11 @@ async function finishLink(email, fromConfirm) {
       $('confirm-err').textContent = 'No connection. Check your internet and try again.';
       return;
     }
-    // Expired, already used, or mangled by an email scanner.
+    // Expired, already used, or mangled by an email scanner. Still signed in
+    // on this device (the usual case for an old email tapped again): just
+    // open the book.
     history.replaceState(null, '', '/arc');
+    if (await resumeIfReader(await onAuthReady())) return;
     toResend(email);
     setErr('That link has expired or was already used. Tap below and we will send a fresh one.');
     return;
@@ -265,14 +305,12 @@ async function claimAndOpen(data) {
   try {
     const res = await httpsCallable(functions, 'claimArcCopy')(data);
     const already = !!(res.data && res.data.already);
-    const readUrl = (res.data && res.data.readUrl) || '/read?book=i-cant';
-    $('read-link').href = readUrl;
-    $('done-msg').textContent = already
-      ? 'Welcome back. Opening your book now.'
-      : 'Your advance copy is in your library. Opening it now.';
-    show('st-done');
+    const readUrl = (res.data && res.data.readUrl) || '/library';
+    lsSet(LS_READER, (user && user.email) || '1');
     track('arc_claim', { already });
-    setTimeout(() => location.assign(readUrl), 1500);
+    openBook(readUrl, already
+      ? 'Welcome back. Opening your book where you left off.'
+      : 'Your advance copy is in your library. To come back anytime, go to the1pnation.com/arc. Opening it now.');
   } catch (e) {
     if (handleClosed(e)) return;
     // Signed in from here on, so a retry claims without a new link.
@@ -320,7 +358,16 @@ async function main() {
     $('seats').textContent = seatsText;
   }
 
-  if (params.get('resend') === '1') { toResend(lsGet(LS_EMAIL)); return; }
+  if (await resumeIfReader(user)) return;
+  const returning = lsGet(LS_READER);
+  if (params.get('resend') === '1' || (!user && returning)) {
+    toResend(lsGet(LS_EMAIL) || (returning.includes('@') ? returning : ''));
+    if (returning) {
+      $('form-title').textContent = 'Welcome Back';
+      $('form-sub').textContent = 'Enter your email and we will send a link that opens your book where you left off.';
+    }
+    return;
+  }
   toSignup();
 }
 

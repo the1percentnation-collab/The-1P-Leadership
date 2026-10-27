@@ -8606,9 +8606,9 @@ function arcLinkEmailContent({ firstName, bookTitle, link, reviewUrl, returning 
     intro,
     buttonUrl: link,
     buttonLabel: 'Start reading',
-    afterButton: [`For your security this button works once and expires after a while. If it has, enter your email at ${APP_BASE_URL}/arc for a fresh one.`],
+    afterButton: [`To come back anytime, go to ${APP_BASE_URL}/arc. It opens your book where you left off. On a new device, enter this email there and we will send a fresh link.`],
     steps: arcSteps(reviewUrl),
-    outro: [`Reading on a new device later? Go to ${APP_BASE_URL}/arc, tap “Get a fresh reading link” and enter this email.`]
+    outro: []
   });
   return { subject, text, html };
 }
@@ -8623,7 +8623,7 @@ function arcEmailContent({ firstName, bookTitle, bookId, reviewUrl }) {
     intro: [hi, `Thank you for reading ${bookTitle} early. Your advance copy is in your One Percent library now.`],
     buttonUrl: readUrl,
     buttonLabel: 'Start reading',
-    afterButton: ['Sign in with your One Percent account and the book opens where you left off.'],
+    afterButton: [`To come back anytime, go to ${APP_BASE_URL}/arc. It opens your book where you left off.`],
     steps: arcSteps(reviewUrl),
     outro: []
   });
