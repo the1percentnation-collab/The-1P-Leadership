@@ -9,6 +9,7 @@ import { escapeHtml } from './products.js';
 import {
   ID_RE, slugify, validateEpub, validateCover, uploadEpub, uploadCover,
   listBooks, saveBook, listCourseGrants, setCourseGrants, syncBookGrants,
+  validateAudio, sortAudioFiles, titleFromFileName, probeDuration, uploadAudioTrack,
   loadArc, saveArcConfig, markArcReviewed
 } from './library-admin.js';
 
@@ -48,7 +49,7 @@ function render() {
           ? `<img src="${escapeHtml(b.coverUrl)}" alt="" style="width:36px;aspect-ratio:2/3;object-fit:cover;border-radius:3px;display:block;">`
           : '<div style="width:36px;aspect-ratio:2/3;border-radius:3px;background:var(--surface2);"></div>'}</td>
         <td><div style="font-weight:600;">${escapeHtml(b.title || b.id)}</div>
-            <div style="font-size:12px;color:var(--gray-light);">${escapeHtml(b.author || '')} · <code>${escapeHtml(b.id)}</code></div></td>
+            <div style="font-size:12px;color:var(--gray-light);">${b.format === 'audio' ? `Audiobook · ${(b.tracks || []).length} chapters · ` : ''}${escapeHtml(b.author || '')} · <code>${escapeHtml(b.id)}</code></div></td>
         <td><span style="color:${live ? '#56D4A8' : '#E8C547'};font-weight:600;">${live ? 'live' : 'hidden (proofing)'}</span>${b.openAccess
           ? `<div style="font-size:12px;color:var(--gray-light);">open access · <a href="#" data-copy="${escapeHtml(b.id)}">copy link</a></div>` : ''}</td>
         <td>${fmtVersion(b.version)}</td>
@@ -56,7 +57,7 @@ function render() {
           ? courses.map((c) => escapeHtml(c.title)).join(', ')
           : '<span style="color:var(--gray-light);">nothing yet</span>'}</td>
         <td style="white-space:nowrap;text-align:right;">
-          <a class="btn btn-ghost" href="/read?book=${encodeURIComponent(b.id)}" target="_blank">Open in reader ↗</a>
+          <a class="btn btn-ghost" href="/${b.format === 'audio' ? 'listen' : 'read'}?book=${encodeURIComponent(b.id)}" target="_blank">${b.format === 'audio' ? 'Open player' : 'Open in reader'} ↗</a>
           <button class="btn btn-ghost" data-edit="${escapeHtml(b.id)}">Edit</button>
         </td>
       </tr>`;
@@ -102,6 +103,41 @@ function openModal(book) {
           </div>
 
           <div class="crm-form-row">
+            <label>Format</label>
+            <select class="c-input crm-select" id="b-format" ${editing ? 'disabled' : ''}>
+              <option value="epub" ${b.format !== 'audio' ? 'selected' : ''}>Ebook: one EPUB file, read in the reader</option>
+              <option value="audio" ${b.format === 'audio' ? 'selected' : ''}>Audiobook: MP3 or M4A chapter files, played in the listener</option>
+            </select>
+          </div>
+
+          <div id="b-audio-section" hidden>
+            <div class="crm-form-row">
+              <label>Description (shown on the audiobook's sales page)</label>
+              <textarea class="c-input" id="b-desc" rows="4" placeholder="What the listener walks away with.">${escapeHtml(b.description || '')}</textarea>
+            </div>
+            <div class="crm-form-row">
+              <label>Chapter files ${editing ? '(leave empty to keep the current chapters)' : '*'}</label>
+              <div style="border:1px dashed var(--border);border-radius:10px;padding:14px;" id="b-audio-drop">
+                <div class="p-img-controls">
+                  <label class="btn btn-ghost p-img-btn">Choose chapters<input type="file" id="b-audio" accept=".mp3,.m4a,.m4b,.aac,audio/mpeg,audio/mp4,audio/x-m4a,audio/aac" multiple hidden></label>
+                  <span id="b-audio-name" class="crm-save-status">${editing && (b.tracks || []).length ? `${b.tracks.length} chapters uploaded` : 'select every chapter at once, or drag them here'}</span>
+                </div>
+                <div class="progress-bar" id="b-audio-bar" style="margin-top:10px;display:none;"><div class="progress-fill" id="b-audio-fill" style="width:0%"></div></div>
+              </div>
+              <div class="pre-modal-sub">One file per chapter, named so they sort in order (01 Intro.mp3, 02 Chapter One.mp3 …). The names become chapter titles; edit them below. Picking new files replaces every chapter.</div>
+            </div>
+            <div class="crm-form-row">
+              <label>Chapters</label>
+              <div id="b-tracks" style="display:grid;gap:6px;"></div>
+            </div>
+            <div class="crm-form-row">
+              <label>Free sample chapter</label>
+              <select class="c-input crm-select" id="b-sample"></select>
+              <div class="pre-modal-sub">Anyone can play this one chapter on the sales page, no account needed. It is the best salesperson the book has.</div>
+            </div>
+          </div>
+
+          <div class="crm-form-row" id="b-open-row">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-family:var(--font-body);font-size:13px;letter-spacing:0;text-transform:none;color:var(--white);">
               <input type="checkbox" id="b-open" ${b.openAccess ? 'checked' : ''}>
               <span>Open access: a free sample anyone with the link can read, no account needed</span>
@@ -109,13 +145,13 @@ function openModal(book) {
             <div class="pre-modal-sub">For a preview like chapter one, never the full book. Only works while the book is Live. Share it as <code>/read?book=${escapeHtml(b.id || 'your-book-id')}</code>.</div>
           </div>
 
-          <div class="crm-form-row">
+          <div class="crm-form-row" id="b-buy-row">
             <label>Buy link</label>
             <input class="c-input" id="b-buy" value="${escapeHtml(b.buyHref || '')}" placeholder="/books for a preview, /bundle.html for a course book" />
             <div class="pre-modal-sub">Where “Get the book” leads. A preview shows it on every page. Leave empty for the default.</div>
           </div>
 
-          <div class="crm-form-row">
+          <div class="crm-form-row" id="b-epub-row">
             <label>EPUB file ${editing ? '(leave empty to keep the current edition)' : '*'}</label>
             <div class="p-img-uploader" id="b-drop" style="border:1px dashed var(--border);border-radius:10px;padding:14px;">
               <div class="p-img-controls">
@@ -201,6 +237,62 @@ function openModal(book) {
     try { $('b-cover-preview').innerHTML = `<img src="${URL.createObjectURL(f)}" alt="">`; } catch (_) {}
   });
 
+  // ── Audiobook chapters ──
+  // `tracks` is what gets saved: existing chapters (with their Storage path)
+  // or freshly picked files waiting to upload. Titles stay editable either way.
+  let tracks = (b.tracks || []).map((t) => ({ title: t.title, path: t.path, duration: t.duration, size: t.size }));
+  let audioFiles = null;
+  const isAudio = () => $('b-format').value === 'audio';
+  const applyFormat = () => {
+    const audio = isAudio();
+    $('b-audio-section').hidden = !audio;
+    $('b-epub-row').hidden = audio;
+    $('b-open-row').hidden = audio;
+    $('b-buy-row').hidden = audio;
+  };
+  const renderTracks = () => {
+    $('b-tracks').innerHTML = tracks.length ? tracks.map((t, i) => `
+      <div style="display:grid;grid-template-columns:28px 1fr 60px;gap:8px;align-items:center;">
+        <span style="font-family:var(--font-mono);font-size:11px;color:var(--gray-light);">${String(i + 1).padStart(2, '0')}</span>
+        <input class="c-input" data-title="${i}" value="${escapeHtml(t.title || '')}">
+        <span style="font-family:var(--font-mono);font-size:11px;color:var(--gray-light);text-align:right;">${t.duration ? `${Math.floor(t.duration / 60)}:${String(t.duration % 60).padStart(2, '0')}` : ''}</span>
+      </div>`).join('') : '<span class="crm-save-status">No chapters yet.</span>';
+    $('b-tracks').querySelectorAll('[data-title]').forEach((inp) => inp.addEventListener('input', () => {
+      tracks[Number(inp.dataset.title)].title = inp.value;
+    }));
+    const cur = Number.isInteger(b.sampleTrack) ? b.sampleTrack : (editing ? -1 : 0);
+    const keep = $('b-sample').value;
+    $('b-sample').innerHTML = `<option value="">No free sample</option>` + tracks.map((t, i) =>
+      `<option value="${i}">${String(i + 1).padStart(2, '0')}. ${escapeHtml(t.title || '')}</option>`).join('');
+    $('b-sample').value = keep !== '' && Number(keep) < tracks.length ? keep : (cur >= 0 && cur < tracks.length ? String(cur) : '');
+  };
+  const takeAudio = async (fileList) => {
+    const files = sortAudioFiles([...fileList]);
+    if (!files.length) return;
+    const problem = files.map(validateAudio).find(Boolean);
+    if (problem) { err(problem); return; }
+    err('');
+    $('b-audio-name').textContent = 'Reading chapter lengths…';
+    const durations = await Promise.all(files.map(probeDuration));
+    audioFiles = files;
+    tracks = files.map((f, i) => ({ title: titleFromFileName(f.name, i), duration: durations[i], size: f.size, file: f }));
+    const mb = files.reduce((n, f) => n + f.size, 0) / 1024 / 1024;
+    $('b-audio-name').textContent = `${files.length} chapters · ${mb.toFixed(0)} MB ✓`;
+    $('b-audio-name').className = 'crm-save-status ok';
+    renderTracks();
+  };
+  $('b-format').addEventListener('change', applyFormat);
+  $('b-audio').addEventListener('change', (e) => takeAudio(e.target.files || []));
+  const adrop = $('b-audio-drop');
+  adrop.addEventListener('dragover', (e) => { e.preventDefault(); adrop.style.borderColor = 'var(--red)'; });
+  adrop.addEventListener('dragleave', () => { adrop.style.borderColor = 'var(--border)'; });
+  adrop.addEventListener('drop', (e) => {
+    e.preventDefault(); adrop.style.borderColor = 'var(--border)';
+    takeAudio(e.dataTransfer.files || []);
+  });
+  applyFormat();
+  renderTracks();
+
   if (editing) $('b-sync').addEventListener('click', async () => {
     const btn = $('b-sync');
     btn.disabled = true; btn.textContent = 'Granting…';
@@ -221,8 +313,10 @@ function openModal(book) {
     const id = editing ? b.id : $('b-id').value.trim();
     if (!ID_RE.test(id)) { err('The book id needs lowercase letters, numbers and dashes, like i-cant.'); return; }
     if (!editing && state.books.some((x) => x.id === id)) { err(`A book with the id "${id}" already exists.`); return; }
-    if (!editing && !epubFile) { err('Choose the EPUB file.'); return; }
-    const openAccess = $('b-open').checked;
+    const audio = isAudio();
+    if (!editing && !audio && !epubFile) { err('Choose the EPUB file.'); return; }
+    if (audio && !tracks.length) { err('Choose the chapter files.'); return; }
+    const openAccess = !audio && $('b-open').checked;
     const buy = $('b-buy').value.trim();
     if (buy && !/^(\/(?!\/)|https:\/\/)/.test(buy)) { err('The buy link must start with / (a page on this site) or https://.'); return; }
     const wanted = [...$('b-courses').querySelectorAll('input[data-slug]')].filter((i) => i.checked).map((i) => i.dataset.slug);
@@ -238,7 +332,22 @@ function openModal(book) {
     const bar = $('b-epub-bar'); const fill = $('b-epub-fill');
     try {
       let coverUrl = b.coverUrl || null;
-      if (epubFile) {
+      if (audio && audioFiles) {
+        // One chapter at a time, so the bar means something and a dropped
+        // connection loses one chapter, not the batch.
+        $('b-audio-bar').style.display = '';
+        const total = audioFiles.reduce((n, f) => n + f.size, 0) || 1;
+        let done = 0;
+        for (let i = 0; i < audioFiles.length; i++) {
+          save.textContent = `Uploading chapter ${i + 1} of ${audioFiles.length}…`;
+          const f = audioFiles[i];
+          tracks[i].path = await uploadAudioTrack(id, i, f, (p) => {
+            $('b-audio-fill').style.width = `${Math.round(((done + p * f.size) / total) * 100)}%`;
+          });
+          done += f.size;
+        }
+      }
+      if (epubFile && !audio) {
         bar.style.display = '';
         save.textContent = 'Uploading book…';
         await uploadEpub(id, epubFile, (p) => { fill.style.width = `${Math.round(p * 100)}%`; });
@@ -248,9 +357,16 @@ function openModal(book) {
         coverUrl = await uploadCover(id, coverFile);
       }
       save.textContent = 'Saving…';
+      const sample = $('b-sample').value;
       await saveBook(id, {
-        title: $('b-title').value, author: $('b-author').value, status: $('b-status').value, coverUrl, openAccess, buyHref: $('b-buy').value
-      }, { isNew: !editing, newFile: !!epubFile });
+        title: $('b-title').value, author: $('b-author').value, status: $('b-status').value, coverUrl, openAccess, buyHref: $('b-buy').value,
+        ...(audio ? {
+          format: 'audio',
+          description: $('b-desc').value,
+          sampleTrack: sample === '' ? null : Number(sample),
+          tracks: tracks.map(({ title, path, duration, size }) => ({ title, path, duration, size }))
+        } : {})
+      }, { isNew: !editing, newFile: audio ? !!audioFiles : !!epubFile });
 
       for (const c of state.courses) {
         const has = c.grantsBooks.includes(id);

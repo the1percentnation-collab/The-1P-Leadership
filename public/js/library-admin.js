@@ -21,6 +21,10 @@ export const EPUB_MAX = 50 * 1024 * 1024;
 export const COVER_MAX = 10 * 1024 * 1024;
 export const COVER_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 export const ID_RE = /^[a-z0-9][a-z0-9-]{1,60}$/;
+export const AUDIO_MAX = 300 * 1024 * 1024;
+// By extension, because browsers leave file.type empty for .m4b and some
+// .m4a files. storage.rules accepts exactly these.
+export const AUDIO_TYPES = { mp3: 'audio/mpeg', m4a: 'audio/mp4', m4b: 'audio/mp4', aac: 'audio/aac' };
 
 let _storage = null;
 function storage() {
@@ -50,6 +54,58 @@ export async function validateEpub(file) {
   return null;
 }
 
+export function audioExt(file) {
+  const m = /\.([a-z0-9]+)$/i.exec((file && file.name) || '');
+  const ext = m ? m[1].toLowerCase() : '';
+  return AUDIO_TYPES[ext] ? ext : null;
+}
+
+export function validateAudio(file) {
+  if (!file) return 'Choose the chapter files.';
+  if (!audioExt(file)) return `${file.name} is not an MP3 or M4A file. Export each chapter as MP3 (or M4A).`;
+  if (file.size > AUDIO_MAX) return `${file.name} is ${(file.size / 1024 / 1024).toFixed(0)} MB; the limit is 300 MB per chapter.`;
+  return null;
+}
+
+// "03 - The Comfort Trap.mp3" -> "The Comfort Trap". Falls back to the
+// chapter number when the name is only digits.
+export function titleFromFileName(name, index) {
+  const base = String(name || '').replace(/\.[a-z0-9]+$/i, '');
+  const clean = base.replace(/^[\s._-]*(?:track|chapter|ch)?[\s._-]*\d+[\s._:-]*/i, '').replace(/[_]+/g, ' ').trim();
+  return clean || `Chapter ${index + 1}`;
+}
+
+// Chapter files in the order the book runs, by their names: "2" before "10".
+export function sortAudioFiles(files) {
+  return [...files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+}
+
+// Seconds of audio in a local file, read by the browser itself. 0 when the
+// browser can't tell; the player then counts chapters instead of minutes.
+export function probeDuration(file) {
+  return new Promise((resolve) => {
+    let url = '';
+    try { url = URL.createObjectURL(file); } catch (e) { resolve(0); return; }
+    const a = new Audio();
+    const done = (v) => { try { URL.revokeObjectURL(url); } catch (e) {} resolve(v); };
+    const t = setTimeout(() => done(0), 15000);
+    a.preload = 'metadata';
+    a.addEventListener('loadedmetadata', () => { clearTimeout(t); done(isFinite(a.duration) ? Math.round(a.duration) : 0); });
+    a.addEventListener('error', () => { clearTimeout(t); done(0); });
+    a.src = url;
+  });
+}
+
+export function audioTrackPath(bookId, index, file) {
+  return `books/${bookId}/audio-${String(index + 1).padStart(2, '0')}.${audioExt(file)}`;
+}
+
+export async function uploadAudioTrack(bookId, index, file, onProgress) {
+  const path = audioTrackPath(bookId, index, file);
+  await upload(path, file, AUDIO_TYPES[audioExt(file)], onProgress);
+  return path;
+}
+
 export function validateCover(file) {
   if (!file) return null;
   if (!COVER_TYPES[file.type]) return 'The cover must be a JPG, PNG or WebP image.';
@@ -65,7 +121,7 @@ function upload(path, file, contentType, onProgress) {
     task.on('state_changed',
       (snap) => onProgress && onProgress(snap.totalBytes ? snap.bytesTransferred / snap.totalBytes : 0),
       (err) => reject(err.code === 'storage/unauthorized'
-        ? new Error('Storage refused the upload. You need admin access, and the file must be an EPUB under 50 MB.')
+        ? new Error('Storage refused the upload. You need admin access, and the file must be an EPUB under 50 MB or an MP3/M4A chapter under 300 MB.')
         : err),
       () => resolve(task.snapshot.ref));
   });
@@ -107,7 +163,25 @@ export async function saveBook(bookId, fields, { isNew = false, newFile = false 
     updatedAt: serverTimestamp()
   };
   if (fields.coverUrl) data.coverUrl = fields.coverUrl;
-  if (isNew || newFile) {
+  if (fields.format === 'audio') {
+    // An audiobook: chapters instead of an EPUB, a free sample chapter for
+    // the sales view, and the blurb that sells it. Never open access; the
+    // sample chapter is the free taste.
+    data.format = 'audio';
+    data.openAccess = false;
+    data.buyHref = `/listen?book=${bookId}`;
+    data.description = String(fields.description || '').trim().slice(0, 4000);
+    data.sampleTrack = Number.isInteger(fields.sampleTrack) ? fields.sampleTrack : null;
+    if (Array.isArray(fields.tracks)) {
+      data.tracks = fields.tracks.map((t, i) => ({
+        title: String(t.title || '').trim().slice(0, 200) || `Chapter ${i + 1}`,
+        path: String(t.path),
+        duration: Number(t.duration) > 0 ? Math.round(Number(t.duration)) : 0,
+        size: Number(t.size) > 0 ? Math.round(Number(t.size)) : 0
+      }));
+    }
+    if (isNew || newFile) data.version = String(Date.now());
+  } else if (isNew || newFile) {
     data.filePath = `books/${bookId}/book.epub`;
     data.version = String(Date.now());
   }

@@ -42,6 +42,7 @@ const { computeFocusTax, WORK_WEEKS: FOCUS_TAX_WEEKS } = require('./focus-tax.js
 const { careerTags } = require('./careers.js');
 const handSales = require('./hand-sales-core.js');
 const messenger = require('./messenger.js');
+const audioCore = require('./audio-core.js');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
@@ -6248,6 +6249,89 @@ async function sendPurchaseEmail(db, { email, uid, courseSlug, landingSlug, gran
   }
 }
 
+// Where a library product's buyer lands after checkout: the player for a
+// single audiobook, the shelf for anything else.
+async function libraryLandingPath(db, bookIds) {
+  if (bookIds.length === 1) {
+    try {
+      const snap = await db.collection('books').doc(bookIds[0]).get();
+      if (snap.exists && audioCore.isAudioBook(snap.data())) {
+        return `/listen?book=${encodeURIComponent(bookIds[0])}&purchase=success`;
+      }
+    } catch (e) { /* the shelf is always a safe landing */ }
+  }
+  return '/library?purchase=success';
+}
+
+// The receipt for a product that puts books in the library (the I Can't
+// audiobook): what they bought and the one link that opens it.
+function libraryPurchaseEmailContent({ firstName, productName, books }) {
+  const name = firstName || 'there';
+  const list = (books || []).filter((b) => b && b.title);
+  const audio = list.length === 1 && list[0].audio;
+  const title = productName || (list[0] && list[0].title) || 'your purchase';
+  const url = audio
+    ? `${APP_BASE_URL}/listen?book=${encodeURIComponent(list[0].id)}`
+    : `${APP_BASE_URL}/library`;
+  const subject = audio ? `Press play: ${title}` : `It's in your library: ${title}`;
+  const how = audio
+    ? 'It plays right in your browser on your phone, tablet or laptop. No app to install. Close it anytime and it picks up at the same spot on any device.'
+    : 'Open it on your phone, tablet or laptop and it picks up where you left off.';
+  const button = audio ? 'Start listening' : 'Open my library';
+
+  const text =
+    `Hi ${name},\n\n` +
+    `${title} is yours. ${how}\n` +
+    `${url}\n\n` +
+    `Where you start does not get the final say on where you end up.\n\n` +
+    `Anthony Brown Sr.\n` +
+    `Founder, The One Percent Nation\n` +
+    `Redefining Success. Realigning Purpose. Releasing Potential.`;
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:560px;margin:0 auto;line-height:1.55;">
+      <h2 style="color:#000;margin:0 0 12px;font-size:22px;">It's yours, ${textToHtml(name)}.</h2>
+      <p style="margin:0 0 14px;"><strong>${textToHtml(title)}</strong> is in your library now. ${textToHtml(how)}</p>
+      <p style="margin:0 0 22px;"><a href="${url}" style="display:inline-block;background:#e60306;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">${button}</a></p>
+      <p style="margin:0 0 20px;">Where you start does not get the final say on where you end up.</p>
+      <p style="margin:0;">Anthony Brown Sr.<br/>Founder, The One Percent Nation</p>
+      <hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0;"/>
+      <p style="color:#888;font-size:11px;margin:0;">Redefining Success. Realigning Purpose. Releasing Potential.</p>
+    </div>`;
+
+  return { subject, text, html };
+}
+
+// Never throws, like sendPurchaseEmail. Returns true when sent.
+async function sendLibraryPurchaseEmail(db, { email, uid, productName, bookIds }) {
+  const to = normalizeEmail(email);
+  if (!EMAIL_RE.test(to)) return false;
+  try {
+    const [uSnap, bookSnaps] = await Promise.all([
+      uid ? db.collection('users').doc(uid).get() : Promise.resolve(null),
+      Promise.all((bookIds || []).map((id) => db.collection('books').doc(id).get()))
+    ]);
+    const u = uSnap && uSnap.exists ? (uSnap.data() || {}) : {};
+    const firstName = String(u.displayName || '').trim().split(/\s+/)[0] || '';
+    const crmArgs = (u.crmCompanyId && u.crmContactId)
+      ? { companyId: u.crmCompanyId, contactId: u.crmContactId } : {};
+    const books = bookSnaps.filter((b) => b.exists)
+      .map((b) => ({ id: b.id, title: b.data().title || b.id, audio: audioCore.isAudioBook(b.data()) }));
+    const { subject, text, html } = libraryPurchaseEmailContent({ firstName, productName, books });
+    await sendEmail({
+      to,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      subject, text, html,
+      customArgs: Object.assign({ type: 'product_purchase', slug: (bookIds || []).join(',').slice(0, 100) }, crmArgs)
+    });
+    return true;
+  } catch (err) {
+    console.error('[sendLibraryPurchaseEmail] send failed:', String((err && err.message) || err).slice(0, 300));
+    return false;
+  }
+}
+
 // `secrets` is required, not optional: this sends the invite email through
 // sendGrantEmail, which reads sendgridKey.value().
 exports.grantCourseAccess = onCall({ secrets: [sendgridKey] }, async (request) => {
@@ -7775,6 +7859,19 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
     let unitDollars = basePrice;
     const prodMeta = { productId, uid };
 
+    // A product can unlock library books (the I Can't audiobook). Locked
+    // into metadata here so the webhook grants what was sold, and refused
+    // when the buyer already owns all of it, so nobody pays twice.
+    const prodBooks = audioCore.productBooks(product);
+    if (prodBooks.length) {
+      const buyerSnap = await db.collection('users').doc(uid).get();
+      const owned = (buyerSnap.exists && buyerSnap.data().ownedBookIds) || [];
+      if (prodBooks.every((b) => owned.includes(b))) {
+        throw new HttpsError('already-exists', 'You already own this. It\'s in your library.');
+      }
+      prodMeta.grantsBooks = prodBooks.join(',');
+    }
+
     // Coach/affiliate attribution on product sales. Coaches selling the
     // client-facing A.L.I.G.N. products earn their license tier's rate
     // (rates.clientProductPercent); classic affiliates fall back to their
@@ -7825,8 +7922,14 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
       customer_email: (request.auth.token && request.auth.token.email) || undefined,
       client_reference_id: uid,
       metadata: prodMeta,
-      success_url: `${APP_BASE_URL}/upcoming.html?purchase=success`,
-      cancel_url: `${APP_BASE_URL}/upcoming.html`
+      // A library product lands where it is used: the audiobook's player,
+      // or the library shelf for anything else.
+      success_url: prodBooks.length
+        ? `${APP_BASE_URL}${await libraryLandingPath(db, prodBooks)}`
+        : `${APP_BASE_URL}/upcoming.html?purchase=success`,
+      cancel_url: String((request.data && request.data.returnTo) || '').match(/^\/(?!\/)[\w\-./?=&%]{0,200}$/)
+        ? `${APP_BASE_URL}${request.data.returnTo}`
+        : `${APP_BASE_URL}/upcoming.html`
     });
     return { ok: true, url: session.url };
   }
@@ -8206,6 +8309,216 @@ exports.syncBookGrants = onCall(async (request) => {
   }
   if (inBatch) await batch.commit();
   return { ok: true, granted, checked: seen.size, courses: grantingSlugs };
+});
+
+// ── Audiobooks ─────────────────────────────────────────────────────────
+// An audiobook is a books/{bookId} record with format 'audio' and one track
+// per chapter (functions/audio-core.js). It plays in /listen through an
+// <audio> element, which cannot send an Authorization header, so the member
+// first trades their sign-in for a listening pass: an opaque token good for
+// this one book for twelve hours. A pass that leaks opens one audiobook for
+// a few hours, never the account, which is why the ID token itself never
+// goes in a URL.
+//
+// audioPass({ bookId }) -> { pass, expiresAtMs }
+exports.audioPass = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in to listen.');
+  const bookId = String((request.data && request.data.bookId) || '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(bookId)) throw new HttpsError('invalid-argument', 'bookId is required.');
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'audioPass', max: 60, windowSec: 600 });
+
+  const [bookSnap, userSnap] = await Promise.all([
+    db.collection('books').doc(bookId).get(),
+    db.collection('users').doc(uid).get()
+  ]);
+  const book = bookSnap.exists ? (bookSnap.data() || {}) : null;
+  if (!audioCore.isAudioBook(book)) throw new HttpsError('not-found', 'Unknown audiobook.');
+  const u = userSnap.exists ? (userSnap.data() || {}) : {};
+  const isAdmin = request.auth.token.role === 'owner' || u.role === 'admin' || u.role === 'owner';
+  const owns = Array.isArray(u.ownedBookIds) && u.ownedBookIds.includes(bookId);
+  if (!isAdmin && (!owns || book.status === 'hidden')) {
+    throw new HttpsError('permission-denied', 'This audiobook isn\'t in your library yet.');
+  }
+
+  const ref = db.collection('audioPasses').doc(audioCore.passDocId(uid, bookId));
+  const cur = await ref.get();
+  const now = Date.now();
+  if (cur.exists && audioCore.passUsable(cur.data(), { bookId, now, minLeftMs: audioCore.PASS_MIN_LEFT_MS })
+      && cur.data().admin === isAdmin) {
+    return { pass: `${ref.id}.${cur.data().token}`, expiresAtMs: cur.data().expiresAtMs };
+  }
+  const token = crypto.randomBytes(24).toString('hex');
+  const expiresAtMs = now + audioCore.PASS_TTL_MS;
+  // The pass being replaced keeps working until its own expiry, so a
+  // chapter already playing on the old one is never cut off.
+  const prev = cur.exists && audioCore.passUsable(cur.data(), { bookId, now }) ? cur.data() : null;
+  await ref.set({
+    uid, bookId, token, admin: isAdmin, expiresAtMs,
+    prevToken: prev ? prev.token : null,
+    prevExpiresAtMs: prev ? prev.expiresAtMs : null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  return { pass: `${ref.id}.${token}`, expiresAtMs };
+});
+
+// The member behind a listening credential: a short pass from audioPass, or
+// a long-lived private feed link from audioFeedLink. Returns { uid, admin }
+// or null. Feed links never expire, so they re-check ownership every time:
+// a refund that takes the book back also silences the feed.
+async function audioListener(db, book, bookId, query) {
+  const viaFeed = !!query.feed;
+  const cred = audioCore.splitCredential(viaFeed ? query.feed : query.pass, bookId);
+  if (!cred) return null;
+  const snap = await db.collection(viaFeed ? 'audioFeeds' : 'audioPasses').doc(cred.docId).get();
+  const rec = snap.exists ? (snap.data() || {}) : null;
+  if (!rec || rec.bookId !== bookId) return null;
+  const same = (stored) => {
+    const a = Buffer.from(String(stored || ''));
+    const b = Buffer.from(cred.token);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  };
+  if (viaFeed) {
+    if (rec.revoked === true || !same(rec.token)) return null;
+    const u = await db.collection('users').doc(rec.uid).get();
+    const ud = u.exists ? (u.data() || {}) : {};
+    const isAdmin = ud.role === 'admin' || ud.role === 'owner';
+    const owns = Array.isArray(ud.ownedBookIds) && ud.ownedBookIds.includes(bookId);
+    if (!isAdmin && !owns) return null;
+    return { uid: rec.uid, admin: isAdmin };
+  }
+  const current = same(rec.token) && audioCore.passUsable(rec, { bookId });
+  const previous = !current && rec.prevToken && same(rec.prevToken)
+    && Number(rec.prevExpiresAtMs) > Date.now();
+  if (!current && !previous) return null;
+  return { uid: rec.uid, admin: rec.admin === true };
+}
+
+// bookAudio — streams one track: GET /api/book-audio?book=&track=&pass=
+// (a Hosting rewrite), or the same on the function's own URL with &feed=
+// for podcast apps, which skips Hosting's 60 second cap on a slow download.
+// A Range request (every browser player) gets at most audioCore.AUDIO_CHUNK
+// back, so the player can seek; a plain GET (a podcast app downloading the
+// episode) gets the whole file, chunked. The book's sample track plays for
+// anyone, no credential, so the sales view can offer a free chapter.
+exports.bookAudio = onRequest({ cors: false, invoker: 'public', memory: '256MiB', timeoutSeconds: 540 }, async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  if (req.method !== 'GET' && req.method !== 'HEAD') { res.status(405).send('method not allowed'); return; }
+  const bookId = String(req.query.book || '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(bookId)) { res.status(400).send('bad book id'); return; }
+
+  const db = admin.firestore();
+  const bookSnap = await db.collection('books').doc(bookId).get();
+  const book = bookSnap.exists ? (bookSnap.data() || {}) : null;
+  const track = audioCore.trackAt(book, bookId, req.query.track);
+  if (!track) { res.status(404).send('unknown track'); return; }
+
+  if (!audioCore.isSampleTrack(book, track.index)) {
+    const who = await audioListener(db, book, bookId, req.query);
+    if (!who) { res.status(401).send('sign in to listen'); return; }
+    if (book.status === 'hidden' && !who.admin) { res.status(403).send('not available'); return; }
+  }
+
+  const file = admin.storage().bucket().file(track.path);
+  let size = 0;
+  let contentType = track.contentType || 'audio/mpeg';
+  try {
+    const [meta] = await file.getMetadata();
+    size = Number(meta && meta.size) || 0;
+    if (meta && /^audio\//.test(meta.contentType || '')) contentType = meta.contentType;
+  } catch (e) {
+    res.status(404).send('track file missing'); return;
+  }
+  res.set('Accept-Ranges', 'bytes');
+  res.set('Content-Type', contentType);
+  const rangeHeader = req.get('Range');
+  let opts = {};
+  if (rangeHeader) {
+    const range = audioCore.parseRange(rangeHeader, size);
+    if (!range) {
+      res.set('Content-Range', `bytes */${size}`);
+      res.status(416).end();
+      return;
+    }
+    res.status(206);
+    res.set('Content-Range', `bytes ${range.start}-${range.end}/${size}`);
+    res.set('Content-Length', String(range.end - range.start + 1));
+    opts = { start: range.start, end: range.end };
+  } else {
+    // No Content-Length: a whole chapter can pass Cloud Run's 32 MiB cap on
+    // a sized response, and a chunked one has no cap.
+    res.status(200);
+  }
+  if (req.method === 'HEAD') { res.end(); return; }
+  file.createReadStream(opts)
+    .on('error', (err) => {
+      console.error('[bookAudio] stream failed:', err && err.message);
+      if (!res.headersSent) res.status(500).send('read failed'); else res.end();
+    })
+    .pipe(res);
+});
+
+// audioFeedLink({ bookId, reset }) -> { feedUrl }
+// The member's private podcast feed for an audiobook they own. One per
+// member per book; `reset` swaps the secret, which kills a link that got
+// shared and hands back a new one.
+exports.audioFeedLink = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
+  const bookId = String((request.data && request.data.bookId) || '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(bookId)) throw new HttpsError('invalid-argument', 'bookId is required.');
+  const reset = !!(request.data && request.data.reset);
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'audioFeedLink', max: 20, windowSec: 600 });
+
+  const [bookSnap, userSnap] = await Promise.all([
+    db.collection('books').doc(bookId).get(),
+    db.collection('users').doc(uid).get()
+  ]);
+  const book = bookSnap.exists ? (bookSnap.data() || {}) : null;
+  if (!audioCore.isAudioBook(book)) throw new HttpsError('not-found', 'Unknown audiobook.');
+  const u = userSnap.exists ? (userSnap.data() || {}) : {};
+  const isAdmin = request.auth.token.role === 'owner' || u.role === 'admin' || u.role === 'owner';
+  const owns = Array.isArray(u.ownedBookIds) && u.ownedBookIds.includes(bookId);
+  if (!isAdmin && (!owns || book.status === 'hidden')) {
+    throw new HttpsError('permission-denied', 'This audiobook isn\'t in your library yet.');
+  }
+
+  const ref = db.collection('audioFeeds').doc(audioCore.passDocId(uid, bookId));
+  const cur = await ref.get();
+  let token = cur.exists && !reset && cur.data().revoked !== true ? cur.data().token : null;
+  if (!token) {
+    token = crypto.randomBytes(24).toString('hex');
+    await ref.set({ uid, bookId, token, revoked: false, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+  }
+  return { feedUrl: `${APP_BASE_URL}/api/audio-feed?book=${encodeURIComponent(bookId)}&feed=${encodeURIComponent(`${ref.id}.${token}`)}` };
+});
+
+// audioFeed — the RSS a podcast app follows (Hosting rewrite /api/audio-feed).
+// Every episode links straight to bookAudio on the function's own URL, with
+// the same feed credential.
+exports.audioFeed = onRequest({ cors: false, invoker: 'public', memory: '256MiB', timeoutSeconds: 30 }, async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  if (req.method !== 'GET' && req.method !== 'HEAD') { res.status(405).send('method not allowed'); return; }
+  const bookId = String(req.query.book || '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(bookId) || !req.query.feed) { res.status(400).send('bad feed link'); return; }
+  const db = admin.firestore();
+  const bookSnap = await db.collection('books').doc(bookId).get();
+  const book = bookSnap.exists ? (bookSnap.data() || {}) : null;
+  if (!audioCore.isAudioBook(book)) { res.status(404).send('unknown audiobook'); return; }
+  const who = await audioListener(db, book, bookId, { feed: String(req.query.feed) });
+  if (!who || (book.status === 'hidden' && !who.admin)) { res.status(401).send('this feed link is no longer active'); return; }
+
+  const base = functionsBaseUrl();
+  const feed = encodeURIComponent(String(req.query.feed));
+  const xml = audioCore.feedXml({
+    book, bookId,
+    link: `${APP_BASE_URL}/listen?book=${encodeURIComponent(bookId)}`,
+    audioUrl: (i) => `${base}/bookAudio?book=${encodeURIComponent(bookId)}&track=${i}&feed=${feed}`
+  });
+  res.set('Content-Type', 'application/rss+xml; charset=utf-8');
+  res.status(200).send(req.method === 'HEAD' ? '' : xml);
 });
 
 // ── ARC readers (/arc) ──────────────────────────────────────────────────
@@ -8632,6 +8945,17 @@ exports.stripeWebhook = onRequest(
           const prodRef = db.collection('products').doc(productId);
           const prodSnap = await prodRef.get();
           const product = prodSnap.exists ? prodSnap.data() : {};
+          // Library books (the audiobook) are delivered right here: the ids
+          // locked in at checkout go on the buyer's shelf, and the order is
+          // born fulfilled so it never sits in the shipping queue.
+          const prodBooks = String((session.metadata && session.metadata.grantsBooks) || '')
+            .split(',').map((x) => x.trim()).filter(Boolean);
+          if (prodBooks.length) {
+            await db.collection('users').doc(uid).set({
+              ownedBookIds: admin.firestore.FieldValue.arrayUnion(...prodBooks)
+            }, { merge: true });
+          }
+          const digitalOnly = prodBooks.length > 0 && audioCore.isDigitalLibraryProduct(product) && !sessionShipping(session);
           await db.collection('orders').doc(session.id).set({
             productId,
             productName: product.name || null,
@@ -8643,7 +8967,9 @@ exports.stripeWebhook = onRequest(
             currency: session.currency || 'usd',
             couponCode: couponCode || null,
             shipping: sessionShipping(session),
-            status: 'new',
+            ...(prodBooks.length ? { grantsBooks: prodBooks } : {}),
+            status: digitalOnly ? 'done' : 'new',
+            ...(digitalOnly ? { digital: true, fulfilledAt: admin.firestore.FieldValue.serverTimestamp() } : {}),
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
           if (typeof product.inventory === 'number') {
@@ -8651,12 +8977,20 @@ exports.stripeWebhook = onRequest(
               inventory: admin.firestore.FieldValue.increment(-1)
             }, { merge: true });
           }
+          let libraryEmail = null;
+          if (prodBooks.length) {
+            libraryEmail = await sendLibraryPurchaseEmail(db, {
+              email: (session.customer_details && session.customer_details.email) || session.customer_email || null,
+              uid, productName: product.name || null, bookIds: prodBooks
+            }) ? 'sent' : 'failed';
+          }
           await db.collection('users').doc(uid).collection('purchases').doc(session.id).set({
             productId,
             productName: product.name || null,
             amount: (session.amount_total || 0) / 100,
             mode: 'product',
             couponCode: couponCode || null,
+            ...(prodBooks.length ? { grantsBooks: prodBooks, confirmationEmail: libraryEmail } : {}),
             status: 'paid',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           }, { merge: true });

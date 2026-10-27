@@ -82,6 +82,26 @@ await t('site owner CAN upload a new edition',
 await t('site owner CANNOT upload a non-EPUB as the book',
   () => assertFails(uploadBytes(ref(owner, 'books/i-cant/book.epub'), EPUB, { contentType: 'application/pdf' })));
 
+// Audiobook chapters: admins upload them under their own names and size
+// ceiling; only owners of the audiobook can read them directly.
+const MP3 = new Uint8Array([0x49, 0x44, 0x33, 0x04]);
+await t('site owner CAN upload an audiobook chapter',
+  () => assertSucceeds(uploadBytes(ref(owner, 'books/i-cant/audio-01.mp3'), MP3, { contentType: 'audio/mpeg' })));
+await t('site owner CAN upload an M4A chapter',
+  () => assertSucceeds(uploadBytes(ref(owner, 'books/i-cant/audio-02.m4a'), MP3, { contentType: 'audio/mp4' })));
+await t('book owner CAN read an audiobook chapter',
+  () => assertSucceeds(getBytes(ref(reader, 'books/i-cant/audio-01.mp3'))));
+await t('member without the book CANNOT read an audiobook chapter',
+  () => assertFails(getBytes(ref(nobooks, 'books/i-cant/audio-01.mp3'))));
+await t('signed-out visitor CANNOT read an audiobook chapter',
+  () => assertFails(getBytes(ref(anon, 'books/i-cant/audio-01.mp3'))));
+await t('book owner CANNOT upload a chapter',
+  () => assertFails(uploadBytes(ref(reader, 'books/i-cant/audio-03.mp3'), MP3, { contentType: 'audio/mpeg' })));
+await t('site owner CANNOT upload audio under any other file name',
+  () => assertFails(uploadBytes(ref(owner, 'books/i-cant/book.epub'), MP3, { contentType: 'audio/mpeg' })));
+await t('site owner CANNOT upload a non-audio file as a chapter',
+  () => assertFails(uploadBytes(ref(owner, 'books/i-cant/audio-04.mp3'), MP3, { contentType: 'application/zip' })));
+
 // Alignment Audit scorecard logos: the owner's builder only.
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 await t('site owner CAN upload a client logo for a scorecard',
