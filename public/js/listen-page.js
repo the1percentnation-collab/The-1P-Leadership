@@ -303,7 +303,7 @@ async function renderPlayer() {
       <div class="ls-controls">
         <button class="ls-btn" id="ls-prev" aria-label="Previous chapter">${ICON.prev}</button>
         <button class="ls-btn ls-skip" id="ls-back15" aria-label="Back 15 seconds">${ICON.back}<span>15</span></button>
-        <button class="ls-btn ls-play" id="ls-play" aria-label="Play">${ICON.play}</button>
+        <button class="ls-btn ls-play" id="ls-play" aria-label="Play" disabled>${ICON.play}</button>
         <button class="ls-btn ls-skip" id="ls-fwd30" aria-label="Forward 30 seconds">${ICON.fwd}<span>30</span></button>
         <button class="ls-btn" id="ls-next" aria-label="Next chapter">${ICON.next}</button>
       </div>
@@ -371,6 +371,8 @@ async function renderPlayer() {
   const pos = await loadPosition(S.bookId).catch(() => null);
   const rp = resumePoint(S.tracks, pos);
   loadTrack(rp.track, rp.time, false);
+  // Held until a chapter is loaded: a tap before then had nothing to play.
+  $('ls-play').disabled = false;
   if (rp.time > 0) setStatus(`Picking up at ${fmtTime(rp.time)} in chapter ${rp.track + 1}.`);
   else if (rp.track > 0) setStatus(`Picking up at chapter ${rp.track + 1}.`);
   lsSet(LS_LAST, S.bookId);

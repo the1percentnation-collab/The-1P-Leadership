@@ -6,9 +6,12 @@
   "sampleTrack": 1,
   "description": "Almost everything Anthony Brown Sr. is doing today, he once believed he could not do. He grew up one of six, moving from hotel to hotel, with stretches of no address at all. I Can't is the book he needed back then.\n\nThis is not motivation for the moment. It is a clear path for finding the beliefs quietly running your decisions, understanding why your brain holds on to them, and replacing them with ones that move you forward. Ten chapters, an exercise at the end of each one, and the lessons that took him from no address to building a life on purpose.\n\nIf you are successful on paper but still hear the voice that says you are not ready, this is for you.",
   "product": {
-    "name": "I Can't Audiobook",
+    "name": "I Can't: The Audiobook",
     "price": 9.99,
-    "summary": "The full audiobook. Listen in your browser or your podcast app."
+    "summary": "Hear Anthony tell his story and walk you through every strategy, chapter by chapter. Start with the Introduction, free.",
+    "pageCta": "Listen free",
+    "pageNote": "Instant access. Plays in your browser or your podcast app.",
+    "sortOrder": 1
   },
   "tracks": [
     {

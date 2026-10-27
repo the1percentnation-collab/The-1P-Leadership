@@ -242,6 +242,12 @@ function openModal(product) {
           </div>
 
           <div class="crm-form-row">
+            <label>Product page on this site (optional)</label>
+            <input class="c-input" id="p-page" placeholder="/listen?book=i-cant-audio" value="${escapeHtml(p.pageUrl || '')}" />
+            <div class="crm-mini-sub" style="margin-top:6px;">Where the shop and Store buttons send people. Leave empty to use the standard buy button.</div>
+          </div>
+
+          <div class="crm-form-row">
             <label>Off-site link (optional)</label>
             <input class="c-input" id="p-external" placeholder="https://a.co/… — buys happen there instead of Stripe" value="${escapeHtml(p.externalUrl || '')}" />
           </div>
@@ -347,8 +353,13 @@ function openModal(product) {
       externalUrl: $('p-external').value,
       videoUrl: $('p-video').value,
       posterUrl: $('p-poster').value,
-      grantsBooks: $('p-books').value ? [$('p-books').value] : []
+      grantsBooks: $('p-books').value ? [$('p-books').value] : [],
+      pageUrl: $('p-page').value
     };
+    if (data.pageUrl.trim() && !/^\/(?![\/\\])/.test(data.pageUrl.trim())) {
+      showErr('The product page must be a page on this site, starting with / (like /listen?book=i-cant-audio).');
+      return;
+    }
     if (data.grantsBooks.length && data.requiresShipping) {
       showErr('A product that unlocks a library book is digital. Turn off “Collect a shipping address”.');
       return;

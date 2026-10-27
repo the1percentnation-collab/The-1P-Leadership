@@ -67,6 +67,12 @@ function toUrlOrNull(v) {
   return s || null;
 }
 
+// A page on this site, like /listen?book=i-cant-audio. Anything else is dropped.
+function toLocalPath(v) {
+  const s = (v == null ? '' : String(v)).trim();
+  return /^\/(?![\/\\])/.test(s) ? s : null;
+}
+
 function cleanBookIds(v) {
   return Array.isArray(v) ? [...new Set(v.map(String).filter((id) => /^[a-z0-9][a-z0-9-]{1,80}$/.test(id)))] : [];
 }
@@ -132,6 +138,7 @@ export async function createProduct(data = {}) {
     salePrice: data.salePrice === '' || data.salePrice == null ? null : Number(data.salePrice),
     saleEndsAt: toStoredDate(data.saleEndsAt),
     externalUrl: toUrlOrNull(data.externalUrl),
+    pageUrl: toLocalPath(data.pageUrl),
     videoUrl: toUrlOrNull(data.videoUrl),
     posterUrl: toUrlOrNull(data.posterUrl),
     interestCount: 0,
@@ -150,7 +157,7 @@ export async function updateProduct(id, patch = {}) {
     'price', 'sellable', 'requiresShipping', 'inventory',
     'preorderMode', 'depositAmount', 'sortOrder',
     'showOnSite', 'showInDashboard', 'launchDate', 'salePrice', 'saleEndsAt',
-    'externalUrl', 'videoUrl', 'posterUrl', 'grantsBooks'];
+    'externalUrl', 'videoUrl', 'posterUrl', 'grantsBooks', 'pageUrl'];
   const clean = {};
   allowed.forEach((k) => {
     if (patch[k] === undefined) return;
@@ -164,6 +171,8 @@ export async function updateProduct(id, patch = {}) {
       clean[k] = toUrlOrNull(patch[k]);
     } else if (k === 'sortOrder') {
       clean[k] = Number(patch[k]) || 0;
+    } else if (k === 'pageUrl') {
+      clean[k] = toLocalPath(patch[k]);
     } else if (k === 'grantsBooks') {
       clean[k] = cleanBookIds(patch[k]);
     } else {

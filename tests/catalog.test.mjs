@@ -235,6 +235,27 @@ ok('a product with an off-site link goes off-site, otherwise to its anchor', () 
   assert.strictEqual(isExternal('/upcoming.html#p-p1'), false);
 });
 
+ok('a product with its own page sends every button there, labelled by the product', () => {
+  const i = normalizeProduct(product({ sellable: true, pageUrl: '/listen?book=i-cant-audio', pageCta: 'Listen free', grantsBooks: ['i-cant-audio'] }));
+  assert.strictEqual(hrefFor(i, 'site'), '/listen?book=i-cant-audio');
+  assert.strictEqual(hrefFor(i, 'dashboard'), '/listen?book=i-cant-audio');
+  assert.deepStrictEqual(ctaFor(i), { kind: 'view', label: 'Listen free' });
+  assert.deepStrictEqual(i.grantsBooks, ['i-cant-audio']);
+  // Its own page wins over an off-site link; a missing label still reads well.
+  assert.strictEqual(hrefFor(normalizeProduct(product({ pageUrl: '/x', externalUrl: 'https://a.co' })), 'site'), '/x');
+  assert.strictEqual(ctaFor(normalizeProduct(product({ pageUrl: '/x' }))).label, 'See details');
+});
+
+ok('a product page must be on this site', () => {
+  for (const bad of ['https://evil.example/x', '//evil.example/x', '/\\evil.example', 'javascript:alert(1)', '']) {
+    assert.strictEqual(normalizeProduct(product({ pageUrl: bad })).pageUrl, null, bad);
+  }
+});
+
+ok('a coming-soon product with a page still offers the waitlist', () => {
+  assert.strictEqual(ctaFor(normalizeProduct(product({ status: 'interest', pageUrl: '/x' }))).kind, 'notify');
+});
+
 ok('a course goes to its sales page on the site and the library in the dashboard', () => {
   const i = normalizeCourse(course());
   assert.strictEqual(hrefFor(i, 'site'), '/course.html?course=c1');

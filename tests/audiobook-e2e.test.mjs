@@ -92,7 +92,9 @@ const server = http.createServer((req, res) => {
   let p = decodeURIComponent(u.pathname);
   if (p === '/') p = '/index.html';
   let f = path.join(PUB, p);
-  if (!fs.existsSync(f) && fs.existsSync(f + '.html')) f += '.html'; // cleanUrls
+  // cleanUrls, as Hosting does it: /books is books.html even though a
+  // public/books/ folder (the preview EPUB) shares the name.
+  if ((!fs.existsSync(f) || fs.statSync(f).isDirectory()) && fs.existsSync(f + '.html')) f += '.html';
   if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
   fs.createReadStream(f).pipe(res);
@@ -143,7 +145,8 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   });
   await setDoc(doc(db, `products/${PRODUCT}`), {
     name: 'I Can\'t Audiobook', type: 'book', status: 'live', sellable: true, price: 9.99,
-    requiresShipping: false, grantsBooks: [BOOK], showOnSite: true, showInDashboard: true
+    requiresShipping: false, grantsBooks: [BOOK], showOnSite: true, showInDashboard: true,
+    pageUrl: `/listen?book=${BOOK}`, pageCta: 'Listen free', pageNote: 'Instant access. Plays in your browser or your podcast app.', sortOrder: 1
   });
   await setDoc(doc(db, `users/${buyerUid}`), { email: 'buyer@e2e.test', displayName: 'Jordan Buyer', role: 'user', onboardingComplete: true, ownedBookIds: [] });
   await setDoc(doc(db, `users/${strangerUid}`), { email: 'stranger@e2e.test', role: 'user', onboardingComplete: true, ownedBookIds: [] });
@@ -219,6 +222,7 @@ async function makeContext(who, device = devices['Pixel 7']) {
   page.on('pageerror', (e) => console.log('   [pageerror]', e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/ERR_FAILED|net::/.test(m.text())) console.log('   [console]', m.text().slice(0, 200)); });
   page.on('dialog', (d) => d.accept());
+  page.on('response', (r) => { if (r.status() === 404) console.log('   [404]', r.url().slice(0, 160)); });
   return { ctx, page };
 }
 
@@ -241,6 +245,18 @@ await t('a signed-out visitor sees the sales view: price, free chapter, no playe
   assert(!(await G.page.$('#ls-play')), 'no player for a stranger');
   await shot(G.page, '1-sales');
 });
+await t('the public /books shop lists the audiobook and links to its page', async () => {
+  await G.page.goto(`${ORIGIN}/books`);
+  const link = await G.page.waitForSelector(`#home-shop a[href="/listen?book=${BOOK}"]`, { timeout: 30000 })
+    .catch(async (e) => {
+      console.log('   [shop]', (await G.page.$eval('#home-shop', (el) => el.outerHTML).catch(() => 'no #home-shop')).slice(0, 600));
+      throw e;
+    });
+  assert(/Listen free/.test(await link.textContent()), await link.textContent());
+  assert(/Plays in your browser/.test(await G.page.textContent('#home-shop')), 'page note');
+  await G.page.goto(`${ORIGIN}/listen?book=${BOOK}`);
+  await G.page.waitForSelector('#ls-buy', { timeout: 30000 });
+});
 await t('buying while signed out goes to sign-in and comes back to buy', async () => {
   await G.page.click('#ls-buy');
   await G.page.waitForURL(/\/login(\.html)?\?next=/, { timeout: 10000 });
@@ -253,6 +269,15 @@ await t('a member who has not bought it cannot get a listening pass', async () =
   const tok = (await authUser('stranger@e2e.test', PW, false)).idToken;
   const r = await callable('audioPass', { bookId: BOOK }, tok);
   assert(r.error && r.error.status === 'PERMISSION_DENIED', JSON.stringify(r));
+});
+
+await t('a member who has not bought it sees it under Also available in their Library', async () => {
+  const S = await makeContext({ email: 'stranger@e2e.test', password: PW });
+  await S.page.goto(`${ORIGIN}/library`);
+  const card = await S.page.waitForSelector(`a.lib-avail[href="/listen?book=${BOOK}"]`, { timeout: 30000 });
+  const txt = await card.textContent();
+  assert(/Audiobook/.test(txt) && /\$9\.99/.test(txt) && /Listen free/.test(txt), txt);
+  await S.ctx.close();
 });
 
 // ── 2. The purchase ───────────────────────────────────────────────────────
@@ -301,7 +326,7 @@ await t('the buyer lands on the player with every chapter', async () => {
 });
 await t('pressing play streams real audio through a listening pass', async () => {
   await B.page.waitForFunction(() => !/couldn't/.test(document.getElementById('ls-status').textContent), null, { timeout: 15000 });
-  await B.page.click('#ls-play');
+  await B.page.click('#ls-play:not([disabled])');
   await B.page.waitForFunction(() => document.getElementById('ls-cur').textContent !== '0:00', null, { timeout: 20000 });
   assert(audioHits.some((h) => h.track === '0' && h.range), 'player sent Range requests');
 });
@@ -377,6 +402,7 @@ await t('a new feed link kills the old one', async () => {
 await t('the library shelf opens the audiobook in the player', async () => {
   await B.page.goto(`${ORIGIN}/library`);
   await B.page.waitForSelector(`a[href="/listen?book=${BOOK}"]`, { timeout: 30000 });
+  assert(!(await B.page.$('a.lib-avail')), 'an owned book is not offered again');
   const txt = await B.page.textContent('#lib-root');
   assert(/Audiobook/.test(txt), 'labelled as an audiobook');
   await shot(B.page, '3-library');
