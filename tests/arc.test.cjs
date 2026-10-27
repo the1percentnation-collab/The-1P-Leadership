@@ -61,7 +61,8 @@ ok('the sign-in email carries the one-tap link and the ARC terms', () => {
   assert.ok(m.html.includes(`href="${LINK.replace(/&/g, '&amp;')}"`), 'the button does not carry the link');
   assert.ok(/No password needed/.test(m.text));
   assert.ok(/don’t forward this email or share the book/.test(m.text), 'no sharing ask');
-  assert.ok(/Amazon, Goodreads or both/.test(m.text));
+  assert.ok(/review on Amazon\./.test(m.text));
+  assert.ok(!/Goodreads/.test(m.text + m.html), 'Goodreads is not where reviews go right now');
   assert.ok(m.text.includes(lib.ARC_DISCLOSURE), 'no review disclosure line');
   assert.ok(m.text.includes('https://the1pnation.com/arc'), 'no way to get a fresh link');
 });
