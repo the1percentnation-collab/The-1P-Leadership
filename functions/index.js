@@ -8588,8 +8588,8 @@ function arcSteps(reviewUrl) {
     { text: 'Read at your own pace. It works on your phone, tablet or computer, and it remembers your page.' },
     { text: 'Keep it to yourself. This early copy is for you only, so please don’t forward this email or share the book.' },
     reviewUrl
-      ? { text: `When you finish, leave your honest review here: ${reviewUrl}`, html: `When you finish, <a href="${escapeHtmlBasic(reviewUrl)}" style="color:#E60306;">leave your honest review here</a>. A few sentences is plenty.` }
-      : { text: 'When you finish, leave your honest review on Amazon, Goodreads or both. A few sentences is plenty.' },
+      ? { text: `When you finish, leave your honest review on Amazon: ${reviewUrl}`, html: `When you finish, <a href="${escapeHtmlBasic(reviewUrl)}" style="color:#E60306;">leave your honest review on Amazon</a>. A few sentences is plenty.` }
+      : { text: 'When you finish, leave your honest review on Amazon. A few sentences is plenty.' },
     { text: `Add this line to your review: “${ARC_DISCLOSURE}” It keeps your review within Amazon’s rules.` },
     { text: 'Tell me what landed and what did not. Just reply to this email.' }
   ];
