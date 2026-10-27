@@ -562,8 +562,9 @@ function emailCardHtml() {
       <label class="crm-field-label" style="display:block;margin-bottom:8px;">Email</label>
       <div class="crm-import-note" style="margin-top:0;">
         The identity on 1-on-1 emails sent from a contact card. The sending domain must be
-        authenticated in SendGrid or messages land in spam — see <code>docs/email-setup.md</code>.
-        Replies come back into the CRM and appear on the contact's timeline.
+        verified in Telnyx or messages land in spam. See <code>docs/email-setup.md</code>.
+        Replies go to the Reply-to below. Point it at your Telnyx reply inbox and they appear
+        on the contact's timeline too.
       </div>
       <div class="crm-field" style="margin-top:16px;">
         <label>From address</label>
@@ -574,8 +575,12 @@ function emailCardHtml() {
         <input class="c-input" id="em-name" placeholder="Anthony Brown" value="${escapeHtml(e.fromName || '')}" />
       </div>
       <div class="crm-field" style="margin-top:12px;">
-        <label>Reply-to (used only when inbound email is not configured)</label>
+        <label>Reply-to (where leads' replies go)</label>
         <input class="c-input" id="em-replyto" type="email" placeholder="anthonybrown@the1pnation.com" value="${escapeHtml(e.replyTo || '')}" />
+        <div class="crm-mini-sub" style="margin-top:4px;">
+          Your own mailbox, or reply@reply.the1pnation.com to log every reply on the contact card.
+          If you use the reply inbox, put your mailbox in the forward field below.
+        </div>
       </div>
       <div class="crm-field" style="margin-top:12px;">
         <label>Forward inbound replies to</label>

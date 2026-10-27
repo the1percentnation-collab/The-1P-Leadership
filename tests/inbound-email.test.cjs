@@ -126,4 +126,64 @@ ok('never returns empty when the marker is the whole message', () => {
   assert.ok(stripQuotedReply(only).length > 0);
 });
 
+// ── telnyxInboundEmail (Telnyx email.received → recordInboundEmail) ────────
+const tStart = src.indexOf('function telnyxInboundEmail');
+const tEnd = src.indexOf('exports.telnyxEmailEventWebhook');
+assert.ok(tStart > 0 && tEnd > tStart, 'could not locate telnyxInboundEmail');
+const { telnyxInboundEmail } = new Function('parseAddress', 'String', 'Object', 'Array', 'RegExp',
+  src.slice(tStart, tEnd) + '\nreturn { telnyxInboundEmail };')(parseAddress, String, Object, Array, RegExp);
+
+console.log('telnyxInboundEmail');
+
+ok('reads the Telnyx v2 envelope with string addresses', () => {
+  const m = telnyxInboundEmail({ data: { event_type: 'email.received', id: 'evt_1', payload: {
+    id: 'msg_1', from: 'Jo Lead <Jo@Lead.com>', to: ['reply@reply.the1pnation.com'],
+    subject: 'Re: Your call', text: 'Sounds good', html: '<p>Sounds good</p>',
+    headers: { 'Message-ID': '<a@lead.com>', 'In-Reply-To': '<b@the1pnation.com>' } } } });
+  assert.deepStrictEqual(m.from, { name: 'Jo Lead', email: 'jo@lead.com' });
+  assert.strictEqual(m.subject, 'Re: Your call');
+  assert.strictEqual(m.text, 'Sounds good');
+  assert.strictEqual(m.html, '<p>Sounds good</p>');
+  assert.deepStrictEqual(m.recipients, ['reply@reply.the1pnation.com']);
+  assert.strictEqual(m.messageId, '<a@lead.com>');
+  assert.strictEqual(m.inReplyTo, '<b@the1pnation.com>');
+  assert.strictEqual(m.dedupeId, 'msg_1');
+});
+
+ok('reads object addresses, *_body fields and a nested email object', () => {
+  const m = telnyxInboundEmail({ data: { id: 'evt_2', payload: { email: {
+    from: { email: 'sam@x.com', name: 'Sam' }, to: [{ address: 'reply@reply.the1pnation.com' }],
+    cc: [{ email: 'boss@x.com', name: 'Boss' }], subject: 'Hi',
+    text_body: 'plain', html_body: '<b>rich</b>', message_id: '<m@x.com>' } } } });
+  assert.deepStrictEqual(m.from, { name: 'Sam', email: 'sam@x.com' });
+  assert.deepStrictEqual(m.recipients, ['reply@reply.the1pnation.com', 'Boss <boss@x.com>']);
+  assert.strictEqual(m.text, 'plain');
+  assert.strictEqual(m.html, '<b>rich</b>');
+  assert.strictEqual(m.messageId, '<m@x.com>');
+  assert.strictEqual(m.dedupeId, '<m@x.com>', 'falls back to the message id when there is no Telnyx id');
+});
+
+ok('reads headers as a [{name, value}] list or a raw blob', () => {
+  const a = telnyxInboundEmail({ data: { payload: { from: 'a@x.com', headers: [
+    { name: 'In-Reply-To', value: '<orig@the1pnation.com>' }] } } });
+  assert.strictEqual(a.inReplyTo, '<orig@the1pnation.com>');
+  const b = telnyxInboundEmail({ data: { payload: { from: 'a@x.com',
+    headers: 'Received: x\r\nMessage-ID: <blob@x.com>\r\nIn-Reply-To: <o@the1pnation.com>\r\n' } } });
+  assert.strictEqual(b.messageId, '<blob@x.com>');
+  assert.strictEqual(b.inReplyTo, '<o@the1pnation.com>');
+});
+
+ok('a payload with no body still yields a sender and the field names', () => {
+  const m = telnyxInboundEmail({ data: { payload: { id: 'm3', from: 'a@x.com', subject: 'Hi', attachments: [] } } });
+  assert.strictEqual(m.text, null);
+  assert.strictEqual(m.html, null);
+  assert.strictEqual(m.from.email, 'a@x.com');
+  assert.ok(m.fieldNames.includes('attachments'));
+});
+
+ok('a missing or junk sender gives no email, so nothing is recorded', () => {
+  assert.strictEqual(telnyxInboundEmail({ data: { payload: { subject: 'x' } } }).from.email, null);
+  assert.strictEqual(telnyxInboundEmail({}).from.email, null);
+});
+
 console.log(`\n${passed} assertions passed.`);

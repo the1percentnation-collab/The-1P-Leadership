@@ -91,8 +91,8 @@ jobs:
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
           GOOGLE_OAUTH_REDIRECT_URI: ${{ secrets.GOOGLE_OAUTH_REDIRECT_URI }}
           CRM_TICK_SECRET: ${{ secrets.CRM_TICK_SECRET }}
-          # Which provider sends every email: 'sendgrid' (default when unset)
-          # or 'telnyx'. The cutover is this one value.
+          # Which provider sends every email: 'telnyx' (default when unset)
+          # or 'sendgrid'. Switching back is this one value.
           EMAIL_PROVIDER: ${{ secrets.EMAIL_PROVIDER }}
           SENDGRID_WEBHOOK_KEY: ${{ secrets.SENDGRID_WEBHOOK_KEY }}
           INBOUND_EMAIL_DOMAIN: ${{ secrets.INBOUND_EMAIL_DOMAIN }}

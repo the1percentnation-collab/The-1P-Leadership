@@ -7,8 +7,11 @@ decided by one environment variable.
 
 | `EMAIL_PROVIDER` | Provider | Key |
 | --- | --- | --- |
-| unset or `sendgrid` | SendGrid (`@sendgrid/mail`) | `SENDGRID_API_KEY` (Secret Manager) |
-| `telnyx` | Telnyx Email API (REST) | `TELNYX_API_KEY` (the same key the SMS path uses) |
+| unset or `telnyx` | Telnyx Email API (REST) | `TELNYX_API_KEY` (the same key the SMS path uses) |
+| `sendgrid` | SendGrid (`@sendgrid/mail`) | `SENDGRID_API_KEY` (Secret Manager) |
+
+Telnyx became the default in October 2026, when SendGrid moved to a paid-only
+plan. Telnyx is pay-per-send with no monthly minimum.
 
 Because it is one variable, the cutover is a config change and the rollback is
 the same change in reverse. No code edit, no redeploy of logic.
@@ -17,9 +20,9 @@ the same change in reverse. No code edit, no redeploy of logic.
 both write the same CRM timeline; section 5 has the Telnyx endpoint, and it
 should be configured at the same time as the switch.
 
-**Inbound replies are still SendGrid Inbound Parse.** Outbound and inbound are
-independent, and moving inbound means changing an MX record, so it is a
-separate step. Section 6 covers it.
+**Inbound replies follow the provider too.** On Telnyx they go to the Reply-to
+in CRM Settings (the real mailbox by default) and, once a Telnyx reply inbox is
+set up, onto the contact card via `telnyxEmailEventWebhook`. Section 6 covers it.
 
 ---
 
@@ -45,8 +48,9 @@ makes the switch reversible.
 
 ## 0. Switching to Telnyx
 
-In order. Do not set `EMAIL_PROVIDER=telnyx` before the domain verifies, or
-every send is rejected.
+Telnyx is now the default, so with `EMAIL_PROVIDER` unset the platform sends
+through it. The domain must be verified first (steps 1 and 2), or every send is
+rejected.
 
 1. **Authenticate the domain.** Telnyx Mission Control → **Email → Domains →
    Add Domain**, enter `the1pnation.com`. Telnyx returns SPF, DKIM and DMARC
@@ -58,9 +62,10 @@ every send is rejected.
 3. **Confirm the key.** `TELNYX_API_KEY` is already a repository secret for
    SMS. The same bearer token covers the Email API, so there is nothing new to
    create.
-4. **Flip the switch.** Add a repository secret `EMAIL_PROVIDER` with the value
-   `telnyx`, then re-run *Deploy Firestore rules + Storage rules + Cloud
-   Functions*. The workflow writes it into `functions/.env`.
+4. **Flip the switch.** Nothing to set: unset means Telnyx. Re-run *Deploy
+   Firestore rules + Storage rules + Cloud Functions* so the functions pick it
+   up. (If an `EMAIL_PROVIDER` repository secret exists, it wins; delete it or
+   set it to `telnyx`.)
    Register the delivery-event webhook in the same sitting (section 5), or
    every send after this point looks stuck at "sent" in the CRM.
 5. **Send one real test.** Grant course access to an address you control, or
@@ -70,14 +75,15 @@ every send is rejected.
    expected batches before a large campaign; a first send to 900 addresses is
    how a new domain gets throttled.
 
-**Rollback:** set `EMAIL_PROVIDER` back to `sendgrid` and re-run the deploy.
+**Rollback:** add a repository secret `EMAIL_PROVIDER` = `sendgrid` and re-run
+the deploy.
 Nothing else changes, because nothing else moved.
 
 ---
 
 ## 1. Authenticate the sending domain in SendGrid
 
-Only needed while `EMAIL_PROVIDER` is `sendgrid` (the default). For Telnyx, see
+Only needed while `EMAIL_PROVIDER` is `sendgrid`. For Telnyx, see
 section 0 above.
 
 SendGrid → **Settings → Sender Authentication → Authenticate Your Domain**.
@@ -215,16 +221,37 @@ compliance problem rather than a cosmetic one.
 
 ---
 
-## 6. What is still on SendGrid
+## 6. Inbound replies (Telnyx)
 
-One thing: **reply capture**. `reply.the1pnation.com` has an MX record pointing
-at `mx.sendgrid.net`, and `inboundEmailWebhook` parses what SendGrid posts.
-Moving it to a Telnyx inbox means a new MX record and a new handler, and while
-the MX is changing, replies can be lost. Do it on its own, in a quiet window,
-not alongside the outbound cutover.
+Telnyx inboxes are fixed addresses (no `reply+token@`), so on Telnyx a CRM
+email's Reply-To is the **Reply-to** in CRM → Settings → Email. Out of the box
+that is `anthonybrown@the1pnation.com`, so replies land in the real mailbox and
+nothing is lost. To also log them on the contact card:
 
-Until then SendGrid stays in the stack for inbound only, which costs nothing
-and breaks nothing.
+1. **Add the reply subdomain in Telnyx.** Mission Control → Email → Domains →
+   Add Domain → `reply.the1pnation.com`, with inbound enabled. Add the records
+   it gives, including its **MX**, at the DNS host. The MX goes on
+   `reply.the1pnation.com` only, replacing the old `mx.sendgrid.net` one.
+   **Never add a Telnyx MX on `the1pnation.com` itself**: that would pull the
+   real mailbox's mail away.
+2. **Create the inbox** `reply@reply.the1pnation.com` on that domain.
+3. **Webhook.** Make sure `email.received` events post to the same
+   `telnyxEmailEventWebhook` URL as delivery events (section 5). It is signed
+   with `TELNYX_PUBLIC_KEY`, records each message once even when Telnyx
+   retries, and matches the reply to a contact by sender address, threading it
+   onto the email it answers by subject or In-Reply-To.
+4. **CRM → Settings → Email:** set Reply-to to `reply@reply.the1pnation.com`
+   and Forward inbound replies to `anthonybrown@the1pnation.com`, so every
+   reply is on the card and still reaches your phone.
+5. **Test:** email a contact you control from their card, reply from that
+   inbox, and confirm the reply shows on the card and arrives as a `[CRM]`
+   copy. If the card shows "its text did not come through", the function log
+   (`[telnyxInbound]`) lists the payload's field names.
+
+**Rollback:** with `EMAIL_PROVIDER=sendgrid`, CRM sends go back to the
+per-contact `reply+<companyId>.<contactId>@reply.the1pnation.com` address and
+`inboundEmailWebhook` (SendGrid Inbound Parse) takes them, which needs the
+SendGrid MX on the reply subdomain again.
 
 ---
 
