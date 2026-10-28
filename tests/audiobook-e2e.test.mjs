@@ -266,13 +266,14 @@ await t('buying while signed out goes to sign-in and comes back to buy', async (
   const signup = await G.page.getAttribute('#link-signup', 'href');
   assert(signup === `/signup.html?next=${encodeURIComponent(next)}`, signup);
 });
-await t('the homepage buy button goes straight to checkout (via sign-in when signed out)', async () => {
+await t('the homepage buy button opens the audiobook page, not checkout', async () => {
   await G.page.goto(`${ORIGIN}/`);
   const href = await G.page.getAttribute(`#paths a.btn[href^="/listen?book=${BOOK}"]`, 'href');
-  assert(href === `/listen?book=${BOOK}&buy=1`, href);
+  assert(href === `/listen?book=${BOOK}`, href);
   await G.page.goto(`${ORIGIN}${href}`);
-  await G.page.waitForURL(/\/login(\.html)?\?next=/, { timeout: 30000 });
-  assert(new URL(G.page.url()).searchParams.get('next') === `/listen?book=${BOOK}&buy=1`, G.page.url());
+  await G.page.waitForSelector('#ls-buy', { timeout: 30000 });
+  await G.page.waitForTimeout(1500);
+  assert(/\/listen\?book=/.test(G.page.url()), G.page.url());
 });
 await G.ctx.close();
 
@@ -291,7 +292,7 @@ await t('a member who has not bought it sees it under Also available in their Li
   await S.ctx.close();
 });
 
-await t('a signed-in member who taps the homepage buy button lands on Stripe checkout', async () => {
+await t('checkout opens only when the buyer taps the button, and carries on after sign-in', async () => {
   const S = await makeContext({ email: 'stranger@e2e.test', password: PW });
   let asked = null;
   // Stand in for Stripe: the callable's answer is the checkout page's URL.
@@ -299,6 +300,15 @@ await t('a signed-in member who taps the homepage buy button lands on Stripe che
     asked = JSON.parse(route.request().postData() || '{}').data;
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ result: { url: `${ORIGIN}/?stripe-checkout=1` } }) });
   });
+  await S.page.goto(`${ORIGIN}/listen?book=${BOOK}`);
+  await S.page.waitForSelector('#ls-buy', { timeout: 30000 });
+  await S.page.waitForTimeout(1500);
+  assert(asked === null && /\/listen\?book=/.test(S.page.url()), 'checkout opened without a tap');
+  await S.page.click('#ls-buy');
+  await S.page.waitForURL(/stripe-checkout=1/, { timeout: 30000 });
+  assert(asked && asked.productId === PRODUCT, JSON.stringify(asked));
+  // Back from sign-in (buy=1): straight on to checkout.
+  asked = null;
   await S.page.goto(`${ORIGIN}/listen?book=${BOOK}&buy=1`);
   await S.page.waitForURL(/stripe-checkout=1/, { timeout: 30000 });
   assert(asked && asked.productId === PRODUCT, JSON.stringify(asked));
@@ -484,19 +494,23 @@ await B.ctx.close();
 // ── 6. Admin: upload an audiobook, then sell it ───────────────────────────
 // Desktop: the admin consoles are worked from a computer.
 const A = await makeContext({ email: 'admin@e2e.test', password: PW }, devices['Desktop Chrome']);
-await t('an admin who taps the buy button gets checkout too, so the owner can test a purchase', async () => {
+await t('an admin plays it, and can open the customer page to test a purchase', async () => {
+  await A.page.goto(`${ORIGIN}/listen?book=${BOOK}`);
+  await A.page.waitForSelector('#ls-play', { timeout: 30000 });
+  const link = await A.page.getAttribute('a[href*="as=customer"]', 'href');
+  assert(link === `/listen?book=${BOOK}&as=customer`, link);
   let asked = null;
   await A.page.route('**/createCheckoutSession', async (route) => {
     asked = JSON.parse(route.request().postData() || '{}').data;
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ result: { url: `${ORIGIN}/?stripe-checkout=admin` } }) });
   });
-  await A.page.goto(`${ORIGIN}/listen?book=${BOOK}&buy=1`);
+  await A.page.goto(`${ORIGIN}${link}`);
+  await A.page.waitForSelector('#ls-buy', { timeout: 30000 });
+  assert(await A.page.$('.ls-sample audio'), 'the customer page shows the preview');
+  await A.page.click('#ls-buy');
   await A.page.waitForURL(/stripe-checkout=admin/, { timeout: 30000 });
   assert(asked && asked.productId === PRODUCT, JSON.stringify(asked));
   await A.page.unroute('**/createCheckoutSession');
-  // Without the buy link, an admin still just plays it.
-  await A.page.goto(`${ORIGIN}/listen?book=${BOOK}`);
-  await A.page.waitForSelector('#ls-play', { timeout: 30000 });
 });
 await t('an admin uploads an audiobook\'s chapters from Manage Library', async () => {
   await A.page.goto(`${ORIGIN}/manage-library.html`);

@@ -102,16 +102,18 @@ function empty(title, body, actions = '') {
 // Right after checkout the webhook can trail the redirect by a few seconds,
 // so a returning buyer is checked again for a little while before the page
 // decides they don't own it.
-// An admin can play every audiobook without buying it, except when they tap
-// a buy link: then they go through checkout like a customer, so the owner
-// can test the purchase on the live site.
+// An admin can play every audiobook without buying it. "See the customer
+// page" (?as=customer) shows them the sales page instead, and buying from it
+// goes through checkout like a customer, so the owner can test a purchase on
+// the live site.
 async function owns(bookId, { wait = false } = {}) {
   if (!S.user) return false;
   const tries = wait ? 12 : 1;
-  const buying = params.get('buy') === '1';
+  const asCustomer = params.get('as') === 'customer' || params.get('buy') === '1';
   for (let i = 0; i < tries; i++) {
     const { ids, admin } = await libraryAccess({ fresh: true });
-    if (ids.includes(bookId) || (admin && !buying)) return true;
+    if (ids.includes(bookId)) return true;
+    if (admin && !asCustomer) { S.adminPlay = true; return true; }
     if (i < tries - 1) await new Promise((r) => setTimeout(r, 2500));
   }
   return false;
@@ -298,6 +300,7 @@ async function renderPlayer() {
   $('ls-back').innerHTML = '&larr; My library';
   $('ls-root').innerHTML = `
     ${purchased ? '<div class="ls-toast">It\'s yours. Press play, or add it to your podcast app below. A receipt with this link is on its way to your inbox.</div>' : ''}
+    ${S.adminPlay ? `<div class="ls-note" style="text-align:center;margin:0 0 14px;">Admin view: you can play this without buying it. <a href="/listen?book=${encodeURIComponent(S.bookId)}&amp;as=customer">See the customer page</a></div>` : ''}
     ${heroHtml(book)}
     <section class="ls-card" aria-label="Player">
       <div class="ls-now" id="ls-now"></div>
@@ -588,9 +591,9 @@ async function renderSales() {
     $('ls-promo-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') applyPromo(product); });
     // A code from the link (or carried through sign-in) is checked right away.
     if (promo.code && S.user) await applyPromo(product);
-    // A "buy" link (the homepage button), or back from sign-in with the
-    // intent to buy: straight to checkout, through sign-in first if needed.
-    if (params.get('buy') === '1') startCheckout(product, btn);
+    // Back from sign-in after tapping the buy button: carry on to checkout.
+    // Nothing else opens checkout without a tap.
+    if (params.get('buy') === '1' && S.user) startCheckout(product, btn);
   }
 }
 
