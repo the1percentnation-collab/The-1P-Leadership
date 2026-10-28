@@ -584,8 +584,9 @@ async function renderSales() {
     $('ls-promo-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') applyPromo(product); });
     // A code from the link (or carried through sign-in) is checked right away.
     if (promo.code && S.user) await applyPromo(product);
-    // Back from sign-in with the intent to buy: go straight to checkout.
-    if (params.get('buy') === '1' && S.user) startCheckout(product, btn);
+    // A "buy" link (the homepage button), or back from sign-in with the
+    // intent to buy: straight to checkout, through sign-in first if needed.
+    if (params.get('buy') === '1') startCheckout(product, btn);
   }
 }
 
