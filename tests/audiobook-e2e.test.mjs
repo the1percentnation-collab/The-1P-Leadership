@@ -262,6 +262,17 @@ await t('buying while signed out goes to sign-in and comes back to buy', async (
   await G.page.waitForURL(/\/login(\.html)?\?next=/, { timeout: 10000 });
   const next = new URL(G.page.url()).searchParams.get('next');
   assert(next === `/listen?book=${BOOK}&buy=1`, next);
+  // No account yet: sign-up keeps the way back to checkout.
+  const signup = await G.page.getAttribute('#link-signup', 'href');
+  assert(signup === `/signup.html?next=${encodeURIComponent(next)}`, signup);
+});
+await t('the homepage buy button goes straight to checkout (via sign-in when signed out)', async () => {
+  await G.page.goto(`${ORIGIN}/`);
+  const href = await G.page.getAttribute(`#paths a.btn[href^="/listen?book=${BOOK}"]`, 'href');
+  assert(href === `/listen?book=${BOOK}&buy=1`, href);
+  await G.page.goto(`${ORIGIN}${href}`);
+  await G.page.waitForURL(/\/login(\.html)?\?next=/, { timeout: 30000 });
+  assert(new URL(G.page.url()).searchParams.get('next') === `/listen?book=${BOOK}&buy=1`, G.page.url());
 });
 await G.ctx.close();
 
@@ -277,6 +288,20 @@ await t('a member who has not bought it sees it under Also available in their Li
   const card = await S.page.waitForSelector(`a.lib-avail[href="/listen?book=${BOOK}"]`, { timeout: 30000 });
   const txt = await card.textContent();
   assert(/Audiobook/.test(txt) && /\$9\.99/.test(txt) && /Buy now/.test(txt) && !/free/i.test(txt), txt);
+  await S.ctx.close();
+});
+
+await t('a signed-in member who taps the homepage buy button lands on Stripe checkout', async () => {
+  const S = await makeContext({ email: 'stranger@e2e.test', password: PW });
+  let asked = null;
+  // Stand in for Stripe: the callable's answer is the checkout page's URL.
+  await S.page.route('**/createCheckoutSession', async (route) => {
+    asked = JSON.parse(route.request().postData() || '{}').data;
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ result: { url: `${ORIGIN}/?stripe-checkout=1` } }) });
+  });
+  await S.page.goto(`${ORIGIN}/listen?book=${BOOK}&buy=1`);
+  await S.page.waitForURL(/stripe-checkout=1/, { timeout: 30000 });
+  assert(asked && asked.productId === PRODUCT, JSON.stringify(asked));
   await S.ctx.close();
 });
 

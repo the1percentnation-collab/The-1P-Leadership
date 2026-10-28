@@ -217,7 +217,7 @@
           });
         }
         // Clicking the box itself heads to sign up.
-        tip.addEventListener('click', function () { window.location.href = '/signup.html'; });
+        tip.addEventListener('click', function () { window.location.href = link.href; });
       }
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', start);
@@ -247,6 +247,10 @@
       // becomes an open redirect off the site.
       return n && n.startsWith('/') && !n.startsWith('//') ? n : '/dashboard';
     }
+
+    // Someone sent here on the way to something (a checkout) who has no
+    // account yet keeps their place through sign-up.
+    if (nextUrl() !== '/dashboard') $('link-signup').href = '/signup.html?next=' + encodeURIComponent(nextUrl());
 
     if (!firebaseReady) {
       showErr('Authentication service is unreachable. Check your connection and retry.');
