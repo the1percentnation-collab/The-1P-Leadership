@@ -484,6 +484,20 @@ await B.ctx.close();
 // ── 6. Admin: upload an audiobook, then sell it ───────────────────────────
 // Desktop: the admin consoles are worked from a computer.
 const A = await makeContext({ email: 'admin@e2e.test', password: PW }, devices['Desktop Chrome']);
+await t('an admin who taps the buy button gets checkout too, so the owner can test a purchase', async () => {
+  let asked = null;
+  await A.page.route('**/createCheckoutSession', async (route) => {
+    asked = JSON.parse(route.request().postData() || '{}').data;
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ result: { url: `${ORIGIN}/?stripe-checkout=admin` } }) });
+  });
+  await A.page.goto(`${ORIGIN}/listen?book=${BOOK}&buy=1`);
+  await A.page.waitForURL(/stripe-checkout=admin/, { timeout: 30000 });
+  assert(asked && asked.productId === PRODUCT, JSON.stringify(asked));
+  await A.page.unroute('**/createCheckoutSession');
+  // Without the buy link, an admin still just plays it.
+  await A.page.goto(`${ORIGIN}/listen?book=${BOOK}`);
+  await A.page.waitForSelector('#ls-play', { timeout: 30000 });
+});
 await t('an admin uploads an audiobook\'s chapters from Manage Library', async () => {
   await A.page.goto(`${ORIGIN}/manage-library.html`);
   await A.page.waitForSelector('#btn-new-book:not([disabled])', { timeout: 30000 });

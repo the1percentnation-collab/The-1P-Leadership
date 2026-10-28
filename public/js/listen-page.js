@@ -102,12 +102,16 @@ function empty(title, body, actions = '') {
 // Right after checkout the webhook can trail the redirect by a few seconds,
 // so a returning buyer is checked again for a little while before the page
 // decides they don't own it.
+// An admin can play every audiobook without buying it, except when they tap
+// a buy link: then they go through checkout like a customer, so the owner
+// can test the purchase on the live site.
 async function owns(bookId, { wait = false } = {}) {
   if (!S.user) return false;
   const tries = wait ? 12 : 1;
+  const buying = params.get('buy') === '1';
   for (let i = 0; i < tries; i++) {
     const { ids, admin } = await libraryAccess({ fresh: true });
-    if (admin || ids.includes(bookId)) return true;
+    if (ids.includes(bookId) || (admin && !buying)) return true;
     if (i < tries - 1) await new Promise((r) => setTimeout(r, 2500));
   }
   return false;
