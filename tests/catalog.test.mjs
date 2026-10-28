@@ -236,14 +236,20 @@ ok('a product with an off-site link goes off-site, otherwise to its anchor', () 
 });
 
 ok('a product with its own page sends every button there, labelled by the product', () => {
-  const i = normalizeProduct(product({ sellable: true, pageUrl: '/listen?book=i-cant-audio', pageCta: 'Listen free', grantsBooks: ['i-cant-audio'] }));
+  const i = normalizeProduct(product({ sellable: true, pageUrl: '/listen?book=i-cant-audio', pageCta: 'Get the audiobook', grantsBooks: ['i-cant-audio'] }));
   assert.strictEqual(hrefFor(i, 'site'), '/listen?book=i-cant-audio');
   assert.strictEqual(hrefFor(i, 'dashboard'), '/listen?book=i-cant-audio');
-  assert.deepStrictEqual(ctaFor(i), { kind: 'view', label: 'Listen free' });
+  assert.deepStrictEqual(ctaFor(i), { kind: 'view', label: 'Get the audiobook' });
   assert.deepStrictEqual(i.grantsBooks, ['i-cant-audio']);
   // Its own page wins over an off-site link; a missing label still reads well.
   assert.strictEqual(hrefFor(normalizeProduct(product({ pageUrl: '/x', externalUrl: 'https://a.co' })), 'site'), '/x');
-  assert.strictEqual(ctaFor(normalizeProduct(product({ pageUrl: '/x' }))).label, 'See details');
+  assert.strictEqual(ctaFor(normalizeProduct(product({ pageUrl: '/x' }))).label, 'Buy now');
+  assert.strictEqual(ctaFor(normalizeProduct(product({ pageUrl: '/x', price: 0 }))).label, 'See details');
+});
+
+ok('a paid product with a page never shows a "free" button', () => {
+  assert.strictEqual(ctaFor(normalizeProduct(product({ pageUrl: '/x', pageCta: 'Listen free' }))).label, 'Buy now');
+  assert.strictEqual(ctaFor(normalizeProduct(product({ pageUrl: '/x', pageCta: 'Listen free', price: 0 }))).label, 'Listen free');
 });
 
 ok('a product page must be on this site', () => {

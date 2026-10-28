@@ -263,7 +263,7 @@ function bookBlockHtml(item, i) {
   const href = item.pageUrl || item.externalUrl || `/upcoming.html#p-${encodeURIComponent(item.id)}`;
   const ext = isExternal(href);
   const label = cta.kind === 'notify' ? 'Notify me →'
-    : (cta.kind === 'soldout' ? 'Sold out' : (item.pageUrl && item.pageCta ? `${item.pageCta} →` : 'Get Your Copy →'));
+    : (cta.kind === 'soldout' ? 'Sold out' : (item.pageUrl && item.pageCta ? `${cta.label} →` : 'Get Your Copy →'));
 
   const live = item.status === 'live' || item.status === 'preorder';
   const tag = item.onSale ? 'On Sale' : (item.status === 'live' ? 'Now Available' : (item.status === 'preorder' ? 'Pre-order' : 'Coming Soon'));
