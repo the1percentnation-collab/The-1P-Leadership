@@ -318,12 +318,14 @@ main, footer { position: relative; z-index: 1; }
 .door-coach .card-label, .door-audio .card-label { color: var(--red); }
 /* On a phone the audiobook sits between membership and certification, in
    source order. Side by side, a third card in the right column would stretch
-   the corporate photo, so it moves to its own full-width row, art on the left. */
+   the corporate photo, so it moves to its own full-width row, art on the left.
+   The art carries its own headline, so it is shown whole, never cropped. */
 @media (min-width: 861px) {
   .door-stack { display: contents; }
   .door-org { grid-column: 1; grid-row: 1 / span 2; }
   .door-audio { grid-column: 1 / -1; grid-row: 3; flex-direction: row; }
-  .door-audio .door-photo { flex: 0 0 42%; aspect-ratio: auto; min-height: 320px; border-bottom: 0; border-right: 1px solid var(--line); }
+  .door-audio .door-photo { flex: 0 0 55%; aspect-ratio: auto; border-bottom: 0; border-right: 1px solid var(--line); }
+  .door-audio .door-photo img { object-fit: contain; }
 }
 
 /* ===== Method steps ===== */
