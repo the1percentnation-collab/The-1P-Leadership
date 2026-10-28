@@ -201,6 +201,16 @@ export function isExternal(href) {
  *   view     — live but not purchasable here (e.g. a course from the site),
  *              or a product that sells on its own page (pageUrl)
  */
+/**
+ * The button on a product that sells on its own page. A paid product's
+ * button never says "free": next to the price, that reads as the price.
+ */
+export function pageCtaLabel({ pageCta, price } = {}) {
+  const paid = Number(price) > 0;
+  if (pageCta && !(paid && /free/i.test(pageCta))) return pageCta;
+  return paid ? 'Buy now' : 'See details';
+}
+
 export function ctaFor(item, { enrolled = false } = {}) {
   if (!item) return { kind: 'view', label: 'View' };
   if (item.kind === 'course' && enrolled) return { kind: 'open', label: 'Open course' };
@@ -208,7 +218,7 @@ export function ctaFor(item, { enrolled = false } = {}) {
   if (item.kind === 'product') {
     // A product with its own page sells there (the audiobook page plays the
     // free chapter first), so every surface sends people to it.
-    if (item.pageUrl && item.status !== 'coming-soon') return { kind: 'view', label: item.pageCta || 'See details' };
+    if (item.pageUrl && item.status !== 'coming-soon') return { kind: 'view', label: pageCtaLabel(item) };
     if (item.externalUrl) return { kind: 'external', label: item.status === 'preorder' ? 'Pre-order' : 'Get it' };
     if (item.soldOut) return { kind: 'soldout', label: 'Sold out' };
     if (item.sellable && item.price > 0) return { kind: 'buy', label: item.status === 'preorder' ? 'Pre-order' : 'Buy now' };

@@ -16,6 +16,7 @@ import { renderTopbar, renderTopbarEarly } from './topbar.js';
 import { renderShell } from './academy-shell.js';
 import { libraryAccess, getBook, loadAllPositions, isAudioBook, bookHref } from './books.js';
 import { priceInfo } from './pricing.js';
+import { pageCtaLabel } from './catalog-core.js';
 import {
   collection, getDocs, query, where
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -115,7 +116,7 @@ function availableItem({ product, book }) {
       ${cover({ ...book, coverUrl: book.coverUrl || product.imageUrl })}
       <div class="lib-book-title">${escapeHtml(book.title || product.name || '')}</div>
       <div class="lib-book-sub">${kind} · ${(() => { const p = priceInfo(product); return p.onSale ? `<s>${escapeHtml(p.originalLabel)}</s> ${escapeHtml(p.label)}` : escapeHtml(p.label); })()}</div>
-      <span class="lib-avail-cta">${escapeHtml(product.pageCta || 'See details')} →</span>
+      <span class="lib-avail-cta">${escapeHtml(pageCtaLabel(product))} →</span>
     </a>`;
 }
 

@@ -562,7 +562,7 @@ async function renderSales() {
     </section>
     ${sample != null ? `
     <section class="ls-card ls-sample">
-      <h2>Listen free: ${escapeHtml(S.tracks[sample].title || `Chapter ${sample + 1}`)}</h2>
+      <h2>Preview: ${escapeHtml(S.tracks[sample].title || `Chapter ${sample + 1}`)}</h2>
       <p class="ls-sub">Press play. No account needed.</p>
       <audio controls preload="none" src="/api/book-audio?book=${encodeURIComponent(S.bookId)}&track=${sample}"></audio>
     </section>` : ''}

@@ -14,7 +14,8 @@
 #
 # To change only the cover, tick "Cover only" and leave the Drive link
 # blank: it uploads the config's coverImage (scripts/audiobooks/*.json) to
-# the book and its product, and leaves the audio alone.
+# the book and its product, refreshes the product's wording from the
+# config, and leaves the audio, price and sale status alone.
 name: Publish audiobook
 
 on:
@@ -25,7 +26,7 @@ on:
         required: false
         type: string
       cover_only:
-        description: 'Cover only: update the cover art, leave the audio as it is'
+        description: 'Cover only: update the cover art and store wording, leave the audio and price as they are'
         type: boolean
         default: false
       publish:

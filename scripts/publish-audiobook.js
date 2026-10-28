@@ -24,8 +24,10 @@
 //   --no-listen      cut by pauses and word counts alone, without transcribing
 //                    (only for a narration whose chapter pauses stand out)
 //   --out=DIR        where the tracks are written (default: a temp dir)
-//   --cover-only     just upload the config's coverImage and point the book
-//                    and its product at it; no MP3 needed, nothing else changes
+//   --cover-only     just upload the config's coverImage, point the book and
+//                    its product at it, and refresh the product's wording
+//                    (summary, button, note); no MP3 needed, the audio, price
+//                    and sale status are left alone
 //
 // The Drive file must be shared "Anyone with the link" while this runs; set
 // it back to Restricted afterwards. Needs ffmpeg and ffprobe on PATH.
@@ -147,9 +149,17 @@ async function coverOnly(cfg, coverFile) {
   const now = admin.firestore.FieldValue.serverTimestamp();
   await bookRef.set({ coverUrl, updatedAt: now }, { merge: true });
   const prods = await db.collection('products').where('grantsBooks', 'array-contains', id).get();
-  for (const d of prods.docs) await d.ref.set({ imageUrl: coverUrl, updatedAt: now }, { merge: true });
+  const p = cfg.product || {};
+  const wording = {
+    ...(p.summary ? { summary: p.summary } : {}),
+    ...(p.pageCta ? { pageCta: p.pageCta } : {}),
+    ...(p.pageNote ? { pageNote: p.pageNote } : {})
+  };
+  for (const d of prods.docs) await d.ref.set({ imageUrl: coverUrl, ...wording, updatedAt: now }, { merge: true });
   note(`## ${cfg.title}`);
-  note(`**Cover updated** from ${path.basename(coverFile)} on books/${id}${prods.size ? ` and ${prods.docs.map((d) => `products/${d.id}`).join(', ')}` : ''}. The audio was not touched.`);
+  note(`**Cover updated** from ${path.basename(coverFile)} on books/${id}${prods.size ? ` and ${prods.docs.map((d) => `products/${d.id}`).join(', ')}` : ''}.`);
+  if (prods.size && Object.keys(wording).length) note(`Store wording refreshed: ${Object.keys(wording).join(', ')}.`);
+  note('The audio, price and sale status were not touched.');
   writeSummary();
 }
 

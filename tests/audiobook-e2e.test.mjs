@@ -252,7 +252,7 @@ await t('the public /books shop lists the audiobook and links to its page', asyn
       console.log('   [shop]', (await G.page.$eval('#home-shop', (el) => el.outerHTML).catch(() => 'no #home-shop')).slice(0, 600));
       throw e;
     });
-  assert(/Listen free/.test(await link.textContent()), await link.textContent());
+  assert(/Buy now/.test(await link.textContent()) && !/free/i.test(await link.textContent()), await link.textContent());
   assert(/Plays in your browser/.test(await G.page.textContent('#home-shop')), 'page note');
   await G.page.goto(`${ORIGIN}/listen?book=${BOOK}`);
   await G.page.waitForSelector('#ls-buy', { timeout: 30000 });
@@ -276,7 +276,7 @@ await t('a member who has not bought it sees it under Also available in their Li
   await S.page.goto(`${ORIGIN}/library`);
   const card = await S.page.waitForSelector(`a.lib-avail[href="/listen?book=${BOOK}"]`, { timeout: 30000 });
   const txt = await card.textContent();
-  assert(/Audiobook/.test(txt) && /\$9\.99/.test(txt) && /Listen free/.test(txt), txt);
+  assert(/Audiobook/.test(txt) && /\$9\.99/.test(txt) && /Buy now/.test(txt) && !/free/i.test(txt), txt);
   await S.ctx.close();
 });
 
