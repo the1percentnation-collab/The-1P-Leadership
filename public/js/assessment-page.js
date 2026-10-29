@@ -18,7 +18,9 @@ import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Where the free Alignment Audit is booked or requested.
+const AUDIT_HREFS = ['/corporate#audit', '/book-a-call'];
+const esc =(s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const track = (name, params) => {
   try { if (typeof gtag === 'function') gtag('event', name, params || {}); } catch (e) { /* analytics never breaks the page */ }
   try { if (typeof fbq === 'function' && params && params.fb) fbq('track', params.fb, { content_name: params.assessment }); } catch (e) { /* optional */ }
@@ -332,6 +334,7 @@ function renderTeaser() {
           <button class="btn btn-red btn-block" type="submit" id="u-go">Unlock my full report</button>
         </form>
         <p class="fine">No password needed now. We will create your free One Percent portal account, save this report to your profile, and email you a link to set your password. Already a member? <a href="/login?next=${encodeURIComponent(next)}">Log in instead</a>. By continuing you agree to our <a href="/terms">terms</a> and <a href="/privacy">privacy policy</a>.</p>
+        ${def.cta && def.cta.early ? `<p class="fine">Rather talk it through first? <a href="${esc(def.cta.href)}">${esc(def.cta.label)}</a>.</p>` : ''}
       </div>
     </div>`;
 
@@ -498,7 +501,9 @@ function renderFull(r, profile, status, answers) {
   // Numbered by a CSS counter in reading order.
   const step = (t) => `<div class="step">${esc(t)}</div>`;
 
-  const auditPanel = priority && (!def.cta || def.cta.href !== '/corporate#audit')
+  // Skipped when the assessment's own call to action already leads to the
+  // audit, so the report never asks twice.
+  const auditPanel = priority && (!def.cta || !AUDIT_HREFS.includes(def.cta.href))
     ? `<div class="panel cta-panel">
         <div class="eyebrow">For leaders</div>
         <h3>Your team is likely feeling this too.</h3>
@@ -509,8 +514,8 @@ function renderFull(r, profile, status, answers) {
   const ctaPanel = def.cta
     ? `<div class="panel cta-panel">
         <div class="eyebrow">Your next step</div>
-        <h3>Want help closing the gap?</h3>
-        <p>${isProfile ? 'Knowing your pattern is the start. Building around it is where things change.' : 'Clarity is step one. Execution is where your score moves.'}</p>
+        <h3>${esc(def.cta.heading || 'Want help closing the gap?')}</h3>
+        <p>${def.cta.text ? esc(def.cta.text) : (isProfile ? 'Knowing your pattern is the start. Building around it is where things change.' : 'Clarity is step one. Execution is where your score moves.')}</p>
         <a class="btn ${auditPanel ? 'btn-ghost' : 'btn-red'}" href="${esc(def.cta.href)}">${esc(def.cta.label)}</a>
       </div>` : '';
 

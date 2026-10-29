@@ -6,6 +6,7 @@
 // ASSESSMENT_SLUGS in functions/index.js so results can be saved. The tests
 // fail if the two lists drift.
 import alignmentScorecard from './assessments/alignment-scorecard.js';
+import alignmentAssessment from './assessments/alignment-assessment.js';
 import successOnPaper from './assessments/success-on-paper.js';
 import burnoutCheck from './assessments/burnout-check.js';
 import disciplineScore from './assessments/discipline-score.js';
@@ -36,6 +37,7 @@ export const ASSESSMENTS = [
   limitingBeliefs,
   delegationAudit,
   faithLeader,
+  alignmentAssessment,
   teamAlignment,
   salesMindset,
   financialReadiness,
