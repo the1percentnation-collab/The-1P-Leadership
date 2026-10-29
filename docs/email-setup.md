@@ -288,6 +288,39 @@ Contact card ──sendContactEmail──▶ SendGrid ──▶ lead's inbox
   rule as an inbound text: no automated cadence fires over a live conversation.
 - **Unsubscribes are honored on 1-on-1 sends**, not just campaigns.
 
+## Branded campaigns
+
+New campaigns default to the **Branded** design: the One Percent header, an
+optional banner image, red buttons, the signature block with the Alignment
+Audit link, and the tagline footer with the unsubscribe link. **Plain text**
+is still there for a message that should read like a personal note.
+
+The body is still typed as text, with five conventions:
+
+| Type | Get |
+| --- | --- |
+| a blank line | a new paragraph |
+| `# Heading` | a large bold line |
+| `- item` (one per line) | a list with a red bar |
+| `[Label](https://...)` on its own line | a red button (inside a sentence, a link) |
+| `**words**` | bold |
+
+The editor shows a live preview beside the text, and **Send test to me** mails
+one copy to the signed-in admin, marked `[TEST]`, without saving or sending
+the campaign. A saved draft has the same two buttons on its page, plus
+**Send now**.
+
+One renderer does all of it: `public/js/email-layout-core.js` for the preview,
+and its generated copy `functions/email-layout-core.js` for the test and the
+real send. After editing the browser module, run
+`node scripts/build-email-layout-server.cjs`; `tests/email-layout.test.mjs`
+fails if the two drift. `sendCampaign` renders a branded campaign from its
+text at the moment it sends, so stored HTML can never go out stale.
+
+A banner image should be hosted under `https://the1pnation.com/assets/` at
+1200 × 628. Gmail drops images it cannot fetch, so a banner that 404s simply
+disappears and the email still reads correctly.
+
 ## Security notes
 
 - Inbound Parse does not sign its requests. The shared token in the URL is the

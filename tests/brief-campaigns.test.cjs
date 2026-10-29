@@ -68,7 +68,8 @@ ok('buildRecipients drops enrolled members by email, after every mode', () => {
   const i = fnSrc.indexOf('async function buildRecipients(');
   const body = fnSrc.slice(i, fnSrc.indexOf('\n}\n', i));
   assert.match(body, /await collectRecipients\(db, companyId, filter\)/);
-  assert.match(body, /where\('enrolledCourseSlugs', 'array-contains', slug\)/);
+  assert.match(body, /addSkips\('enrolledCourseSlugs', filter && filter\.excludeEnrolledIn\)/);
+  assert.match(body, /where\(field, 'array-contains', v\)/);
   assert.match(body, /normalizeEmail/);
 });
 ok('the campaigns page shows who is skipped and when to send', () => {

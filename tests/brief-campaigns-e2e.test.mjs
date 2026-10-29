@@ -5,6 +5,8 @@
 //    and still drops opt-outs.
 // 2. scripts/seed-brief-campaigns.js writes three drafts, and a re-run never
 //    touches one that was already sent.
+// 3. excludeOwnersOf skips book buyers, and scripts/seed-audiobook-campaign.js
+//    writes its branded draft the same safe way.
 //
 // From the repo root: `npm run e2e:campaigns` in tests/.
 import fs from 'node:fs';
@@ -101,6 +103,31 @@ await t('a re-run refreshes drafts and never touches a sent campaign', async () 
   const week = (await db.doc(`companies/${CO}/campaigns/brief-free-one-week`).get()).data();
   assert(launch.status === 'sent' && launch.subject === 'as sent', JSON.stringify(launch.subject));
   assert(week.subject === 'One week left to join The Brief free', week.subject);
+});
+
+// The audiobook launch (scripts/seed-audiobook-campaign.js) skips buyers.
+await t('excludeOwnersOf skips anyone whose library holds the book', async () => {
+  await db.doc('users/buyer').set({ email: 'other@e2e.test', ownedBookIds: ['i-cant-audio'] });
+  const r = await buildRecipients(db, CO, { mode: 'all_contacts', excludeOwnersOf: 'i-cant-audio' });
+  const emails = r.map((x) => x.email).sort();
+  assert(JSON.stringify(emails) === JSON.stringify(['joined@e2e.test', 'lead@e2e.test']), JSON.stringify(emails));
+});
+
+await t('the audiobook seed writes one branded draft and leaves a sent one alone', async () => {
+  const run = () => execFileSync('node', [path.join(ROOT, 'scripts', 'seed-audiobook-campaign.js')], {
+    cwd: path.join(ROOT, 'scripts'),
+    env: { ...process.env, GCLOUD_PROJECT: 'demo-1p', GOOGLE_CLOUD_PROJECT: 'demo-1p' },
+    encoding: 'utf8'
+  });
+  run();
+  const ref = db.doc(`companies/${CO}/campaigns/icant-audiobook-launch`);
+  const c = (await ref.get()).data();
+  assert(c && c.status === 'draft' && c.layout === 'branded', JSON.stringify(c && c.status));
+  assert(c.recipientFilter.excludeOwnersOf === 'i-cant-audio', JSON.stringify(c.recipientFilter));
+  assert(c.heroImageUrl.endsWith('/assets/i-cant-audio-share.jpg') && c.bodyText.includes('[Get the Audiobook]'), 'copy');
+  await ref.update({ status: 'sent', subject: 'as sent' });
+  assert(/kept\s+I Can't Audiobook Launch \(sent\)/.test(run()), 'did not keep the sent campaign');
+  assert((await ref.get()).data().subject === 'as sent', 'a sent campaign was rewritten');
 });
 
 const failed = results.filter((r) => r[0] === 'FAIL');

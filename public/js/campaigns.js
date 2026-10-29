@@ -1,5 +1,9 @@
 // Campaigns page — list + detail + compose (draft / send now).
 // Admin + owner only.
+//
+// A campaign is either plain (the text as written) or branded (the One
+// Percent layout from email-layout-core.js). Branded is the default. The
+// preview here and the server's send use the same renderer.
 
 import { db, functions, firebaseReady } from './firebase.js';
 import { onAuthReady } from './auth.js';
@@ -12,6 +16,7 @@ import {
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { STAGES, listCompanyAdmins, escapeHtml, fmtDateTime } from './crm.js';
 import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.js';
+import { renderCampaignEmail, DEFAULT_SIGNATURE } from './email-layout-core.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -40,6 +45,25 @@ function pct(num, denom) {
   if (!denom) return '—';
   const p = Math.round((num / denom) * 100);
   return p + '%';
+}
+
+// The email exactly as a recipient sees it, in a sandboxed frame. Plain
+// campaigns get the same escaping the server applies.
+function previewDoc(c) {
+  if (c.layout === 'branded') return renderCampaignEmail(c);
+  const body = escapeHtml(c.bodyText || '').replace(/\n/g, '<br/>');
+  return `<!doctype html><html><body style="margin:0;padding:24px;background:#fff;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;">${body}`
+    + `<hr style="margin:28px 0 14px;border:none;border-top:1px solid #ddd;"><p style="font-size:12px;color:#777;">You are receiving this because you signed up with The One Percent Nation.<br><u>Unsubscribe from these emails</u>.</p></body></html>`;
+}
+
+function paintPreview(frame, c) {
+  if (frame) frame.srcdoc = previewDoc(c);
+}
+
+async function sendTest(payload) {
+  const call = httpsCallable(functions, 'sendCampaignTest');
+  const res = await call(Object.assign({ companyId: state.companyId }, payload));
+  return (res && res.data && res.data.to) || 'your inbox';
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -177,6 +201,7 @@ function renderDetail() {
   if (c.sendOn && !c.sentAt) bits.push('Send on ' + c.sendOn);
   const rf = c.recipientFilter || {};
   if (rf.excludeEnrolledIn) bits.push('Skips anyone already in ' + (rf.excludeEnrolledLabel || rf.excludeEnrolledIn));
+  if (rf.excludeOwnersOf) bits.push('Skips anyone who already owns ' + (rf.excludeOwnersLabel || rf.excludeOwnersOf));
   $('camp-d-sub').textContent = bits.join(' · ');
   const st = $('camp-d-status');
   const s = c.status || 'draft';
@@ -202,6 +227,13 @@ function renderDetail() {
 
   $('camp-d-subject').textContent = c.subject || '—';
   $('camp-d-body').textContent = c.bodyText || '(no body)';
+  $('camp-d-design').textContent = c.layout === 'branded' ? 'Branded layout' : 'Plain text';
+  paintPreview($('camp-d-preview'), c);
+
+  // A saved draft can be tested and sent from here; a sent one cannot.
+  const sendable = ['draft', 'ready'].includes(s);
+  $('camp-d-actions').style.display = sendable ? '' : 'none';
+  $('camp-d-action-msg').textContent = '';
 
   if (c.errorSample && c.errorSample.length) {
     $('camp-d-errors-wrap').style.display = '';
@@ -247,6 +279,7 @@ async function openCampaignModal() {
     <div class="crm-modal-backdrop" id="modal-bd">
       <div class="crm-modal camp-modal auth-card">
         <h1>New <span>Campaign</span></h1>
+        <div class="camp-compose">
         <form id="camp-form" class="crm-form">
           <div class="crm-form-row">
             <label>Name (internal)</label>
@@ -258,12 +291,36 @@ async function openCampaignModal() {
           </div>
           <div class="crm-form-row">
             <label>From name</label>
-            <input class="c-input" id="cf-from-name" value="The One Percent Nation" />
-            <div class="camp-from-hint">From: the1percentnation@gmail.com</div>
+            <input class="c-input" id="cf-from-name" value="Anthony Brown Sr." />
+            <div class="camp-from-hint">From: anthonybrown@the1pnation.com</div>
           </div>
           <div class="crm-form-row">
-            <label>Body (plain text — line breaks become &lt;br&gt;)</label>
-            <textarea class="c-textarea" id="cf-body" rows="8" required placeholder="Write your message here…"></textarea>
+            <label>Design</label>
+            <div class="camp-recipient-picker-opts">
+              <label class="camp-recipient-opt camp-design-opt active"><input type="radio" name="dmode" value="branded" checked /> Branded</label>
+              <label class="camp-recipient-opt camp-design-opt"><input type="radio" name="dmode" value="plain" /> Plain text</label>
+            </div>
+          </div>
+          <div class="crm-form-row cf-branded-only">
+            <label>Banner image URL (optional)</label>
+            <input class="c-input" id="cf-hero" placeholder="https://the1pnation.com/assets/your-banner.jpg" />
+            <div class="camp-from-hint">1200 × 628 works best. Tapping it opens your first button's link.</div>
+          </div>
+          <div class="crm-form-row cf-branded-only">
+            <label>Preview text (optional)</label>
+            <input class="c-input" id="cf-preheader" maxlength="140" placeholder="The line inboxes show after the subject" />
+          </div>
+          <div class="crm-form-row">
+            <label>Body</label>
+            <textarea class="c-textarea" id="cf-body" rows="12" required placeholder="Write your message here…"></textarea>
+            <div class="camp-format-hint cf-branded-only">
+              Blank line = new paragraph &nbsp;·&nbsp; <code># Heading</code> &nbsp;·&nbsp; <code>- list item</code> &nbsp;·&nbsp; <code>**bold**</code><br>
+              A button on its own line: <code>[Get the Audiobook](https://the1pnation.com/icantaudio)</code>
+            </div>
+          </div>
+          <div class="crm-form-row cf-branded-only">
+            <label>Signature</label>
+            <textarea class="c-textarea" id="cf-signature" rows="5"></textarea>
           </div>
 
           <div class="crm-form-row">
@@ -294,22 +351,42 @@ async function openCampaignModal() {
           </div>
 
           <div id="cf-err" class="auth-error" style="display:none;"></div>
+          <div id="cf-msg" class="camp-action-msg"></div>
 
           <div class="crm-modal-actions">
             <button type="button" class="btn btn-ghost" id="cf-cancel">Cancel</button>
+            <button type="button" class="btn btn-ghost" id="cf-test">Send test to me</button>
             <button type="button" class="btn btn-ghost" id="cf-draft">Save draft</button>
             <button type="submit" class="btn btn-primary" id="cf-send">Send now</button>
           </div>
         </form>
+        <div class="camp-preview-col">
+          <div class="camp-preview-label">Preview</div>
+          <iframe id="cf-preview" class="camp-preview-frame" sandbox title="Email preview"></iframe>
+        </div>
+        </div>
       </div>
     </div>
   `;
 
   const close = () => { root.innerHTML = ''; };
+  $('cf-signature').value = DEFAULT_SIGNATURE;
   $('cf-cancel').addEventListener('click', close);
+
+  const designOpts = root.querySelectorAll('.camp-design-opt');
+  const refresh = () => {
+    const p = gatherPayload();
+    root.querySelectorAll('.cf-branded-only').forEach((el) => { el.style.display = p.layout === 'branded' ? '' : 'none'; });
+    designOpts.forEach((o) => o.classList.toggle('active', o.querySelector('input').checked));
+    paintPreview($('cf-preview'), p);
+  };
+  let timer = null;
+  const refreshSoon = () => { clearTimeout(timer); timer = setTimeout(refresh, 150); };
+  ['cf-subject', 'cf-body', 'cf-hero', 'cf-preheader', 'cf-signature'].forEach((id) => $(id).addEventListener('input', refreshSoon));
+  root.querySelectorAll('input[name="dmode"]').forEach((r) => r.addEventListener('change', refresh));
   $('modal-bd').addEventListener('click', (e) => { if (e.target.id === 'modal-bd') close(); });
 
-  const opts = root.querySelectorAll('.camp-recipient-opt');
+  const opts = root.querySelectorAll('.camp-recipient-opt:not(.camp-design-opt)');
   opts.forEach((opt) => {
     const radio = opt.querySelector('input[type="radio"]');
     radio.addEventListener('change', () => {
@@ -331,6 +408,10 @@ async function openCampaignModal() {
     const subject = $('cf-subject').value.trim();
     const fromName = $('cf-from-name').value.trim() || 'The One Percent Nation';
     const bodyText = $('cf-body').value;
+    const layout = root.querySelector('input[name="dmode"]:checked').value;
+    const heroImageUrl = $('cf-hero').value.trim();
+    const preheader = $('cf-preheader').value.trim();
+    const signature = $('cf-signature').value;
     const mode = root.querySelector('input[name="rmode"]:checked').value;
     const filter = { mode };
     if (mode === 'stages') {
@@ -342,11 +423,11 @@ async function openCampaignModal() {
     } else if (mode === 'owner') {
       filter.ownerUid = $('cf-owner-sel').value;
     }
-    return { name, subject, fromName, bodyText, filter };
+    return { name, subject, fromName, bodyText, layout, heroImageUrl, preheader, signature, filter };
   }
 
   async function createDoc(status) {
-    const { name, subject, fromName, bodyText, filter } = gatherPayload();
+    const { name, subject, fromName, bodyText, layout, heroImageUrl, preheader, signature, filter } = gatherPayload();
     if (!name || !subject || !bodyText.trim()) {
       $('cf-err').textContent = 'Name, subject, and body are required.';
       $('cf-err').style.display = 'block';
@@ -361,6 +442,8 @@ async function openCampaignModal() {
       fromName,
       bodyHtml,
       bodyText,
+      layout,
+      ...(layout === 'branded' ? { heroImageUrl, preheader, signature } : {}),
       recipientFilter: filter,
       status,
       createdAt: serverTimestamp(),
@@ -371,6 +454,31 @@ async function openCampaignModal() {
     const ref = await addDoc(collection(db, 'companies', state.companyId, 'campaigns'), payload);
     return ref.id;
   }
+
+  $('cf-test').addEventListener('click', async () => {
+    const p = gatherPayload();
+    $('cf-err').style.display = 'none';
+    if (!p.subject || !p.bodyText.trim()) {
+      $('cf-err').textContent = 'Add a subject and a body first.';
+      $('cf-err').style.display = 'block';
+      return;
+    }
+    const btn = $('cf-test');
+    btn.disabled = true;
+    $('cf-msg').textContent = 'Sending test…';
+    try {
+      const to = await sendTest({ draft: p });
+      $('cf-msg').textContent = `Test sent to ${to}. Check your inbox (and Promotions).`;
+    } catch (err) {
+      $('cf-msg').textContent = '';
+      $('cf-err').textContent = 'Test failed: ' + (err.message || err);
+      $('cf-err').style.display = 'block';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  refresh();
 
   $('cf-draft').addEventListener('click', async () => {
     try {
@@ -449,6 +557,38 @@ async function main() {
   await loadCampaigns();
 
   $('btn-new-campaign').addEventListener('click', openCampaignModal);
+  $('camp-d-test').addEventListener('click', async () => {
+    const btn = $('camp-d-test');
+    btn.disabled = true;
+    $('camp-d-action-msg').textContent = 'Sending test…';
+    try {
+      const to = await sendTest({ campaignId: state.detailId });
+      $('camp-d-action-msg').textContent = `Test sent to ${to}. Check your inbox (and Promotions).`;
+    } catch (err) {
+      $('camp-d-action-msg').textContent = 'Test failed: ' + (err.message || err);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $('camp-d-send').addEventListener('click', async () => {
+    const c = state.detailCampaign;
+    if (!c) return;
+    if (!confirm(`Send "${c.name || c.subject}" now with subject "${c.subject}"? This cannot be undone.`)) return;
+    const btn = $('camp-d-send');
+    btn.disabled = true;
+    $('camp-d-action-msg').textContent = 'Sending…';
+    try {
+      const call = httpsCallable(functions, 'sendCampaign');
+      const res = await call({ companyId: state.companyId, campaignId: state.detailId });
+      const n = (res && res.data && res.data.recipientCount) || 0;
+      $('camp-d-action-msg').textContent = `Sent to ${n} recipient${n === 1 ? '' : 's'}.`;
+      await loadDetail();
+    } catch (err) {
+      $('camp-d-action-msg').textContent = 'Send failed: ' + (err.message || err);
+    } finally {
+      btn.disabled = false;
+    }
+  });
   $('camp-back-link').addEventListener('click', (e) => {
     e.preventDefault();
     closeDetail();
