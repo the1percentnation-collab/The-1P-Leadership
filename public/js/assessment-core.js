@@ -423,7 +423,12 @@ export function validateAssessment(def) {
     (def.bands || []).forEach((b) => need(b.label && b.summary && b.min >= 0 && b.min <= 100, 'band needs label, summary, min'));
   }
   (def.related || []).forEach((r) => need(typeof r === 'string' && r !== def.slug, 'related must list other slugs'));
-  if (def.cta) need(def.cta.label && /^\/[^/]/.test(def.cta.href || ''), 'cta needs a label and a site-relative href');
+  if (def.cta) {
+    need(def.cta.label && /^\/[^/]/.test(def.cta.href || ''), 'cta needs a label and a site-relative href');
+    need(def.cta.heading === undefined || (typeof def.cta.heading === 'string' && def.cta.heading.length <= 80), 'cta heading is text, 80 chars max');
+    need(def.cta.text === undefined || (typeof def.cta.text === 'string' && def.cta.text.length <= 400), 'cta text is text, 400 chars max');
+    need(def.cta.early === undefined || typeof def.cta.early === 'boolean', 'cta early is true or false');
+  }
   if (def.category === 'money') need(def.disclaimer, 'money assessments need a disclaimer');
   need(def.polarity === undefined || (def.mode === 'profile' && def.polarity === 'lower-better'), 'polarity is only lower-better, on a profile');
   if (def.polarity === 'lower-better') need(def.clearHeadline && def.clearSummary, 'lower-better needs clearHeadline and clearSummary');

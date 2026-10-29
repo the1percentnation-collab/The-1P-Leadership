@@ -16235,6 +16235,7 @@ const ASSESSMENT_SLUGS = {
   'limiting-beliefs': { title: 'What Belief Is Holding You Back?', category: 'leader' },
   'delegation-audit': { title: 'The Delegation Audit', category: 'leader' },
   'faith-leader': { title: 'The Faith Leader Health Check', category: 'leader' },
+  'alignment-assessment': { title: 'The Alignment Assessment', category: 'team' },
   'team-alignment': { title: 'The Team Alignment Assessment', category: 'team' },
   'sales-mindset': { title: 'The Sales Mindset Score', category: 'team' },
   'financial-readiness': { title: 'The Financial Readiness Score', category: 'money' },
