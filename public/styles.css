@@ -3819,7 +3819,62 @@ textarea.mc-lines:focus { outline: none; border-color: rgba(204,27,27,0.5); }
 .camp-recipient-checkbox input { accent-color: var(--red); }
 .camp-recipient-checkbox.checked { color: var(--white); background: rgba(204,27,27,0.08); border-color: rgba(204,27,27,0.4); }
 
-.camp-modal { max-width: 640px; }
+.camp-modal { max-width: 1180px; }
+.camp-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .camp-compose { grid-template-columns: minmax(0, 1fr); }
+}
+.camp-preview-col { position: sticky; top: 0; }
+.camp-preview-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+  margin-bottom: 6px;
+}
+.camp-preview-frame {
+  display: block;
+  width: 100%;
+  height: 720px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #0b0b0b;
+}
+.camp-format-hint {
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--gray-mid);
+}
+.camp-format-hint code {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--white-dim);
+}
+.camp-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.camp-action-msg {
+  font-size: 12px;
+  color: var(--gray-light);
+}
+.camp-design-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gray-mid);
+  margin-left: 8px;
+}
 .camp-from-hint {
   font-family: var(--font-mono);
   font-size: 10px;

@@ -76,6 +76,11 @@
               <span class="camp-status-badge" id="camp-d-status"></span>
             </div>
           </div>
+          <div class="camp-detail-actions" id="camp-d-actions" style="display:none;">
+            <button class="btn btn-ghost" id="camp-d-test">Send test to me</button>
+            <button class="btn btn-primary" id="camp-d-send">Send now</button>
+            <span class="camp-action-msg" id="camp-d-action-msg"></span>
+          </div>
         </div>
 
         <div class="camp-stat-grid">
@@ -106,6 +111,10 @@
           <div id="camp-d-errors" class="camp-error-sample"></div>
         </div>
 
+        <div class="card">
+          <h2>Preview <span class="camp-design-tag" id="camp-d-design"></span></h2>
+          <iframe id="camp-d-preview" class="camp-preview-frame" sandbox title="Email preview"></iframe>
+        </div>
         <div class="card">
           <h2>Subject &amp; body</h2>
           <div style="font-family:var(--font-mono); font-size:11px; color:var(--gray-light); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:6px;">Subject</div>

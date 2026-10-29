@@ -43,6 +43,7 @@ const { careerTags } = require('./careers.js');
 const handSales = require('./hand-sales-core.js');
 const messenger = require('./messenger.js');
 const audioCore = require('./audio-core.js');
+const emailLayout = require('./email-layout-core.js');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
@@ -2336,13 +2337,36 @@ function isEmailSuppressed(c) {
 // filter.excludeEnrolledIn (a course slug) drops anyone whose account is
 // already enrolled in that course, matched by email. It lets a "join before
 // the deadline" campaign skip the people who already joined.
+// filter.excludeOwnersOf (a book id) does the same for anyone whose library
+// already holds that book, so a launch email never pitches it to a buyer.
 async function buildRecipients(db, companyId, filter) {
   const recipients = await collectRecipients(db, companyId, filter);
-  const slug = String((filter && filter.excludeEnrolledIn) || '').trim();
-  if (!slug) return recipients;
-  const enrolled = await db.collection('users').where('enrolledCourseSlugs', 'array-contains', slug).get();
-  const skip = new Set(enrolled.docs.map((d) => normalizeEmail((d.data() || {}).email)).filter(Boolean));
+  const skip = new Set();
+  const addSkips = async (field, value) => {
+    const v = String(value || '').trim();
+    if (!v) return;
+    const snap = await db.collection('users').where(field, 'array-contains', v).get();
+    snap.docs.forEach((d) => { const e = normalizeEmail((d.data() || {}).email); if (e) skip.add(e); });
+  };
+  await addSkips('enrolledCourseSlugs', filter && filter.excludeEnrolledIn);
+  await addSkips('ownedBookIds', filter && filter.excludeOwnersOf);
+  if (!skip.size) return recipients;
   return recipients.filter((r) => !skip.has(r.email));
+}
+
+// The renderer options for a campaign with layout 'branded'. A signature left
+// unset falls back to the default; an empty string means none.
+function campaignLayoutOptions(campaign) {
+  const c = campaign || {};
+  return {
+    bodyText: String(c.bodyText || ''),
+    subject: String(c.subject || ''),
+    preheader: String(c.preheader || ''),
+    heroImageUrl: String(c.heroImageUrl || ''),
+    heroAlt: String(c.heroAlt || ''),
+    heroLink: String(c.heroLink || ''),
+    signature: c.signature == null ? undefined : String(c.signature)
+  };
 }
 
 async function collectRecipients(db, companyId, filter) {
@@ -2447,6 +2471,12 @@ exports.sendCampaign = onCall(
     const bodyHtml = campaign.bodyHtml || textToHtml(bodyText);
     const finalText = bodyText || htmlToText(bodyHtml);
     const fromName = campaign.fromName || FROM_NAME_DEFAULT;
+    // Branded campaigns are rendered here, at send time, from the text the
+    // admin wrote, never from stored HTML. The layout carries its own opt-out
+    // footer with the same per-recipient placeholder.
+    const branded = campaign.layout === 'branded';
+    const brandedHtml = branded ? emailLayout.renderCampaignEmail(campaignLayoutOptions(campaign)) : null;
+    const brandedText = branded ? emailLayout.campaignPlainText(campaignLayoutOptions(campaign)) : null;
 
     await campaignRef.update({
       status: 'sending',
@@ -2516,14 +2546,15 @@ exports.sendCampaign = onCall(
       });
 
       // Required footer. Bulk mail must carry a working opt-out and a postal
-      // identity; the campaign body alone carried neither.
-      const htmlPersonalized = `${bodyHtml}
+      // identity; the campaign body alone carried neither. The branded layout
+      // already ends in one.
+      const htmlPersonalized = branded ? brandedHtml : `${bodyHtml}
 <hr style="margin:28px 0 14px;border:none;border-top:1px solid #ddd;">
 <p style="font-size:12px;color:#777;line-height:1.6;">
   You are receiving this because you signed up with The One Percent Nation.<br>
   <a href="-unsubscribe_url-" style="color:#777;">Unsubscribe from these emails</a>.
 </p>`;
-      const textPersonalized = `${finalText}
+      const textPersonalized = branded ? brandedText : `${finalText}
 
 —
 You are receiving this because you signed up with The One Percent Nation.
@@ -2579,6 +2610,90 @@ Unsubscribe: -unsubscribe_url-`;
     } catch (e) {}
 
     return { ok: true, recipientCount: recipients.length, acceptedCount: accepted, failedCount: failed };
+  }
+);
+
+// ────────────────────────────────────────────────────────────────
+// sendCampaignTest — callable. One copy of a campaign to the admin who asks,
+// rendered exactly as sendCampaign renders it, with [TEST] on the subject.
+// Takes a saved campaign ({ campaignId }) or the unsaved editor contents
+// ({ draft }), so a campaign can be checked in a real inbox before it is
+// saved or sent. Never touches the campaign document or its stats.
+// ────────────────────────────────────────────────────────────────
+exports.sendCampaignTest = onCall(
+  { secrets: [sendgridKey] },
+  async (request) => {
+    const db = admin.firestore();
+    const data = request.data || {};
+    const companyId = (data.companyId || '').toString().trim();
+    if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+    await assertCompanyAdmin(db, companyId, request);
+    await rateLimitCaller(db, request, { action: 'sendCampaignTest', max: 20, windowSec: 3600 });
+
+    const to = normalizeEmail(request.auth.token && request.auth.token.email);
+    if (!to) throw new HttpsError('failed-precondition', 'Your account has no email address to send a test to.');
+
+    let campaign;
+    const campaignId = (data.campaignId || '').toString().trim();
+    if (campaignId) {
+      const snap = await db.collection('companies').doc(companyId).collection('campaigns').doc(campaignId).get();
+      if (!snap.exists) throw new HttpsError('not-found', 'Campaign not found.');
+      campaign = snap.data() || {};
+    } else {
+      const d = data.draft || {};
+      campaign = {
+        subject: d.subject, bodyText: d.bodyText, fromName: d.fromName, layout: d.layout,
+        preheader: d.preheader, heroImageUrl: d.heroImageUrl, heroAlt: d.heroAlt, heroLink: d.heroLink,
+        signature: d.signature
+      };
+    }
+
+    const subject = (campaign.subject || '').toString().trim();
+    const bodyText = (campaign.bodyText || '').toString();
+    if (!subject || !bodyText.trim()) throw new HttpsError('invalid-argument', 'Add a subject and a body first.');
+    if (bodyText.length > 50000) throw new HttpsError('invalid-argument', 'That body is too long to send.');
+
+    const firstName = String((request.auth.token && request.auth.token.name) || '').trim().split(/\s+/)[0] || '';
+    const testSubject = '[TEST] ' + subject.replace(/\{\{\s*firstName\s*\}\}/g, firstName);
+    // A test copy has no contact row, so its opt-out is the mailto fallback
+    // sendCampaign uses for company members.
+    const unsubscribeUrl = `mailto:${REPLY_TO}?subject=Unsubscribe`;
+
+    let html;
+    let text;
+    if (campaign.layout === 'branded') {
+      const opts = Object.assign(campaignLayoutOptions(campaign), { unsubscribeUrl });
+      html = emailLayout.renderCampaignEmail(opts);
+      text = emailLayout.campaignPlainText(opts);
+    } else {
+      html = `${textToHtml(bodyText)}
+<hr style="margin:28px 0 14px;border:none;border-top:1px solid #ddd;">
+<p style="font-size:12px;color:#777;line-height:1.6;">
+  You are receiving this because you signed up with The One Percent Nation.<br>
+  <a href="${unsubscribeUrl}" style="color:#777;">Unsubscribe from these emails</a>.
+</p>`;
+      text = `${bodyText}
+
+—
+You are receiving this because you signed up with The One Percent Nation.
+Unsubscribe: ${unsubscribeUrl}`;
+    }
+
+    try {
+      await sendEmail({
+        to,
+        from: { email: FROM_EMAIL, name: (campaign.fromName || FROM_NAME_DEFAULT).toString() },
+        replyTo: REPLY_TO,
+        subject: testSubject,
+        text,
+        html,
+        customArgs: { type: 'campaign-test', companyId }
+      });
+    } catch (err) {
+      console.error('[sendCampaignTest] send failed:', err && err.message);
+      throw new HttpsError('internal', 'The test email could not be sent: ' + ((err && err.message) || 'unknown error'));
+    }
+    return { ok: true, to };
   }
 );
 
