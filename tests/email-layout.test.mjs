@@ -87,7 +87,8 @@ ok('colours survive Gmail: no background shorthand, every fill also a bgcolor', 
   assert.strictEqual(fills - 1, attrs, 'a fill has no bgcolor fallback');
 });
 ok('the default signature carries the Alignment Audit link; empty means none', () => {
-  assert.match(L.renderCampaignEmail({ bodyText: 'x' }), /corporate#audit[^>]*>Book a Free Alignment Audit/);
+  assert.match(L.renderCampaignEmail({ bodyText: 'x' }), /book-a-call[^>]*>Book a Free Alignment Audit/);
+  assert.match(L.renderCampaignEmail({ bodyText: 'x' }), /<img src="https:\/\/the1pnation\.com\/assets\/email\/anthony-brown-headshot\.jpg"/);
   assert.ok(!L.renderCampaignEmail({ bodyText: 'x', signature: '' }).includes('Alignment Audit'));
 });
 ok('plain text: buttons and links spell out their URL, markup is stripped', () => {

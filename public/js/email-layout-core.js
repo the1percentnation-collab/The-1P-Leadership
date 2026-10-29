@@ -39,9 +39,13 @@ const DEFAULT_SIGNATURE = [
   'Anthony Brown Sr.',
   'Founder, The One Percent Nation',
   'Keynote Speaker | Leadership Coach | Financial Alignment Coach',
-  'https://the1pnation.com',
-  '[Book a Free Alignment Audit](https://the1pnation.com/corporate#audit)'
+  'https://the1pnation.com · [anthonybrown@the1pnation.com](mailto:anthonybrown@the1pnation.com)',
+  '[Book a Free Alignment Audit](https://the1pnation.com/book-a-call)'
 ].join('\n');
+
+// The headshot beside the signature: the same hosted image as Anthony's
+// Gmail signature, so every email he sends looks like it came from him.
+const HEADSHOT = 'https://the1pnation.com/assets/email/anthony-brown-headshot.jpg';
 
 // The placeholder sendCampaign swaps for each recipient's opt-out link.
 const UNSUBSCRIBE_PLACEHOLDER = '-unsubscribe_url-';
@@ -151,19 +155,42 @@ function blockHtml(b) {
   return '';
 }
 
+// The signature panel: headshot on the left, the lines on the right. The
+// first line is the name; the first plain line after it is the title; any
+// further plain lines are roles, set small and gray with "|" kept as the
+// divider; a line with a link is a contact line; a lone [Label](url) line is
+// a black button.
 function signatureHtml(signature) {
   const lines = String(signature || '').replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim()).filter(Boolean);
   if (!lines.length) return '';
   const [name, ...rest] = lines;
-  const out = [`<div style="font-family:${SANS};font-size:17px;font-weight:700;color:${BRAND.black};">${inline(name)}</div>`];
-  rest.forEach((l, i) => {
-    const isLink = BUTTON_LINE.test(l);
-    const style = isLink
-      ? `font-family:${SANS};font-weight:700;padding-top:12px;`
-      : i === 0 ? '' : `color:${BRAND.muted};font-size:13px;${/^https?:\/\//.test(l) ? 'padding-top:8px;' : ''}`;
-    out.push(`<div style="${style}">${inline(l, { underline: false })}</div>`);
+  const out = [`<div style="font-family:${SANS};font-size:20px;line-height:24px;font-weight:700;color:${BRAND.black};">${inline(name)}</div>`];
+  let titled = false;
+  rest.forEach((l) => {
+    const btn = l.match(BUTTON_LINE);
+    if (btn && safeUrl(btn[2])) {
+      out.push(`<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;"><tr>`
+        + `<td bgcolor="${BRAND.black}" style="background-color:${BRAND.black};border-radius:3px;padding:9px 14px;">`
+        + `<a href="${esc(safeUrl(btn[2]))}" target="_blank" style="font-family:${SANS};font-size:13px;line-height:16px;font-weight:700;color:${BRAND.white};text-decoration:none;letter-spacing:0.4px;">${esc(btn[1])} <span style="color:${BRAND.red};">&rarr;</span></a>`
+        + `</td></tr></table>`);
+    } else if (/https?:\/\/|\]\(/.test(l)) {
+      out.push(`<div style="font-size:13px;line-height:20px;padding-top:8px;">${inline(l, { underline: false })}</div>`);
+    } else if (!titled) {
+      titled = true;
+      out.push(`<div style="font-family:${SANS};font-size:14px;line-height:20px;font-weight:600;color:${BRAND.black};padding-top:2px;">${inline(l)}</div>`);
+    } else {
+      // Two roles to a line, so a divider never dangles at a wrap.
+      const roles = l.split(/\s*\|\s*/).filter(Boolean).map((r) => `<span style="white-space:nowrap;">${inline(r)}</span>`);
+      const rows = [];
+      for (let i = 0; i < roles.length; i += 2) rows.push(roles.slice(i, i + 2).join(' &nbsp;|&nbsp; '));
+      out.push(`<div style="font-family:${SANS};font-size:11px;line-height:17px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:${BRAND.muted};padding-top:4px;">${rows.join('<br>')}</div>`);
+    }
   });
-  return `<tr><td bgcolor="${BRAND.panel}" style="background-color:${BRAND.panel};padding:28px 40px;border-top:3px solid ${BRAND.black};font-family:${BODY};font-size:14px;line-height:1.6;color:${BRAND.ink};">${out.join('')}</td></tr>`;
+  return `<tr><td class="sig-panel" bgcolor="${BRAND.panel}" style="background-color:${BRAND.panel};padding:28px 40px;border-top:3px solid ${BRAND.black};font-family:${BODY};font-size:14px;line-height:1.6;color:${BRAND.ink};">`
+    + `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>`
+    + `<td class="sig-photo" valign="top" width="112" style="width:112px;min-width:112px;padding:0 18px 0 0;vertical-align:top;"><img src="${HEADSHOT}" width="112" height="112" alt="${esc(name)}" style="display:block;width:112px;min-width:112px;max-width:112px;height:112px;border-radius:56px;border:0;"></td>`
+    + `<td class="sig-text" valign="top" style="padding:0 0 0 18px;vertical-align:top;border-left:2px solid ${BRAND.black};">${out.join('')}</td>`
+    + `</tr></table></td></tr>`;
 }
 
 /**
@@ -194,7 +221,8 @@ function renderCampaignEmail(opts = {}) {
   const blocks = parseBody(bodyText).map(blockHtml).join('');
 
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light only"><title>${esc(opts.subject || '')}</title></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light only"><title>${esc(opts.subject || '')}</title>
+<style>@media only screen and (max-width:480px){.sig-panel{padding:24px 20px!important}.sig-photo,.sig-text{display:block!important;width:auto!important}.sig-text{border-left:0!important;padding:16px 0 0!important}}</style></head>
 <body style="margin:0;padding:0;background-color:${BRAND.ground};">
 ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(preheader)}</div>` : ''}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${BRAND.ground}" style="background-color:${BRAND.ground};"><tr><td align="center" bgcolor="${BRAND.ground}" style="background-color:${BRAND.ground};padding:24px 12px;">
