@@ -476,6 +476,8 @@ const promo = { code: (params.get('promo') || '').trim().toUpperCase(), price: n
 
 function buyLabel(product) {
   const info = priceInfo(product);
+  // A comp code: no payment page, the book goes straight to their library.
+  if (promo.price === 0) return `Get it free · <s style="opacity:.65;font-weight:500;">${escapeHtml(info.label)}</s>`;
   const now = promo.price != null ? fmtMoney(promo.price) : info.label;
   const was = promo.price != null ? info.label : (info.onSale ? info.originalLabel : '');
   return `Get the audiobook · ${was ? `<s style="opacity:.65;font-weight:500;margin-right:4px;">${escapeHtml(was)}</s>` : ''}${escapeHtml(now)}`;
@@ -497,9 +499,9 @@ async function applyPromo(product) {
   msg.textContent = 'Checking…';
   try {
     const r = await httpsCallable(functions, 'validateCoupon')({ code, kind: 'product', id: product.id });
-    if (r.data.isFree) throw new Error('This code takes the whole price off, and audiobook codes have to leave something to pay. Ask for a code under 100%.');
-    promo.price = r.data.discountedPrice;
-    const off = r.data.percentOff ? `${r.data.percentOff}% off` : `${fmtMoney(r.data.amountOff)} off`;
+    promo.price = r.data.isFree ? 0 : r.data.discountedPrice;
+    const off = r.data.isFree ? 'the full audiobook, free'
+      : r.data.percentOff ? `${r.data.percentOff}% off` : `${fmtMoney(r.data.amountOff)} off`;
     msg.innerHTML = `<b>${escapeHtml(r.data.code)}</b> applied: ${escapeHtml(off)}. <button class="ls-link" id="ls-promo-remove">Remove</button>`;
     $('ls-promo-remove').addEventListener('click', () => {
       promo.code = ''; promo.price = null;
@@ -520,7 +522,7 @@ async function startCheckout(product, btn) {
   if (!S.user) { signInFirst('&buy=1'); return; }
   const label = btn.innerHTML;
   btn.disabled = true;
-  btn.textContent = 'Opening checkout…';
+  btn.textContent = promo.price === 0 ? 'Adding it to your library…' : 'Opening checkout…';
   try {
     const res = await httpsCallable(functions, 'createCheckoutSession')({
       productId: product.id,

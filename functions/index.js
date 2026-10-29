@@ -6290,6 +6290,66 @@ async function libraryLandingPath(db, bookIds) {
   return '/library?purchase=success';
 }
 
+// A 100% code on a library product (the audiobook): no Stripe, the book goes
+// straight on the shelf. The code's use limit is checked and counted in the
+// same transaction as the grant, so a one-use comp can't be redeemed twice
+// by two people at once, and the same person can't spend two uses.
+async function compLibraryProduct(db, { uid, request, productId, product, prodBooks, code }) {
+  const userRef = db.collection('users').doc(uid);
+  const couponRef = db.collection('coupons').doc(code);
+  await db.runTransaction(async (tx) => {
+    const [cSnap, uSnap] = await Promise.all([tx.get(couponRef), tx.get(userRef)]);
+    const c = cSnap.exists ? cSnap.data() : {};
+    if (c.maxRedemptions && Number(c.redemptions || 0) >= Number(c.maxRedemptions)) {
+      throw new HttpsError('resource-exhausted', 'That promo code has reached its limit.');
+    }
+    const owned = (uSnap.exists && uSnap.data().ownedBookIds) || [];
+    if (prodBooks.every((b) => owned.includes(b))) {
+      throw new HttpsError('already-exists', 'You already own this. It\'s in your library.');
+    }
+    tx.set(userRef, { ownedBookIds: admin.firestore.FieldValue.arrayUnion(...prodBooks) }, { merge: true });
+    tx.set(couponRef, {
+      redemptions: admin.firestore.FieldValue.increment(1),
+      lastRedeemedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
+  const email = (request.auth.token && request.auth.token.email) || null;
+  await db.collection('orders').doc(`comp-${productId}-${uid}`).set({
+    productId,
+    productName: product.name || null,
+    productType: product.type || null,
+    uid,
+    email,
+    amountTotal: 0,
+    currency: 'usd',
+    couponCode: code,
+    shipping: null,
+    grantsBooks: prodBooks,
+    status: 'done',
+    digital: true,
+    comp: true,
+    fulfilledAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  const libraryEmail = await sendLibraryPurchaseEmail(db, {
+    email, uid, productName: product.name || null, bookIds: prodBooks
+  }) ? 'sent' : 'failed';
+  await db.collection('users').doc(uid).collection('purchases').doc(`comp-${productId}`).set({
+    productId,
+    productName: product.name || null,
+    amount: 0,
+    mode: 'comp',
+    couponCode: code,
+    grantsBooks: prodBooks,
+    confirmationEmail: libraryEmail,
+    status: 'comped',
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  // Same-site path: the buyer is already on the site, so it lands them on the
+  // player right where they are.
+  return { ok: true, comped: true, url: await libraryLandingPath(db, prodBooks) };
+}
+
 // The receipt for a product that puts books in the library (the I Can't
 // audiobook): what they bought and the one link that opens it.
 function libraryPurchaseEmailContent({ firstName, productName, books }) {
@@ -7928,10 +7988,14 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
         { kind: 'product', id: productId, priceDollars: basePrice });
       if (resolved.isFree) {
         // A $0 order can't go through Stripe, and a comped physical item has
-        // no way to collect a shipping address. Comps are for courses and
-        // classes; keep product codes above zero.
-        throw new HttpsError('failed-precondition',
-          'Free product codes aren\'t supported — set the code below 100%.');
+        // no way to collect a shipping address, so only a digital library
+        // product (the audiobook) can be comped. It is delivered right here,
+        // the same writes the webhook makes for a paid one.
+        if (!prodBooks.length || !audioCore.isDigitalLibraryProduct(product) || wantsShipping) {
+          throw new HttpsError('failed-precondition',
+            'Free product codes aren\'t supported — set the code below 100%.');
+        }
+        return compLibraryProduct(db, { uid, request, productId, product, prodBooks, code: resolved.code });
       }
       unitDollars = resolved.discountedDollars;
       prodMeta.couponCode = resolved.code;

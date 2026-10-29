@@ -348,14 +348,44 @@ await t('the audiobook page shows the sale price and applies a code from the lin
   await P.page.waitForFunction(() => /HALFAUDIO/.test((document.getElementById('ls-promo-msg') || {}).textContent || ''), null, { timeout: 30000 });
   const withCode = await P.page.$eval('#ls-buy', (b) => b.textContent);
   assert(/\$4\b/.test(withCode) && /\$7\.99/.test(withCode), withCode);
-  // A code typed in by hand, and one that would make it free, which the page refuses up front.
+  // A code typed in by hand that comps it: the button says free, no price to pay.
   await P.page.click('#ls-promo-remove');
   await P.page.fill('#ls-promo-code', 'ALLFREE');
   await P.page.click('#ls-promo-apply');
-  await P.page.waitForFunction(() => /under 100%/.test((document.getElementById('ls-promo-msg') || {}).textContent || ''), null, { timeout: 20000 });
-  assert(/\$7\.99/.test(await P.page.$eval('#ls-buy', (b) => b.textContent)), 'price unchanged after a refused code');
+  await P.page.waitForFunction(() => /free/.test((document.getElementById('ls-promo-msg') || {}).textContent || ''), null, { timeout: 20000 });
+  assert(/Get it free/.test(await P.page.$eval('#ls-buy', (b) => b.textContent)), await P.page.$eval('#ls-buy', (b) => b.textContent));
   await P.ctx.close();
   await setSale(null);
+});
+
+await t('a 100% code comps the audiobook: no Stripe, straight to the player, one use only', async () => {
+  const compUid = (await authUser('comp@e2e.test', PW)).localId;
+  const otherUid = (await authUser('comp2@e2e.test', PW)).localId;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, `users/${compUid}`), { email: 'comp@e2e.test', role: 'user', onboardingComplete: true, ownedBookIds: [] });
+    await setDoc(doc(db, `users/${otherUid}`), { email: 'comp2@e2e.test', role: 'user', onboardingComplete: true, ownedBookIds: [] });
+    await setDoc(doc(db, 'coupons/COMPONE'), { percentOff: 100, amountOff: null, active: true, redemptions: 0, maxRedemptions: 1, appliesTo: { kind: 'product', ids: [PRODUCT] } });
+  });
+  const C = await makeContext({ email: 'comp@e2e.test', password: PW });
+  await C.page.goto(`${ORIGIN}/listen?book=${BOOK}&promo=COMPONE`);
+  await C.page.waitForFunction(() => /Get it free/.test((document.getElementById('ls-buy') || {}).textContent || ''), null, { timeout: 30000 });
+  await C.page.click('#ls-buy');
+  await C.page.waitForURL(/purchase=success/, { timeout: 30000 });
+  await C.page.waitForSelector('#ls-play', { timeout: 30000 });
+  await C.ctx.close();
+  const u = await read(`users/${compUid}`);
+  assert((u.ownedBookIds || []).includes(BOOK), JSON.stringify(u.ownedBookIds));
+  const o = await read(`orders/comp-${PRODUCT}-${compUid}`);
+  assert(o && o.status === 'done' && o.digital === true && o.amountTotal === 0 && o.couponCode === 'COMPONE', JSON.stringify(o));
+  const c = await read('coupons/COMPONE');
+  assert(c.redemptions === 1, JSON.stringify(c));
+  // The one use is spent: the next person is told so, and nothing is granted.
+  const tok = (await authUser('comp2@e2e.test', PW, false)).idToken;
+  const r = await callable('createCheckoutSession', { productId: PRODUCT, couponCode: 'COMPONE' }, tok);
+  assert(r.error && /limit/.test(r.error.message), JSON.stringify(r));
+  const u2 = await read(`users/${otherUid}`);
+  assert(!(u2.ownedBookIds || []).includes(BOOK), JSON.stringify(u2.ownedBookIds));
 });
 
 // ── 2. The purchase ───────────────────────────────────────────────────────
