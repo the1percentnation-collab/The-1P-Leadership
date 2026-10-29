@@ -12086,12 +12086,22 @@ async function sendCourseWorkReminders(db, { now = new Date() } = {}) {
 // once-only even when ticks overlap. notifPrefs.digest === false, or an
 // opt-out on the member's CRM contact (unsubscribe, bounce, spam report),
 // stops it.
+//
+// Nothing older than DIGEST_LOOKBACK_MS (48 hours) is ever listed. A new
+// member's first digest catches them up on the last two days, never the
+// community's whole history; after that each digest lists only what is new
+// since the one before.
 // ════════════════════════════════════════════════════════════════
 
 const DIGEST_TIMEZONE = 'America/New_York';
 const DIGEST_HOUR = 18;
-const DIGEST_LOOKBACK_MS = 24 * 3600 * 1000;
+const DIGEST_LOOKBACK_MS = 48 * 3600 * 1000;
 const DIGEST_MAX_THREADS = 6;
+
+/** Threads after this time go in a member's digest: since their last one, never more than 48 hours back. */
+function digestSinceMs(lastSentMs, nowMs) {
+  return Math.max(Number(lastSentMs) || 0, nowMs - DIGEST_LOOKBACK_MS);
+}
 
 function digestEligible(u) {
   if (!u || !u.email) return false;
@@ -12126,13 +12136,15 @@ function digestUnsubscribeUrl(uid, secret) {
 }
 
 /** Subject, HTML and text for one digest. Pure, so the copy is testable. */
-function communityDigestMessage({ total, top }, unsubUrl) {
+function communityDigestMessage({ total, top }, unsubUrl, { firstDigest = false } = {}) {
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const first = top[0];
   const subject = total === 1
     ? `${first.post.authorName || 'Someone'} posted in ${first.channelName}`
     : `${total} new threads in the community`;
   const more = total - top.length;
+  // A member's first digest catches them up on the last two days.
+  const when = firstDigest ? 'in the last two days' : 'since your last update';
   const settingsUrl = `${APP_BASE_URL}/profile.html#notifications`;
   const rows = top.map((t) => {
     const url = communityPostUrl(t.channelKey, t.id);
@@ -12141,7 +12153,7 @@ function communityDigestMessage({ total, top }, unsubUrl) {
   });
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:8px;">
     <h2 style="color:#E60306;margin:0 0 6px;font-size:22px;">Today in the community</h2>
-    <p style="font-size:15px;color:#444;margin:0 0 20px;">${total === 1 ? 'A new thread' : `${total} new threads`} since yesterday.</p>
+    <p style="font-size:15px;color:#444;margin:0 0 20px;">${total === 1 ? 'A new thread' : `${total} new threads`} ${when}.</p>
     ${rows.map((r) => `<a href="${esc(r.url)}" style="display:block;text-decoration:none;color:#222;border:1px solid #eee;border-radius:10px;padding:14px 16px;margin:0 0 10px;">
       <div style="font-size:12px;color:#888;margin:0 0 4px;">${esc(r.t.channelName)} · ${esc(r.t.post.authorName || 'A member')}${r.replies ? ` · ${r.replies} repl${r.replies === 1 ? 'y' : 'ies'}` : ''}</div>
       <div style="font-size:15px;line-height:1.45;">${esc(r.preview)}</div>
@@ -12152,7 +12164,7 @@ function communityDigestMessage({ total, top }, unsubUrl) {
     <p style="font-size:12px;color:#888;margin:6px 0 0;">The One Percent Academy</p>
   </div>`;
   const text = [
-    `Today in the community: ${total === 1 ? 'a new thread' : `${total} new threads`} since yesterday.`,
+    `Today in the community: ${total === 1 ? 'a new thread' : `${total} new threads`} ${when}.`,
     '',
     ...rows.map((r) => `${r.t.channelName} · ${r.t.post.authorName || 'A member'}\n${r.preview}\n${r.url}\n`),
     more > 0 ? `Plus ${more} more.\n` : '',
@@ -12209,7 +12221,7 @@ async function sendCommunityDigests(db, { now = new Date(), dryRun = false } = {
     if (last.date === clock.date) continue;
     out.eligible++;
     const lastMs = last.sentAt && typeof last.sentAt.toMillis === 'function' ? last.sentAt.toMillis() : 0;
-    const picked = digestThreadsFor(d.id, u, threads, Math.max(lastMs, nowMs - DIGEST_LOOKBACK_MS));
+    const picked = digestThreadsFor(d.id, u, threads, digestSinceMs(lastMs, nowMs));
     if (!picked.total) { out.empty++; continue; }
 
     // A member whose CRM contact opted out (unsubscribe link, bounce, spam
@@ -12237,7 +12249,7 @@ async function sendCommunityDigests(db, { now = new Date(), dryRun = false } = {
     if (!claimed) continue;
 
     const unsub = digestUnsubscribeUrl(d.id, secret);
-    const msg = communityDigestMessage(picked, unsub);
+    const msg = communityDigestMessage(picked, unsub, { firstDigest: !lastMs });
     try {
       await sendEmail({
         to: u.email, from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,

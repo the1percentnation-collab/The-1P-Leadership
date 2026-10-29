@@ -36,11 +36,11 @@ const constLine = (name) => {
   return m[0];
 };
 
-const fns = ['clampPreview', 'communityPostUrl', 'canReadThread', 'digestEligible', 'digestThreadsFor',
+const fns = ['clampPreview', 'communityPostUrl', 'canReadThread', 'digestSinceMs', 'digestEligible', 'digestThreadsFor',
   'digestUnsubToken', 'digestUnsubscribeUrl', 'communityDigestMessage'];
 // eslint-disable-next-line no-new-func
 const s = new Function('crypto', [
-  ...['APP_BASE_URL', 'NOTIF_TRUNCATE', 'DIGEST_MAX_THREADS'].map(constLine),
+  ...['APP_BASE_URL', 'NOTIF_TRUNCATE', 'DIGEST_MAX_THREADS', 'DIGEST_LOOKBACK_MS'].map(constLine),
   ...fns.map((n) => grab(n))
 ].join('\n') + `\nreturn { DIGEST_MAX_THREADS, ${fns.join(', ')} };`)(crypto);
 
@@ -94,6 +94,25 @@ t('liveliest first, then newest, capped with the full count kept', () => {
   assert.strictEqual(r.total, 10);
   assert.strictEqual(r.top.length, s.DIGEST_MAX_THREADS);
   assert.deepStrictEqual(r.top.map((x) => x.id), ['hot', 'p0', 'p1', 'p2', 'p3', 'p4']);
+});
+
+console.log('how far back');
+t('a new member gets the last 48 hours, never the community\'s backlog', () => {
+  const at = (h) => thread(`h${h}`, {}, { createdAt: { toMillis: () => NOW - h * H } });
+  const list = [at(1), at(30), at(47), at(49), at(24 * 30)];
+  const r = s.digestThreadsFor('newbie', {}, list, s.digestSinceMs(0, NOW));
+  assert.deepStrictEqual(r.top.map((x) => x.id).sort(), ['h1', 'h30', 'h47']);
+});
+t('after the first digest, only what is new since the last one', () => {
+  const at = (h) => thread(`h${h}`, {}, { createdAt: { toMillis: () => NOW - h * H } });
+  const r = s.digestThreadsFor('me', {}, [at(2), at(10), at(30)], s.digestSinceMs(NOW - 6 * H, NOW));
+  assert.deepStrictEqual(r.top.map((x) => x.id), ['h2']);
+  // A member whose last digest was long ago is still capped at 48 hours.
+  assert.strictEqual(s.digestSinceMs(NOW - 30 * 24 * H, NOW), NOW - 48 * H);
+});
+t('the first digest says it covers two days; later ones say since the last update', () => {
+  assert.match(s.communityDigestMessage({ total: 2, top: [thread('a'), thread('b')] }, 'https://u', { firstDigest: true }).html, /in the last two days/);
+  assert.match(s.communityDigestMessage({ total: 2, top: [thread('a'), thread('b')] }, 'https://u').text, /since your last update/);
 });
 
 console.log('copy and unsubscribe');
