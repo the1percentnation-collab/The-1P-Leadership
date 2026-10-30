@@ -1792,12 +1792,11 @@ exports.sendContactEmail = onCall(
 
     const identity = await getCompanyEmailIdentity(db, companyId);
 
-    let finalText = bodyText || htmlToText(bodyHtml);
-    let finalHtml = bodyHtml || textToHtml(bodyText);
-    if (identity.signature) {
-      finalText = `${finalText}\n\n--\n${identity.signature}`;
-      finalHtml = `${finalHtml}<br/><br/>--<br/>${textToHtml(identity.signature)}`;
-    }
+    // Every 1-on-1 email signs off with the photo signature campaigns use.
+    // The lines come from CRM Settings > Email; left blank, the default.
+    const signature = identity.signature.trim() || emailLayout.DEFAULT_SIGNATURE;
+    const finalText = `${bodyText || htmlToText(bodyHtml)}\n\n--\n${emailLayout.signaturePlainText(signature)}`;
+    const finalHtml = `${bodyHtml || textToHtml(bodyText)}${emailLayout.signatureBlockHtml(signature)}`;
 
     // The thread this message belongs to. A brand-new send opens a thread
     // named after the email doc that starts it.

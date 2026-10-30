@@ -321,6 +321,17 @@ A banner image should be hosted under `https://the1pnation.com/assets/` at
 1200 × 628. Gmail drops images it cannot fetch, so a banner that 404s simply
 disappears and the email still reads correctly.
 
+## The photo signature on 1-on-1 email
+
+Every email sent from a contact card signs off with the same photo signature
+campaigns use: the headshot (`public/assets/email/anthony-brown-headshot.jpg`)
+beside the name, title, roles, contact line and booking button. The lines come
+from **CRM → Settings → Email → Signature**; left blank, the default in
+`email-layout-core.js` is used. The settings page previews it as you type, the
+composer's *Photo signature added* link shows it before you send, and on the
+contact timeline a sent email shows a small photo chip instead of the
+signature's text.
+
 ## Security notes
 
 - Inbound Parse does not sign its requests. The shared token in the URL is the
