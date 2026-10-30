@@ -54,6 +54,8 @@ ok('nothing typed into a campaign becomes markup', () => {
 ok('a button line becomes a red button; other links stay links', () => {
   const html = L.renderCampaignEmail({ bodyText: '[Get it](https://the1pnation.com/x?a=1&b=2)\n\nRead [this](https://the1pnation.com/y) now.' });
   assert.match(html, /bgcolor="#e60306"[^>]*><a href="https:\/\/the1pnation\.com\/x\?a=1&amp;b=2"[^>]*>Get it<\/a>/);
+  // Red with black text, as Anthony asked.
+  assert.match(html, /<a href="https:\/\/the1pnation\.com\/x\?a=1&amp;b=2"[^>]*color:#000000;[^>]*>Get it<\/a>/);
   assert.match(html, /Read <a href="https:\/\/the1pnation\.com\/y"[^>]*>this<\/a> now\./);
 });
 ok('a javascript: link is dropped, not rendered', () => {

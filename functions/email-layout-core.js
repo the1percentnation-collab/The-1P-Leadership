@@ -158,7 +158,7 @@ function blockHtml(b) {
   if (b.type === 'button') {
     return row(`<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>`
       + `<td align="center" bgcolor="${BRAND.red}" style="background-color:${BRAND.red};border-radius:4px;">`
-      + `<a href="${esc(b.url)}" target="_blank" style="display:inline-block;padding:16px 30px;font-family:${SANS};font-size:15px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:${BRAND.white};text-decoration:none;border-radius:4px;">${esc(b.label)}</a>`
+      + `<a href="${esc(b.url)}" target="_blank" style="display:inline-block;padding:16px 30px;font-family:${SANS};font-size:15px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:${BRAND.black};text-decoration:none;border-radius:4px;">${esc(b.label)}</a>`
       + `</td></tr></table>`, { align: 'center', pad: '8px 40px 30px' });
   }
   return '';
