@@ -47,6 +47,9 @@ const DEFAULT_SIGNATURE = [
 // Gmail signature, so every email he sends looks like it came from him.
 const HEADSHOT = 'https://the1pnation.com/assets/email/anthony-brown-headshot.jpg';
 
+// On phones the signature photo stacks above the text.
+const SIG_STACK = '@media only screen and (max-width:480px){.sig-photo,.sig-text{display:block!important;width:auto!important}.sig-text{border-left:0!important;padding:16px 0 0!important}}';
+
 // The placeholder sendCampaign swaps for each recipient's opt-out link.
 const UNSUBSCRIBE_PLACEHOLDER = '-unsubscribe_url-';
 
@@ -160,7 +163,7 @@ function blockHtml(b) {
 // further plain lines are roles, set small and gray with "|" kept as the
 // divider; a line with a link is a contact line; a lone [Label](url) line is
 // a black button.
-function signatureHtml(signature) {
+function signatureCard(signature) {
   const lines = String(signature || '').replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim()).filter(Boolean);
   if (!lines.length) return '';
   const [name, ...rest] = lines;
@@ -186,11 +189,31 @@ function signatureHtml(signature) {
       out.push(`<div style="font-family:${SANS};font-size:11px;line-height:17px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:${BRAND.muted};padding-top:4px;">${rows.join('<br>')}</div>`);
     }
   });
-  return `<tr><td class="sig-panel" bgcolor="${BRAND.panel}" style="background-color:${BRAND.panel};padding:28px 40px;border-top:3px solid ${BRAND.black};font-family:${BODY};font-size:14px;line-height:1.6;color:${BRAND.ink};">`
-    + `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>`
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="font-family:${BODY};font-size:14px;line-height:1.6;color:${BRAND.ink};"><tr>`
     + `<td class="sig-photo" valign="top" width="112" style="width:112px;min-width:112px;padding:0 18px 0 0;vertical-align:top;"><img src="${HEADSHOT}" width="112" height="112" alt="${esc(name)}" style="display:block;width:112px;min-width:112px;max-width:112px;height:112px;border-radius:56px;border:0;"></td>`
     + `<td class="sig-text" valign="top" style="padding:0 0 0 18px;vertical-align:top;border-left:2px solid ${BRAND.black};">${out.join('')}</td>`
-    + `</tr></table></td></tr>`;
+    + `</tr></table>`;
+}
+
+// The campaign layout's signature row: the card on the gray panel.
+function signatureHtml(signature) {
+  const card = signatureCard(signature);
+  if (!card) return '';
+  return `<tr><td class="sig-panel" bgcolor="${BRAND.panel}" style="background-color:${BRAND.panel};padding:28px 40px;border-top:3px solid ${BRAND.black};font-family:${BODY};font-size:14px;line-height:1.6;color:${BRAND.ink};">${card}</td></tr>`;
+}
+
+/**
+ * The photo signature on its own, for a 1-on-1 email from a contact card:
+ * the same card as campaigns, under a thin rule, on whatever background the
+ * reader's mail app uses. Pass '' for none; null or undefined for the default.
+ */
+function signatureBlockHtml(signature) {
+  const card = signatureCard(signature == null ? DEFAULT_SIGNATURE : signature);
+  if (!card) return '';
+  // A 1-on-1 email has no <head>, so the phone rule that stacks the photo
+  // above the text rides along; mail apps that drop it keep the side by side.
+  return `<style>${SIG_STACK}</style><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;"><tr>`
+    + `<td style="padding-top:20px;border-top:1px solid #e2e2e2;">${card}</td></tr></table>`;
 }
 
 /**
@@ -222,7 +245,7 @@ function renderCampaignEmail(opts = {}) {
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light only"><title>${esc(opts.subject || '')}</title>
-<style>@media only screen and (max-width:480px){.sig-panel{padding:24px 20px!important}.sig-photo,.sig-text{display:block!important;width:auto!important}.sig-text{border-left:0!important;padding:16px 0 0!important}}</style></head>
+<style>@media only screen and (max-width:480px){.sig-panel{padding:24px 20px!important}}${SIG_STACK}</style></head>
 <body style="margin:0;padding:0;background-color:${BRAND.ground};">
 ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(preheader)}</div>` : ''}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${BRAND.ground}" style="background-color:${BRAND.ground};"><tr><td align="center" bgcolor="${BRAND.ground}" style="background-color:${BRAND.ground};padding:24px 12px;">
@@ -239,9 +262,9 @@ ${signatureHtml(signature)}
 </body></html>`;
 }
 
-// The plain-text part of the same message.
-function campaignPlainText(opts = {}) {
-  const toText = (s) => String(s || '')
+// Body-convention text to plain text: buttons and links spell out their URL.
+function toPlainText(s) {
+  return String(s || '')
     .replace(/\r\n?/g, '\n')
     .split('\n')
     .map((l) => {
@@ -253,6 +276,16 @@ function campaignPlainText(opts = {}) {
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+// The plain-text signature for the text part of a 1-on-1 email.
+function signaturePlainText(signature) {
+  return toPlainText(signature == null ? DEFAULT_SIGNATURE : signature);
+}
+
+// The plain-text part of the same message.
+function campaignPlainText(opts = {}) {
+  const toText = toPlainText;
   const signature = opts.signature == null ? DEFAULT_SIGNATURE : opts.signature;
   const unsub = opts.unsubscribeUrl || UNSUBSCRIBE_PLACEHOLDER;
   return [
@@ -265,5 +298,6 @@ function campaignPlainText(opts = {}) {
 
 export {
   BRAND, TAGLINE, DEFAULT_SIGNATURE, UNSUBSCRIBE_PLACEHOLDER,
-  safeUrl, parseBody, firstButtonUrl, renderCampaignEmail, campaignPlainText
+  safeUrl, parseBody, firstButtonUrl, renderCampaignEmail, campaignPlainText,
+  signatureBlockHtml, signaturePlainText
 };

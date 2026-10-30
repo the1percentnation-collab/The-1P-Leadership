@@ -32,11 +32,12 @@ import {
   listContactEmails, sendContactEmail, markContactEmailsRead, groupEmailThreads,
   contactFreshness,
   listCalls, setDoNotCall, recordSmsConsent, smsConsentSummary, dispositionMeta, callBlockReason,
-  getGoogleCalendarStatus, listSequences, listEnrollments, enrollContact, stopEnrollment,
+  getGoogleCalendarStatus, getEmailSettings, listSequences, listEnrollments, enrollContact, stopEnrollment,
   escapeHtml, fmtDateTime, fmtDate, fmtMoney, toDate, listContacts,
   listSources, sourceOptionsHtml, wireSourcePicker
 } from './crm.js';
 import { storedContactOrder, neighbours } from './crm-nav.js';
+import { signatureBlockHtml, DEFAULT_SIGNATURE } from './email-layout-core.js';
 import { dialer, onDialerEvent } from './dialer-core.js';
 import { mountTemplatePicker } from './merge-fields.js';
 
@@ -696,6 +697,13 @@ function emailStatusLabel(m) {
   }
 }
 
+// Sent mail carries the photo signature after a "--" line. On the timeline
+// it shows as a small chip, not eight lines under every message.
+function splitSignature(text) {
+  const i = text.lastIndexOf('\n\n--\n');
+  return i < 0 ? [text, ''] : [text.slice(0, i), text.slice(i + 5)];
+}
+
 function emailMessageHtml(m) {
   const who = m.direction === 'out'
     ? `${escapeHtml(m.sentByName || m.fromName || 'You')} → ${escapeHtml(m.toEmail || '')}`
@@ -710,9 +718,16 @@ function emailMessageHtml(m) {
         <span class="em-who">${who}</span>
         <span class="em-when">${escapeHtml(when)}</span>
       </div>
-      <div class="em-msg-body">${escapeHtml(m.bodyText || '')}</div>
+      ${emailBodyHtml(m)}
       <div class="em-msg-meta${failed ? ' em-failed' : ''}">${escapeHtml(emailStatusLabel(m))}</div>
     </div>`;
+}
+
+function emailBodyHtml(m) {
+  const [body, sig] = m.direction === 'out' ? splitSignature(m.bodyText || '') : [m.bodyText || '', ''];
+  const signer = sig.split('\n').map((l) => l.trim()).find(Boolean) || '';
+  return `<div class="em-msg-body">${escapeHtml(body)}</div>`
+    + (signer ? `<div class="em-sig-chip"><img src="/assets/email/anthony-brown-headshot.jpg" alt="">Signed: ${escapeHtml(signer)}</div>` : '');
 }
 
 /**
@@ -952,10 +967,21 @@ function renderComposer() {
     </div>
     <div class="tl-compose-meta">
       <span id="cp-em-tpl"></span><span class="spacer"></span>
+      <a href="#" id="cp-em-sig-toggle">Photo signature added</a>
       <span>To ${escapeHtml(c.email)}</span>
     </div>
+    <iframe id="cp-em-sig" class="em-sig-preview" sandbox title="Signature preview" style="display:none;"></iframe>
     <div id="cp-em-err" class="auth-error" style="display:none;margin-top:8px;"></div>
     <div id="cp-em-ok" class="auth-ok" style="display:none;margin-top:8px;"></div>`;
+  $('cp-em-sig-toggle').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const frame = $('cp-em-sig');
+    if (frame.style.display !== 'none') { frame.style.display = 'none'; return; }
+    let sig = '';
+    try { sig = ((await getEmailSettings(state.companyId)) || {}).signature || ''; } catch (err) { /* default below */ }
+    frame.srcdoc = `<!doctype html><html><body style="margin:0;padding:0 4px;background:#fff;">${signatureBlockHtml(sig.trim() || DEFAULT_SIGNATURE)}</body></html>`;
+    frame.style.display = 'block';
+  });
   const cancelReply = $('cp-em-cancel-reply');
   if (cancelReply) cancelReply.addEventListener('click', () => { state.emailReply = null; renderComposer(); });
   mountTemplatePicker({

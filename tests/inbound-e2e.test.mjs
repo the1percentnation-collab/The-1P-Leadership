@@ -100,6 +100,9 @@ await t('a CRM email sent through Telnyx replies to the real mailbox, not a repl
   const sent = emails[emails.length - 1];
   assert(sent, 'nothing was sent');
   assert(sent.reply_to === 'anthonybrown@the1pnation.com', `reply_to was ${JSON.stringify(sent.reply_to)}`);
+  // No signature saved in settings: the default photo signature signs it.
+  assert(sent.html_body.includes('/assets/email/anthony-brown-headshot.jpg'), 'no photo signature in the HTML');
+  assert(/Hi Jo\n\n--\nAnthony Brown Sr\./.test(sent.text_body), `text signature: ${JSON.stringify(sent.text_body.slice(0, 80))}`);
 });
 
 await t('an unsigned email.received is refused', async () => {

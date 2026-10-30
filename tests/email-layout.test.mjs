@@ -70,7 +70,10 @@ ok('headings, lists and bold', () => {
 ok('the banner links to the first button unless told otherwise', () => {
   const html = L.renderCampaignEmail({ bodyText: '[Go](https://the1pnation.com/go)', heroImageUrl: 'https://the1pnation.com/a.jpg' });
   assert.match(html, /<a href="https:\/\/the1pnation\.com\/go"[^>]*><img src="https:\/\/the1pnation\.com\/a\.jpg"/);
-  assert.ok(!L.renderCampaignEmail({ heroImageUrl: 'javascript:x' }).includes('<img'));
+  // The signature headshot is always there; the banner must not be.
+  const unsafe = L.renderCampaignEmail({ heroImageUrl: 'javascript:x' });
+  assert.ok(!/javascript:/i.test(unsafe), 'an unsafe banner URL reached the email');
+  assert.strictEqual((unsafe.match(/<img /g) || []).length, 1, 'only the headshot should render');
 });
 ok('every message ends in exactly one opt-out link, filled per recipient', () => {
   const html = L.renderCampaignEmail({ bodyText: 'hi' });
@@ -96,7 +99,38 @@ ok('plain text: buttons and links spell out their URL, markup is stripped', () =
   assert.ok(t.startsWith('Head\n\nb l: https://a.b/c\n\nGo: https://a.b/go'), t);
 });
 
+ok('the 1-on-1 signature block carries the headshot and the booking button', () => {
+  const html = L.signatureBlockHtml();
+  assert.match(html, /<img src="https:\/\/the1pnation\.com\/assets\/email\/anthony-brown-headshot\.jpg"/);
+  assert.match(html, />Anthony Brown Sr\.</);
+  assert.match(html, /Book a Free Alignment Audit/);
+  assert.ok(!/[;"]background:/.test(html));
+  assert.strictEqual(L.signatureBlockHtml(''), '');
+  assert.ok(!L.signatureBlockHtml('<b>x</b>').includes('<b>'));
+  assert.ok(fs.existsSync(path.join(root, 'public/assets/email/anthony-brown-headshot.jpg')), 'headshot file is missing');
+});
+ok('the 1-on-1 plain-text signature spells out its links', () => {
+  const t = L.signaturePlainText();
+  assert.ok(t.startsWith('Anthony Brown Sr.\nFounder, The One Percent Nation'), t);
+  assert.match(t, /Book a Free Alignment Audit: https:\/\//);
+});
+
 console.log('wiring');
+ok('sendContactEmail signs every 1-on-1 email with the photo signature', () => {
+  const a = fnSrc.indexOf('exports.sendContactEmail = onCall(');
+  const b = fnSrc.slice(a, fnSrc.indexOf('\n);\n', a));
+  assert.match(b, /const signature = identity\.signature\.trim\(\) \|\| emailLayout\.DEFAULT_SIGNATURE/);
+  assert.match(b, /emailLayout\.signatureBlockHtml\(signature\)/);
+  assert.match(b, /emailLayout\.signaturePlainText\(signature\)/);
+});
+ok('CRM settings and the contact composer preview the signature with the same renderer', () => {
+  const settings = read('public/js/crm-settings.js');
+  const contact = read('public/js/contact-page.js');
+  for (const src of [settings, contact]) assert.match(src, /import \{ signatureBlockHtml, DEFAULT_SIGNATURE \} from '\.\/email-layout-core\.js'/);
+  assert.match(settings, /id="em-sig-preview"[^>]*\bsandbox\b/);
+  assert.match(contact, /id="cp-em-sig"[^>]*\bsandbox\b/);
+  assert.match(contact, /em-sig-chip/);
+});
 ok('sendCampaign renders branded campaigns from text at send time', () => {
   const b = block(fnSrc, 'exports.sendCampaign = onCall(');
   assert.match(b, /campaign\.layout === 'branded'/);
