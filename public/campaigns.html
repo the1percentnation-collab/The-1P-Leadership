@@ -35,6 +35,13 @@
       <!-- List view -->
       <div id="panel-list" style="display:none;">
         <div class="camp-toolbar">
+          <div class="camp-filters" id="camp-filters">
+            <button type="button" class="camp-filter active" data-filter="all">All</button>
+            <button type="button" class="camp-filter" data-filter="review">Needs review</button>
+            <button type="button" class="camp-filter" data-filter="approved">Approved</button>
+            <button type="button" class="camp-filter" data-filter="sent">Sent</button>
+            <button type="button" class="camp-filter" data-filter="rejected">Rejected</button>
+          </div>
           <div class="camp-toolbar-spacer"></div>
           <button class="btn btn-primary" id="btn-new-campaign">+ New Campaign</button>
         </div>
@@ -48,7 +55,7 @@
                   <th>Name</th>
                   <th>Subject</th>
                   <th>Status</th>
-                  <th>Sent</th>
+                  <th>When</th>
                   <th>Recipients</th>
                   <th>Opens</th>
                   <th>Clicks</th>
@@ -78,9 +85,18 @@
           </div>
           <div class="camp-detail-actions" id="camp-d-actions" style="display:none;">
             <button class="btn btn-ghost" id="camp-d-test">Send test to me</button>
+            <button class="btn btn-primary" id="camp-d-approve">Approve</button>
+            <button class="btn btn-ghost" id="camp-d-reject">Reject</button>
             <button class="btn btn-primary" id="camp-d-send">Send now</button>
+            <button class="btn btn-ghost" id="camp-d-unapprove">Back to draft</button>
             <span class="camp-action-msg" id="camp-d-action-msg"></span>
           </div>
+          <div class="camp-sendat" id="camp-d-sendat-row" style="display:none;">
+            <label for="camp-d-sendat">Send at</label>
+            <input type="datetime-local" class="c-input" id="camp-d-sendat" />
+            <button class="btn btn-ghost" id="camp-d-sendat-clear">Clear time</button>
+          </div>
+          <div class="camp-review-note" id="camp-d-review"></div>
         </div>
 
         <div class="camp-stat-grid">

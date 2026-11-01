@@ -5,7 +5,8 @@
 //
 //   - "Send test to me" mails only the admin who pressed it, marked [TEST],
 //     and never changes the campaign.
-//   - Sending the seeded audiobook draft delivers the branded layout to every
+//   - The draft cannot be sent until it is approved.
+//   - Sending the approved audiobook campaign delivers the branded layout to every
 //     contact except opt-outs and people who already own the audiobook, each
 //     with their own working unsubscribe link.
 //   - Someone who is not an admin of the company can do neither.
@@ -140,6 +141,18 @@ await t('an unsaved draft can be tested from the editor', async () => {
   assert(m.html_body.includes('>Go</a>') && m.html_body.includes('Book a Free Alignment Audit'), 'draft not rendered with the default signature');
 });
 
+await t('a draft cannot be sent until it is approved', async () => {
+  const j = await call('sendCampaign', { companyId: CO, campaignId: CAMPAIGN.id }, anthony.token);
+  assert(j.error && j.error.status === 'FAILED_PRECONDITION' && /Approve it first/.test(j.error.message), JSON.stringify(j));
+  assert(!batches.length, 'a draft was sent');
+  const c = await read(`companies/${CO}/campaigns/${CAMPAIGN.id}`);
+  assert(c.status === 'draft', c.status);
+  // Approved the way the campaigns page does it.
+  await admin(async (db) => {
+    await setDoc(doc(db, `companies/${CO}/campaigns/${CAMPAIGN.id}`), { status: 'approved', approvedBy: anthony.uid }, { merge: true });
+  });
+});
+
 await t('sending delivers the branded email to everyone but opt-outs and buyers', async () => {
   const j = await call('sendCampaign', { companyId: CO, campaignId: CAMPAIGN.id }, anthony.token);
   assert(j.result && j.result.recipientCount === 2, JSON.stringify(j));
@@ -157,6 +170,7 @@ await t('sending delivers the branded email to everyone but opt-outs and buyers'
   }
   const c = await read(`companies/${CO}/campaigns/${CAMPAIGN.id}`);
   assert(c.status === 'sent' && c.recipientCount === 2 && c.acceptedCount === 2, JSON.stringify({ s: c.status, n: c.recipientCount }));
+  assert(c.sentVia === 'manual' && c.sentBy === anthony.uid, JSON.stringify({ via: c.sentVia, by: c.sentBy }));
 });
 
 await t('a sent campaign cannot be sent twice', async () => {

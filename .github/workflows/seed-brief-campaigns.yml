@@ -4,8 +4,9 @@ name: Seed The One Percent Brief campaigns
 # scripts/seed-brief-campaigns.js with the deploy service account.
 #
 # Safe to run on every push: it writes drafts only, never sends, and never
-# touches a campaign that is sending or sent. Each draft is sent by hand from
-# /campaigns.html on the date shown next to it.
+# touches a campaign that has been approved, rejected or sent. Each draft is
+# approved in /campaigns.html; a dated one then sends on its own from the
+# automation tick, and the undated launch email waits for Send now.
 on:
   push:
     branches:

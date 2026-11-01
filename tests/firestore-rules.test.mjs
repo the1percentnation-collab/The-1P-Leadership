@@ -612,6 +612,37 @@ await t('nobody CAN add an ARC reader from the client (claimArcCopy only)',
     assertFails(setDoc(doc(owner, 'arcReaders/emp'), { uid: 'emp', bookId: 'i-cant' }))
   ]));
 
+// ── Campaigns: review decisions are the client's, the send is the server's ──
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'companies/co1/campaigns/cDraft'), { subject: 's', status: 'draft' });
+  await setDoc(doc(db, 'companies/co1/campaigns/cSent'), { subject: 's', status: 'sent' });
+  await setDoc(doc(db, 'companies/co1/campaigns/cSending'), { subject: 's', status: 'sending' });
+  await setDoc(doc(db, 'companies/co1/campaigns/cLegacy'), { subject: 's', status: 'ready' });
+});
+await t('company admin CAN save a campaign draft',
+  () => assertSucceeds(setDoc(doc(adm, 'companies/co1/campaigns/cNew'), { subject: 's', status: 'draft' })));
+await t('company admin CAN approve, reject and reopen a draft',
+  async () => {
+    await assertSucceeds(updateDoc(doc(adm, 'companies/co1/campaigns/cDraft'), { status: 'approved', approvedBy: 'adm' }));
+    await assertSucceeds(updateDoc(doc(adm, 'companies/co1/campaigns/cDraft'), { status: 'draft' }));
+    await assertSucceeds(updateDoc(doc(adm, 'companies/co1/campaigns/cDraft'), { status: 'rejected' }));
+    await assertSucceeds(updateDoc(doc(adm, 'companies/co1/campaigns/cDraft'), { status: 'draft' }));
+  });
+await t('company admin CAN set a send time on an old ready campaign',
+  () => assertSucceeds(updateDoc(doc(adm, 'companies/co1/campaigns/cLegacy'), { sendAt: new Date() })));
+await t('company admin CANNOT turn a sent campaign back into approved',
+  () => assertFails(updateDoc(doc(adm, 'companies/co1/campaigns/cSent'), { status: 'approved' })));
+await t('company admin CANNOT edit a campaign that is sending',
+  () => assertFails(updateDoc(doc(adm, 'companies/co1/campaigns/cSending'), { subject: 'changed' })));
+await t('company admin CANNOT mark a campaign sent or sending from the client',
+  () => Promise.all([
+    assertFails(updateDoc(doc(adm, 'companies/co1/campaigns/cDraft'), { status: 'sent' })),
+    assertFails(setDoc(doc(adm, 'companies/co1/campaigns/cFake'), { subject: 's', status: 'sending' }))
+  ]));
+await t('a company member who is not an admin CANNOT approve a campaign',
+  () => assertFails(updateDoc(doc(emp, 'companies/co1/campaigns/cDraft'), { status: 'approved' })));
+
 await env.cleanup();
 
 let failed = 0;

@@ -98,7 +98,10 @@ ok('plain text: buttons and links spell out their URL, markup is stripped', () =
 
 console.log('wiring');
 ok('sendCampaign renders branded campaigns from text at send time', () => {
-  const b = block(fnSrc, 'exports.sendCampaign = onCall(');
+  // The callable checks the caller; the shared dispatch (also used by the
+  // tick's scheduled sends) does the rendering.
+  assert.match(block(fnSrc, 'exports.sendCampaign = onCall('), /return dispatchCampaign\(db, companyId, campaignId,/);
+  const b = block(fnSrc, 'async function dispatchCampaign(');
   assert.match(b, /campaign\.layout === 'branded'/);
   assert.match(b, /emailLayout\.renderCampaignEmail\(campaignLayoutOptions\(campaign\)\)/);
   assert.match(b, /const htmlPersonalized = branded \? brandedHtml :/);

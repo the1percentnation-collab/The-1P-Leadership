@@ -2,12 +2,14 @@
 // Seeds three campaign drafts for The One Percent Brief's free window, which
 // closes at 11:59 PM Eastern on December 6, 2026 (scripts/launch-brief-sale.js):
 //
-//   brief-free-launch     send now      the Brief is open, free through Dec 6
-//   brief-free-one-week   Mon, Nov 30   one week left
-//   brief-free-final-day  Sun, Dec 6    closes tonight (morning send)
+//   brief-free-launch     no set time            the Brief is open, free through Dec 6
+//   brief-free-one-week   Mon, Nov 30, 9 AM ET   one week left
+//   brief-free-final-day  Sun, Dec 6, 8 AM ET    closes tonight
 //
-// Each is a draft in /campaigns.html with its send date shown next to it.
-// Nothing sends on its own: open the draft on its day and press Send.
+// Each lands in /campaigns.html as a draft that needs review. Nothing sends
+// until it is approved there. An approved draft with a send time (sendAt)
+// goes out on its own at the tick's first check after it (sendDueCampaigns in
+// functions/index.js); the launch email has none, so it waits for Send now.
 //
 // Every draft goes to all CRM contacts (opt-outs are always dropped) and
 // skips anyone whose account is already enrolled in the Brief
@@ -15,8 +17,9 @@
 // functions/index.js when Send is pressed, so people who join between sends
 // stop getting them).
 //
-// Safe to re-run: fixed ids, and a campaign that is sending or sent is never
-// touched. A re-run refreshes the copy of drafts only.
+// Safe to re-run: fixed ids, and only drafts are written. A campaign that is
+// approved, rejected, sending or sent is never touched. A re-run refreshes a
+// draft's copy and send time.
 //
 // Run with Admin credentials, from the scripts/ directory after `npm install`:
 //   node seed-brief-campaigns.js
@@ -37,7 +40,7 @@ const CAMPAIGNS = [
   {
     id: 'brief-free-launch',
     name: 'The Brief: free window opens',
-    sendOn: 'now',
+    sendAt: null,
     subject: 'The One Percent Brief is open, and free to join through December 6',
     body: `
 The One Percent Brief is open.
@@ -60,7 +63,7 @@ Anthony
   {
     id: 'brief-free-one-week',
     name: 'The Brief: one week left',
-    sendOn: 'Mon, Nov 30',
+    sendAt: '2026-11-30T09:00:00-05:00',
     subject: 'One week left to join The Brief free',
     body: `
 A short note, because the window closes soon.
@@ -83,7 +86,7 @@ Anthony
   {
     id: 'brief-free-final-day',
     name: 'The Brief: final day',
-    sendOn: 'Sun, Dec 6 (morning)',
+    sendAt: '2026-12-06T08:00:00-05:00',
     subject: 'Last day to join The Brief free',
     body: `
 Today is the last day to join The One Percent Brief for free.
@@ -154,7 +157,11 @@ async function main() {
       bodyText,
       bodyHtml: toHtml(bodyText),
       recipientFilter: FILTER,
-      sendOn: c.sendOn,
+      sendAt: c.sendAt
+        ? admin.firestore.Timestamp.fromDate(new Date(c.sendAt))
+        : admin.firestore.FieldValue.delete(),
+      // The free-text date these drafts carried before sendAt existed.
+      sendOn: admin.firestore.FieldValue.delete(),
       status: 'draft',
       createdBy: 'seed-brief-campaigns',
       createdAt: existing.exists
@@ -163,9 +170,9 @@ async function main() {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       ...(existing.exists ? {} : { stats: { delivered: 0, opens: 0, clicks: 0, bounces: 0, unsubs: 0 } })
     }, { merge: true });
-    console.log(`  ${existing.exists ? 'updated' : 'created'}  ${c.name} · send ${c.sendOn}`);
+    console.log(`  ${existing.exists ? 'updated' : 'created'}  ${c.name} · send ${c.sendAt || 'when Send now is pressed'}`);
   }
-  console.log('\nOpen https://the1pnation.com/campaigns.html and press Send on each draft on its day.');
+  console.log('\nOpen https://the1pnation.com/campaigns.html and approve each draft. Dated ones then send on their own.');
 }
 
 if (require.main === module) {

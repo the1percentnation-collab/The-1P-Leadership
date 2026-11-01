@@ -28,12 +28,23 @@ console.log('copy');
 ok('three drafts with fixed ids: launch, one week, final day', () => {
   assert.deepStrictEqual(CAMPAIGNS.map((c) => c.id), ['brief-free-launch', 'brief-free-one-week', 'brief-free-final-day']);
 });
-ok('every draft has a subject, a send date and a join link', () => {
+ok('every draft has a subject and a join link', () => {
   CAMPAIGNS.forEach((c) => {
     assert.ok(c.subject && c.subject.length <= 80, `${c.id}: subject`);
-    assert.ok(c.sendOn, `${c.id}: sendOn`);
     assert.ok(c.body.includes('https://the1pnation.com/course.html?course=one-percent-brief'), `${c.id}: no join link`);
   });
+});
+ok('send times: launch waits for Send now, the others are real Eastern times before the deadline', () => {
+  const [launch, week, final] = CAMPAIGNS;
+  assert.strictEqual(launch.sendAt, null);
+  assert.strictEqual(new Date(week.sendAt).toISOString(), '2026-11-30T14:00:00.000Z');
+  assert.strictEqual(new Date(final.sendAt).toISOString(), '2026-12-06T13:00:00.000Z');
+  assert.strictEqual(new Date(week.sendAt).getUTCDay(), 1, 'Nov 30 is not a Monday');
+  assert.strictEqual(new Date(final.sendAt).getUTCDay(), 0, 'Dec 6 is not a Sunday');
+  // The tick has run as much as six hours apart; the final email still has
+  // most of the day before the 11:59 PM close.
+  const close = new Date('2026-12-06T23:59:00-05:00').getTime();
+  assert.ok(close - new Date(final.sendAt).getTime() > 12 * 3600 * 1000);
 });
 ok('no em or en dashes, and no hype words', () => {
   CAMPAIGNS.forEach((c) => {
@@ -72,9 +83,35 @@ ok('buildRecipients drops enrolled members by email, after every mode', () => {
   assert.match(body, /where\(field, 'array-contains', v\)/);
   assert.match(body, /normalizeEmail/);
 });
-ok('the campaigns page shows who is skipped and when to send', () => {
+ok('the campaigns page shows who is skipped and when it sends', () => {
   assert.match(pageSrc, /Skips anyone already in/);
-  assert.match(pageSrc, /'Send on ' \+ c\.sendOn/);
+  assert.match(pageSrc, /'Sends '\) \+ fmtWhen\(ms\)/);
+});
+
+console.log('review');
+ok('the server sends only approved campaigns, never a draft', () => {
+  assert.match(fnSrc, /const CAMPAIGN_SENDABLE = \['approved', 'ready'\];/);
+  const i = fnSrc.indexOf('async function dispatchCampaign(');
+  const body = fnSrc.slice(i, fnSrc.indexOf('\n}\n', i));
+  assert.match(body, /db\.runTransaction/, 'the claim is not transactional');
+  assert.match(body, /CAMPAIGN_SENDABLE\.includes\(status\)/);
+  assert.ok(body.indexOf("status: 'sending'") < body.indexOf('buildRecipients'), 'recipients built before the claim');
+});
+ok('the tick runs the campaign step', () => {
+  const i = fnSrc.indexOf('async function runTick(');
+  const body = fnSrc.slice(i, fnSrc.indexOf('\n}\n', i));
+  assert.match(body, /step\('campaigns', sendDueCampaigns\(db, \{ dryRun \}\)\)/);
+});
+ok('page and server agree on how late a scheduled send may still go out', () => {
+  assert.match(fnSrc, /const CAMPAIGN_SEND_GRACE_MS = 24 \* 60 \* 60 \* 1000;/);
+  assert.match(pageSrc, /const SEND_GRACE_MS = 24 \* 60 \* 60 \* 1000;/);
+});
+ok('review changes re-check the status in a transaction', () => {
+  const i = pageSrc.indexOf('async function updateReview(');
+  const body = pageSrc.slice(i, pageSrc.indexOf('\n}\n', i));
+  assert.match(body, /runTransaction/);
+  assert.match(body, /from\.includes\(s\)/);
+  assert.match(pageSrc, /updateReview\(\['draft'\], Object\.assign\(\{\s*status: 'approved'/);
 });
 
 console.log(`\n${passed} passed`);

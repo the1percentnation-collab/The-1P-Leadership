@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Firestore security-rules and launch-tick regression tests (emulator), plus the deploy guard and dashboard, catalog, Telnyx and inbound-email unit tests.",
   "scripts": {
-    "emulator": "cd .. && firebase emulators:exec --only firestore,storage --project demo-1p \"node tests/firestore-rules.test.mjs && node tests/storage-rules.test.mjs && node tests/launch-tick.test.mjs\"",
+    "emulator": "cd .. && firebase emulators:exec --only firestore,storage --project demo-1p \"node tests/firestore-rules.test.mjs && node tests/storage-rules.test.mjs && node tests/launch-tick.test.mjs && node tests/campaign-schedule.test.mjs\"",
     "test:telnyx": "node telnyx-signature.test.cjs && node telnyx-send.test.cjs && node telnyx-texml.test.cjs && node call-gate.test.cjs && node sms-consent.test.cjs && node sms-gate.test.cjs && node consent-labels.test.cjs",
     "test:email": "node email-suppression.test.cjs && node inbound-email.test.cjs && node email-provider.test.cjs && node email-events.test.cjs && node brief-campaigns.test.cjs && node email-layout.test.mjs",
     "test:indexes": "node firestore-indexes.test.cjs",

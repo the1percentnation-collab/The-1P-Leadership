@@ -3722,6 +3722,27 @@ textarea.mc-lines:focus { outline: none; border-color: rgba(204,27,27,0.5); }
 .camp-status-sending  { background: rgba(232,197,71,0.18); color: var(--accent); }
 .camp-status-sent     { background: rgba(92,173,92,0.18); color: #8AD08A; }
 .camp-status-failed   { background: rgba(204,27,27,0.22); color: #FF7070; }
+.camp-status-approved { background: rgba(90,168,230,0.18); color: #6FB8EB; }
+.camp-status-rejected { background: rgba(204,27,27,0.10); color: var(--gray-mid); }
+
+.camp-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.camp-filter {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 6px 12px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+  cursor: pointer;
+}
+.camp-filter.active { border-color: var(--white-dim); color: var(--white); }
 
 .camp-name-link {
   color: var(--white);
@@ -3867,6 +3888,29 @@ textarea.mc-lines:focus { outline: none; border-color: rgba(204,27,27,0.5); }
   font-size: 12px;
   color: var(--gray-light);
 }
+.camp-sendat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.camp-sendat label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gray-light);
+}
+.camp-sendat .c-input { width: auto; }
+.camp-review-note {
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--white-dim);
+}
+.camp-review-note:empty { display: none; }
+.camp-review-note.warn { color: #FF7070; }
 .camp-design-tag {
   font-family: var(--font-mono);
   font-size: 10px;
