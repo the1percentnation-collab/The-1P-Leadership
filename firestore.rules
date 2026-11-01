@@ -645,9 +645,19 @@ service cloud.firestore {
       // ──────────────────────────────────────────────────────────────
       // Campaigns (Phase 3): email broadcasts + per-event telemetry.
       // ──────────────────────────────────────────────────────────────
+      // Clients write drafts and review decisions (draft, approved, rejected).
+      // 'sending', 'sent' and 'failed' are set only by the send on the Admin
+      // SDK, and a campaign in one of them is frozen: a stale tab cannot turn
+      // a sent campaign back into 'approved', where the tick would send it
+      // again.
       match /campaigns/{campaignId} {
         allow read: if isOwner() || isCompanyAdmin(cid);
-        allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
+        allow create: if (isOwner() || isCompanyAdmin(cid))
+                       && request.resource.data.get('status', 'draft') in ['draft', 'approved'];
+        allow update: if (isOwner() || isCompanyAdmin(cid))
+                       && resource.data.get('status', 'draft') in ['draft', 'approved', 'ready', 'rejected']
+                       && request.resource.data.get('status', 'draft') in ['draft', 'approved', 'ready', 'rejected'];
+        allow delete: if isOwner() || isCompanyAdmin(cid);
 
         // Events subcollection — written by the webhook via Admin SDK (bypasses rules).
         // Clients get read access only.

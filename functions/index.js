@@ -2442,6 +2442,16 @@ async function collectRecipients(db, companyId, filter) {
   return recipients;
 }
 
+// A campaign sends only once an admin has approved it in /campaigns.html.
+// 'ready' is what the compose modal wrote before approvals existed; it is
+// still accepted so a send that failed under the old flow can be retried.
+const CAMPAIGN_SENDABLE = ['approved', 'ready'];
+
+// The tick does not send a scheduled campaign whose sendAt is further in the
+// past than this. A "last day" email arriving two days late is worse than
+// none, so it stays approved and the page offers Send now or a new date.
+const CAMPAIGN_SEND_GRACE_MS = 24 * 60 * 60 * 1000;
+
 exports.sendCampaign = onCall(
   { secrets: [sendgridKey], timeoutSeconds: 540 },
   async (request) => {
@@ -2456,35 +2466,58 @@ exports.sendCampaign = onCall(
     // Throttle broadcast sends: 10 campaign dispatches per admin per hour.
     await rateLimitCaller(db, request, { action: 'sendCampaign', max: 10, windowSec: 3600 });
 
+    return dispatchCampaign(db, companyId, campaignId, { sentVia: 'manual', sentBy: request.auth.uid });
+  }
+);
+
+/**
+ * Sends one approved campaign to its recipients. Shared by the sendCampaign
+ * callable (Send now) and the tick (scheduled sends, sendDueCampaigns).
+ *
+ * The flip to 'sending' happens in a transaction that re-reads the status,
+ * so the button and the tick can never both send the same campaign.
+ */
+async function dispatchCampaign(db, companyId, campaignId, { sentVia = 'manual', sentBy = null } = {}) {
     const campaignRef = db.collection('companies').doc(companyId).collection('campaigns').doc(campaignId);
-    const campaignSnap = await campaignRef.get();
-    if (!campaignSnap.exists) throw new HttpsError('not-found', 'Campaign not found.');
-    const campaign = campaignSnap.data();
-    const status = campaign.status || 'draft';
-    if (!['draft', 'ready'].includes(status)) {
-      throw new HttpsError('failed-precondition', `Cannot send a campaign with status "${status}".`);
-    }
+    const campaign = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(campaignRef);
+      if (!snap.exists) throw new HttpsError('not-found', 'Campaign not found.');
+      const c = snap.data() || {};
+      const status = c.status || 'draft';
+      if (!CAMPAIGN_SENDABLE.includes(status)) {
+        const hint = status === 'draft' ? ' Approve it first.' : '';
+        throw new HttpsError('failed-precondition', `Cannot send a campaign with status "${status}".${hint}`);
+      }
+      if (!(c.subject || '').toString().trim()) throw new HttpsError('invalid-argument', 'Campaign has no subject.');
+      tx.update(campaignRef, {
+        status: 'sending',
+        sentVia,
+        sentBy,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      return c;
+    });
 
     const subject = (campaign.subject || '').toString().trim();
-    if (!subject) throw new HttpsError('invalid-argument', 'Campaign has no subject.');
     const bodyText = campaign.bodyText || '';
     const bodyHtml = campaign.bodyHtml || textToHtml(bodyText);
     const finalText = bodyText || htmlToText(bodyHtml);
     const fromName = campaign.fromName || FROM_NAME_DEFAULT;
-    // Branded campaigns are rendered here, at send time, from the text the
-    // admin wrote, never from stored HTML. The layout carries its own opt-out
-    // footer with the same per-recipient placeholder.
     const branded = campaign.layout === 'branded';
-    const brandedHtml = branded ? emailLayout.renderCampaignEmail(campaignLayoutOptions(campaign)) : null;
-    const brandedText = branded ? emailLayout.campaignPlainText(campaignLayoutOptions(campaign)) : null;
-
-    await campaignRef.update({
-      status: 'sending',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    let brandedHtml = null;
+    let brandedText = null;
 
     let recipients = [];
     try {
+      // Branded campaigns are rendered here, at send time, from the text the
+      // admin wrote, never from stored HTML. The layout carries its own opt-out
+      // footer with the same per-recipient placeholder. Rendering sits inside
+      // this try so a throw marks the campaign failed instead of leaving it
+      // stuck at 'sending'.
+      if (branded) {
+        brandedHtml = emailLayout.renderCampaignEmail(campaignLayoutOptions(campaign));
+        brandedText = emailLayout.campaignPlainText(campaignLayoutOptions(campaign));
+      }
       recipients = await buildRecipients(db, companyId, campaign.recipientFilter || { mode: 'all_contacts' });
     } catch (err) {
       await campaignRef.update({
@@ -2610,8 +2643,51 @@ Unsubscribe: -unsubscribe_url-`;
     } catch (e) {}
 
     return { ok: true, recipientCount: recipients.length, acceptedCount: accepted, failedCount: failed };
+}
+
+/**
+ * The tick's campaign step: send every approved campaign whose sendAt has
+ * arrived. The GitHub clock (.github/workflows/crm-tick.yml) has run three
+ * to six hours apart in practice, so a campaign goes out at the first tick
+ * after its time: never early, sometimes a few hours late.
+ *
+ * Campaigns are read company by company with a single equality filter, which
+ * needs no composite or collection-group index.
+ */
+async function sendDueCampaigns(db, { dryRun = false, now = Date.now() } = {}) {
+  const due = [];
+  const missed = [];
+  const companies = await db.collection('companies').get();
+  for (const co of companies.docs) {
+    const snap = await co.ref.collection('campaigns').where('status', '==', 'approved').get();
+    for (const d of snap.docs) {
+      const at = d.data().sendAt;
+      const ms = at && typeof at.toMillis === 'function' ? at.toMillis() : null;
+      if (ms == null || ms > now) continue;
+      const item = { companyId: co.id, campaignId: d.id };
+      if (now - ms > CAMPAIGN_SEND_GRACE_MS) missed.push(item);
+      else due.push(item);
+    }
   }
-);
+  if (dryRun) return { wouldSend: due.map((x) => x.campaignId), missed: missed.map((x) => x.campaignId) };
+
+  let sent = 0;
+  const errors = [];
+  for (const x of due) {
+    try {
+      await dispatchCampaign(db, x.companyId, x.campaignId, { sentVia: 'scheduled' });
+      sent += 1;
+    } catch (err) {
+      // Someone pressed Send now between the read above and the claim.
+      if (err && err.code === 'failed-precondition') continue;
+      errors.push(`${x.campaignId}: ${(err && err.message) || err}`);
+    }
+  }
+  const out = { sent, missed: missed.map((x) => x.campaignId) };
+  // An `error` key marks the step failed in runTick's summary.
+  if (errors.length) out.error = errors.join('; ');
+  return out;
+}
 
 // ────────────────────────────────────────────────────────────────
 // sendCampaignTest — callable. One copy of a campaign to the admin who asks,
@@ -12452,7 +12528,7 @@ async function runTick(db, { dryRun = false } = {}) {
     return { error: (e && e.message) || String(e) };
   });
 
-  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest] = await Promise.all([
+  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest, campaigns] = await Promise.all([
     step('sequences', processDueEnrollments(db, { dryRun })),
     // These only ever renew or send; there is nothing to preview, so a dry
     // run skips them rather than pretending to measure something.
@@ -12464,10 +12540,12 @@ async function runTick(db, { dryRun = false } = {}) {
     step('reviewNudges', dryRun ? { skipped: 'dryRun' } : sendReviewNudges(db)),
     // A dry run counts who would get a digest today without sending or claiming.
     step('communityDigest', sendCommunityDigests(db, { dryRun })),
-    step('storeDigest', sendStoreDigest(db, { dryRun }))
+    step('storeDigest', sendStoreDigest(db, { dryRun })),
+    // Approved campaigns whose send time has arrived.
+    step('campaigns', sendDueCampaigns(db, { dryRun }))
   ]);
 
-  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest };
+  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest, campaigns };
   const failedSteps = Object.keys(steps).filter((k) => steps[k] && steps[k].error);
   const summary = { ok: failedSteps.length === 0, dryRun, ms: Date.now() - startedAt, ...steps };
   if (failedSteps.length) summary.failedSteps = failedSteps;
@@ -16748,6 +16826,9 @@ exports.ASSESSMENT_SLUGS = ASSESSMENT_SLUGS;
 // that carry an endpoint definition, so this deploys nothing.
 // ────────────────────────────────────────────────────────────────
 exports.promoteLaunchedItems = promoteLaunchedItems;
+// Same, for tests/campaign-schedule.test.mjs.
+exports.sendDueCampaigns = sendDueCampaigns;
+exports.dispatchCampaign = dispatchCampaign;
 
 // ════════════════════════════════════════════════════════════════
 // Speaking Engagement Agreements: digital signing.

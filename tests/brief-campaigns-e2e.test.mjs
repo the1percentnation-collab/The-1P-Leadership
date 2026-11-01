@@ -3,8 +3,8 @@
 // 1. The shipped buildRecipients (extracted from functions/index.js) skips
 //    contacts whose account is enrolled in the Brief, keeps everyone else,
 //    and still drops opt-outs.
-// 2. scripts/seed-brief-campaigns.js writes three drafts, and a re-run never
-//    touches one that was already sent.
+// 2. scripts/seed-brief-campaigns.js writes three drafts with real send
+//    times, and a re-run never touches one that was approved or sent.
 // 3. excludeOwnersOf skips book buyers, and scripts/seed-audiobook-campaign.js
 //    writes its branded draft the same safe way.
 //
@@ -89,9 +89,24 @@ await t('the seed writes three drafts to the owner\'s CRM, each with the Brief f
   assert(JSON.stringify(ids) === JSON.stringify(['brief-free-final-day', 'brief-free-launch', 'brief-free-one-week']), ids.join());
   snap.docs.forEach((d) => {
     const c = d.data();
-    assert(c.status === 'draft' && c.sendOn && c.bodyHtml.includes('<a href='), d.id);
+    assert(c.status === 'draft' && c.bodyHtml.includes('<a href='), d.id);
     assert(c.recipientFilter.excludeEnrolledIn === 'one-percent-brief', d.id);
+    assert(c.sendOn === undefined, `${d.id} still carries the free-text sendOn`);
   });
+  const week = (await db.doc(`companies/${CO}/campaigns/brief-free-one-week`).get()).data();
+  const launch = (await db.doc(`companies/${CO}/campaigns/brief-free-launch`).get()).data();
+  assert(week.sendAt && week.sendAt.toDate().toISOString() === '2026-11-30T14:00:00.000Z', 'one-week sendAt');
+  assert(launch.sendAt === undefined, 'the launch email should have no send time');
+});
+
+await t('a re-run leaves an approved draft and its send time alone', async () => {
+  const ref = db.doc(`companies/${CO}/campaigns/brief-free-final-day`);
+  const moved = admin.firestore.Timestamp.fromDate(new Date('2026-12-06T10:00:00-05:00'));
+  await ref.update({ status: 'approved', sendAt: moved });
+  const out = seed();
+  assert(/kept\s+The Brief: final day \(approved\)/.test(out), out);
+  const c = (await ref.get()).data();
+  assert(c.status === 'approved' && c.sendAt.isEqual(moved), JSON.stringify(c.status));
 });
 
 await t('a re-run refreshes drafts and never touches a sent campaign', async () => {
