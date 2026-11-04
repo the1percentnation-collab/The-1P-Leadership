@@ -283,11 +283,13 @@
       <a class="btn btn-primary" id="read-link" href="/read?book=i-cant">Start reading</a>
     </div>
 
-    <!-- Closed or full -->
+    <!-- Closed or full. Left blank on purpose: arc-page.js fills it in only
+         when config/arc says closed or full, so the page's HTML never tells
+         a link preview or page reader that sign-ups are closed. -->
     <div id="st-closed" class="state" hidden>
       <div class="icon off">✕</div>
-      <h3 id="closed-title">Sign-ups Are Closed</h3>
-      <p id="closed-msg">Advance copies are not open right now. You can still read chapter one free.</p>
+      <h3 id="closed-title"></h3>
+      <p id="closed-msg"></p>
       <a class="btn btn-primary" href="/icantpreview">Read chapter one free</a>
       <a class="btn btn-ghost" href="/books">See the book</a>
       <p class="fine" style="margin-top:18px;">Already have your copy?
