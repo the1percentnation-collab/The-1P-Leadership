@@ -336,6 +336,15 @@ ok('the store tabs slice the list as labelled', () => {
   assert.deepStrictEqual(filterByTab(items, 'on-sale').map((i) => i.id), ['d']);
 });
 
+ok('a product that ships shows its shipping next to the price', () => {
+  assert.strictEqual(normalizeProduct(product({ requiresShipping: true })).shippingLabel, '+ $5.99 shipping');
+  assert.strictEqual(normalizeProduct(product({ type: 'physical' })).shippingLabel, '+ $5.99 shipping');
+  assert.strictEqual(normalizeProduct(product({ requiresShipping: true, shippingCents: 0 })).shippingLabel, 'Free shipping');
+  assert.strictEqual(normalizeProduct(product({ requiresShipping: true, shippingCents: 799 })).shippingLabel, '+ $7.99 shipping');
+  assert.strictEqual(normalizeProduct(product({ type: 'physical', requiresShipping: false })).shippingLabel, null);
+  assert.strictEqual(normalizeProduct(product()).shippingLabel, null);
+});
+
 ok('display order is live first, then the owner\'s sort order', () => {
   const items = [
     normalizeProduct(product({ id: 'soon', status: 'interest', sortOrder: 0 })),

@@ -43,7 +43,7 @@ function cardHtml(item) {
   const ext = isExternal(href);
 
   const price = item.label
-    ? `<span class="hub-explore-price">${item.onSale ? `<s style="color:var(--gray-mid);margin-right:6px;">${escapeHtml(item.originalLabel)}</s>` : ''}${escapeHtml(item.label)}</span>`
+    ? `<span class="hub-explore-price">${item.onSale ? `<s style="color:var(--gray-mid);margin-right:6px;">${escapeHtml(item.originalLabel)}</s>` : ''}${escapeHtml(item.label)}${item.shippingLabel ? ` <small style="color:var(--gray-mid);font-weight:400;">${escapeHtml(item.shippingLabel)}</small>` : ''}</span>`
     : '';
 
   const when = item.status !== 'live' && item.launchDateMs && launchCountdown(item.launchDateMs)

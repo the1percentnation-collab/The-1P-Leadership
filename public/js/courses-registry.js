@@ -311,7 +311,7 @@ export const COURSES = [
     category: 'Mindset & Personal Growth',
     price: 227,
     priceLabel: '$227',
-    priceNote: 'Digital book now · paperback shipped · US addresses',
+    priceNote: 'Digital book now · paperback shipped · + $5.99 shipping, US addresses',
     shipsBook: true,
     sellable: true,
     showOnSite: false,

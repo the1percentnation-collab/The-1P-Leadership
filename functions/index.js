@@ -43,6 +43,7 @@ const { careerTags } = require('./careers.js');
 const handSales = require('./hand-sales-core.js');
 const messenger = require('./messenger.js');
 const audioCore = require('./audio-core.js');
+const shippingCore = require('./shipping-core.js');
 const emailLayout = require('./email-layout-core.js');
 
 admin.initializeApp();
@@ -6580,6 +6581,50 @@ function libraryPurchaseEmailContent({ firstName, productName, books }) {
   return { subject, text, html };
 }
 
+/**
+ * Email the owner that an order came in: what sold, who bought it, what they
+ * paid and where it ships.
+ *
+ * Orders landed in the store console and the buyer got a confirmation, but
+ * nothing told the owner, so a paperback could sit unshipped until somebody
+ * opened the console. Best-effort: the order is already stored, so a mail
+ * failure is logged and never fails the webhook (Stripe would retry and the
+ * stripeEvents guard would then skip the order). Needs `sendgridKey` on the
+ * calling function.
+ */
+async function sendOrderAlert({ session, itemName, needsShipping }) {
+  try {
+    if (!emailConfigured()) return false;
+    const details = session.customer_details || {};
+    const shipping = sessionShipping(session);
+    const content = shippingCore.orderAlertContent({
+      itemName,
+      buyerName: details.name || (shipping && shipping.name) || null,
+      buyerEmail: details.email || session.customer_email || null,
+      totalCents: session.amount_total || 0,
+      shippingCents: shippingCore.shippingPaidCents(session),
+      shipping,
+      needsShipping,
+      couponCode: (session.metadata && session.metadata.couponCode) || null,
+      consoleUrl: `${APP_BASE_URL}/manage-store.html`
+    });
+    await sendEmail({
+      to: NOTIFY_EMAIL,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      // Replying to the alert replies to the buyer.
+      replyTo: details.email || session.customer_email || REPLY_TO,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+      customArgs: { type: 'order_notification' }
+    });
+    return true;
+  } catch (e) {
+    console.warn('[sendOrderAlert] failed:', e && e.message);
+    return false;
+  }
+}
+
 // Never throws, like sendPurchaseEmail. Returns true when sent.
 async function sendLibraryPurchaseEmail(db, { email, uid, productName, bookIds }) {
   const to = normalizeEmail(email);
@@ -8202,7 +8247,8 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
           product_data: { name: product.name || 'One Percent Nation product' }
         }
       }],
-      ...(wantsShipping ? { shipping_address_collection: { allowed_countries: ['US'] } } : {}),
+      // Physical products ask for a US address and add flat shipping.
+      ...(wantsShipping ? shippingCore.checkoutShippingFields(product, 'payment') : {}),
       customer_email: (request.auth.token && request.auth.token.email) || undefined,
       client_reference_id: uid,
       metadata: prodMeta,
@@ -8405,11 +8451,19 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   // No allow_promotion_codes: coupons are validated in Firestore above and
   // priced into unit_amount, so per-item scoping and the active toggle are
   // actually enforced. Stripe-native promo codes would bypass both.
+  const checkoutMode = (isSubscription || plan) ? 'subscription' : 'payment';
+  const lineItems = [{ price_data: priceData, quantity: 1 }];
+  // Courses that ship the book ask for a US address inside Stripe Checkout
+  // and add flat shipping. A subscription can't take shipping_options, so it
+  // pays shipping as a one-time line on the first invoice.
+  if (fulfil.shipsBook && checkoutMode !== 'payment') {
+    const shipLine = shippingCore.shippingLineItem(course);
+    if (shipLine) lineItems.push(shipLine);
+  }
   const session = await stripe.checkout.sessions.create({
-    mode: (isSubscription || plan) ? 'subscription' : 'payment',
-    line_items: [{ price_data: priceData, quantity: 1 }],
-    // Courses that ship the book ask for a US address inside Stripe Checkout.
-    ...(fulfil.shipsBook ? { shipping_address_collection: { allowed_countries: ['US'] } } : {}),
+    mode: checkoutMode,
+    line_items: lineItems,
+    ...(fulfil.shipsBook ? shippingCore.checkoutShippingFields(course, checkoutMode) : {}),
     customer_email: (request.auth.token && request.auth.token.email) || undefined,
     client_reference_id: uid,
     metadata,
@@ -9280,6 +9334,13 @@ exports.stripeWebhook = onRequest(
           }, { merge: true });
           if (couponCode) await countCouponRedemption(db, couponCode);
 
+          // Tell the owner an order came in (and where it ships).
+          await sendOrderAlert({
+            session,
+            itemName: product.name || 'Store product',
+            needsShipping: !digitalOnly
+          });
+
           // Commission on product sales — the code + rate were validated and
           // locked into metadata by createCheckoutSession.
           const prodRefCode = session.metadata && session.metadata.refCode;
@@ -9289,7 +9350,8 @@ exports.stripeWebhook = onRequest(
             if (affSnap.exists) {
               const pct = Number(session.metadata.refPercent)
                 || (typeof affSnap.data().commissionPercent === 'number' ? affSnap.data().commissionPercent : 20);
-              const saleAmount = (session.amount_total || 0) / 100;
+              // Commission is on the item, not the postage.
+              const saleAmount = shippingCore.merchandiseDollars(session);
               const commission = Math.round(saleAmount * pct) / 100;
               await affRef.collection('referrals').doc(session.id).set({
                 productId,
@@ -9352,6 +9414,7 @@ exports.stripeWebhook = onRequest(
               status: sessionShipping(session) ? 'new' : 'needs-address',
               createdAt: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
+            await sendOrderAlert({ session, itemName: SHIPPED_BOOK_NAME, needsShipping: true });
           }
           // The confirmation: where the course is, that the book is in
           // their library, and (print bundle) that the paperback is coming.
@@ -9398,7 +9461,8 @@ exports.stripeWebhook = onRequest(
             if (affSnap.exists) {
               const pct = Number(session.metadata.refPercent) ||
                 (typeof affSnap.data().commissionPercent === 'number' ? affSnap.data().commissionPercent : 20);
-              const saleAmount = (session.amount_total || 0) / 100;
+              // Commission is on the course and book, not the postage.
+              const saleAmount = shippingCore.merchandiseDollars(session);
               const commission = Math.round(saleAmount * pct) / 100;
               await affRef.collection('referrals').doc(session.id).set({
                 courseSlug,
