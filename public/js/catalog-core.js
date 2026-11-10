@@ -55,6 +55,13 @@ const TYPE_LABELS = {
 
 function str(v) { return v == null ? '' : String(v); }
 
+// A page on this site ("/listen?book=x"), never another origin: the
+// product's own landing page, where its buttons send people.
+function localPath(v) {
+  const s = str(v).trim();
+  return /^\/(?![\/\\])/.test(s) ? s : null;
+}
+
 function base(kind, raw, { now }) {
   const p = priceInfo(raw, { now });
   return {
@@ -95,6 +102,10 @@ export function normalizeCourse(c, { now = Date.now() } = {}) {
     isBundle,
     bundleHref: c.bundleHref || null,
     externalUrl: null,
+    pageUrl: null,
+    pageCta: null,
+    pageNote: null,
+    grantsBooks: [],
     inventory: null,
     soldOut: false,
     interestCount: 0
@@ -119,10 +130,34 @@ export function normalizeProduct(p, { now = Date.now() } = {}) {
     isBundle: false,
     bundleHref: null,
     externalUrl: p.externalUrl || null,
+    // Its own page on this site (the audiobook's /listen page, with the free
+    // chapter); buttons go there instead of the generic /upcoming anchor.
+    pageUrl: localPath(p.pageUrl),
+    pageCta: str(p.pageCta).trim().slice(0, 40) || null,
+    pageNote: str(p.pageNote).trim().slice(0, 160) || null,
+    // Library books checkout puts on the buyer's shelf (an audiobook).
+    grantsBooks: Array.isArray(p.grantsBooks) ? p.grantsBooks.map(String) : [],
     inventory,
     soldOut: inventory != null && inventory <= 0,
-    interestCount: Number(p.interestCount || 0)
+    interestCount: Number(p.interestCount || 0),
+    shippingLabel: shippingLabel(p)
   };
+}
+
+// Flat US shipping on anything that goes in the mail. Mirrors
+// FLAT_SHIPPING_CENTS in functions/shipping-core.js, which is what checkout
+// actually charges; a product's `shippingCents` overrides both.
+export const FLAT_SHIPPING_CENTS = 599;
+
+/** "+ $5.99 shipping" for a product that ships, "Free shipping" at 0, else null. */
+export function shippingLabel(p) {
+  if (!p) return null;
+  const ships = p.requiresShipping === true
+    || (p.requiresShipping !== false && p.type === 'physical');
+  if (!ships) return null;
+  const v = p.shippingCents;
+  const cents = typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : FLAT_SHIPPING_CENTS;
+  return cents === 0 ? 'Free shipping' : `+ $${(cents / 100).toFixed(2)} shipping`;
 }
 
 /** Is this item on sale right now? A synonym for the normalised flag. */
@@ -159,6 +194,7 @@ export function visibleOn(item, channel) {
 export function hrefFor(item, channel, { enrolled = false } = {}) {
   if (!item) return '/';
   if (item.kind === 'product') {
+    if (item.pageUrl) return item.pageUrl;
     if (item.externalUrl) return item.externalUrl;
     return `/upcoming.html#p-${encodeURIComponent(item.id)}`;
   }
@@ -179,13 +215,27 @@ export function isExternal(href) {
  *   buy      — live and purchasable on-site (Stripe)
  *   external — live with an off-site link
  *   notify   — not open yet; join the waitlist
- *   view     — live but not purchasable here (e.g. a course from the site)
+ *   view     — live but not purchasable here (e.g. a course from the site),
+ *              or a product that sells on its own page (pageUrl)
  */
+/**
+ * The button on a product that sells on its own page. A paid product's
+ * button never says "free": next to the price, that reads as the price.
+ */
+export function pageCtaLabel({ pageCta, price } = {}) {
+  const paid = Number(price) > 0;
+  if (pageCta && !(paid && /free/i.test(pageCta))) return pageCta;
+  return paid ? 'Buy now' : 'See details';
+}
+
 export function ctaFor(item, { enrolled = false } = {}) {
   if (!item) return { kind: 'view', label: 'View' };
   if (item.kind === 'course' && enrolled) return { kind: 'open', label: 'Open course' };
   if (item.status === 'coming-soon') return { kind: 'notify', label: 'Notify me' };
   if (item.kind === 'product') {
+    // A product with its own page sells there (the audiobook page plays the
+    // free chapter first), so every surface sends people to it.
+    if (item.pageUrl && item.status !== 'coming-soon') return { kind: 'view', label: pageCtaLabel(item) };
     if (item.externalUrl) return { kind: 'external', label: item.status === 'preorder' ? 'Pre-order' : 'Get it' };
     if (item.soldOut) return { kind: 'soldout', label: 'Sold out' };
     if (item.sellable && item.price > 0) return { kind: 'buy', label: item.status === 'preorder' ? 'Pre-order' : 'Buy now' };

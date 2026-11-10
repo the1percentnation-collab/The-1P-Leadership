@@ -40,6 +40,16 @@ export function isOpenAccess(book) {
   return !!book && book.openAccess === true && book.status !== 'hidden';
 }
 
+// An audiobook: format 'audio' with one track per chapter. It plays in
+// /listen; everything else opens in the /read reader.
+export function isAudioBook(book) {
+  return !!book && book.format === 'audio';
+}
+
+export function bookHref(book) {
+  return `/${isAudioBook(book) ? 'listen' : 'read'}?book=${encodeURIComponent(book.id)}`;
+}
+
 export async function ownsBook(bookId) {
   const { ids, admin } = await libraryAccess();
   return admin || ids.includes(bookId);
@@ -98,6 +108,9 @@ export async function loadPosition(bookId) {
         remote = {
           cfi: d.cfi || null,
           fraction: typeof d.fraction === 'number' ? d.fraction : 0,
+          chapter: d.chapter || null,
+          track: Number.isInteger(d.track) ? d.track : null,
+          time: typeof d.time === 'number' ? d.time : null,
           bookmarks: Array.isArray(d.bookmarks) ? d.bookmarks : [],
           at: d.updatedAt && d.updatedAt.toMillis ? d.updatedAt.toMillis() : 0
         };
@@ -131,6 +144,9 @@ export function createPositionSaver(bookId) {
         fraction: Number(p.fraction) || 0,
         chapter: String(p.chapter || '').slice(0, 200),
         bookmarks: (p.bookmarks || []).slice(0, 200),
+        // Audiobooks: which chapter, and how many seconds into it.
+        ...(Number.isInteger(p.track) ? { track: p.track } : {}),
+        ...(typeof p.time === 'number' && isFinite(p.time) ? { time: Math.max(0, p.time) } : {}),
         updatedAt: serverTimestamp()
       }, { merge: true });
     } catch (e) {

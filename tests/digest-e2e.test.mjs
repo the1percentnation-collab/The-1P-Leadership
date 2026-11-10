@@ -34,6 +34,7 @@ function grab(name) {
 const constLine = (name) => new RegExp(`const ${name} = [^;]+;`).exec(src)[0];
 
 const sent = [];
+let failSends = false;
 // eslint-disable-next-line no-new-func
 const sendCommunityDigests = new Function('admin', 'crypto', 'process', 'sendEmail', 'emailConfigured', [
   ...['APP_BASE_URL', 'NOTIF_TRUNCATE', 'DIGEST_TIMEZONE', 'DIGEST_HOUR', 'DIGEST_LOOKBACK_MS', 'DIGEST_MAX_THREADS',
@@ -43,7 +44,10 @@ const sendCommunityDigests = new Function('admin', 'crypto', 'process', 'sendEma
     'sendCommunityDigests'].map(grab)
 ].join('\n') + '\nreturn sendCommunityDigests;')(
   admin, crypto, { env: { CRM_TICK_SECRET: 'e2e-secret' } },
-  async (msg) => { sent.push(msg); return { provider: 'stub', messageId: String(sent.length) }; },
+  async (msg) => {
+    if (failSends) throw new Error('Unauthorized');
+    sent.push(msg); return { provider: 'stub', messageId: String(sent.length) };
+  },
   () => true
 );
 
@@ -133,6 +137,22 @@ await t('the next evening lists only what is new since the last digest', async (
   assert(mail.length === 2, `reader got ${mail.length} digests`);
   assert(mail[1].subject === 'Dana posted in Wins' && mail[1].html.includes('Fresh win'), mail[1].subject);
   assert(!mail[1].html.includes('Closed the deal'), 'a thread was sent twice');
+});
+
+await t('a failed send gives the day back, and the retry still lists the same threads', async () => {
+  const day3 = new Date(EVENING.getTime() + 48 * 3600e3);
+  await db.doc('posts/day3').set(post({ text: 'Third day win', createdAt: admin.firestore.Timestamp.fromMillis(day3.getTime() - 3600e3) }));
+  const before = (await db.doc('users/reader').get()).data().communityDigest;
+  failSends = true;
+  const r = await sendCommunityDigests(db, { now: day3 });
+  failSends = false;
+  assert(r.failed > 0 && r.error === 'Unauthorized', JSON.stringify(r));
+  const after = (await db.doc('users/reader').get()).data().communityDigest;
+  assert(after.date === before.date && after.sentAt.toMillis() === before.sentAt.toMillis(), 'the failed send kept its claim');
+  const retry = await sendCommunityDigests(db, { now: new Date(day3.getTime() + 3600e3) });
+  assert(retry.sent > 0 && !retry.failed, JSON.stringify(retry));
+  const mail = to('reader@e2e.test');
+  assert(mail.length === 3 && mail[2].html.includes('Third day win'), `reader got ${mail.length} digests`);
 });
 
 const failed = results.filter((r) => r[0] === 'FAIL');

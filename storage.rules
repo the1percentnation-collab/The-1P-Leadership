@@ -64,9 +64,14 @@ service firebase.storage {
                   || (request.auth != null
                       && bookId in firestore.get(/databases/(default)/documents/users/$(request.auth.uid))
                            .data.get('ownedBookIds', []));
+      // Audiobook chapters (audio-01.mp3, ...) are far bigger than an EPUB,
+      // so they get their own ceiling and their own file names.
       allow write: if isCourseAdmin()
-                   && request.resource.size < 50 * 1024 * 1024
-                   && request.resource.contentType.matches('application/epub\\+zip|image/(jpeg|png|webp)');
+                   && ((request.resource.size < 50 * 1024 * 1024
+                        && request.resource.contentType.matches('application/epub\\+zip|image/(jpeg|png|webp)'))
+                       || (fileName.matches('audio-[0-9]{2,3}\\.(mp3|m4a|m4b|aac)')
+                           && request.resource.size < 300 * 1024 * 1024
+                           && request.resource.contentType.matches('audio/(mpeg|mp3|mp4|x-m4a|m4a|aac|x-m4b)')));
     }
 
     // companies/{cid}/voicemails/{fileName} — prerecorded voicemail greetings

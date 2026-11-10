@@ -235,6 +235,33 @@ ok('a product with an off-site link goes off-site, otherwise to its anchor', () 
   assert.strictEqual(isExternal('/upcoming.html#p-p1'), false);
 });
 
+ok('a product with its own page sends every button there, labelled by the product', () => {
+  const i = normalizeProduct(product({ sellable: true, pageUrl: '/listen?book=i-cant-audio', pageCta: 'Get the audiobook', grantsBooks: ['i-cant-audio'] }));
+  assert.strictEqual(hrefFor(i, 'site'), '/listen?book=i-cant-audio');
+  assert.strictEqual(hrefFor(i, 'dashboard'), '/listen?book=i-cant-audio');
+  assert.deepStrictEqual(ctaFor(i), { kind: 'view', label: 'Get the audiobook' });
+  assert.deepStrictEqual(i.grantsBooks, ['i-cant-audio']);
+  // Its own page wins over an off-site link; a missing label still reads well.
+  assert.strictEqual(hrefFor(normalizeProduct(product({ pageUrl: '/x', externalUrl: 'https://a.co' })), 'site'), '/x');
+  assert.strictEqual(ctaFor(normalizeProduct(product({ pageUrl: '/x' }))).label, 'Buy now');
+  assert.strictEqual(ctaFor(normalizeProduct(product({ pageUrl: '/x', price: 0 }))).label, 'See details');
+});
+
+ok('a paid product with a page never shows a "free" button', () => {
+  assert.strictEqual(ctaFor(normalizeProduct(product({ pageUrl: '/x', pageCta: 'Listen free' }))).label, 'Buy now');
+  assert.strictEqual(ctaFor(normalizeProduct(product({ pageUrl: '/x', pageCta: 'Listen free', price: 0 }))).label, 'Listen free');
+});
+
+ok('a product page must be on this site', () => {
+  for (const bad of ['https://evil.example/x', '//evil.example/x', '/\\evil.example', 'javascript:alert(1)', '']) {
+    assert.strictEqual(normalizeProduct(product({ pageUrl: bad })).pageUrl, null, bad);
+  }
+});
+
+ok('a coming-soon product with a page still offers the waitlist', () => {
+  assert.strictEqual(ctaFor(normalizeProduct(product({ status: 'interest', pageUrl: '/x' }))).kind, 'notify');
+});
+
 ok('a course goes to its sales page on the site and the library in the dashboard', () => {
   const i = normalizeCourse(course());
   assert.strictEqual(hrefFor(i, 'site'), '/course.html?course=c1');
@@ -307,6 +334,15 @@ ok('the store tabs slice the list as labelled', () => {
   assert.deepStrictEqual(filterByTab(items, 'live').map((i) => i.id), ['a', 'b', 'd']);
   assert.deepStrictEqual(filterByTab(items, 'coming-soon').map((i) => i.id), ['c']);
   assert.deepStrictEqual(filterByTab(items, 'on-sale').map((i) => i.id), ['d']);
+});
+
+ok('a product that ships shows its shipping next to the price', () => {
+  assert.strictEqual(normalizeProduct(product({ requiresShipping: true })).shippingLabel, '+ $5.99 shipping');
+  assert.strictEqual(normalizeProduct(product({ type: 'physical' })).shippingLabel, '+ $5.99 shipping');
+  assert.strictEqual(normalizeProduct(product({ requiresShipping: true, shippingCents: 0 })).shippingLabel, 'Free shipping');
+  assert.strictEqual(normalizeProduct(product({ requiresShipping: true, shippingCents: 799 })).shippingLabel, '+ $7.99 shipping');
+  assert.strictEqual(normalizeProduct(product({ type: 'physical', requiresShipping: false })).shippingLabel, null);
+  assert.strictEqual(normalizeProduct(product()).shippingLabel, null);
 });
 
 ok('display order is live first, then the owner\'s sort order', () => {

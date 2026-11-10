@@ -17,12 +17,13 @@ import {
   listInterests, notifyLaunch, uploadProductImage, escapeHtml, fmtMoney
 } from './products.js';
 import { priceInfo } from './pricing.js';
+import { listBooks } from './library-admin.js';
 import {
   launchDateMs, toDateInput, fmtLaunchDate, launchCountdown, hasLaunched
 } from './launch-date.js';
 
 const $ = (id) => document.getElementById(id);
-const state = { products: [] };
+const state = { products: [], books: [] };
 
 // Statuses that are "not open yet" and so carry a launch date.
 const PRELAUNCH = ['interest', 'preorder'];
@@ -232,6 +233,21 @@ function openModal(product) {
           </div>
 
           <div class="crm-form-row">
+            <label>Unlocks in My Library</label>
+            <select class="c-input crm-select" id="p-books">
+              <option value="">Nothing (a regular product)</option>
+              ${state.books.map((b) => `<option value="${escapeHtml(b.id)}" ${(p.grantsBooks || []).includes(b.id) ? 'selected' : ''}>${escapeHtml(b.title || b.id)}${b.format === 'audio' ? ' (audiobook)' : ''}${b.status === 'hidden' ? ' · hidden' : ''}</option>`).join('')}
+            </select>
+            <div class="crm-mini-sub" style="margin-top:6px;">For a digital book or audiobook. The buyer gets it on their shelf the moment they pay, an email with the link, and nothing ships. Leave “Collect a shipping address” off.</div>
+          </div>
+
+          <div class="crm-form-row">
+            <label>Product page on this site (optional)</label>
+            <input class="c-input" id="p-page" placeholder="/listen?book=i-cant-audio" value="${escapeHtml(p.pageUrl || '')}" />
+            <div class="crm-mini-sub" style="margin-top:6px;">Where the shop and Store buttons send people. Leave empty to use the standard buy button.</div>
+          </div>
+
+          <div class="crm-form-row">
             <label>Off-site link (optional)</label>
             <input class="c-input" id="p-external" placeholder="https://a.co/… — buys happen there instead of Stripe" value="${escapeHtml(p.externalUrl || '')}" />
           </div>
@@ -336,8 +352,18 @@ function openModal(product) {
       showInDashboard: $('p-dash').checked,
       externalUrl: $('p-external').value,
       videoUrl: $('p-video').value,
-      posterUrl: $('p-poster').value
+      posterUrl: $('p-poster').value,
+      grantsBooks: $('p-books').value ? [$('p-books').value] : [],
+      pageUrl: $('p-page').value
     };
+    if (data.pageUrl.trim() && !/^\/(?![\/\\])/.test(data.pageUrl.trim())) {
+      showErr('The product page must be a page on this site, starting with / (like /listen?book=i-cant-audio).');
+      return;
+    }
+    if (data.grantsBooks.length && data.requiresShipping) {
+      showErr('A product that unlocks a library book is digital. Turn off “Collect a shipping address”.');
+      return;
+    }
     try {
       if (editing) await updateProduct(p.id, data); else await createProduct(data);
       close(); await reload();
@@ -348,7 +374,12 @@ function openModal(product) {
 }
 
 async function reload() {
-  state.products = await listAllProducts();
+  const [products, books] = await Promise.all([
+    listAllProducts(),
+    listBooks().catch(() => [])
+  ]);
+  state.products = products;
+  state.books = books;
   render();
 }
 

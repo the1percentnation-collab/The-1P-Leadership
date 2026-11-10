@@ -43,6 +43,19 @@ ok('/myteam, said from stage, opens the Team Alignment Assessment tagged as a ke
   for (const u of ['/myteams', '/team', '/x/myteam']) assert.strictEqual(target(u), null, u);
 });
 
+ok('/icantaudio opens the I Can\'t audiobook in the listener', () => {
+  for (const u of ['/icantaudio', '/icantaudio/', '/ICantAudio', '/IcantAudio/']) {
+    assert.strictEqual(target(u), '/listen?book=i-cant-audio', u);
+  }
+  for (const u of ['/icantaudiox', '/icant-audio', '/x/icantaudio']) assert.strictEqual(target(u), null, u);
+});
+
+ok('the audiobook stream and feed are routed to their functions', () => {
+  const fn = (src) => ((hosting.rewrites || []).find((r) => r.source === src) || {}).function;
+  assert.strictEqual((fn('/api/book-audio') || {}).functionId, 'bookAudio');
+  assert.strictEqual((fn('/api/audio-feed') || {}).functionId, 'audioFeed');
+});
+
 ok('every redirect pattern compiles as the emulator compiles it', () => {
   for (const r of hosting.redirects || []) if (r.regex) toJs(r.regex);
 });

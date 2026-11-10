@@ -31,3 +31,5 @@ tests/firestore-debug.log
 
 # Emulator-only secrets written by tests/purchase-e2e.test.mjs
 functions/.secret.local
+
+__pycache__/

@@ -1,7 +1,8 @@
 # The CRM's clock.
 #
 # Everything time-based in this project — sequence steps, Google Calendar watch
-# renewal, task and appointment reminders, launch-date promotion — runs from
+# renewal, task and appointment reminders, launch-date promotion, approved
+# campaigns whose send time has arrived — runs from
 # the runAutomationTick function, and this workflow is what calls it.
 #
 # A real scheduled function was tried and does not deploy here: backend run #90

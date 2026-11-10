@@ -197,19 +197,22 @@ service cloud.firestore {
         allow read, write: if isOwner() || isSelf(uid);
       }
 
-      // users/{uid}/bookProgress/{bookId} — where the reader left off, so a
-      // book opened on the phone resumes where the laptop stopped. Private to
+      // users/{uid}/bookProgress/{bookId} — where the reader (or listener)
+      // left off, so a book opened on the phone resumes where the laptop stopped. Private to
       // the reader. Shape-checked so the doc stays a small position record.
       match /bookProgress/{bookId} {
         allow read, delete: if isOwner() || isSelf(uid);
         allow create, update: if (isOwner() || isSelf(uid))
           && request.resource.data.keys().hasOnly(
-               ['cfi', 'fraction', 'chapter', 'bookmarks', 'updatedAt', 'finishedAt'])
+               ['cfi', 'fraction', 'chapter', 'bookmarks', 'updatedAt', 'finishedAt', 'track', 'time'])
           && request.resource.data.get('cfi', '') is string
           && request.resource.data.get('cfi', '').size() < 2000
           && request.resource.data.get('fraction', 0) is number
           && request.resource.data.get('bookmarks', []) is list
-          && request.resource.data.get('bookmarks', []).size() <= 200;
+          && request.resource.data.get('bookmarks', []).size() <= 200
+          // An audiobook keeps its place as a chapter index and seconds in.
+          && request.resource.data.get('track', 0) is int
+          && request.resource.data.get('time', 0) is number;
       }
 
       // users/{uid}/capstone — the recorded-session submission for
@@ -668,9 +671,19 @@ service cloud.firestore {
       // ──────────────────────────────────────────────────────────────
       // Campaigns (Phase 3): email broadcasts + per-event telemetry.
       // ──────────────────────────────────────────────────────────────
+      // Clients write drafts and review decisions (draft, approved, rejected).
+      // 'sending', 'sent' and 'failed' are set only by the send on the Admin
+      // SDK, and a campaign in one of them is frozen: a stale tab cannot turn
+      // a sent campaign back into 'approved', where the tick would send it
+      // again.
       match /campaigns/{campaignId} {
         allow read: if isOwner() || isCompanyAdmin(cid);
-        allow create, update, delete: if isOwner() || isCompanyAdmin(cid);
+        allow create: if (isOwner() || isCompanyAdmin(cid))
+                       && request.resource.data.get('status', 'draft') in ['draft', 'approved'];
+        allow update: if (isOwner() || isCompanyAdmin(cid))
+                       && resource.data.get('status', 'draft') in ['draft', 'approved', 'ready', 'rejected']
+                       && request.resource.data.get('status', 'draft') in ['draft', 'approved', 'ready', 'rejected'];
+        allow delete: if isOwner() || isCompanyAdmin(cid);
 
         // Events subcollection — written by the webhook via Admin SDK (bypasses rules).
         // Clients get read access only.
@@ -1302,9 +1315,27 @@ service cloud.firestore {
     // (certification thresholds, lead routing) stays admin-only.
     match /config/{docId} {
       // config/membership (included courses, founding count) is public so
-      // the membership page can show it, and server-written only.
-      allow read: if docId == 'booking' || docId == 'membership' || isAnyAdmin();
+      // the membership page can show it, and server-written only. config/arc
+      // is public so /arc can say it is closed before anyone signs up.
+      allow read: if docId == 'booking' || docId == 'membership' || docId == 'arc' || isAnyAdmin();
       allow write: if isAnyAdmin() && docId != 'membership';
+    }
+
+    // ARC readers who claimed an advance copy on /arc. Written only by the
+    // claimArcCopy Cloud Function (Admin SDK); admins read the list in
+    // /manage-library.html and mark a review as in. A reader can read their
+    // own record, which puts their name on every page of the copy (/read).
+    match /arcReaders/{uid} {
+      allow read: if isAnyAdmin() || (isSignedIn() && request.auth.uid == uid);
+      allow update: if isAnyAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reviewedAt']);
+      allow create, delete: if false;
+    }
+
+    // ARC sign-up forms waiting for their email link to be opened. Written
+    // and read only by requestArcLink / claimArcCopy (Admin SDK).
+    match /arcRequests/{id} {
+      allow read, write: if false;
     }
 
     // ────────────────────────────────────────────────────────────────

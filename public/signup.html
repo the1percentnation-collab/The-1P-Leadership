@@ -48,7 +48,7 @@
       </form>
 
       <div class="auth-footer">
-        <a href="/login.html">I already have an account</a>
+        <a href="/login.html" id="link-login">I already have an account</a>
       </div>
       <div class="auth-back">
         <a class="back-to-main" href="https://the1pnation.com">← Back to Main Site</a>
@@ -66,6 +66,11 @@
     function onboardingUrl() {
       const n = new URLSearchParams(location.search).get('next');
       return n && n.startsWith('/') && !n.startsWith('//') ? '/onboarding?next=' + encodeURIComponent(n) : '/onboarding';
+    }
+    // "I already have an account" keeps the same destination.
+    {
+      const n = new URLSearchParams(location.search).get('next');
+      if (n && n.startsWith('/') && !n.startsWith('//')) $('link-login').href = '/login.html?next=' + encodeURIComponent(n);
     }
     const msg = $('auth-msg');
     function showErr(txt) { msg.innerHTML = `<div class="auth-error">${txt}</div>`; }

@@ -30,6 +30,14 @@ ok('every assessment passes validation', () => {
   assert.deepStrictEqual(errs, []);
 });
 
+ok('the Alignment Assessment scores the six areas the audit scorecard rates', () => {
+  // scorecard-core.js takes its areas from team-alignment, so a result can
+  // be read straight onto the one-page scorecard.
+  const keys = (slug) => getAssessment(slug).dimensions.map((d) => [d.key, d.label]);
+  assert.deepStrictEqual(keys('alignment-assessment'), keys('team-alignment'));
+  assert.strictEqual(getAssessment('alignment-assessment').cta.href, '/book-a-call');
+});
+
 ok('slugs are unique and every data file is registered', () => {
   const slugs = ASSESSMENTS.map((a) => a.slug);
   assert.strictEqual(new Set(slugs).size, slugs.length);

@@ -42,6 +42,9 @@ const { computeFocusTax, WORK_WEEKS: FOCUS_TAX_WEEKS } = require('./focus-tax.js
 const { careerTags } = require('./careers.js');
 const handSales = require('./hand-sales-core.js');
 const messenger = require('./messenger.js');
+const audioCore = require('./audio-core.js');
+const shippingCore = require('./shipping-core.js');
+const emailLayout = require('./email-layout-core.js');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
@@ -86,8 +89,9 @@ const CRM_FROM_NAME = 'Anthony Brown';
 
 /**
  * The subdomain whose MX points at SendGrid Inbound Parse. Outbound CRM email
- * carries Reply-To: reply+<companyId>.<contactId>@<this domain>, which is what
- * makes an inbound reply land on the right contact card with no guessing.
+ * sent through SendGrid carries Reply-To: reply+<companyId>.<contactId>@<this
+ * domain>, which is what makes an inbound reply land on the right contact
+ * card with no guessing.
  *
  * It MUST be a subdomain, never the1pnation.com itself — repointing the root
  * MX would take the real mailbox offline.
@@ -96,8 +100,17 @@ function inboundEmailDomain() {
   return (process.env.INBOUND_EMAIL_DOMAIN || '').trim().toLowerCase().replace(/^@/, '');
 }
 
-/** The per-contact Reply-To, or null when inbound parse is not configured. */
+/**
+ * The per-contact Reply-To, or null to use the company's Reply-To setting.
+ *
+ * Only SendGrid Inbound Parse accepts reply+<token> addresses. Telnyx inboxes
+ * are fixed addresses (no "+"), so on Telnyx this is null: replies go to the
+ * Reply-To in CRM Settings > Email, which is the real mailbox until it is
+ * pointed at a Telnyx inbox, and telnyxEmailEventWebhook matches the reply to
+ * a contact by sender instead.
+ */
 function replyAddressFor(companyId, contactId) {
+  if (emailProvider() !== 'sendgrid') return null;
   const domain = inboundEmailDomain();
   if (!domain || !companyId || !contactId) return null;
   return `reply+${companyId}.${contactId}@${domain}`;
@@ -302,11 +315,12 @@ async function sendTelnyxSms({ to, body }) {
 //
 // Every email in this file goes through sendEmail() or sendEmailBatch(). The
 // provider behind them is chosen by EMAIL_PROVIDER at call time, so moving
-// from SendGrid to Telnyx is an environment change, not a code change, and
-// rolling back is the same switch in the other direction.
+// between SendGrid and Telnyx is an environment change, not a code change.
+// Telnyx is the default since SendGrid moved to a paid-only plan (Oct 2026);
+// setting EMAIL_PROVIDER=sendgrid is the rollback.
 //
-//   EMAIL_PROVIDER=sendgrid   (default) — @sendgrid/mail, SENDGRID_API_KEY
-//   EMAIL_PROVIDER=telnyx               — REST, TELNYX_API_KEY
+//   EMAIL_PROVIDER=telnyx     (default) — REST, TELNYX_API_KEY
+//   EMAIL_PROVIDER=sendgrid             — @sendgrid/mail, SENDGRID_API_KEY
 //
 // The message shape is the SendGrid one the call sites already wrote, because
 // changing 20-odd call sites and the wire format in the same step would make
@@ -323,8 +337,8 @@ async function sendTelnyxSms({ to, body }) {
 const EMAIL_PROVIDERS = ['sendgrid', 'telnyx'];
 
 function emailProvider() {
-  const p = (process.env.EMAIL_PROVIDER || 'sendgrid').trim().toLowerCase();
-  return EMAIL_PROVIDERS.includes(p) ? p : 'sendgrid';
+  const p = (process.env.EMAIL_PROVIDER || 'telnyx').trim().toLowerCase();
+  return EMAIL_PROVIDERS.includes(p) ? p : 'telnyx';
 }
 
 /**
@@ -359,6 +373,33 @@ function emailAddrOnly(a) {
 function emailAddrList(v) {
   if (!v) return [];
   return (Array.isArray(v) ? v : [v]).map(emailAddrString).filter(Boolean);
+}
+
+/**
+ * An address as Telnyx takes it: { email, name? }. Telnyx rejects the
+ * "Name <addr>" string form with 422 "from_email has invalid format", so a
+ * display name always travels as its own field. Accepts a bare address, a
+ * "Name <addr>" string or { email, name }.
+ */
+function telnyxAddr(a) {
+  if (!a) return null;
+  let email;
+  let name;
+  if (typeof a === 'string') {
+    const m = a.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+    email = (m ? m[2] : a).trim();
+    name = m ? m[1].replace(/^["']|["']$/g, '').trim() : '';
+  } else {
+    email = String(a.email || '').trim();
+    name = String(a.name || '').trim();
+  }
+  if (!email) return null;
+  return name ? { email, name } : { email };
+}
+
+function telnyxAddrList(v) {
+  if (!v) return [];
+  return (Array.isArray(v) ? v : [v]).map(telnyxAddr).filter(Boolean);
 }
 
 /**
@@ -400,15 +441,15 @@ async function sendEmailViaSendGrid(msg) {
 
 function telnyxEmailBody(msg) {
   const body = {
-    from: emailAddrString(msg.from),
-    to: emailAddrList(msg.to),
+    from: telnyxAddr(msg.from),
+    to: telnyxAddrList(msg.to),
     subject: msg.subject || ''
   };
   if (msg.text) body.text_body = msg.text;
   if (msg.html) body.html_body = msg.html;
   if (msg.replyTo) body.reply_to = emailAddrOnly(msg.replyTo);
-  if (msg.cc) body.cc = emailAddrList(msg.cc);
-  if (msg.bcc) body.bcc = emailAddrList(msg.bcc);
+  if (msg.cc) body.cc = telnyxAddrList(msg.cc);
+  if (msg.bcc) body.bcc = telnyxAddrList(msg.bcc);
   if (msg.headers && Object.keys(msg.headers).length) body.headers = msg.headers;
   if (msg.customArgs && Object.keys(msg.customArgs).length) {
     body.metadata = msg.customArgs;
@@ -1759,12 +1800,11 @@ exports.sendContactEmail = onCall(
 
     const identity = await getCompanyEmailIdentity(db, companyId);
 
-    let finalText = bodyText || htmlToText(bodyHtml);
-    let finalHtml = bodyHtml || textToHtml(bodyText);
-    if (identity.signature) {
-      finalText = `${finalText}\n\n--\n${identity.signature}`;
-      finalHtml = `${finalHtml}<br/><br/>--<br/>${textToHtml(identity.signature)}`;
-    }
+    // Every 1-on-1 email signs off with the photo signature campaigns use.
+    // The lines come from CRM Settings > Email; left blank, the default.
+    const signature = identity.signature.trim() || emailLayout.DEFAULT_SIGNATURE;
+    const finalText = `${bodyText || htmlToText(bodyHtml)}\n\n--\n${emailLayout.signaturePlainText(signature)}`;
+    const finalHtml = `${bodyHtml || textToHtml(bodyText)}${emailLayout.signatureBlockHtml(signature)}`;
 
     // The thread this message belongs to. A brand-new send opens a thread
     // named after the email doc that starts it.
@@ -1995,6 +2035,153 @@ function stripQuotedReply(text) {
   return trimmed || s.trim();
 }
 
+/**
+ * Put one inbound email on the right contact card. Shared by both providers'
+ * webhooks, which only differ in how they hand the message over.
+ *
+ *   msg = { from: {name, email}, subject, text, html, recipients: [raw],
+ *           messageId, inReplyTo, spamScore, spf, dkim, dedupeId }
+ *
+ * `dedupeId` (the provider's id for the message) makes a retried webhook a
+ * no-op instead of a second copy of the reply. Returns null when the message
+ * has no usable sender or there is no company to put it on.
+ */
+async function recordInboundEmail(db, msg) {
+  const FV = admin.firestore.FieldValue;
+  const from = msg.from || {};
+  if (!from.email) return null;
+  const subject = String(msg.subject || '(no subject)').slice(0, 300);
+  const textRaw = String(msg.text || '') || htmlToText(String(msg.html || ''));
+  const bodyText = stripQuotedReply(textRaw).slice(0, 20000);
+  const recipients = msg.recipients || [];
+  const messageId = msg.messageId || null;
+  const inReplyTo = msg.inReplyTo || null;
+
+  // 1) Routing token wins: it names the contact outright.
+  let companyId = null;
+  let contactRef = null;
+  const routed = parseReplyRouting(recipients);
+  if (routed) {
+    const ref = db.collection('companies').doc(routed.companyId)
+      .collection('contacts').doc(routed.contactId);
+    const snap = await ref.get();
+    if (snap.exists) { companyId = routed.companyId; contactRef = ref; }
+  }
+
+  // 2) Otherwise match the sender against the contacts of the academy
+  // company — a lead who emails in cold, or replies from their phone's
+  // other address, still reaches a card.
+  if (!contactRef) {
+    companyId = await resolveAcademyCompanyId(db);
+    if (!companyId) return null;
+    const contactsRef = db.collection('companies').doc(companyId).collection('contacts');
+    const q = await contactsRef.where('email', '==', from.email).limit(1).get();
+    if (!q.empty) {
+      contactRef = q.docs[0].ref;
+    } else {
+      const created = await contactsRef.add({
+        name: from.name || from.email, email: from.email, phone: null, companyName: null,
+        source: 'Email', stage: 'new', tags: [], ownerUid: null,
+        createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp(),
+        createdBy: 'inbound-email', lastActivityAt: FV.serverTimestamp()
+      });
+      contactRef = created;
+      await contactRef.collection('activities').add({
+        type: 'contact_created', description: 'Created from an inbound email.',
+        actorUid: 'inbound-email', actorName: from.email, createdAt: FV.serverTimestamp()
+      });
+    }
+  }
+
+  const emailRef = msg.dedupeId
+    ? contactRef.collection('emails').doc('in_' + crypto.createHash('sha256').update(String(msg.dedupeId)).digest('hex').slice(0, 32))
+    : contactRef.collection('emails').doc();
+
+  // Thread it onto the message it answers: the newest recent email with the
+  // same subject or the Message-ID it replies to. Not just the latest one, so
+  // a reply to last week's email still joins that conversation after newer
+  // sends went out. Otherwise it opens its own thread.
+  let threadKey = emailRef.id;
+  try {
+    const bare = (x) => String(x || '').replace(/^((re|fwd?):\s*)+/i, '').trim().toLowerCase();
+    const recent = await contactRef.collection('emails')
+      .orderBy('createdAt', 'desc').limit(20).get();
+    const match = recent.docs.map((d) => d.data()).find((prev) => prev.threadKey && (
+      bare(prev.subject) === bare(subject)
+      || (inReplyTo && prev.messageId && inReplyTo.includes(prev.messageId))));
+    if (match) threadKey = match.threadKey;
+  } catch (e) { /* an unthreaded message is still a delivered message */ }
+
+  try {
+    await emailRef.create({
+      direction: 'in',
+      threadKey,
+      subject,
+      bodyText,
+      // Stored for the record but never injected into the page: the
+      // timeline renders bodyText escaped, so untrusted remote HTML has no
+      // path to the DOM.
+      bodyHtml: String(msg.html || '').slice(0, 100000) || null,
+      snippet: bodyText.slice(0, 200),
+      fromEmail: from.email,
+      fromName: from.name || null,
+      toEmail: (parseAddress(recipients[0]) || {}).email || null,
+      messageId,
+      inReplyTo,
+      spamScore: msg.spamScore != null && msg.spamScore !== '' ? Number(msg.spamScore) : null,
+      spf: msg.spf || null,
+      dkim: msg.dkim || null,
+      status: 'received',
+      read: false,
+      createdAt: FV.serverTimestamp()
+    });
+  } catch (e) {
+    // ALREADY_EXISTS: the provider retried a message we already recorded.
+    if (e && (e.code === 6 || /already exists/i.test(e.message || ''))) {
+      return { companyId, contactId: contactRef.id, emailId: emailRef.id, duplicate: true };
+    }
+    throw e;
+  }
+
+  await contactRef.collection('activities').add({
+    type: 'email_received',
+    description: subject,
+    actorUid: 'inbound-email',
+    actorName: from.name || from.email,
+    createdAt: FV.serverTimestamp(),
+    meta: { subject, bodyPreview: bodyText.slice(0, 200), emailId: emailRef.id, threadKey }
+  });
+
+  await contactRef.set({
+    lastActivityAt: FV.serverTimestamp(),
+    lastEmailAt: FV.serverTimestamp(),
+    ...lastContactedFields('email', 'in'),
+    emailUnreadCount: FV.increment(1)
+  }, { merge: true });
+
+  // A reply is the lead engaging. Same rule as an inbound text: no
+  // automated cadence should keep firing over a live conversation.
+  try { await stopEnrollmentsForContact(db, companyId, contactRef.id, 'replied by email'); } catch (e) {}
+
+  // Optional courtesy copy, so the CRM is not the only place the reply
+  // exists and the mailbox owner still sees it on their phone.
+  try {
+    const identity = await getCompanyEmailIdentity(db, companyId);
+    if (identity.forwardInboundTo) {
+      await sendEmail({
+        to: identity.forwardInboundTo,
+        from: { email: identity.fromEmail, name: identity.fromName },
+        replyTo: from.email,
+        subject: `[CRM] ${subject}`,
+        text: `From: ${from.name ? from.name + ' ' : ''}<${from.email}>\n`
+          + `Contact: ${APP_BASE_URL}/contact.html?id=${contactRef.id}&compose=email\n\n${bodyText}`
+      });
+    }
+  } catch (e) { console.warn('[inboundEmail] forward failed:', e && e.message); }
+
+  return { companyId, contactId: contactRef.id, emailId: emailRef.id, duplicate: false };
+}
+
 exports.inboundEmailWebhook = onRequest(
   { cors: false, invoker: 'public', secrets: [sendgridKey] },
   async (req, res) => {
@@ -2016,20 +2203,11 @@ exports.inboundEmailWebhook = onRequest(
     }
     if (req.method !== 'POST') { res.status(405).send('method not allowed'); return; }
 
-    const db = admin.firestore();
-    const FV = admin.firestore.FieldValue;
-
     try {
       const ct = req.get('content-type') || '';
       const fields = ct.includes('multipart/form-data')
         ? parseMultipartFields(req.rawBody ? Buffer.from(req.rawBody) : null, ct)
         : (req.body || {});
-
-      const from = parseAddress(fields.from);
-      const subject = String(fields.subject || '(no subject)').slice(0, 300);
-      const textRaw = String(fields.text || '') || htmlToText(String(fields.html || ''));
-      const bodyText = stripQuotedReply(textRaw).slice(0, 20000);
-      if (!from.email) { res.status(200).send('ok'); return; }
 
       // Every address the message was addressed to, so the reply+ routing
       // token is found wherever the lead's client put it.
@@ -2045,120 +2223,19 @@ exports.inboundEmailWebhook = onRequest(
       const headerBlob = String(fields.headers || '');
       const midMatch = /^Message-ID:\s*(<[^>]+>)/im.exec(headerBlob);
       const irtMatch = /^In-Reply-To:\s*(<[^>]+>)/im.exec(headerBlob);
-      const messageId = midMatch ? midMatch[1] : null;
-      const inReplyTo = irtMatch ? irtMatch[1] : null;
 
-      // 1) Routing token wins: it names the contact outright.
-      let companyId = null;
-      let contactRef = null;
-      const routed = parseReplyRouting(recipients);
-      if (routed) {
-        const ref = db.collection('companies').doc(routed.companyId)
-          .collection('contacts').doc(routed.contactId);
-        const snap = await ref.get();
-        if (snap.exists) { companyId = routed.companyId; contactRef = ref; }
-      }
-
-      // 2) Otherwise match the sender against the contacts of the academy
-      // company — a lead who emails in cold, or replies from their phone's
-      // other address, still reaches a card.
-      if (!contactRef) {
-        companyId = await resolveAcademyCompanyId(db);
-        if (!companyId) { res.status(200).send('ok'); return; }
-        const contactsRef = db.collection('companies').doc(companyId).collection('contacts');
-        const q = await contactsRef.where('email', '==', from.email).limit(1).get();
-        if (!q.empty) {
-          contactRef = q.docs[0].ref;
-        } else {
-          const created = await contactsRef.add({
-            name: from.name || from.email, email: from.email, phone: null, companyName: null,
-            source: 'Email', stage: 'new', tags: [], ownerUid: null,
-            createdAt: FV.serverTimestamp(), updatedAt: FV.serverTimestamp(),
-            createdBy: 'inbound-email', lastActivityAt: FV.serverTimestamp()
-          });
-          contactRef = created;
-          await contactRef.collection('activities').add({
-            type: 'contact_created', description: 'Created from an inbound email.',
-            actorUid: 'inbound-email', actorName: from.email, createdAt: FV.serverTimestamp()
-          });
-        }
-      }
-
-      // Thread it onto the most recent outbound message to this contact when
-      // the lead is replying to something we sent; otherwise it opens its own.
-      const emailRef = contactRef.collection('emails').doc();
-      let threadKey = emailRef.id;
-      try {
-        const recent = await contactRef.collection('emails')
-          .orderBy('createdAt', 'desc').limit(1).get();
-        if (!recent.empty) {
-          const prev = recent.docs[0].data();
-          const sameSubject = String(prev.subject || '').replace(/^(re|fwd):\s*/i, '').trim().toLowerCase()
-            === subject.replace(/^(re|fwd):\s*/i, '').trim().toLowerCase();
-          if (prev.threadKey && (sameSubject || (inReplyTo && prev.messageId && inReplyTo.includes(prev.messageId)))) {
-            threadKey = prev.threadKey;
-          }
-        }
-      } catch (e) { /* an unthreaded message is still a delivered message */ }
-
-      await emailRef.set({
-        direction: 'in',
-        threadKey,
-        subject,
-        bodyText,
-        // Stored for the record but never injected into the page: the
-        // timeline renders bodyText escaped, so untrusted remote HTML has no
-        // path to the DOM.
-        bodyHtml: String(fields.html || '').slice(0, 100000) || null,
-        snippet: bodyText.slice(0, 200),
-        fromEmail: from.email,
-        fromName: from.name,
-        toEmail: (parseAddress(recipients[0]) || {}).email || null,
-        messageId,
-        inReplyTo,
-        spamScore: fields.spam_score ? Number(fields.spam_score) : null,
-        spf: fields.SPF || null,
-        dkim: fields.dkim || null,
-        status: 'received',
-        read: false,
-        createdAt: FV.serverTimestamp()
+      await recordInboundEmail(admin.firestore(), {
+        from: parseAddress(fields.from),
+        subject: fields.subject,
+        text: fields.text,
+        html: fields.html,
+        recipients,
+        messageId: midMatch ? midMatch[1] : null,
+        inReplyTo: irtMatch ? irtMatch[1] : null,
+        spamScore: fields.spam_score,
+        spf: fields.SPF,
+        dkim: fields.dkim
       });
-
-      await contactRef.collection('activities').add({
-        type: 'email_received',
-        description: subject,
-        actorUid: 'inbound-email',
-        actorName: from.name || from.email,
-        createdAt: FV.serverTimestamp(),
-        meta: { subject, bodyPreview: bodyText.slice(0, 200), emailId: emailRef.id, threadKey }
-      });
-
-      await contactRef.set({
-        lastActivityAt: FV.serverTimestamp(),
-        lastEmailAt: FV.serverTimestamp(),
-        ...lastContactedFields('email', 'in'),
-        emailUnreadCount: FV.increment(1)
-      }, { merge: true });
-
-      // A reply is the lead engaging. Same rule as an inbound text: no
-      // automated cadence should keep firing over a live conversation.
-      try { await stopEnrollmentsForContact(db, companyId, contactRef.id, 'replied by email'); } catch (e) {}
-
-      // Optional courtesy copy, so the CRM is not the only place the reply
-      // exists and the mailbox owner still sees it on their phone.
-      try {
-        const identity = await getCompanyEmailIdentity(db, companyId);
-        if (identity.forwardInboundTo) {
-          await sendEmail({
-            to: identity.forwardInboundTo,
-            from: { email: identity.fromEmail, name: identity.fromName },
-            replyTo: from.email,
-            subject: `[CRM] ${subject}`,
-            text: `From: ${from.name ? from.name + ' ' : ''}<${from.email}>\n`
-              + `Contact: ${APP_BASE_URL}/contact.html?id=${contactRef.id}&compose=email\n\n${bodyText}`
-          });
-        }
-      } catch (e) { console.warn('[inboundEmail] forward failed:', e && e.message); }
     } catch (e) {
       // Never 5xx: the parse webhook retries hard, and a retry storm on a bug
       // would replay the same message onto the card dozens of times.
@@ -2264,7 +2341,42 @@ function isEmailSuppressed(c) {
 // sendCampaign — callable
 // ────────────────────────────────────────────────────────────────
 
+// filter.excludeEnrolledIn (a course slug) drops anyone whose account is
+// already enrolled in that course, matched by email. It lets a "join before
+// the deadline" campaign skip the people who already joined.
+// filter.excludeOwnersOf (a book id) does the same for anyone whose library
+// already holds that book, so a launch email never pitches it to a buyer.
 async function buildRecipients(db, companyId, filter) {
+  const recipients = await collectRecipients(db, companyId, filter);
+  const skip = new Set();
+  const addSkips = async (field, value) => {
+    const v = String(value || '').trim();
+    if (!v) return;
+    const snap = await db.collection('users').where(field, 'array-contains', v).get();
+    snap.docs.forEach((d) => { const e = normalizeEmail((d.data() || {}).email); if (e) skip.add(e); });
+  };
+  await addSkips('enrolledCourseSlugs', filter && filter.excludeEnrolledIn);
+  await addSkips('ownedBookIds', filter && filter.excludeOwnersOf);
+  if (!skip.size) return recipients;
+  return recipients.filter((r) => !skip.has(r.email));
+}
+
+// The renderer options for a campaign with layout 'branded'. A signature left
+// unset falls back to the default; an empty string means none.
+function campaignLayoutOptions(campaign) {
+  const c = campaign || {};
+  return {
+    bodyText: String(c.bodyText || ''),
+    subject: String(c.subject || ''),
+    preheader: String(c.preheader || ''),
+    heroImageUrl: String(c.heroImageUrl || ''),
+    heroAlt: String(c.heroAlt || ''),
+    heroLink: String(c.heroLink || ''),
+    signature: c.signature == null ? undefined : String(c.signature)
+  };
+}
+
+async function collectRecipients(db, companyId, filter) {
   const mode = (filter && filter.mode) || 'all_contacts';
   const seen = new Set();
   const recipients = []; // { email, name?, firstName?, contactId?, unsubToken? }
@@ -2337,6 +2449,16 @@ async function buildRecipients(db, companyId, filter) {
   return recipients;
 }
 
+// A campaign sends only once an admin has approved it in /campaigns.html.
+// 'ready' is what the compose modal wrote before approvals existed; it is
+// still accepted so a send that failed under the old flow can be retried.
+const CAMPAIGN_SENDABLE = ['approved', 'ready'];
+
+// The tick does not send a scheduled campaign whose sendAt is further in the
+// past than this. A "last day" email arriving two days late is worse than
+// none, so it stays approved and the page offers Send now or a new date.
+const CAMPAIGN_SEND_GRACE_MS = 24 * 60 * 60 * 1000;
+
 exports.sendCampaign = onCall(
   { secrets: [sendgridKey], timeoutSeconds: 540 },
   async (request) => {
@@ -2351,29 +2473,58 @@ exports.sendCampaign = onCall(
     // Throttle broadcast sends: 10 campaign dispatches per admin per hour.
     await rateLimitCaller(db, request, { action: 'sendCampaign', max: 10, windowSec: 3600 });
 
+    return dispatchCampaign(db, companyId, campaignId, { sentVia: 'manual', sentBy: request.auth.uid });
+  }
+);
+
+/**
+ * Sends one approved campaign to its recipients. Shared by the sendCampaign
+ * callable (Send now) and the tick (scheduled sends, sendDueCampaigns).
+ *
+ * The flip to 'sending' happens in a transaction that re-reads the status,
+ * so the button and the tick can never both send the same campaign.
+ */
+async function dispatchCampaign(db, companyId, campaignId, { sentVia = 'manual', sentBy = null } = {}) {
     const campaignRef = db.collection('companies').doc(companyId).collection('campaigns').doc(campaignId);
-    const campaignSnap = await campaignRef.get();
-    if (!campaignSnap.exists) throw new HttpsError('not-found', 'Campaign not found.');
-    const campaign = campaignSnap.data();
-    const status = campaign.status || 'draft';
-    if (!['draft', 'ready'].includes(status)) {
-      throw new HttpsError('failed-precondition', `Cannot send a campaign with status "${status}".`);
-    }
+    const campaign = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(campaignRef);
+      if (!snap.exists) throw new HttpsError('not-found', 'Campaign not found.');
+      const c = snap.data() || {};
+      const status = c.status || 'draft';
+      if (!CAMPAIGN_SENDABLE.includes(status)) {
+        const hint = status === 'draft' ? ' Approve it first.' : '';
+        throw new HttpsError('failed-precondition', `Cannot send a campaign with status "${status}".${hint}`);
+      }
+      if (!(c.subject || '').toString().trim()) throw new HttpsError('invalid-argument', 'Campaign has no subject.');
+      tx.update(campaignRef, {
+        status: 'sending',
+        sentVia,
+        sentBy,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      return c;
+    });
 
     const subject = (campaign.subject || '').toString().trim();
-    if (!subject) throw new HttpsError('invalid-argument', 'Campaign has no subject.');
     const bodyText = campaign.bodyText || '';
     const bodyHtml = campaign.bodyHtml || textToHtml(bodyText);
     const finalText = bodyText || htmlToText(bodyHtml);
     const fromName = campaign.fromName || FROM_NAME_DEFAULT;
-
-    await campaignRef.update({
-      status: 'sending',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    const branded = campaign.layout === 'branded';
+    let brandedHtml = null;
+    let brandedText = null;
 
     let recipients = [];
     try {
+      // Branded campaigns are rendered here, at send time, from the text the
+      // admin wrote, never from stored HTML. The layout carries its own opt-out
+      // footer with the same per-recipient placeholder. Rendering sits inside
+      // this try so a throw marks the campaign failed instead of leaving it
+      // stuck at 'sending'.
+      if (branded) {
+        brandedHtml = emailLayout.renderCampaignEmail(campaignLayoutOptions(campaign));
+        brandedText = emailLayout.campaignPlainText(campaignLayoutOptions(campaign));
+      }
       recipients = await buildRecipients(db, companyId, campaign.recipientFilter || { mode: 'all_contacts' });
     } catch (err) {
       await campaignRef.update({
@@ -2435,14 +2586,15 @@ exports.sendCampaign = onCall(
       });
 
       // Required footer. Bulk mail must carry a working opt-out and a postal
-      // identity; the campaign body alone carried neither.
-      const htmlPersonalized = `${bodyHtml}
+      // identity; the campaign body alone carried neither. The branded layout
+      // already ends in one.
+      const htmlPersonalized = branded ? brandedHtml : `${bodyHtml}
 <hr style="margin:28px 0 14px;border:none;border-top:1px solid #ddd;">
 <p style="font-size:12px;color:#777;line-height:1.6;">
   You are receiving this because you signed up with The One Percent Nation.<br>
   <a href="-unsubscribe_url-" style="color:#777;">Unsubscribe from these emails</a>.
 </p>`;
-      const textPersonalized = `${finalText}
+      const textPersonalized = branded ? brandedText : `${finalText}
 
 —
 You are receiving this because you signed up with The One Percent Nation.
@@ -2498,6 +2650,133 @@ Unsubscribe: -unsubscribe_url-`;
     } catch (e) {}
 
     return { ok: true, recipientCount: recipients.length, acceptedCount: accepted, failedCount: failed };
+}
+
+/**
+ * The tick's campaign step: send every approved campaign whose sendAt has
+ * arrived. The GitHub clock (.github/workflows/crm-tick.yml) has run three
+ * to six hours apart in practice, so a campaign goes out at the first tick
+ * after its time: never early, sometimes a few hours late.
+ *
+ * Campaigns are read company by company with a single equality filter, which
+ * needs no composite or collection-group index.
+ */
+async function sendDueCampaigns(db, { dryRun = false, now = Date.now() } = {}) {
+  const due = [];
+  const missed = [];
+  const companies = await db.collection('companies').get();
+  for (const co of companies.docs) {
+    const snap = await co.ref.collection('campaigns').where('status', '==', 'approved').get();
+    for (const d of snap.docs) {
+      const at = d.data().sendAt;
+      const ms = at && typeof at.toMillis === 'function' ? at.toMillis() : null;
+      if (ms == null || ms > now) continue;
+      const item = { companyId: co.id, campaignId: d.id };
+      if (now - ms > CAMPAIGN_SEND_GRACE_MS) missed.push(item);
+      else due.push(item);
+    }
+  }
+  if (dryRun) return { wouldSend: due.map((x) => x.campaignId), missed: missed.map((x) => x.campaignId) };
+
+  let sent = 0;
+  const errors = [];
+  for (const x of due) {
+    try {
+      await dispatchCampaign(db, x.companyId, x.campaignId, { sentVia: 'scheduled' });
+      sent += 1;
+    } catch (err) {
+      // Someone pressed Send now between the read above and the claim.
+      if (err && err.code === 'failed-precondition') continue;
+      errors.push(`${x.campaignId}: ${(err && err.message) || err}`);
+    }
+  }
+  const out = { sent, missed: missed.map((x) => x.campaignId) };
+  // An `error` key marks the step failed in runTick's summary.
+  if (errors.length) out.error = errors.join('; ');
+  return out;
+}
+
+// ────────────────────────────────────────────────────────────────
+// sendCampaignTest — callable. One copy of a campaign to the admin who asks,
+// rendered exactly as sendCampaign renders it, with [TEST] on the subject.
+// Takes a saved campaign ({ campaignId }) or the unsaved editor contents
+// ({ draft }), so a campaign can be checked in a real inbox before it is
+// saved or sent. Never touches the campaign document or its stats.
+// ────────────────────────────────────────────────────────────────
+exports.sendCampaignTest = onCall(
+  { secrets: [sendgridKey] },
+  async (request) => {
+    const db = admin.firestore();
+    const data = request.data || {};
+    const companyId = (data.companyId || '').toString().trim();
+    if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+    await assertCompanyAdmin(db, companyId, request);
+    await rateLimitCaller(db, request, { action: 'sendCampaignTest', max: 20, windowSec: 3600 });
+
+    const to = normalizeEmail(request.auth.token && request.auth.token.email);
+    if (!to) throw new HttpsError('failed-precondition', 'Your account has no email address to send a test to.');
+
+    let campaign;
+    const campaignId = (data.campaignId || '').toString().trim();
+    if (campaignId) {
+      const snap = await db.collection('companies').doc(companyId).collection('campaigns').doc(campaignId).get();
+      if (!snap.exists) throw new HttpsError('not-found', 'Campaign not found.');
+      campaign = snap.data() || {};
+    } else {
+      const d = data.draft || {};
+      campaign = {
+        subject: d.subject, bodyText: d.bodyText, fromName: d.fromName, layout: d.layout,
+        preheader: d.preheader, heroImageUrl: d.heroImageUrl, heroAlt: d.heroAlt, heroLink: d.heroLink,
+        signature: d.signature
+      };
+    }
+
+    const subject = (campaign.subject || '').toString().trim();
+    const bodyText = (campaign.bodyText || '').toString();
+    if (!subject || !bodyText.trim()) throw new HttpsError('invalid-argument', 'Add a subject and a body first.');
+    if (bodyText.length > 50000) throw new HttpsError('invalid-argument', 'That body is too long to send.');
+
+    const firstName = String((request.auth.token && request.auth.token.name) || '').trim().split(/\s+/)[0] || '';
+    const testSubject = '[TEST] ' + subject.replace(/\{\{\s*firstName\s*\}\}/g, firstName);
+    // A test copy has no contact row, so its opt-out is the mailto fallback
+    // sendCampaign uses for company members.
+    const unsubscribeUrl = `mailto:${REPLY_TO}?subject=Unsubscribe`;
+
+    let html;
+    let text;
+    if (campaign.layout === 'branded') {
+      const opts = Object.assign(campaignLayoutOptions(campaign), { unsubscribeUrl });
+      html = emailLayout.renderCampaignEmail(opts);
+      text = emailLayout.campaignPlainText(opts);
+    } else {
+      html = `${textToHtml(bodyText)}
+<hr style="margin:28px 0 14px;border:none;border-top:1px solid #ddd;">
+<p style="font-size:12px;color:#777;line-height:1.6;">
+  You are receiving this because you signed up with The One Percent Nation.<br>
+  <a href="${unsubscribeUrl}" style="color:#777;">Unsubscribe from these emails</a>.
+</p>`;
+      text = `${bodyText}
+
+—
+You are receiving this because you signed up with The One Percent Nation.
+Unsubscribe: ${unsubscribeUrl}`;
+    }
+
+    try {
+      await sendEmail({
+        to,
+        from: { email: FROM_EMAIL, name: (campaign.fromName || FROM_NAME_DEFAULT).toString() },
+        replyTo: REPLY_TO,
+        subject: testSubject,
+        text,
+        html,
+        customArgs: { type: 'campaign-test', companyId }
+      });
+    } catch (err) {
+      console.error('[sendCampaignTest] send failed:', err && err.message);
+      throw new HttpsError('internal', 'The test email could not be sent: ' + ((err && err.message) || 'unknown error'));
+    }
+    return { ok: true, to };
   }
 );
 
@@ -3667,6 +3946,65 @@ function telnyxEmailEvent(body) {
   };
 }
 
+/**
+ * A Telnyx `email.received` webhook → the shape recordInboundEmail takes.
+ *
+ * Telnyx's inbound payload is new and lightly documented, so this reads the
+ * field names it is likely to use (and the nesting its outbound events use)
+ * rather than one exact shape. Addresses may be strings or {email|address,
+ * name}; headers may be an object, a [{name, value}] list, or a raw blob.
+ */
+function telnyxInboundEmail(body) {
+  const data = (body && body.data) || body || {};
+  const payload = data.payload || {};
+  const m = payload.email || payload.message || payload;
+  const get = (path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), m);
+  const pick = (...paths) => {
+    for (const p of paths) {
+      const v = get(p);
+      if (v != null && v !== '') return v;
+    }
+    return null;
+  };
+  const addr = (v) => {
+    if (!v) return null;
+    if (typeof v === 'string') return v;
+    const email = v.email || v.address;
+    if (!email) return null;
+    return v.name ? `${v.name} <${email}>` : email;
+  };
+  const list = (v) => (Array.isArray(v) ? v : (v ? String(v).split(',') : [])).map(addr).filter(Boolean);
+
+  const rawHeaders = m.headers;
+  const header = (name) => {
+    if (!rawHeaders) return null;
+    if (typeof rawHeaders === 'string') {
+      const hit = new RegExp(`^${name}:\\s*(<[^>]+>)`, 'im').exec(rawHeaders);
+      return hit ? hit[1] : null;
+    }
+    if (Array.isArray(rawHeaders)) {
+      const hit = rawHeaders.find((h) => h && String(h.name || h.key || '').toLowerCase() === name);
+      return hit ? String(hit.value || '') || null : null;
+    }
+    const key = Object.keys(rawHeaders).find((k) => k.toLowerCase() === name);
+    return key ? String(rawHeaders[key] || '') || null : null;
+  };
+
+  const messageId = pick('message_id', 'messageId', 'internet_message_id') || header('message-id');
+  return {
+    from: parseAddress(addr(m.from || m.sender) || ''),
+    subject: pick('subject'),
+    text: pick('text', 'text_body', 'body_text', 'plain_text', 'body.text', 'content.text'),
+    html: pick('html', 'html_body', 'body_html', 'body.html', 'content.html'),
+    recipients: [...list(m.to), ...list(m.cc), ...list(m.recipients)],
+    messageId,
+    inReplyTo: pick('in_reply_to', 'inReplyTo') || header('in-reply-to'),
+    spamScore: pick('spam_score'),
+    dedupeId: m.id || payload.id || messageId || data.id || null,
+    fieldNames: Object.keys(m || {})
+  };
+}
+
 exports.telnyxEmailEventWebhook = onRequest(
   { cors: false, invoker: 'public' },
   async (req, res) => {
@@ -3675,8 +4013,27 @@ exports.telnyxEmailEventWebhook = onRequest(
     // something to accept on trust.
     if (!telnyxSignatureOk(req)) { res.status(403).send('invalid signature'); return; }
 
+    const e = telnyxEmailEvent(req.body);
+    if (e.rawType === 'received' || e.rawType === 'inbound') {
+      // A reply from a lead. Unlike a delivery event, losing one matters, so
+      // a failure answers 500 and Telnyx retries; the message's id makes the
+      // retry a no-op if the first attempt got as far as saving it.
+      try {
+        const msg = telnyxInboundEmail(req.body);
+        if (!msg.text && !msg.html) {
+          console.warn('[telnyxInbound] no message body in the payload; fields:', msg.fieldNames.join(','));
+          msg.text = 'Reply received, but its text did not come through. Open it in Telnyx Mission Control > Email.';
+        }
+        await recordInboundEmail(admin.firestore(), msg);
+        res.status(200).send('ok');
+      } catch (err) {
+        console.error('[telnyxInbound] failed:', err && err.message);
+        res.status(500).send('retry');
+      }
+      return;
+    }
+
     try {
-      const e = telnyxEmailEvent(req.body);
       if (!e.rawType) { res.status(200).send('ignored'); return; }
 
       const md = e.metadata || {};
@@ -6117,6 +6474,193 @@ async function sendPurchaseEmail(db, { email, uid, courseSlug, landingSlug, gran
   }
 }
 
+// Where a library product's buyer lands after checkout: the player for a
+// single audiobook, the shelf for anything else.
+async function libraryLandingPath(db, bookIds) {
+  if (bookIds.length === 1) {
+    try {
+      const snap = await db.collection('books').doc(bookIds[0]).get();
+      if (snap.exists && audioCore.isAudioBook(snap.data())) {
+        return `/listen?book=${encodeURIComponent(bookIds[0])}&purchase=success`;
+      }
+    } catch (e) { /* the shelf is always a safe landing */ }
+  }
+  return '/library?purchase=success';
+}
+
+// A 100% code on a library product (the audiobook): no Stripe, the book goes
+// straight on the shelf. The code's use limit is checked and counted in the
+// same transaction as the grant, so a one-use comp can't be redeemed twice
+// by two people at once, and the same person can't spend two uses.
+async function compLibraryProduct(db, { uid, request, productId, product, prodBooks, code }) {
+  const userRef = db.collection('users').doc(uid);
+  const couponRef = db.collection('coupons').doc(code);
+  await db.runTransaction(async (tx) => {
+    const [cSnap, uSnap] = await Promise.all([tx.get(couponRef), tx.get(userRef)]);
+    const c = cSnap.exists ? cSnap.data() : {};
+    if (c.maxRedemptions && Number(c.redemptions || 0) >= Number(c.maxRedemptions)) {
+      throw new HttpsError('resource-exhausted', 'That promo code has reached its limit.');
+    }
+    const owned = (uSnap.exists && uSnap.data().ownedBookIds) || [];
+    if (prodBooks.every((b) => owned.includes(b))) {
+      throw new HttpsError('already-exists', 'You already own this. It\'s in your library.');
+    }
+    tx.set(userRef, { ownedBookIds: admin.firestore.FieldValue.arrayUnion(...prodBooks) }, { merge: true });
+    tx.set(couponRef, {
+      redemptions: admin.firestore.FieldValue.increment(1),
+      lastRedeemedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
+  const email = (request.auth.token && request.auth.token.email) || null;
+  await db.collection('orders').doc(`comp-${productId}-${uid}`).set({
+    productId,
+    productName: product.name || null,
+    productType: product.type || null,
+    uid,
+    email,
+    amountTotal: 0,
+    currency: 'usd',
+    couponCode: code,
+    shipping: null,
+    grantsBooks: prodBooks,
+    status: 'done',
+    digital: true,
+    comp: true,
+    fulfilledAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  const libraryEmail = await sendLibraryPurchaseEmail(db, {
+    email, uid, productName: product.name || null, bookIds: prodBooks
+  }) ? 'sent' : 'failed';
+  await db.collection('users').doc(uid).collection('purchases').doc(`comp-${productId}`).set({
+    productId,
+    productName: product.name || null,
+    amount: 0,
+    mode: 'comp',
+    couponCode: code,
+    grantsBooks: prodBooks,
+    confirmationEmail: libraryEmail,
+    status: 'comped',
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  // Same-site path: the buyer is already on the site, so it lands them on the
+  // player right where they are.
+  return { ok: true, comped: true, url: await libraryLandingPath(db, prodBooks) };
+}
+
+// The receipt for a product that puts books in the library (the I Can't
+// audiobook): what they bought and the one link that opens it.
+function libraryPurchaseEmailContent({ firstName, productName, books }) {
+  const name = firstName || 'there';
+  const list = (books || []).filter((b) => b && b.title);
+  const audio = list.length === 1 && list[0].audio;
+  const title = productName || (list[0] && list[0].title) || 'your purchase';
+  const url = audio
+    ? `${APP_BASE_URL}/listen?book=${encodeURIComponent(list[0].id)}`
+    : `${APP_BASE_URL}/library`;
+  const subject = audio ? `Press play: ${title}` : `It's in your library: ${title}`;
+  const how = audio
+    ? 'It plays right in your browser on your phone, tablet or laptop. No app to install. Close it anytime and it picks up at the same spot on any device.'
+    : 'Open it on your phone, tablet or laptop and it picks up where you left off.';
+  const button = audio ? 'Start listening' : 'Open my library';
+
+  const text =
+    `Hi ${name},\n\n` +
+    `${title} is yours. ${how}\n` +
+    `${url}\n\n` +
+    `Where you start does not get the final say on where you end up.\n\n` +
+    `Anthony Brown Sr.\n` +
+    `Founder, The One Percent Nation\n` +
+    `Redefining Success. Realigning Purpose. Releasing Potential.`;
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:560px;margin:0 auto;line-height:1.55;">
+      <h2 style="color:#000;margin:0 0 12px;font-size:22px;">It's yours, ${textToHtml(name)}.</h2>
+      <p style="margin:0 0 14px;"><strong>${textToHtml(title)}</strong> is in your library now. ${textToHtml(how)}</p>
+      <p style="margin:0 0 22px;"><a href="${url}" style="display:inline-block;background:#e60306;color:#fff;padding:12px 22px;border-radius:4px;text-decoration:none;font-weight:600;">${button}</a></p>
+      <p style="margin:0 0 20px;">Where you start does not get the final say on where you end up.</p>
+      <p style="margin:0;">Anthony Brown Sr.<br/>Founder, The One Percent Nation</p>
+      <hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0;"/>
+      <p style="color:#888;font-size:11px;margin:0;">Redefining Success. Realigning Purpose. Releasing Potential.</p>
+    </div>`;
+
+  return { subject, text, html };
+}
+
+/**
+ * Email the owner that an order came in: what sold, who bought it, what they
+ * paid and where it ships.
+ *
+ * Orders landed in the store console and the buyer got a confirmation, but
+ * nothing told the owner, so a paperback could sit unshipped until somebody
+ * opened the console. Best-effort: the order is already stored, so a mail
+ * failure is logged and never fails the webhook (Stripe would retry and the
+ * stripeEvents guard would then skip the order). Needs `sendgridKey` on the
+ * calling function.
+ */
+async function sendOrderAlert({ session, itemName, needsShipping }) {
+  try {
+    if (!emailConfigured()) return false;
+    const details = session.customer_details || {};
+    const shipping = sessionShipping(session);
+    const content = shippingCore.orderAlertContent({
+      itemName,
+      buyerName: details.name || (shipping && shipping.name) || null,
+      buyerEmail: details.email || session.customer_email || null,
+      totalCents: session.amount_total || 0,
+      shippingCents: shippingCore.shippingPaidCents(session),
+      shipping,
+      needsShipping,
+      couponCode: (session.metadata && session.metadata.couponCode) || null,
+      consoleUrl: `${APP_BASE_URL}/manage-store.html`
+    });
+    await sendEmail({
+      to: NOTIFY_EMAIL,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      // Replying to the alert replies to the buyer.
+      replyTo: details.email || session.customer_email || REPLY_TO,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+      customArgs: { type: 'order_notification' }
+    });
+    return true;
+  } catch (e) {
+    console.warn('[sendOrderAlert] failed:', e && e.message);
+    return false;
+  }
+}
+
+// Never throws, like sendPurchaseEmail. Returns true when sent.
+async function sendLibraryPurchaseEmail(db, { email, uid, productName, bookIds }) {
+  const to = normalizeEmail(email);
+  if (!EMAIL_RE.test(to)) return false;
+  try {
+    const [uSnap, bookSnaps] = await Promise.all([
+      uid ? db.collection('users').doc(uid).get() : Promise.resolve(null),
+      Promise.all((bookIds || []).map((id) => db.collection('books').doc(id).get()))
+    ]);
+    const u = uSnap && uSnap.exists ? (uSnap.data() || {}) : {};
+    const firstName = String(u.displayName || '').trim().split(/\s+/)[0] || '';
+    const crmArgs = (u.crmCompanyId && u.crmContactId)
+      ? { companyId: u.crmCompanyId, contactId: u.crmContactId } : {};
+    const books = bookSnaps.filter((b) => b.exists)
+      .map((b) => ({ id: b.id, title: b.data().title || b.id, audio: audioCore.isAudioBook(b.data()) }));
+    const { subject, text, html } = libraryPurchaseEmailContent({ firstName, productName, books });
+    await sendEmail({
+      to,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      subject, text, html,
+      customArgs: Object.assign({ type: 'product_purchase', slug: (bookIds || []).join(',').slice(0, 100) }, crmArgs)
+    });
+    return true;
+  } catch (err) {
+    console.error('[sendLibraryPurchaseEmail] send failed:', String((err && err.message) || err).slice(0, 300));
+    return false;
+  }
+}
+
 // `secrets` is required, not optional: this sends the invite email through
 // sendGrantEmail, which reads sendgridKey.value().
 exports.grantCourseAccess = onCall({ secrets: [sendgridKey] }, async (request) => {
@@ -7478,7 +8022,7 @@ exports.validateCoupon = onCall(async (request) => {
   } else {
     const snap = await db.collection('products').doc(id).get();
     if (!snap.exists) throw new HttpsError('not-found', 'Unknown product.');
-    priceDollars = typeof snap.data().price === 'number' ? snap.data().price : null;
+    priceDollars = effectivePriceDollars(snap.data());
   }
   if (priceDollars == null || priceDollars <= 0) {
     throw new HttpsError('failed-precondition', 'This item doesn\'t have a promo-eligible price.');
@@ -7630,7 +8174,9 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
     if (!['live', 'preorder'].includes(product.status) || product.sellable !== true) {
       throw new HttpsError('failed-precondition', 'This product isn\'t available to buy yet.');
     }
-    const basePrice = typeof product.price === 'number' ? product.price : null;
+    // The sale price while a sale is running (Manage Products → On sale),
+    // the same rule courses follow; a promo code then comes off that.
+    const basePrice = effectivePriceDollars(product);
     if (basePrice == null || basePrice <= 0) {
       throw new HttpsError('failed-precondition', 'This product doesn\'t have a price yet.');
     }
@@ -7643,6 +8189,19 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
 
     let unitDollars = basePrice;
     const prodMeta = { productId, uid };
+
+    // A product can unlock library books (the I Can't audiobook). Locked
+    // into metadata here so the webhook grants what was sold, and refused
+    // when the buyer already owns all of it, so nobody pays twice.
+    const prodBooks = audioCore.productBooks(product);
+    if (prodBooks.length) {
+      const buyerSnap = await db.collection('users').doc(uid).get();
+      const owned = (buyerSnap.exists && buyerSnap.data().ownedBookIds) || [];
+      if (prodBooks.every((b) => owned.includes(b))) {
+        throw new HttpsError('already-exists', 'You already own this. It\'s in your library.');
+      }
+      prodMeta.grantsBooks = prodBooks.join(',');
+    }
 
     // Coach/affiliate attribution on product sales. Coaches selling the
     // client-facing A.L.I.G.N. products earn their license tier's rate
@@ -7671,10 +8230,14 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
         { kind: 'product', id: productId, priceDollars: basePrice });
       if (resolved.isFree) {
         // A $0 order can't go through Stripe, and a comped physical item has
-        // no way to collect a shipping address. Comps are for courses and
-        // classes; keep product codes above zero.
-        throw new HttpsError('failed-precondition',
-          'Free product codes aren\'t supported — set the code below 100%.');
+        // no way to collect a shipping address, so only a digital library
+        // product (the audiobook) can be comped. It is delivered right here,
+        // the same writes the webhook makes for a paid one.
+        if (!prodBooks.length || !audioCore.isDigitalLibraryProduct(product) || wantsShipping) {
+          throw new HttpsError('failed-precondition',
+            'Free product codes aren\'t supported — set the code below 100%.');
+        }
+        return compLibraryProduct(db, { uid, request, productId, product, prodBooks, code: resolved.code });
       }
       unitDollars = resolved.discountedDollars;
       prodMeta.couponCode = resolved.code;
@@ -7690,12 +8253,19 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
           product_data: { name: product.name || 'One Percent Nation product' }
         }
       }],
-      ...(wantsShipping ? { shipping_address_collection: { allowed_countries: ['US'] } } : {}),
+      // Physical products ask for a US address and add flat shipping.
+      ...(wantsShipping ? shippingCore.checkoutShippingFields(product, 'payment') : {}),
       customer_email: (request.auth.token && request.auth.token.email) || undefined,
       client_reference_id: uid,
       metadata: prodMeta,
-      success_url: `${APP_BASE_URL}/upcoming.html?purchase=success`,
-      cancel_url: `${APP_BASE_URL}/upcoming.html`
+      // A library product lands where it is used: the audiobook's player,
+      // or the library shelf for anything else.
+      success_url: prodBooks.length
+        ? `${APP_BASE_URL}${await libraryLandingPath(db, prodBooks)}`
+        : `${APP_BASE_URL}/upcoming.html?purchase=success`,
+      cancel_url: String((request.data && request.data.returnTo) || '').match(/^\/(?!\/)[\w\-./?=&%]{0,200}$/)
+        ? `${APP_BASE_URL}${request.data.returnTo}`
+        : `${APP_BASE_URL}/upcoming.html`
     });
     return { ok: true, url: session.url };
   }
@@ -7887,11 +8457,19 @@ exports.createCheckoutSession = onCall({ secrets: STRIPE_SECRETS }, async (reque
   // No allow_promotion_codes: coupons are validated in Firestore above and
   // priced into unit_amount, so per-item scoping and the active toggle are
   // actually enforced. Stripe-native promo codes would bypass both.
+  const checkoutMode = (isSubscription || plan) ? 'subscription' : 'payment';
+  const lineItems = [{ price_data: priceData, quantity: 1 }];
+  // Courses that ship the book ask for a US address inside Stripe Checkout
+  // and add flat shipping. A subscription can't take shipping_options, so it
+  // pays shipping as a one-time line on the first invoice.
+  if (fulfil.shipsBook && checkoutMode !== 'payment') {
+    const shipLine = shippingCore.shippingLineItem(course);
+    if (shipLine) lineItems.push(shipLine);
+  }
   const session = await stripe.checkout.sessions.create({
-    mode: (isSubscription || plan) ? 'subscription' : 'payment',
-    line_items: [{ price_data: priceData, quantity: 1 }],
-    // Courses that ship the book ask for a US address inside Stripe Checkout.
-    ...(fulfil.shipsBook ? { shipping_address_collection: { allowed_countries: ['US'] } } : {}),
+    mode: checkoutMode,
+    line_items: lineItems,
+    ...(fulfil.shipsBook ? shippingCore.checkoutShippingFields(course, checkoutMode) : {}),
     customer_email: (request.auth.token && request.auth.token.email) || undefined,
     client_reference_id: uid,
     metadata,
@@ -8077,6 +8655,545 @@ exports.syncBookGrants = onCall(async (request) => {
   return { ok: true, granted, checked: seen.size, courses: grantingSlugs };
 });
 
+// ── Audiobooks ─────────────────────────────────────────────────────────
+// An audiobook is a books/{bookId} record with format 'audio' and one track
+// per chapter (functions/audio-core.js). It plays in /listen through an
+// <audio> element, which cannot send an Authorization header, so the member
+// first trades their sign-in for a listening pass: an opaque token good for
+// this one book for twelve hours. A pass that leaks opens one audiobook for
+// a few hours, never the account, which is why the ID token itself never
+// goes in a URL.
+//
+// audioPass({ bookId }) -> { pass, expiresAtMs }
+exports.audioPass = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in to listen.');
+  const bookId = String((request.data && request.data.bookId) || '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(bookId)) throw new HttpsError('invalid-argument', 'bookId is required.');
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'audioPass', max: 60, windowSec: 600 });
+
+  const [bookSnap, userSnap] = await Promise.all([
+    db.collection('books').doc(bookId).get(),
+    db.collection('users').doc(uid).get()
+  ]);
+  const book = bookSnap.exists ? (bookSnap.data() || {}) : null;
+  if (!audioCore.isAudioBook(book)) throw new HttpsError('not-found', 'Unknown audiobook.');
+  const u = userSnap.exists ? (userSnap.data() || {}) : {};
+  const isAdmin = request.auth.token.role === 'owner' || u.role === 'admin' || u.role === 'owner';
+  const owns = Array.isArray(u.ownedBookIds) && u.ownedBookIds.includes(bookId);
+  if (!isAdmin && (!owns || book.status === 'hidden')) {
+    throw new HttpsError('permission-denied', 'This audiobook isn\'t in your library yet.');
+  }
+
+  const ref = db.collection('audioPasses').doc(audioCore.passDocId(uid, bookId));
+  const cur = await ref.get();
+  const now = Date.now();
+  if (cur.exists && audioCore.passUsable(cur.data(), { bookId, now, minLeftMs: audioCore.PASS_MIN_LEFT_MS })
+      && cur.data().admin === isAdmin) {
+    return { pass: `${ref.id}.${cur.data().token}`, expiresAtMs: cur.data().expiresAtMs };
+  }
+  const token = crypto.randomBytes(24).toString('hex');
+  const expiresAtMs = now + audioCore.PASS_TTL_MS;
+  // The pass being replaced keeps working until its own expiry, so a
+  // chapter already playing on the old one is never cut off.
+  const prev = cur.exists && audioCore.passUsable(cur.data(), { bookId, now }) ? cur.data() : null;
+  await ref.set({
+    uid, bookId, token, admin: isAdmin, expiresAtMs,
+    prevToken: prev ? prev.token : null,
+    prevExpiresAtMs: prev ? prev.expiresAtMs : null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  return { pass: `${ref.id}.${token}`, expiresAtMs };
+});
+
+// The member behind a listening credential: a short pass from audioPass, or
+// a long-lived private feed link from audioFeedLink. Returns { uid, admin }
+// or null. Feed links never expire, so they re-check ownership every time:
+// a refund that takes the book back also silences the feed.
+async function audioListener(db, book, bookId, query) {
+  const viaFeed = !!query.feed;
+  const cred = audioCore.splitCredential(viaFeed ? query.feed : query.pass, bookId);
+  if (!cred) return null;
+  const snap = await db.collection(viaFeed ? 'audioFeeds' : 'audioPasses').doc(cred.docId).get();
+  const rec = snap.exists ? (snap.data() || {}) : null;
+  if (!rec || rec.bookId !== bookId) return null;
+  const same = (stored) => {
+    const a = Buffer.from(String(stored || ''));
+    const b = Buffer.from(cred.token);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  };
+  if (viaFeed) {
+    if (rec.revoked === true || !same(rec.token)) return null;
+    const u = await db.collection('users').doc(rec.uid).get();
+    const ud = u.exists ? (u.data() || {}) : {};
+    const isAdmin = ud.role === 'admin' || ud.role === 'owner';
+    const owns = Array.isArray(ud.ownedBookIds) && ud.ownedBookIds.includes(bookId);
+    if (!isAdmin && !owns) return null;
+    return { uid: rec.uid, admin: isAdmin };
+  }
+  const current = same(rec.token) && audioCore.passUsable(rec, { bookId });
+  const previous = !current && rec.prevToken && same(rec.prevToken)
+    && Number(rec.prevExpiresAtMs) > Date.now();
+  if (!current && !previous) return null;
+  return { uid: rec.uid, admin: rec.admin === true };
+}
+
+// bookAudio — streams one track: GET /api/book-audio?book=&track=&pass=
+// (a Hosting rewrite), or the same on the function's own URL with &feed=
+// for podcast apps, which skips Hosting's 60 second cap on a slow download.
+// A Range request (every browser player) gets at most audioCore.AUDIO_CHUNK
+// back, so the player can seek; a plain GET (a podcast app downloading the
+// episode) gets the whole file, chunked. The book's sample track plays for
+// anyone, no credential, so the sales view can offer a free chapter.
+exports.bookAudio = onRequest({ cors: false, invoker: 'public', memory: '256MiB', timeoutSeconds: 540 }, async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  if (req.method !== 'GET' && req.method !== 'HEAD') { res.status(405).send('method not allowed'); return; }
+  const bookId = String(req.query.book || '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(bookId)) { res.status(400).send('bad book id'); return; }
+
+  const db = admin.firestore();
+  const bookSnap = await db.collection('books').doc(bookId).get();
+  const book = bookSnap.exists ? (bookSnap.data() || {}) : null;
+  const track = audioCore.trackAt(book, bookId, req.query.track);
+  if (!track) { res.status(404).send('unknown track'); return; }
+
+  if (!audioCore.isSampleTrack(book, track.index)) {
+    const who = await audioListener(db, book, bookId, req.query);
+    if (!who) { res.status(401).send('sign in to listen'); return; }
+    if (book.status === 'hidden' && !who.admin) { res.status(403).send('not available'); return; }
+  }
+
+  const file = admin.storage().bucket().file(track.path);
+  let size = 0;
+  let contentType = track.contentType || 'audio/mpeg';
+  try {
+    const [meta] = await file.getMetadata();
+    size = Number(meta && meta.size) || 0;
+    if (meta && /^audio\//.test(meta.contentType || '')) contentType = meta.contentType;
+  } catch (e) {
+    res.status(404).send('track file missing'); return;
+  }
+  res.set('Accept-Ranges', 'bytes');
+  res.set('Content-Type', contentType);
+  const rangeHeader = req.get('Range');
+  let opts = {};
+  if (rangeHeader) {
+    const range = audioCore.parseRange(rangeHeader, size);
+    if (!range) {
+      res.set('Content-Range', `bytes */${size}`);
+      res.status(416).end();
+      return;
+    }
+    res.status(206);
+    res.set('Content-Range', `bytes ${range.start}-${range.end}/${size}`);
+    res.set('Content-Length', String(range.end - range.start + 1));
+    opts = { start: range.start, end: range.end };
+  } else {
+    // No Content-Length: a whole chapter can pass Cloud Run's 32 MiB cap on
+    // a sized response, and a chunked one has no cap.
+    res.status(200);
+  }
+  if (req.method === 'HEAD') { res.end(); return; }
+  file.createReadStream(opts)
+    .on('error', (err) => {
+      console.error('[bookAudio] stream failed:', err && err.message);
+      if (!res.headersSent) res.status(500).send('read failed'); else res.end();
+    })
+    .pipe(res);
+});
+
+// audioFeedLink({ bookId, reset }) -> { feedUrl }
+// The member's private podcast feed for an audiobook they own. One per
+// member per book; `reset` swaps the secret, which kills a link that got
+// shared and hands back a new one.
+exports.audioFeedLink = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
+  const bookId = String((request.data && request.data.bookId) || '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(bookId)) throw new HttpsError('invalid-argument', 'bookId is required.');
+  const reset = !!(request.data && request.data.reset);
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'audioFeedLink', max: 20, windowSec: 600 });
+
+  const [bookSnap, userSnap] = await Promise.all([
+    db.collection('books').doc(bookId).get(),
+    db.collection('users').doc(uid).get()
+  ]);
+  const book = bookSnap.exists ? (bookSnap.data() || {}) : null;
+  if (!audioCore.isAudioBook(book)) throw new HttpsError('not-found', 'Unknown audiobook.');
+  const u = userSnap.exists ? (userSnap.data() || {}) : {};
+  const isAdmin = request.auth.token.role === 'owner' || u.role === 'admin' || u.role === 'owner';
+  const owns = Array.isArray(u.ownedBookIds) && u.ownedBookIds.includes(bookId);
+  if (!isAdmin && (!owns || book.status === 'hidden')) {
+    throw new HttpsError('permission-denied', 'This audiobook isn\'t in your library yet.');
+  }
+
+  const ref = db.collection('audioFeeds').doc(audioCore.passDocId(uid, bookId));
+  const cur = await ref.get();
+  let token = cur.exists && !reset && cur.data().revoked !== true ? cur.data().token : null;
+  if (!token) {
+    token = crypto.randomBytes(24).toString('hex');
+    await ref.set({ uid, bookId, token, revoked: false, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+  }
+  return { feedUrl: `${APP_BASE_URL}/api/audio-feed?book=${encodeURIComponent(bookId)}&feed=${encodeURIComponent(`${ref.id}.${token}`)}` };
+});
+
+// audioFeed — the RSS a podcast app follows (Hosting rewrite /api/audio-feed).
+// Every episode links straight to bookAudio on the function's own URL, with
+// the same feed credential.
+exports.audioFeed = onRequest({ cors: false, invoker: 'public', memory: '256MiB', timeoutSeconds: 30 }, async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  if (req.method !== 'GET' && req.method !== 'HEAD') { res.status(405).send('method not allowed'); return; }
+  const bookId = String(req.query.book || '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(bookId) || !req.query.feed) { res.status(400).send('bad feed link'); return; }
+  const db = admin.firestore();
+  const bookSnap = await db.collection('books').doc(bookId).get();
+  const book = bookSnap.exists ? (bookSnap.data() || {}) : null;
+  if (!audioCore.isAudioBook(book)) { res.status(404).send('unknown audiobook'); return; }
+  const who = await audioListener(db, book, bookId, { feed: String(req.query.feed) });
+  if (!who || (book.status === 'hidden' && !who.admin)) { res.status(401).send('this feed link is no longer active'); return; }
+
+  const base = functionsBaseUrl();
+  const feed = encodeURIComponent(String(req.query.feed));
+  const xml = audioCore.feedXml({
+    book, bookId,
+    link: `${APP_BASE_URL}/listen?book=${encodeURIComponent(bookId)}`,
+    audioUrl: (i) => `${base}/bookAudio?book=${encodeURIComponent(bookId)}&track=${i}&feed=${feed}`
+  });
+  res.set('Content-Type', 'application/rss+xml; charset=utf-8');
+  res.status(200).send(req.method === 'HEAD' ? '' : xml);
+});
+
+// ── ARC readers (/arc) ──────────────────────────────────────────────────
+// One public link for advance readers. On /arc they give a first name, last
+// name and email and promise an honest review. requestArcLink emails them a
+// one-tap sign-in link with the ARC instructions; the link signs them in (no
+// password), claimArcCopy puts the full digital edition in their library,
+// and they land in the reader. A copy only goes to an email that was opened,
+// so the cap, the CRM and the owner alert only ever count real readers.
+//
+// config/arc (admin-written from /manage-library.html) holds the switch;
+// with no record the sign-up is open for the I Can't edition and uncapped.
+//   config/arc          { open, bookId, limit, claimed, reviewUrl }
+//   arcRequests/{hash}  the sign-up form, kept until the link is opened
+//   arcReaders/{uid}    one per reader (Admin SDK writes only)
+const ARC_PLATFORMS = ['Amazon', 'Goodreads', 'Amazon and Goodreads', 'Social media', 'Not sure yet'];
+const ARC_DISCLOSURE = 'I received a free advance copy in exchange for an honest review.';
+
+function arcConfig(raw) {
+  const c = raw && typeof raw === 'object' ? raw : {};
+  const bookId = /^[a-z0-9][a-z0-9-]{1,60}$/.test(String(c.bookId || '')) ? String(c.bookId) : 'i-cant';
+  const limit = Number.isFinite(Number(c.limit)) && Number(c.limit) > 0 ? Math.floor(Number(c.limit)) : null;
+  const claimed = Math.max(0, Math.floor(Number(c.claimed) || 0));
+  const reviewUrl = /^https:\/\//.test(String(c.reviewUrl || '')) ? String(c.reviewUrl).slice(0, 500) : null;
+  return { open: c.open !== false, bookId, limit, claimed, reviewUrl, full: limit != null && claimed >= limit };
+}
+
+// The form's name fields: trimmed, single-spaced, capped. Empty is allowed
+// here; requestArcLink decides when a name is required.
+function arcName(s) {
+  return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, 60);
+}
+
+// The standard ARC terms, in the order a reader needs them. Shared by the
+// sign-in email and the welcome email so the two never drift.
+function arcSteps(reviewUrl) {
+  return [
+    { text: 'Read at your own pace. It works on your phone, tablet or computer, and it remembers your page.' },
+    { text: 'Keep it to yourself. This early copy is for you only, so please don’t forward this email or share the book.' },
+    reviewUrl
+      ? { text: `When you finish, leave your honest review on Amazon: ${reviewUrl}`, html: `When you finish, <a href="${escapeHtmlBasic(reviewUrl)}" style="color:#E60306;">leave your honest review on Amazon</a>. A few sentences is plenty.` }
+      : { text: 'When you finish, leave your honest review on Amazon. A few sentences is plenty.' },
+    { text: `Add this line to your review: “${ARC_DISCLOSURE}” It keeps your review within Amazon’s rules.` },
+    { text: 'Tell me what landed and what did not. Just reply to this email.' }
+  ];
+}
+
+function arcEmailShell({ intro, buttonUrl, buttonLabel, afterButton, steps, outro }) {
+  const text = [
+    ...intro, '',
+    `${buttonLabel}: ${buttonUrl}`,
+    ...afterButton, '',
+    'How your advance copy works:',
+    ...steps.map((s, i) => `${i + 1}. ${s.text}`), '',
+    ...outro, '',
+    'Honest beats kind. That is the whole point of an early read.', '',
+    'Anthony Brown Sr.', 'The One Percent'
+  ].join('\n');
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#222;">
+    ${intro.map((p) => `<p style="font-size:15px;">${textToHtml(p)}</p>`).join('\n    ')}
+    <p style="margin:22px 0;"><a href="${escapeHtmlBasic(buttonUrl)}" style="background:#E60306;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;">${textToHtml(buttonLabel)}</a></p>
+    ${afterButton.map((p) => `<p style="font-size:13px;color:#666;">${textToHtml(p)}</p>`).join('\n    ')}
+    <h3 style="font-size:16px;margin:24px 0 0;">How your advance copy works</h3>
+    <ol style="font-size:14px;color:#333;padding-left:20px;margin:8px 0 0;">
+      ${steps.map((s) => `<li style="margin:6px 0;">${s.html || textToHtml(s.text)}</li>`).join('\n      ')}
+    </ol>
+    ${outro.map((p) => `<p style="font-size:14px;color:#555;">${textToHtml(p)}</p>`).join('\n    ')}
+    <p style="font-size:15px;margin-top:20px;">Honest beats kind. That is the whole point of an early read.</p>
+    <p style="font-size:14px;margin-top:24px;">Anthony Brown Sr.<br>The One Percent</p>
+  </div>`;
+  return { text, html };
+}
+
+// The email requestArcLink sends: the one-tap sign-in link and the terms.
+// `returning` is a reader who already has the book and asked for a new link.
+function arcLinkEmailContent({ firstName, bookTitle, link, reviewUrl, returning }) {
+  const hi = firstName ? `Hi ${firstName},` : 'Hi,';
+  const subject = returning
+    ? `Your reading link for ${bookTitle}`
+    : `Your advance copy of ${bookTitle} is ready`;
+  const intro = returning
+    ? [hi, `Here is a fresh link to your advance copy of ${bookTitle}. Tap it and the book opens where you left off.`]
+    : [hi, `Thank you for reading ${bookTitle} early. Tap the button below and your advance copy opens. No password needed.`];
+  const { text, html } = arcEmailShell({
+    intro,
+    buttonUrl: link,
+    buttonLabel: 'Start reading',
+    afterButton: [`To come back anytime, go to ${APP_BASE_URL}/arc. It opens your book where you left off. On a new device, enter this email there and we will send a fresh link.`],
+    steps: arcSteps(reviewUrl),
+    outro: []
+  });
+  return { subject, text, html };
+}
+
+// The welcome email, for a reader who claimed while already signed in and
+// so never got the sign-in email with the terms.
+function arcEmailContent({ firstName, bookTitle, bookId, reviewUrl }) {
+  const readUrl = `${APP_BASE_URL}/read?book=${encodeURIComponent(bookId)}`;
+  const hi = firstName ? `Hi ${firstName},` : 'Hi,';
+  const subject = `Your advance copy of ${bookTitle} is ready`;
+  const { text, html } = arcEmailShell({
+    intro: [hi, `Thank you for reading ${bookTitle} early. Your advance copy is in your One Percent library now.`],
+    buttonUrl: readUrl,
+    buttonLabel: 'Start reading',
+    afterButton: [`To come back anytime, go to ${APP_BASE_URL}/arc. It opens your book where you left off.`],
+    steps: arcSteps(reviewUrl),
+    outro: []
+  });
+  return { subject, text, html, readUrl };
+}
+
+function arcRequestId(email) {
+  return crypto.createHash('sha256').update(normalizeEmail(email)).digest('hex').slice(0, 40);
+}
+
+// requestArcLink — the /arc form. No account needed. Saves the form, then
+// emails a sign-in link that comes back to /arc?claim=1. `resend` asks for
+// a fresh link for a reader who already has the book; it answers the same
+// whether or not the email has a copy, so it can't be used to look people up.
+exports.requestArcLink = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'requestArcLink', max: 8, windowSec: 600 });
+
+  const data = request.data || {};
+  const email = normalizeEmail(data.email);
+  if (!EMAIL_RE.test(email) || email.length > 160) {
+    throw new HttpsError('invalid-argument', 'Enter a valid email address.');
+  }
+  // Per inbox too, so the form can't be used to flood someone's email.
+  await enforceRateLimit(db, { action: 'requestArcLink:email', key: arcRequestId(email), max: 4, windowSec: 3600 });
+
+  const resend = data.resend === true;
+  const [cfgSnap, existing] = await Promise.all([
+    db.collection('config').doc('arc').get(),
+    db.collection('arcReaders').where('email', '==', email).limit(1).get()
+  ]);
+  const cfg = arcConfig(cfgSnap.exists ? cfgSnap.data() : null);
+  const returning = !existing.empty;
+  const reader = returning ? existing.docs[0].data() : null;
+  const bookId = (reader && reader.bookId) || cfg.bookId;
+
+  let firstName = arcName(data.firstName);
+  let lastName = arcName(data.lastName);
+  // A resend for someone who signed up but never opened their link sends
+  // that link again; for anyone else it quietly does nothing.
+  let pending = null;
+  if (resend && !returning) {
+    const snap = await db.collection('arcRequests').doc(arcRequestId(email)).get();
+    if (!snap.exists) return { ok: true, returning: false };
+    pending = snap.data() || {};
+    firstName = arcName(pending.firstName);
+    lastName = arcName(pending.lastName);
+  }
+  if (!returning) {
+    if (!firstName || !lastName) throw new HttpsError('invalid-argument', 'Enter your first and last name.');
+    if (!pending && data.agreesToReview !== true) {
+      throw new HttpsError('invalid-argument', 'Advance copies go to readers who agree to leave an honest review.');
+    }
+    if (!cfg.open) throw new HttpsError('failed-precondition', 'Advance reader sign-ups are closed right now.');
+    if (cfg.full) throw new HttpsError('resource-exhausted', 'Every advance copy has been claimed. Thank you for your interest.');
+  }
+  if (!firstName && reader) firstName = String(reader.name || '').split(/\s+/)[0] || '';
+
+  const bookSnap = await db.collection('books').doc(bookId).get();
+  if (!bookSnap.exists) throw new HttpsError('failed-precondition', 'The advance copy is not ready yet. Please try again soon.');
+  const bookTitle = (bookSnap.data() || {}).title || 'I Can’t';
+
+  if (!returning) {
+    await db.collection('arcRequests').doc(arcRequestId(email)).set({
+      email, firstName, lastName,
+      agreesToReview: true,
+      consent: pending ? pending.consent === true : data.consent === true,
+      requestedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  if (!emailConfigured()) {
+    console.error('[requestArcLink] no email provider configured');
+    throw new HttpsError('unavailable', 'We could not send your email just now. Please try again in a few minutes.');
+  }
+  let link;
+  try {
+    link = await admin.auth().generateSignInWithEmailLink(email, {
+      url: `${APP_BASE_URL}/arc?claim=1`,
+      handleCodeInApp: true
+    });
+  } catch (e) {
+    // operation-not-allowed: "Email link" sign-in is off in the Firebase
+    // console. unauthorized-continue-uri: the domain isn't authorized.
+    console.error('[requestArcLink] could not create the sign-in link:', e && (e.code || e.message));
+    throw new HttpsError('unavailable', 'Sign-up links are not switched on yet. Please try again soon.');
+  }
+  const msg = arcLinkEmailContent({ firstName, bookTitle, link, reviewUrl: cfg.reviewUrl, returning });
+  try {
+    await sendEmail({
+      to: email,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      subject: msg.subject, text: msg.text, html: msg.html,
+      customArgs: { type: returning ? 'arc_link_again' : 'arc_link' }
+    });
+  } catch (e) {
+    console.error('[requestArcLink] email failed:', e && e.message);
+    throw new HttpsError('unavailable', 'We could not send your email just now. Please try again in a few minutes.');
+  }
+  return { ok: true, returning };
+});
+
+// claimArcCopy — called by /arc once the reader is signed in: straight after
+// the sign-in link, or from the form by someone already signed in.
+// Idempotent: a reader who claims twice keeps one record and one count.
+// `secrets` is required for the welcome and owner emails.
+exports.claimArcCopy = onCall({ secrets: [sendgridKey] }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Create your account first.');
+  const db = admin.firestore();
+  await rateLimitCaller(db, request, { action: 'claimArcCopy', max: 10, windowSec: 600 });
+
+  const data = request.data || {};
+  const user = await admin.auth().getUser(uid);
+  const email = normalizeEmail(user.email);
+  if (!EMAIL_RE.test(email)) throw new HttpsError('failed-precondition', 'Your account needs an email address.');
+
+  // A reader who came through the sign-in link filled in the form already.
+  const requestRef = db.collection('arcRequests').doc(arcRequestId(email));
+  const pendingSnap = await requestRef.get();
+  const pending = pendingSnap.exists ? pendingSnap.data() : null;
+  const viaLink = !!pending;
+  const platform = ARC_PLATFORMS.includes(data.reviewPlatform) ? data.reviewPlatform : 'Not sure yet';
+  const formName = pending ? `${arcName(pending.firstName)} ${arcName(pending.lastName)}`.trim() : '';
+  const name = (formName || String(data.name || user.displayName || '').trim()).slice(0, 120) || email;
+  const consent = pending ? pending.consent === true : data.consent === true;
+
+  const FV = admin.firestore.FieldValue;
+  const cfgRef = db.collection('config').doc('arc');
+  const readerRef = db.collection('arcReaders').doc(uid);
+  const userRef = db.collection('users').doc(uid);
+
+  // The cap and the grant are one transaction, so two readers taking the
+  // last spot at once can't both get in.
+  const result = await db.runTransaction(async (tx) => {
+    const [cfgSnap, readerSnap, userSnap] = await Promise.all([tx.get(cfgRef), tx.get(readerRef), tx.get(userRef)]);
+    const cfg = arcConfig(cfgSnap.exists ? cfgSnap.data() : null);
+    if (readerSnap.exists) {
+      const r = readerSnap.data() || {};
+      return { already: true, bookId: r.bookId || cfg.bookId, cfg };
+    }
+    // A returning reader is let back in above with or without the promise.
+    if (!viaLink && data.agreesToReview !== true) {
+      throw new HttpsError('invalid-argument', 'Advance copies go to readers who agree to leave an honest review.');
+    }
+    if (!cfg.open) throw new HttpsError('failed-precondition', 'Advance reader sign-ups are closed right now.');
+    if (cfg.full) throw new HttpsError('resource-exhausted', 'Every advance copy has been claimed. Thank you for your interest.');
+    const bookSnap = await tx.get(db.collection('books').doc(cfg.bookId));
+    if (!bookSnap.exists) throw new HttpsError('failed-precondition', 'The advance copy is not ready yet. Please try again soon.');
+    const userPatch = { ownedBookIds: FV.arrayUnion(cfg.bookId) };
+    // A sign-in link account has no name until now.
+    if (formName && !(userSnap.exists && (userSnap.data() || {}).displayName)) userPatch.displayName = formName;
+    tx.set(userRef, userPatch, { merge: true });
+    tx.set(readerRef, {
+      uid, email, name, bookId: cfg.bookId, reviewPlatform: platform,
+      claimedAt: FV.serverTimestamp(), reviewedAt: null
+    });
+    tx.set(cfgRef, { claimed: FV.increment(1) }, { merge: true });
+    return { already: false, bookId: cfg.bookId, cfg, bookTitle: (bookSnap.data() || {}).title || 'I Can’t' };
+  });
+
+  const readUrl = `/read?book=${encodeURIComponent(result.bookId)}`;
+  if (pending) await requestRef.delete().catch(() => {});
+  if (result.already) return { ok: true, already: true, readUrl };
+
+  // The book is granted. Everything below is best-effort and must not fail
+  // the claim, or a retry would find the record and skip it anyway.
+  if (formName && !user.displayName) {
+    await admin.auth().updateUser(uid, { displayName: formName }).catch((e) => {
+      console.warn('[claimArcCopy] could not set the display name:', e && e.message);
+    });
+  }
+  try {
+    const companyId = await resolveAcademyCompanyId(db);
+    if (companyId) {
+      const ref = await upsertCrmContact(db, companyId, {
+        name, email, source: 'ARC Reader', memberUid: uid,
+        tags: ['ARC Reader', 'Book Reader', `ARC: ${String(result.bookTitle).slice(0, 60)}`]
+          .concat(consent ? ['Opt-In: Calls/SMS/Email'] : [])
+      });
+      await recordFormConsent(db, ref, {
+        parsed: parseFormConsent({ consent }),
+        source: 'ARC Reader', channel: 'arc',
+        fallbackText: 'Opted in to email updates on the ARC sign-up form'
+      });
+      await ref.collection('activities').add({
+        type: 'lead_form',
+        description: `ARC Reader: claimed ${result.bookTitle}.`,
+        actorUid: 'system', actorName: 'ARC sign-up',
+        createdAt: FV.serverTimestamp(),
+        meta: { formType: 'arc', bookId: result.bookId, reviewPlatform: platform }
+      });
+      await readerRef.set({ crmContactId: ref.id }, { merge: true });
+    }
+  } catch (e) {
+    console.error('[claimArcCopy] CRM record failed:', e && e.message);
+  }
+
+  // A link reader already has the terms in the email they just opened.
+  if (!viaLink && emailConfigured()) {
+    try {
+      const msg = arcEmailContent({
+        firstName: name.split(/\s+/)[0], bookTitle: result.bookTitle,
+        bookId: result.bookId, reviewUrl: result.cfg.reviewUrl
+      });
+      await sendEmail({
+        to: email,
+        from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+        replyTo: REPLY_TO,
+        subject: msg.subject, text: msg.text, html: msg.html,
+        customArgs: { type: 'arc_welcome' }
+      });
+    } catch (e) {
+      console.warn('[claimArcCopy] welcome email failed:', e && e.message);
+    }
+  }
+  await notifyOwnerOfLead({
+    source: 'ARC Reader', name, email, phone: null,
+    fields: { book: result.bookTitle },
+    contactUrl: `${APP_BASE_URL}/manage-library.html#arc`
+  });
+
+  return { ok: true, already: false, readUrl };
+});
+
 // stripeWebhook — enrolls buyers after checkout and revokes subscription
 // access on cancellation. Configure the endpoint in the Stripe dashboard to
 // send: checkout.session.completed, customer.subscription.deleted,
@@ -8172,6 +9289,17 @@ exports.stripeWebhook = onRequest(
           const prodRef = db.collection('products').doc(productId);
           const prodSnap = await prodRef.get();
           const product = prodSnap.exists ? prodSnap.data() : {};
+          // Library books (the audiobook) are delivered right here: the ids
+          // locked in at checkout go on the buyer's shelf, and the order is
+          // born fulfilled so it never sits in the shipping queue.
+          const prodBooks = String((session.metadata && session.metadata.grantsBooks) || '')
+            .split(',').map((x) => x.trim()).filter(Boolean);
+          if (prodBooks.length) {
+            await db.collection('users').doc(uid).set({
+              ownedBookIds: admin.firestore.FieldValue.arrayUnion(...prodBooks)
+            }, { merge: true });
+          }
+          const digitalOnly = prodBooks.length > 0 && audioCore.isDigitalLibraryProduct(product) && !sessionShipping(session);
           await db.collection('orders').doc(session.id).set({
             productId,
             productName: product.name || null,
@@ -8183,7 +9311,9 @@ exports.stripeWebhook = onRequest(
             currency: session.currency || 'usd',
             couponCode: couponCode || null,
             shipping: sessionShipping(session),
-            status: 'new',
+            ...(prodBooks.length ? { grantsBooks: prodBooks } : {}),
+            status: digitalOnly ? 'done' : 'new',
+            ...(digitalOnly ? { digital: true, fulfilledAt: admin.firestore.FieldValue.serverTimestamp() } : {}),
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
           if (typeof product.inventory === 'number') {
@@ -8191,16 +9321,31 @@ exports.stripeWebhook = onRequest(
               inventory: admin.firestore.FieldValue.increment(-1)
             }, { merge: true });
           }
+          let libraryEmail = null;
+          if (prodBooks.length) {
+            libraryEmail = await sendLibraryPurchaseEmail(db, {
+              email: (session.customer_details && session.customer_details.email) || session.customer_email || null,
+              uid, productName: product.name || null, bookIds: prodBooks
+            }) ? 'sent' : 'failed';
+          }
           await db.collection('users').doc(uid).collection('purchases').doc(session.id).set({
             productId,
             productName: product.name || null,
             amount: (session.amount_total || 0) / 100,
             mode: 'product',
             couponCode: couponCode || null,
+            ...(prodBooks.length ? { grantsBooks: prodBooks, confirmationEmail: libraryEmail } : {}),
             status: 'paid',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
           if (couponCode) await countCouponRedemption(db, couponCode);
+
+          // Tell the owner an order came in (and where it ships).
+          await sendOrderAlert({
+            session,
+            itemName: product.name || 'Store product',
+            needsShipping: !digitalOnly
+          });
 
           // Commission on product sales — the code + rate were validated and
           // locked into metadata by createCheckoutSession.
@@ -8211,7 +9356,8 @@ exports.stripeWebhook = onRequest(
             if (affSnap.exists) {
               const pct = Number(session.metadata.refPercent)
                 || (typeof affSnap.data().commissionPercent === 'number' ? affSnap.data().commissionPercent : 20);
-              const saleAmount = (session.amount_total || 0) / 100;
+              // Commission is on the item, not the postage.
+              const saleAmount = shippingCore.merchandiseDollars(session);
               const commission = Math.round(saleAmount * pct) / 100;
               await affRef.collection('referrals').doc(session.id).set({
                 productId,
@@ -8274,6 +9420,7 @@ exports.stripeWebhook = onRequest(
               status: sessionShipping(session) ? 'new' : 'needs-address',
               createdAt: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
+            await sendOrderAlert({ session, itemName: SHIPPED_BOOK_NAME, needsShipping: true });
           }
           // The confirmation: where the course is, that the book is in
           // their library, and (print bundle) that the paperback is coming.
@@ -8320,7 +9467,8 @@ exports.stripeWebhook = onRequest(
             if (affSnap.exists) {
               const pct = Number(session.metadata.refPercent) ||
                 (typeof affSnap.data().commissionPercent === 'number' ? affSnap.data().commissionPercent : 20);
-              const saleAmount = (session.amount_total || 0) / 100;
+              // Commission is on the course and book, not the postage.
+              const saleAmount = shippingCore.merchandiseDollars(session);
               const commission = Math.round(saleAmount * pct) / 100;
               await affRef.collection('referrals').doc(session.id).set({
                 courseSlug,
@@ -11199,12 +12347,22 @@ async function sendCourseWorkReminders(db, { now = new Date() } = {}) {
 // once-only even when ticks overlap. notifPrefs.digest === false, or an
 // opt-out on the member's CRM contact (unsubscribe, bounce, spam report),
 // stops it.
+//
+// Nothing older than DIGEST_LOOKBACK_MS (48 hours) is ever listed. A new
+// member's first digest catches them up on the last two days, never the
+// community's whole history; after that each digest lists only what is new
+// since the one before.
 // ════════════════════════════════════════════════════════════════
 
 const DIGEST_TIMEZONE = 'America/New_York';
 const DIGEST_HOUR = 18;
-const DIGEST_LOOKBACK_MS = 24 * 3600 * 1000;
+const DIGEST_LOOKBACK_MS = 48 * 3600 * 1000;
 const DIGEST_MAX_THREADS = 6;
+
+/** Threads after this time go in a member's digest: since their last one, never more than 48 hours back. */
+function digestSinceMs(lastSentMs, nowMs) {
+  return Math.max(Number(lastSentMs) || 0, nowMs - DIGEST_LOOKBACK_MS);
+}
 
 function digestEligible(u) {
   if (!u || !u.email) return false;
@@ -11239,13 +12397,15 @@ function digestUnsubscribeUrl(uid, secret) {
 }
 
 /** Subject, HTML and text for one digest. Pure, so the copy is testable. */
-function communityDigestMessage({ total, top }, unsubUrl) {
+function communityDigestMessage({ total, top }, unsubUrl, { firstDigest = false } = {}) {
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const first = top[0];
   const subject = total === 1
     ? `${first.post.authorName || 'Someone'} posted in ${first.channelName}`
     : `${total} new threads in the community`;
   const more = total - top.length;
+  // A member's first digest catches them up on the last two days.
+  const when = firstDigest ? 'in the last two days' : 'since your last update';
   const settingsUrl = `${APP_BASE_URL}/profile.html#notifications`;
   const rows = top.map((t) => {
     const url = communityPostUrl(t.channelKey, t.id);
@@ -11254,7 +12414,7 @@ function communityDigestMessage({ total, top }, unsubUrl) {
   });
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:8px;">
     <h2 style="color:#E60306;margin:0 0 6px;font-size:22px;">Today in the community</h2>
-    <p style="font-size:15px;color:#444;margin:0 0 20px;">${total === 1 ? 'A new thread' : `${total} new threads`} since yesterday.</p>
+    <p style="font-size:15px;color:#444;margin:0 0 20px;">${total === 1 ? 'A new thread' : `${total} new threads`} ${when}.</p>
     ${rows.map((r) => `<a href="${esc(r.url)}" style="display:block;text-decoration:none;color:#222;border:1px solid #eee;border-radius:10px;padding:14px 16px;margin:0 0 10px;">
       <div style="font-size:12px;color:#888;margin:0 0 4px;">${esc(r.t.channelName)} · ${esc(r.t.post.authorName || 'A member')}${r.replies ? ` · ${r.replies} repl${r.replies === 1 ? 'y' : 'ies'}` : ''}</div>
       <div style="font-size:15px;line-height:1.45;">${esc(r.preview)}</div>
@@ -11265,7 +12425,7 @@ function communityDigestMessage({ total, top }, unsubUrl) {
     <p style="font-size:12px;color:#888;margin:6px 0 0;">The One Percent Academy</p>
   </div>`;
   const text = [
-    `Today in the community: ${total === 1 ? 'a new thread' : `${total} new threads`} since yesterday.`,
+    `Today in the community: ${total === 1 ? 'a new thread' : `${total} new threads`} ${when}.`,
     '',
     ...rows.map((r) => `${r.t.channelName} · ${r.t.post.authorName || 'A member'}\n${r.preview}\n${r.url}\n`),
     more > 0 ? `Plus ${more} more.\n` : '',
@@ -11322,7 +12482,7 @@ async function sendCommunityDigests(db, { now = new Date(), dryRun = false } = {
     if (last.date === clock.date) continue;
     out.eligible++;
     const lastMs = last.sentAt && typeof last.sentAt.toMillis === 'function' ? last.sentAt.toMillis() : 0;
-    const picked = digestThreadsFor(d.id, u, threads, Math.max(lastMs, nowMs - DIGEST_LOOKBACK_MS));
+    const picked = digestThreadsFor(d.id, u, threads, digestSinceMs(lastMs, nowMs));
     if (!picked.total) { out.empty++; continue; }
 
     // A member whose CRM contact opted out (unsubscribe link, bounce, spam
@@ -11350,7 +12510,7 @@ async function sendCommunityDigests(db, { now = new Date(), dryRun = false } = {
     if (!claimed) continue;
 
     const unsub = digestUnsubscribeUrl(d.id, secret);
-    const msg = communityDigestMessage(picked, unsub);
+    const msg = communityDigestMessage(picked, unsub, { firstDigest: !lastMs });
     try {
       await sendEmail({
         to: u.email, from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT }, replyTo: REPLY_TO,
@@ -11366,6 +12526,10 @@ async function sendCommunityDigests(db, { now = new Date(), dryRun = false } = {
       out.failed++;
       if (!out.error) out.error = String((e && e.message) || e).slice(0, 200);
       console.warn('[tick] community digest failed', d.id, e && e.message);
+      // Give the day back, so the next tick retries, and keep the last
+      // good sentAt, so the retry still lists these threads.
+      await d.ref.update({ communityDigest: last.date ? last : admin.firestore.FieldValue.delete() })
+        .catch((err) => console.warn('[tick] community digest release failed', d.id, err && err.message));
     }
   }
   return out;
@@ -11434,7 +12598,7 @@ async function runTick(db, { dryRun = false } = {}) {
     return { error: (e && e.message) || String(e) };
   });
 
-  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest, planReminders] = await Promise.all([
+  const [sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest, planReminders, campaigns] = await Promise.all([
     step('sequences', processDueEnrollments(db, { dryRun })),
     // These only ever renew or send; there is nothing to preview, so a dry
     // run skips them rather than pretending to measure something.
@@ -11447,10 +12611,12 @@ async function runTick(db, { dryRun = false } = {}) {
     // A dry run counts who would get a digest today without sending or claiming.
     step('communityDigest', sendCommunityDigests(db, { dryRun })),
     step('storeDigest', sendStoreDigest(db, { dryRun })),
-    step('planReminders', dryRun ? { skipped: 'dryRun' } : sendPlanReminders(db))
+    step('planReminders', dryRun ? { skipped: 'dryRun' } : sendPlanReminders(db)),
+    // Approved campaigns whose send time has arrived.
+    step('campaigns', sendDueCampaigns(db, { dryRun }))
   ]);
 
-  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest, planReminders };
+  const steps = { sequences, watches, reminders, courseReminders, launches, announcements, reviewNudges, communityDigest, storeDigest, planReminders, campaigns };
   const failedSteps = Object.keys(steps).filter((k) => steps[k] && steps[k].error);
   const summary = { ok: failedSteps.length === 0, dryRun, ms: Date.now() - startedAt, ...steps };
   if (failedSteps.length) summary.failedSteps = failedSteps;
@@ -15218,6 +16384,7 @@ const ASSESSMENT_SLUGS = {
   'limiting-beliefs': { title: 'What Belief Is Holding You Back?', category: 'leader' },
   'delegation-audit': { title: 'The Delegation Audit', category: 'leader' },
   'faith-leader': { title: 'The Faith Leader Health Check', category: 'leader' },
+  'alignment-assessment': { title: 'The Alignment Assessment', category: 'team' },
   'team-alignment': { title: 'The Team Alignment Assessment', category: 'team' },
   'sales-mindset': { title: 'The Sales Mindset Score', category: 'team' },
   'financial-readiness': { title: 'The Financial Readiness Score', category: 'money' },
@@ -16397,6 +17564,9 @@ exports.ASSESSMENT_SLUGS = ASSESSMENT_SLUGS;
 // that carry an endpoint definition, so this deploys nothing.
 // ────────────────────────────────────────────────────────────────
 exports.promoteLaunchedItems = promoteLaunchedItems;
+// Same, for tests/campaign-schedule.test.mjs.
+exports.sendDueCampaigns = sendDueCampaigns;
+exports.dispatchCampaign = dispatchCampaign;
 
 // ════════════════════════════════════════════════════════════════
 // Speaking Engagement Agreements: digital signing.
@@ -17269,13 +18439,21 @@ async function sendStoreDigest(db, { now = new Date(), dryRun = false } = {}) {
   if (!claimed) return { skipped: 'already sent today' };
 
   const msg = storeDigestMessage(digest);
-  await sendEmail({
-    to: OWNER_EMAIL,
-    from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
-    replyTo: REPLY_TO,
-    subject: msg.subject, html: msg.html, text: msg.text,
-    customArgs: { type: 'hand_sale_digest' }
-  });
+  try {
+    await sendEmail({
+      to: OWNER_EMAIL,
+      from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+      replyTo: REPLY_TO,
+      subject: msg.subject, html: msg.html, text: msg.text,
+      customArgs: { type: 'hand_sale_digest' }
+    });
+  } catch (e) {
+    // Give the day back, so the next tick retries instead of skipping
+    // today's email as already sent.
+    await (last.exists ? stateRef.set(last.data()) : stateRef.delete())
+      .catch((err) => console.warn('[tick] store digest release failed', err && err.message));
+    throw e;
+  }
   return { ...counts, sent: true };
 }
 

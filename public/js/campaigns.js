@@ -1,5 +1,15 @@
 // Campaigns page — list + detail + compose (draft / send now).
 // Admin + owner only.
+//
+// A campaign is either plain (the text as written) or branded (the One
+// Percent layout from email-layout-core.js). Branded is the default. The
+// preview here and the server's send use the same renderer.
+//
+// Review: a draft (shown as "Needs review") is approved or rejected here.
+// Only an approved campaign can be sent. One with a send time (sendAt) goes
+// out on its own: the automation tick sends it (sendDueCampaigns in
+// functions/index.js) at its first check after that time, usually a few
+// hours later at most.
 
 import { db, functions, firebaseReady } from './firebase.js';
 import { onAuthReady } from './auth.js';
@@ -7,19 +17,22 @@ import { renderTopbar } from './topbar.js';
 import { getRoleInfo } from './roles.js';
 import {
   collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
-  query, where, orderBy, limit, serverTimestamp
+  query, where, orderBy, limit, serverTimestamp, runTransaction, deleteField, Timestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import { STAGES, listCompanyAdmins, escapeHtml, fmtDateTime } from './crm.js';
 import { resolveCrmCompany, mountCrmCompanySwitcher } from './company-resolver.js';
+import { renderCampaignEmail, DEFAULT_SIGNATURE } from './email-layout-core.js';
 
 const $ = (id) => document.getElementById(id);
 
 const state = {
   uid: null,
+  userName: '',
   role: null,
   companyId: null,
   campaigns: [],
+  filter: 'all',     // 'all' | 'review' | 'approved' | 'sent' | 'rejected'
   view: 'list',      // 'list' | 'detail'
   detailId: null,
   detailCampaign: null,
@@ -31,15 +44,84 @@ function gate(msg) {
   $('gate-msg').innerHTML = `<div class="card"><div class="auth-error">${escapeHtml(msg)}</div></div>`;
 }
 
+// 'ready' is what the compose modal wrote before approvals existed; the
+// server sends it like an approved campaign, so it reads as one here.
+const STATUS_LABELS = { draft: 'Needs review', approved: 'Approved', ready: 'Approved', rejected: 'Rejected' };
+const isApproved = (s) => s === 'approved' || s === 'ready';
+
+const FILTERS = {
+  all: (s) => s !== 'rejected',
+  review: (s) => s === 'draft',
+  approved: isApproved,
+  sent: (s) => ['sending', 'sent', 'failed'].includes(s),
+  rejected: (s) => s === 'rejected'
+};
+
+// Must match CAMPAIGN_SEND_GRACE_MS in functions/index.js: past this, the
+// tick no longer sends a campaign whose time has gone by.
+const SEND_GRACE_MS = 24 * 60 * 60 * 1000;
+
 function statusBadge(status) {
   const s = status || 'draft';
-  return `<span class="camp-status-badge camp-status-${escapeHtml(s)}">${escapeHtml(s)}</span>`;
+  return `<span class="camp-status-badge camp-status-${escapeHtml(s)}">${escapeHtml(STATUS_LABELS[s] || s)}</span>`;
+}
+
+function sendAtMs(c) {
+  return c.sendAt && typeof c.sendAt.toMillis === 'function' ? c.sendAt.toMillis() : null;
+}
+
+// "Mon, Nov 30, 9:00 AM EST" in the viewer's own time zone.
+function fmtWhen(ms) {
+  return new Date(ms).toLocaleString([], {
+    weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short'
+  });
+}
+
+// A datetime-local input works in local time with no zone: YYYY-MM-DDTHH:mm.
+function toLocalInput(ms) {
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// What the When column says for a campaign that has not gone out yet.
+function whenLabel(c) {
+  if (c.sentAt) return fmtDateTime(c.sentAt);
+  const ms = sendAtMs(c);
+  const s = c.status || 'draft';
+  if (ms != null) {
+    if (s === 'rejected') return '—';
+    if (isApproved(s)) return (Date.now() - ms > SEND_GRACE_MS ? 'Missed ' : 'Sends ') + fmtWhen(ms);
+    return 'Planned ' + fmtWhen(ms);
+  }
+  // Drafts seeded before sendAt existed carry a free-text date.
+  if (c.sendOn) return 'Send ' + c.sendOn;
+  return '—';
 }
 
 function pct(num, denom) {
   if (!denom) return '—';
   const p = Math.round((num / denom) * 100);
   return p + '%';
+}
+
+// The email exactly as a recipient sees it, in a sandboxed frame. Plain
+// campaigns get the same escaping the server applies.
+function previewDoc(c) {
+  if (c.layout === 'branded') return renderCampaignEmail(c);
+  const body = escapeHtml(c.bodyText || '').replace(/\n/g, '<br/>');
+  return `<!doctype html><html><body style="margin:0;padding:24px;background:#fff;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;">${body}`
+    + `<hr style="margin:28px 0 14px;border:none;border-top:1px solid #ddd;"><p style="font-size:12px;color:#777;">You are receiving this because you signed up with The One Percent Nation.<br><u>Unsubscribe from these emails</u>.</p></body></html>`;
+}
+
+function paintPreview(frame, c) {
+  if (frame) frame.srcdoc = previewDoc(c);
+}
+
+async function sendTest(payload) {
+  const call = httpsCallable(functions, 'sendCampaignTest');
+  const res = await call(Object.assign({ companyId: state.companyId }, payload));
+  return (res && res.data && res.data.to) || 'your inbox';
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -73,13 +155,32 @@ async function loadCampaigns() {
   renderCampaignList();
 }
 
+function renderFilters() {
+  const counts = {};
+  Object.keys(FILTERS).forEach((k) => {
+    counts[k] = state.campaigns.filter((c) => FILTERS[k](c.status || 'draft')).length;
+  });
+  document.querySelectorAll('#camp-filters [data-filter]').forEach((b) => {
+    const k = b.getAttribute('data-filter');
+    const base = b.textContent.replace(/\s*\(\d+\)$/, '');
+    b.textContent = k === 'review' && counts.review ? `${base} (${counts.review})` : base;
+    b.classList.toggle('active', k === state.filter);
+  });
+}
+
 function renderCampaignList() {
   const body = $('campaigns-body');
+  renderFilters();
   if (!state.campaigns.length) {
     body.innerHTML = `<tr><td colspan="7" class="camp-empty">No campaigns yet. Click "+ New Campaign" to create one.</td></tr>`;
     return;
   }
-  body.innerHTML = state.campaigns.map((c) => {
+  const shown = state.campaigns.filter((c) => FILTERS[state.filter](c.status || 'draft'));
+  if (!shown.length) {
+    body.innerHTML = `<tr><td colspan="7" class="camp-empty">Nothing here.</td></tr>`;
+    return;
+  }
+  body.innerHTML = shown.map((c) => {
     const stats = c.stats || {};
     const delivered = stats.delivered || 0;
     const opens = stats.opens || 0;
@@ -91,7 +192,7 @@ function renderCampaignList() {
       <td><a href="#" class="camp-name-link" data-view="${escapeHtml(c.id)}">${escapeHtml(c.name || '(untitled)')}</a></td>
       <td style="color:var(--white-dim);">${escapeHtml(c.subject || '—')}</td>
       <td>${statusBadge(c.status)}</td>
-      <td style="font-family:var(--font-mono); font-size:11px; color:var(--gray-light);">${fmtDateTime(c.sentAt)}</td>
+      <td style="font-family:var(--font-mono); font-size:11px; color:var(--gray-light);">${escapeHtml(whenLabel(c))}</td>
       <td class="num">${rcpt}</td>
       <td class="num">${opens} <span style="color:var(--gray-mid); font-size:10px;">${openRate !== '—' ? '(' + openRate + ')' : ''}</span></td>
       <td class="num">${clicks} <span style="color:var(--gray-mid); font-size:10px;">${clickRate !== '—' ? '(' + clickRate + ')' : ''}</span></td>
@@ -166,6 +267,36 @@ async function loadDetail() {
   renderDetail();
 }
 
+// The line under the buttons that says where a campaign stands and what
+// happens next. `warn` when something needs attention.
+function reviewNote(c) {
+  const s = c.status || 'draft';
+  const ms = sendAtMs(c);
+  const late = ms != null && Date.now() - ms > SEND_GRACE_MS;
+  const due = ms != null && ms <= Date.now();
+  if (s === 'draft') {
+    if (late) return { warn: true, text: `Needs your review. Its send time (${fmtWhen(ms)}) has passed: pick a new time, or approve it and press Send now.` };
+    if (due) return { text: 'Needs your review. Its send time has arrived, so once approved it goes out at the next automatic check, usually within a few hours.' };
+    if (ms != null) return { text: `Needs your review. Once approved, it sends automatically ${fmtWhen(ms)}.` };
+    return { text: 'Needs your review. Once approved, it sends when you press Send now, or set a send time above.' };
+  }
+  if (isApproved(s)) {
+    const who = c.approvedByName ? `Approved by ${c.approvedByName}` : 'Approved';
+    const when = c.approvedAt ? ` on ${fmtDateTime(c.approvedAt)}` : '';
+    const head = `${who}${when}.`;
+    if (late) return { warn: true, text: `${head} Its send time (${fmtWhen(ms)}) passed more than a day ago, so it will not send on its own. Press Send now, or pick a new time.` };
+    if (due) return { text: `${head} Its send time has arrived. It goes out at the next automatic check, usually within a few hours.` };
+    if (ms != null) return { text: `${head} Sends automatically at the first check after ${fmtWhen(ms)}, usually within a few hours of it.` };
+    return { text: `${head} No send time is set, so nothing goes out until you press Send now.` };
+  }
+  if (s === 'rejected') {
+    const who = c.rejectedByName ? `Rejected by ${c.rejectedByName}` : 'Rejected';
+    const when = c.rejectedAt ? ` on ${fmtDateTime(c.rejectedAt)}` : '';
+    return { text: `${who}${when}.${c.rejectionNote ? ` Note: ${c.rejectionNote}` : ''}` };
+  }
+  return { text: '' };
+}
+
 function renderDetail() {
   const c = state.detailCampaign;
   if (!c) return;
@@ -173,11 +304,15 @@ function renderDetail() {
   const bits = [];
   if (c.fromName) bits.push('From: ' + c.fromName);
   if (c.createdAt) bits.push('Created ' + fmtDateTime(c.createdAt));
-  if (c.sentAt) bits.push('Sent ' + fmtDateTime(c.sentAt));
+  if (c.sentAt) bits.push('Sent ' + fmtDateTime(c.sentAt) + (c.sentVia === 'scheduled' ? ' (scheduled)' : ''));
+  if (c.sendOn && !c.sentAt && sendAtMs(c) == null) bits.push('Send on ' + c.sendOn);
+  const rf = c.recipientFilter || {};
+  if (rf.excludeEnrolledIn) bits.push('Skips anyone already in ' + (rf.excludeEnrolledLabel || rf.excludeEnrolledIn));
+  if (rf.excludeOwnersOf) bits.push('Skips anyone who already owns ' + (rf.excludeOwnersLabel || rf.excludeOwnersOf));
   $('camp-d-sub').textContent = bits.join(' · ');
   const st = $('camp-d-status');
   const s = c.status || 'draft';
-  st.textContent = s;
+  st.textContent = STATUS_LABELS[s] || s;
   st.className = `camp-status-badge camp-status-${s}`;
 
   const stats = c.stats || {};
@@ -199,6 +334,28 @@ function renderDetail() {
 
   $('camp-d-subject').textContent = c.subject || '—';
   $('camp-d-body').textContent = c.bodyText || '(no body)';
+  $('camp-d-design').textContent = c.layout === 'branded' ? 'Branded layout' : 'Plain text';
+  paintPreview($('camp-d-preview'), c);
+
+  // Review: a draft is approved or rejected; only an approved one sends. A
+  // campaign that is sending, sent or failed has no actions at all.
+  const draft = s === 'draft';
+  const approved = isApproved(s);
+  const rejected = s === 'rejected';
+  const show = (id, on) => { $(id).style.display = on ? '' : 'none'; };
+  show('camp-d-actions', draft || approved || rejected);
+  show('camp-d-test', draft || approved);
+  show('camp-d-approve', draft);
+  show('camp-d-reject', draft);
+  show('camp-d-send', approved);
+  show('camp-d-unapprove', approved || rejected);
+  show('camp-d-sendat-row', draft || approved);
+  const ms = sendAtMs(c);
+  $('camp-d-sendat').value = ms != null ? toLocalInput(ms) : '';
+  $('camp-d-action-msg').textContent = '';
+  const review = reviewNote(c);
+  $('camp-d-review').textContent = review.text;
+  $('camp-d-review').classList.toggle('warn', !!review.warn);
 
   if (c.errorSample && c.errorSample.length) {
     $('camp-d-errors-wrap').style.display = '';
@@ -219,6 +376,91 @@ function renderDetail() {
       <span class="camp-event-time">${fmtDateTime(ev.timestamp)}</span>
     </div>
   `).join('');
+}
+
+// ────────────────────────────────────────────────────────────────
+// Review: approve, reject, back to draft, send time
+// ────────────────────────────────────────────────────────────────
+
+// Applies a review change only if the campaign is still in one of `from`.
+// The re-read inside the transaction is what stops a tab left open since
+// before a send from approving a campaign that has already gone out.
+async function updateReview(from, fields) {
+  const ref = doc(db, 'companies', state.companyId, 'campaigns', state.detailId);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const s = snap.exists() ? (snap.data().status || 'draft') : null;
+    if (!from.includes(s)) throw new Error('This campaign changed since you opened it. Go back and open it again.');
+    tx.update(ref, Object.assign({ updatedAt: serverTimestamp() }, fields));
+  });
+}
+
+const CLEAR_APPROVAL = { approvedBy: deleteField(), approvedByName: deleteField(), approvedAt: deleteField() };
+const CLEAR_REJECTION = { rejectedBy: deleteField(), rejectedByName: deleteField(), rejectedAt: deleteField(), rejectionNote: deleteField() };
+
+async function runReviewAction(btnId, work, doneMsg) {
+  const btn = $(btnId);
+  btn.disabled = true;
+  try {
+    await work();
+    await loadDetail();
+    $('camp-d-action-msg').textContent = doneMsg;
+  } catch (err) {
+    $('camp-d-action-msg').textContent = 'Could not save: ' + (err.message || err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function approveCampaign() {
+  const c = state.detailCampaign;
+  if (!c) return;
+  const ms = sendAtMs(c);
+  const name = c.name || c.subject;
+  let ask;
+  if (ms == null) ask = `Approve "${name}"? Nothing goes out until you press Send now.`;
+  else if (Date.now() - ms > SEND_GRACE_MS) ask = `Approve "${name}"? Its send time has passed, so it will not send on its own. You will need to press Send now.`;
+  else if (ms <= Date.now()) ask = `Approve "${name}"? Its send time has arrived, so it goes out to everyone it targets at the next automatic check, usually within a few hours.`;
+  else ask = `Approve "${name}"? It goes out to everyone it targets automatically ${fmtWhen(ms)}.`;
+  if (!confirm(ask)) return;
+  runReviewAction('camp-d-approve', () => updateReview(['draft'], Object.assign({
+    status: 'approved',
+    approvedBy: state.uid,
+    approvedByName: state.userName,
+    approvedAt: serverTimestamp()
+  }, CLEAR_REJECTION)), 'Approved.');
+}
+
+function rejectCampaign() {
+  const note = prompt('Reject this campaign? Add a note on what to change (optional).', '');
+  if (note === null) return;
+  runReviewAction('camp-d-reject', () => updateReview(['draft'], Object.assign({
+    status: 'rejected',
+    rejectedBy: state.uid,
+    rejectedByName: state.userName,
+    rejectedAt: serverTimestamp(),
+    rejectionNote: note.trim().slice(0, 1000)
+  }, CLEAR_APPROVAL)), 'Rejected.');
+}
+
+function backToDraft() {
+  const c = state.detailCampaign;
+  if (!c) return;
+  if (isApproved(c.status) && sendAtMs(c) != null
+    && !confirm('Move it back to draft? It will not send on its own until it is approved again.')) return;
+  runReviewAction('camp-d-unapprove', () => updateReview(['approved', 'ready', 'rejected'],
+    Object.assign({ status: 'draft' }, CLEAR_APPROVAL, CLEAR_REJECTION)), 'Moved back to draft.');
+}
+
+function saveSendAt(value) {
+  const c = state.detailCampaign;
+  if (!c) return;
+  const d = value ? new Date(value) : null;
+  if (d && isNaN(d.getTime())) { $('camp-d-action-msg').textContent = 'That is not a valid date.'; return; }
+  const status = c.status || 'draft';
+  runReviewAction('camp-d-sendat-clear', () => updateReview([status],
+    { sendAt: d ? Timestamp.fromDate(d) : deleteField() }),
+    d ? `Send time saved: ${fmtWhen(d.getTime())}.` : 'Send time cleared.');
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -244,6 +486,7 @@ async function openCampaignModal() {
     <div class="crm-modal-backdrop" id="modal-bd">
       <div class="crm-modal camp-modal auth-card">
         <h1>New <span>Campaign</span></h1>
+        <div class="camp-compose">
         <form id="camp-form" class="crm-form">
           <div class="crm-form-row">
             <label>Name (internal)</label>
@@ -255,12 +498,36 @@ async function openCampaignModal() {
           </div>
           <div class="crm-form-row">
             <label>From name</label>
-            <input class="c-input" id="cf-from-name" value="The One Percent Nation" />
-            <div class="camp-from-hint">From: the1percentnation@gmail.com</div>
+            <input class="c-input" id="cf-from-name" value="Anthony Brown Sr." />
+            <div class="camp-from-hint">From: anthonybrown@the1pnation.com</div>
           </div>
           <div class="crm-form-row">
-            <label>Body (plain text — line breaks become &lt;br&gt;)</label>
-            <textarea class="c-textarea" id="cf-body" rows="8" required placeholder="Write your message here…"></textarea>
+            <label>Design</label>
+            <div class="camp-recipient-picker-opts">
+              <label class="camp-recipient-opt camp-design-opt active"><input type="radio" name="dmode" value="branded" checked /> Branded</label>
+              <label class="camp-recipient-opt camp-design-opt"><input type="radio" name="dmode" value="plain" /> Plain text</label>
+            </div>
+          </div>
+          <div class="crm-form-row cf-branded-only">
+            <label>Banner image URL (optional)</label>
+            <input class="c-input" id="cf-hero" placeholder="https://the1pnation.com/assets/your-banner.jpg" />
+            <div class="camp-from-hint">1200 × 628 works best. Tapping it opens your first button's link.</div>
+          </div>
+          <div class="crm-form-row cf-branded-only">
+            <label>Preview text (optional)</label>
+            <input class="c-input" id="cf-preheader" maxlength="140" placeholder="The line inboxes show after the subject" />
+          </div>
+          <div class="crm-form-row">
+            <label>Body</label>
+            <textarea class="c-textarea" id="cf-body" rows="12" required placeholder="Write your message here…"></textarea>
+            <div class="camp-format-hint cf-branded-only">
+              Blank line = new paragraph &nbsp;·&nbsp; <code># Heading</code> &nbsp;·&nbsp; <code>- list item</code> &nbsp;·&nbsp; <code>**bold**</code><br>
+              A button on its own line: <code>[Get the Audiobook](https://the1pnation.com/icantaudio)</code>
+            </div>
+          </div>
+          <div class="crm-form-row cf-branded-only">
+            <label>Signature</label>
+            <textarea class="c-textarea" id="cf-signature" rows="5"></textarea>
           </div>
 
           <div class="crm-form-row">
@@ -291,22 +558,42 @@ async function openCampaignModal() {
           </div>
 
           <div id="cf-err" class="auth-error" style="display:none;"></div>
+          <div id="cf-msg" class="camp-action-msg"></div>
 
           <div class="crm-modal-actions">
             <button type="button" class="btn btn-ghost" id="cf-cancel">Cancel</button>
+            <button type="button" class="btn btn-ghost" id="cf-test">Send test to me</button>
             <button type="button" class="btn btn-ghost" id="cf-draft">Save draft</button>
             <button type="submit" class="btn btn-primary" id="cf-send">Send now</button>
           </div>
         </form>
+        <div class="camp-preview-col">
+          <div class="camp-preview-label">Preview</div>
+          <iframe id="cf-preview" class="camp-preview-frame" sandbox title="Email preview"></iframe>
+        </div>
+        </div>
       </div>
     </div>
   `;
 
   const close = () => { root.innerHTML = ''; };
+  $('cf-signature').value = DEFAULT_SIGNATURE;
   $('cf-cancel').addEventListener('click', close);
+
+  const designOpts = root.querySelectorAll('.camp-design-opt');
+  const refresh = () => {
+    const p = gatherPayload();
+    root.querySelectorAll('.cf-branded-only').forEach((el) => { el.style.display = p.layout === 'branded' ? '' : 'none'; });
+    designOpts.forEach((o) => o.classList.toggle('active', o.querySelector('input').checked));
+    paintPreview($('cf-preview'), p);
+  };
+  let timer = null;
+  const refreshSoon = () => { clearTimeout(timer); timer = setTimeout(refresh, 150); };
+  ['cf-subject', 'cf-body', 'cf-hero', 'cf-preheader', 'cf-signature'].forEach((id) => $(id).addEventListener('input', refreshSoon));
+  root.querySelectorAll('input[name="dmode"]').forEach((r) => r.addEventListener('change', refresh));
   $('modal-bd').addEventListener('click', (e) => { if (e.target.id === 'modal-bd') close(); });
 
-  const opts = root.querySelectorAll('.camp-recipient-opt');
+  const opts = root.querySelectorAll('.camp-recipient-opt:not(.camp-design-opt)');
   opts.forEach((opt) => {
     const radio = opt.querySelector('input[type="radio"]');
     radio.addEventListener('change', () => {
@@ -328,6 +615,10 @@ async function openCampaignModal() {
     const subject = $('cf-subject').value.trim();
     const fromName = $('cf-from-name').value.trim() || 'The One Percent Nation';
     const bodyText = $('cf-body').value;
+    const layout = root.querySelector('input[name="dmode"]:checked').value;
+    const heroImageUrl = $('cf-hero').value.trim();
+    const preheader = $('cf-preheader').value.trim();
+    const signature = $('cf-signature').value;
     const mode = root.querySelector('input[name="rmode"]:checked').value;
     const filter = { mode };
     if (mode === 'stages') {
@@ -339,11 +630,11 @@ async function openCampaignModal() {
     } else if (mode === 'owner') {
       filter.ownerUid = $('cf-owner-sel').value;
     }
-    return { name, subject, fromName, bodyText, filter };
+    return { name, subject, fromName, bodyText, layout, heroImageUrl, preheader, signature, filter };
   }
 
   async function createDoc(status) {
-    const { name, subject, fromName, bodyText, filter } = gatherPayload();
+    const { name, subject, fromName, bodyText, layout, heroImageUrl, preheader, signature, filter } = gatherPayload();
     if (!name || !subject || !bodyText.trim()) {
       $('cf-err').textContent = 'Name, subject, and body are required.';
       $('cf-err').style.display = 'block';
@@ -358,8 +649,12 @@ async function openCampaignModal() {
       fromName,
       bodyHtml,
       bodyText,
+      layout,
+      ...(layout === 'branded' ? { heroImageUrl, preheader, signature } : {}),
       recipientFilter: filter,
       status,
+      // Writing it and pressing Send now in one go is the approval.
+      ...(status === 'approved' ? { approvedBy: state.uid, approvedByName: state.userName, approvedAt: serverTimestamp() } : {}),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       createdBy: state.uid,
@@ -368,6 +663,31 @@ async function openCampaignModal() {
     const ref = await addDoc(collection(db, 'companies', state.companyId, 'campaigns'), payload);
     return ref.id;
   }
+
+  $('cf-test').addEventListener('click', async () => {
+    const p = gatherPayload();
+    $('cf-err').style.display = 'none';
+    if (!p.subject || !p.bodyText.trim()) {
+      $('cf-err').textContent = 'Add a subject and a body first.';
+      $('cf-err').style.display = 'block';
+      return;
+    }
+    const btn = $('cf-test');
+    btn.disabled = true;
+    $('cf-msg').textContent = 'Sending test…';
+    try {
+      const to = await sendTest({ draft: p });
+      $('cf-msg').textContent = `Test sent to ${to}. Check your inbox (and Promotions).`;
+    } catch (err) {
+      $('cf-msg').textContent = '';
+      $('cf-err').textContent = 'Test failed: ' + (err.message || err);
+      $('cf-err').style.display = 'block';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  refresh();
 
   $('cf-draft').addEventListener('click', async () => {
     try {
@@ -386,7 +706,7 @@ async function openCampaignModal() {
     const { name, subject } = gatherPayload();
     if (!confirm(`Send "${name}" now with subject "${subject}"? This cannot be undone.`)) return;
     try {
-      const id = await createDoc('ready');
+      const id = await createDoc('approved');
       if (!id) return;
       const call = httpsCallable(functions, 'sendCampaign');
       await call({ companyId: state.companyId, campaignId: id });
@@ -426,6 +746,7 @@ async function main() {
   }
   const info = await getRoleInfo(true);
   state.uid = u.uid;
+  state.userName = u.displayName || u.email || '';
   state.role = info.role;
   renderTopbar({ user: u, role: info.role, currentPage: 'campaigns' });
 
@@ -446,6 +767,49 @@ async function main() {
   await loadCampaigns();
 
   $('btn-new-campaign').addEventListener('click', openCampaignModal);
+  document.querySelectorAll('#camp-filters [data-filter]').forEach((b) => {
+    b.addEventListener('click', () => {
+      state.filter = b.getAttribute('data-filter');
+      renderCampaignList();
+    });
+  });
+  $('camp-d-approve').addEventListener('click', approveCampaign);
+  $('camp-d-reject').addEventListener('click', rejectCampaign);
+  $('camp-d-unapprove').addEventListener('click', backToDraft);
+  $('camp-d-sendat').addEventListener('change', (e) => saveSendAt(e.target.value));
+  $('camp-d-sendat-clear').addEventListener('click', () => saveSendAt(''));
+  $('camp-d-test').addEventListener('click', async () => {
+    const btn = $('camp-d-test');
+    btn.disabled = true;
+    $('camp-d-action-msg').textContent = 'Sending test…';
+    try {
+      const to = await sendTest({ campaignId: state.detailId });
+      $('camp-d-action-msg').textContent = `Test sent to ${to}. Check your inbox (and Promotions).`;
+    } catch (err) {
+      $('camp-d-action-msg').textContent = 'Test failed: ' + (err.message || err);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $('camp-d-send').addEventListener('click', async () => {
+    const c = state.detailCampaign;
+    if (!c) return;
+    if (!confirm(`Send "${c.name || c.subject}" now with subject "${c.subject}"? This cannot be undone.`)) return;
+    const btn = $('camp-d-send');
+    btn.disabled = true;
+    $('camp-d-action-msg').textContent = 'Sending…';
+    try {
+      const call = httpsCallable(functions, 'sendCampaign');
+      const res = await call({ companyId: state.companyId, campaignId: state.detailId });
+      const n = (res && res.data && res.data.recipientCount) || 0;
+      $('camp-d-action-msg').textContent = `Sent to ${n} recipient${n === 1 ? '' : 's'}.`;
+      await loadDetail();
+    } catch (err) {
+      $('camp-d-action-msg').textContent = 'Send failed: ' + (err.message || err);
+    } finally {
+      btn.disabled = false;
+    }
+  });
   $('camp-back-link').addEventListener('click', (e) => {
     e.preventDefault();
     closeDetail();

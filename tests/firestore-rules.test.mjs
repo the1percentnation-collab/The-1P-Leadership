@@ -362,6 +362,22 @@ await t('member CAN save their reading position',
     cfi: 'epubcfi(/6/4!/4/2/1:0)', fraction: 0.12, chapter: 'Chapter 1', bookmarks: [], updatedAt: serverTimestamp()
   })));
 
+await t('member CAN save their place in an audiobook',
+  () => assertSucceeds(setDoc(doc(reader, 'users/reader/bookProgress/i-cant-audio'), {
+    cfi: '', fraction: 0.4, chapter: 'Chapter 3', bookmarks: [], track: 2, time: 312.5, updatedAt: serverTimestamp()
+  })));
+
+await t('member CANNOT save a non-integer audiobook chapter',
+  () => assertFails(setDoc(doc(reader, 'users/reader/bookProgress/i-cant-audio'), {
+    fraction: 0.4, track: 'two', time: 3
+  })));
+
+await t('member CANNOT read listening passes or feed links',
+  () => assertFails(getDoc(doc(reader, 'audioPasses/reader_i-cant-audio'))));
+
+await t('member CANNOT write a feed link',
+  () => assertFails(setDoc(doc(reader, 'audioFeeds/reader_i-cant-audio'), { uid: 'reader', bookId: 'i-cant-audio', token: 'x' })));
+
 await t('member CANNOT stash arbitrary fields in a reading position',
   () => assertFails(setDoc(doc(reader, 'users/reader/bookProgress/i-cant'), {
     cfi: 'x', fraction: 0.1, ownedBookIds: ['other']
@@ -587,6 +603,74 @@ await t('admin CAN save hand-sale settings',
   () => assertSucceeds(setDoc(doc(adm, 'config/handSales'), { cashapp: '$One' }, { merge: true })));
 await t('anyone signed out CANNOT read hand-sale settings',
   () => assertFails(getDoc(doc(anon, 'config/handSales'))));
+
+// ── ARC readers (/arc) ─────────────────────────────────────────────────────
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'config/arc'), { open: true, bookId: 'i-cant', limit: 50, claimed: 3 });
+  await setDoc(doc(db, 'arcReaders/solo'), { uid: 'solo', email: 'solo@x.com', bookId: 'i-cant', reviewedAt: null });
+});
+await t('anyone CAN read whether ARC sign-ups are open',
+  () => assertSucceeds(getDoc(doc(anon, 'config/arc'))));
+await t('a member CANNOT open ARC sign-ups or raise the limit',
+  () => assertFails(setDoc(doc(solo, 'config/arc'), { open: true, limit: 9999 }, { merge: true })));
+await t('admin CAN close ARC sign-ups',
+  () => assertSucceeds(setDoc(doc(adm, 'config/arc'), { open: false }, { merge: true })));
+await t('admin CAN read the ARC reader list',
+  () => assertSucceeds(getDocs(collection(adm, 'arcReaders'))));
+await t('an ARC reader CAN read their own record (their name marks the copy)',
+  () => assertSucceeds(getDoc(doc(solo, 'arcReaders/solo'))));
+await t('an ARC reader CANNOT read another reader or the list',
+  () => Promise.all([
+    assertFails(getDoc(doc(solo, 'arcReaders/other'))),
+    assertFails(getDocs(collection(solo, 'arcReaders')))
+  ]));
+await t('nobody CAN read or write ARC sign-up requests from the client',
+  () => Promise.all([
+    assertFails(getDoc(doc(anon, 'arcRequests/abc'))),
+    assertFails(setDoc(doc(anon, 'arcRequests/abc'), { email: 'x@x.com' })),
+    assertFails(getDoc(doc(owner, 'arcRequests/abc')))
+  ]));
+await t('admin CAN mark an ARC review as in',
+  () => assertSucceeds(updateDoc(doc(adm, 'arcReaders/solo'), { reviewedAt: serverTimestamp() })));
+await t('admin CANNOT change which book an ARC reader got',
+  () => assertFails(updateDoc(doc(adm, 'arcReaders/solo'), { bookId: 'other' })));
+await t('nobody CAN add an ARC reader from the client (claimArcCopy only)',
+  () => Promise.all([
+    assertFails(setDoc(doc(solo, 'arcReaders/emp'), { uid: 'emp', bookId: 'i-cant' })),
+    assertFails(setDoc(doc(owner, 'arcReaders/emp'), { uid: 'emp', bookId: 'i-cant' }))
+  ]));
+
+// ── Campaigns: review decisions are the client's, the send is the server's ──
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'companies/co1/campaigns/cDraft'), { subject: 's', status: 'draft' });
+  await setDoc(doc(db, 'companies/co1/campaigns/cSent'), { subject: 's', status: 'sent' });
+  await setDoc(doc(db, 'companies/co1/campaigns/cSending'), { subject: 's', status: 'sending' });
+  await setDoc(doc(db, 'companies/co1/campaigns/cLegacy'), { subject: 's', status: 'ready' });
+});
+await t('company admin CAN save a campaign draft',
+  () => assertSucceeds(setDoc(doc(adm, 'companies/co1/campaigns/cNew'), { subject: 's', status: 'draft' })));
+await t('company admin CAN approve, reject and reopen a draft',
+  async () => {
+    await assertSucceeds(updateDoc(doc(adm, 'companies/co1/campaigns/cDraft'), { status: 'approved', approvedBy: 'adm' }));
+    await assertSucceeds(updateDoc(doc(adm, 'companies/co1/campaigns/cDraft'), { status: 'draft' }));
+    await assertSucceeds(updateDoc(doc(adm, 'companies/co1/campaigns/cDraft'), { status: 'rejected' }));
+    await assertSucceeds(updateDoc(doc(adm, 'companies/co1/campaigns/cDraft'), { status: 'draft' }));
+  });
+await t('company admin CAN set a send time on an old ready campaign',
+  () => assertSucceeds(updateDoc(doc(adm, 'companies/co1/campaigns/cLegacy'), { sendAt: new Date() })));
+await t('company admin CANNOT turn a sent campaign back into approved',
+  () => assertFails(updateDoc(doc(adm, 'companies/co1/campaigns/cSent'), { status: 'approved' })));
+await t('company admin CANNOT edit a campaign that is sending',
+  () => assertFails(updateDoc(doc(adm, 'companies/co1/campaigns/cSending'), { subject: 'changed' })));
+await t('company admin CANNOT mark a campaign sent or sending from the client',
+  () => Promise.all([
+    assertFails(updateDoc(doc(adm, 'companies/co1/campaigns/cDraft'), { status: 'sent' })),
+    assertFails(setDoc(doc(adm, 'companies/co1/campaigns/cFake'), { subject: 's', status: 'sending' }))
+  ]));
+await t('a company member who is not an admin CANNOT approve a campaign',
+  () => assertFails(updateDoc(doc(emp, 'companies/co1/campaigns/cDraft'), { status: 'approved' })));
 
 await env.cleanup();
 

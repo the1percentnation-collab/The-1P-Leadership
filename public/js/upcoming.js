@@ -26,9 +26,12 @@ function badgeFor(item) {
 
 function priceHtml(item) {
   if (!item.label) return '<span class="pre-card-price muted">TBA</span>';
+  const ship = item.shippingLabel
+    ? ` <small style="color:var(--gray-mid);font-weight:400;">${escapeHtml(item.shippingLabel)}</small>`
+    : '';
   return item.onSale
-    ? `<span class="pre-card-price"><s style="color:var(--gray-mid);font-weight:400;margin-right:6px;">${escapeHtml(item.originalLabel)}</s>${escapeHtml(item.label)}</span>`
-    : `<span class="pre-card-price">${escapeHtml(item.label)}</span>`;
+    ? `<span class="pre-card-price"><s style="color:var(--gray-mid);font-weight:400;margin-right:6px;">${escapeHtml(item.originalLabel)}</s>${escapeHtml(item.label)}${ship}</span>`
+    : `<span class="pre-card-price">${escapeHtml(item.label)}${ship}</span>`;
 }
 
 function ctaHtml(item) {

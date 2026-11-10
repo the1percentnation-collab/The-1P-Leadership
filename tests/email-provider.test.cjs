@@ -47,6 +47,7 @@ new Function(
     "const EMAIL_PROVIDERS = ['sendgrid', 'telnyx'];",
     grab('emailProvider'), grab('emailConfigured'),
     grab('emailAddrString'), grab('emailAddrOnly'), grab('emailAddrList'),
+    grab('telnyxAddr'), grab('telnyxAddrList'),
     grab('applySubstitutions'), grab('telnyxEmailBody'),
     'async ' + grab('sendEmailViaSendGrid').replace(/^async /, ''),
     'async ' + grab('sendEmailViaTelnyx').replace(/^async /, ''),
@@ -74,12 +75,14 @@ const MSG = {
 (async () => {
   // ── Provider selection ──────────────────────────────────────────────────
   delete process.env.EMAIL_PROVIDER;
-  t('defaults to sendgrid when unset', emailProvider() === 'sendgrid');
+  t('defaults to telnyx when unset', emailProvider() === 'telnyx');
   process.env.EMAIL_PROVIDER = 'TELNYX';
   t('is case and space insensitive', emailProvider() === 'telnyx');
   process.env.EMAIL_PROVIDER = 'mailchimp';
   t('an unknown provider falls back rather than failing to send',
-    emailProvider() === 'sendgrid');
+    emailProvider() === 'telnyx');
+  process.env.EMAIL_PROVIDER = 'sendgrid';
+  t('sendgrid is still one setting away (rollback)', emailProvider() === 'sendgrid');
 
   // ── SendGrid path ───────────────────────────────────────────────────────
   process.env.EMAIL_PROVIDER = 'sendgrid';
@@ -96,8 +99,12 @@ const MSG = {
   res = await sendEmail(MSG);
   let call = telnyxCalls[telnyxCalls.length - 1];
   t('posts to /email_messages', call.method === 'POST' && call.path === '/email_messages');
-  t('from carries the display name', call.body.from === 'The One Percent Nation <anthonybrown@the1pnation.com>');
-  t('to is always a list', Array.isArray(call.body.to) && call.body.to[0] === 'tester@example.com');
+  // Telnyx answers 422 "from_email has invalid format" to "Name <addr>".
+  t('from is an { email, name } object, never "Name <addr>"',
+    call.body.from && call.body.from.email === 'anthonybrown@the1pnation.com'
+    && call.body.from.name === 'The One Percent Nation');
+  t('to is always a list of { email } objects', Array.isArray(call.body.to)
+    && call.body.to[0].email === 'tester@example.com' && !('name' in call.body.to[0]));
   t('bodies use telnyx field names',
     call.body.text_body === 'plain' && call.body.html_body === '<p>rich</p>'
     && !('text' in call.body) && !('html' in call.body));
@@ -112,7 +119,14 @@ const MSG = {
   call = telnyxCalls[telnyxCalls.length - 1];
   t('omits html_body, reply_to and metadata when absent',
     !('html_body' in call.body) && !('reply_to' in call.body) && !('metadata' in call.body));
-  t('a bare string from is passed through', call.body.from === 'c@d.com');
+  t('a bare string from becomes { email }', call.body.from.email === 'c@d.com' && !('name' in call.body.from));
+  await sendEmail({ to: 'Jo Lead <jo@lead.com>', from: '"Anthony Brown" <ab@x.com>', subject: 'hi', text: 'x' });
+  call = telnyxCalls[telnyxCalls.length - 1];
+  t('a "Name <addr>" string is split into email and name',
+    call.body.from.email === 'ab@x.com' && call.body.from.name === 'Anthony Brown'
+    && call.body.to[0].email === 'jo@lead.com' && call.body.to[0].name === 'Jo Lead');
+  t('no address in the body is ever a "Name <addr>" string',
+    !JSON.stringify(call.body).includes('<'));
 
   // ── Batch: the campaign shape ───────────────────────────────────────────
   const RECIPIENTS = [

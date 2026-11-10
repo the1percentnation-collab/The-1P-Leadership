@@ -1,0 +1,48 @@
+name: Seed the I Can't audiobook campaign
+# Writes the I Can't audiobook launch email into the CRM as a branded
+# campaign draft by running scripts/seed-audiobook-campaign.js with the deploy
+# service account.
+#
+# Safe to run on every push: it writes a draft only, never sends, and never
+# touches the campaign once it is sending or sent. The draft is sent by hand
+# from /campaigns.html after a test send.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/seed-audiobook-campaign.js'
+      - '.github/workflows/seed-audiobook-campaign.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: seed-audiobook-campaign
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Write service account key
+        id: sa
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP }}
+        run: |
+          echo "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+          echo "path=$RUNNER_TEMP/sa.json" >> "$GITHUB_OUTPUT"
+
+      - name: Install script dependencies
+        working-directory: scripts
+        run: npm ci
+
+      - name: Seed
+        working-directory: scripts
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.sa.outputs.path }}
+        run: node seed-audiobook-campaign.js
