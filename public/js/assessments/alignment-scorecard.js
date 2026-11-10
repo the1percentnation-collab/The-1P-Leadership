@@ -15,6 +15,7 @@ export default {
       key: 'awareness',
       label: 'Awareness',
       desc: 'Seeing clearly what is driving your choices and what is holding you back.',
+      goal: 'See clearly what drives your choices and holds you back',
       why: 'You cannot change what you cannot see. Awareness is the first letter for a reason: every other area depends on an honest read of where you are.',
       levels: {
         low: 'You are running on autopilot more than you realize. Days fill up, but the reasons behind your choices and the patterns that keep repeating are mostly out of view. This is the most fixable place to be low, because seeing clearly costs nothing but attention.',
@@ -33,6 +34,7 @@ export default {
       key: 'leadership',
       label: 'Leadership',
       desc: 'Owning your story and your results instead of waiting on circumstances.',
+      goal: 'Own your results instead of waiting on circumstances',
       why: 'Ownership is the difference between waiting for life to change and changing it. Nothing in your plan moves until you decide it is yours to move.',
       levels: {
         low: 'Right now a lot of your life is being decided by circumstances, timing and other people. That is exhausting, and it is also reversible. Ownership starts with small decisions you make on purpose and keep.',
@@ -51,6 +53,7 @@ export default {
       key: 'identity',
       label: 'Identity',
       desc: 'Believing you are the person who can have the life you are working toward.',
+      goal: 'Believe you are the person your goals require',
       why: 'You will not hold onto a life that does not match who you believe you are. Identity sets the ceiling on what you allow yourself to keep.',
       levels: {
         low: 'Some part of you does not yet believe you are the person who gets to have what you are working for. That shows up as self-sabotage, second guessing or tying your worth to results. The work here is rewriting the story, not working harder.',
@@ -69,6 +72,7 @@ export default {
       key: 'growth',
       label: 'Growth',
       desc: 'Choosing expansion over comfort, one percent at a time.',
+      goal: 'Stretch past comfort a little more each week',
       why: 'Comfort keeps you where you are. One percent better every day only compounds if you are actually stretching, not just staying busy.',
       levels: {
         low: 'Your days have settled into a routine that keeps you comfortable but not growing. That is not laziness. It is usually fatigue or a lack of clear direction. A small, deliberate stretch each day is enough to restart momentum.',
@@ -87,6 +91,7 @@ export default {
       key: 'navigation',
       label: 'Navigation',
       desc: 'Turning intention into a plan you actually execute.',
+      goal: 'Turn your intentions into a plan you follow',
       why: 'Clarity without execution is just a good intention. Navigation turns what you want into what you do on Tuesday afternoon.',
       levels: {
         low: 'You know some of what you want, but it is not showing up on your calendar. Goals live in your head instead of in a plan, so urgent things win every day. A simple written plan will change more than extra effort.',

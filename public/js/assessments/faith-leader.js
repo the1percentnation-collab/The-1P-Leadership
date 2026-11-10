@@ -13,6 +13,7 @@ export default {
       key: 'spiritualHealth',
       label: 'Spiritual Health',
       desc: 'Nurturing your own faith, not only the faith of the people you serve.',
+      goal: 'Make time with God that is just for you',
       why: 'You cannot lead people somewhere you are not going yourself. Your own walk with God is the source everything else in your ministry draws from.',
       levels: {
         low: 'Your time with God has likely become mostly preparation: sermons, lessons and meetings, with little left that is just for you. Many faithful leaders end up here without noticing. This is not a failure of faith, and a small, protected time each day that is only for your soul is the place to begin again.',
@@ -31,6 +32,7 @@ export default {
       key: 'sustainableRhythm',
       label: 'Sustainable Rhythm',
       desc: 'Working from rest instead of running on empty.',
+      goal: 'Lead from rest instead of running on empty',
       why: 'Ministry is a long race, and the pace that feels faithful this month can cost you the next ten years. Rest is part of obedience, not a reward for finishing.',
       levels: {
         low: 'You are running on empty more often than not, and even your days off may not feel restful. That is a signal, not a weakness. The way you are serving needs to change so you can keep serving well, and it starts with one protected day of real rest each week.',
@@ -49,6 +51,7 @@ export default {
       key: 'teamLeadership',
       label: 'Team and Volunteer Leadership',
       desc: 'Equipping staff and volunteers so ministry does not rest on your shoulders alone.',
+      goal: 'Equip others so ministry does not rest on you alone',
       why: 'Ministry that depends on one person is fragile, and that person is usually tired. Equipping others is how the work grows beyond your reach and lasts beyond your tenure.',
       levels: {
         low: 'Much of the ministry rests on you right now, and it may feel easier to do things yourself than to find and train someone else. That is understandable, and it is also why you feel stretched. Inviting one person into one responsibility this month is the first step toward shared ownership.',
@@ -67,6 +70,7 @@ export default {
       key: 'visionClarity',
       label: 'Vision Clarity',
       desc: 'Knowing where God is leading your community, and helping others see it too.',
+      goal: 'Help your community see where God is leading',
       why: 'Without a clear vision, busy programs can take the place of real mission. When people can see where you are going, they give their time with more joy and less confusion.',
       levels: {
         low: 'Right now the vision may feel unclear, or it may live mostly in your head. Programs keep running, but it is hard to say how they all connect. Taking time to pray and write the vision in one simple sentence will bring focus to everything else.',
@@ -85,6 +89,7 @@ export default {
       key: 'familyBoundaries',
       label: 'Family and Boundaries',
       desc: 'Honoring your first calling at home while you serve your community.',
+      goal: 'Give your family your best, not what is left',
       why: 'Your family is your first ministry, and they cannot be replaced by anyone else. Boundaries protect the people who will still be with you long after any season of ministry ends.',
       levels: {
         low: 'Your family and personal life may be getting what is left after ministry, and the people closest to you may have said so. That is painful to hear, and it is also something you can begin to change this week. One honest conversation and one protected boundary are a meaningful start.',

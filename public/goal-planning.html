@@ -744,7 +744,8 @@
       </div>
 
       <div style="margin-top:24px;text-align:center;">
-        <button class="btn-outline" onclick="window.print()">Print / Save My Plan</button>
+        <a class="btn-white" href="/plan-build?source=planner" id="save-to-plan" style="margin-right:12px;">Save to My Plan →</a>
+        <button class="btn-outline" onclick="window.print()">Print</button>
         <button class="btn-outline" onclick="resetWorkbook()" style="margin-left:12px;">Start Over</button>
       </div>
     </div>
@@ -871,7 +872,7 @@ function generatePlan() {
       period: 'Month 2 · Days 31–60',
       krs: [
         { text: `Hit $${Math.round(income/6).toLocaleString()} in cumulative progress toward annual target`, progress: 0 },
-        { text: `Establish ${reviewDay} weekly review habit — track 4 consecutive reviews`, progress: 0 },
+        { text: `Establish a ${reviewDay} weekly review habit: track 4 reviews in a row`, progress: 0 },
         { text: `Document and systemize top 2 income-generating activities`, progress: 0 },
       ]
     },
@@ -879,7 +880,7 @@ function generatePlan() {
       phase: 'M3', objective: 'COMPOUND THE GAINS',
       period: 'Month 3 · Days 61–90',
       krs: [
-        { text: `Reach $${Math.round(income/4).toLocaleString()} toward annual target — 25% milestone`, progress: 0 },
+        { text: `Reach $${Math.round(income/4).toLocaleString()} toward your annual target, the 25% milestone`, progress: 0 },
         { text: `Achieve consistency score of 80%+ on daily execution checklist`, progress: 0 },
         { text: `Complete a 90-day retrospective and set next quarter's OKRs`, progress: 0 },
       ]
@@ -907,6 +908,14 @@ function generatePlan() {
     </div>
   `).join('');
   document.getElementById('okr-blocks').innerHTML = okrHTML;
+
+  // Handed to /plan-build?source=planner, which saves this plan as a goal in
+  // the member's portal with the key results as tasks.
+  try {
+    localStorage.setItem('1p-planner-result', JSON.stringify({
+      win, reviewDay, okrs: okrs.map(o => ({ krs: o.krs.map(kr => ({ text: kr.text })) }))
+    }));
+  } catch (err) { /* private mode: the Save button explains on the next page */ }
 
   // Generate habit stack
   const habitMap = {

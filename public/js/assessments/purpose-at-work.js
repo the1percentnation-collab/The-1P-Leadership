@@ -13,6 +13,7 @@ export default {
       key: 'meaning',
       label: 'Meaning',
       desc: 'Feeling that your work matters and connects to something you care about.',
+      goal: 'Connect your daily work to something you care about',
       why: 'You spend a large share of your waking hours at work. When that time connects to something you care about, effort feels like investment instead of a trade for a paycheck.',
       levels: {
         low: 'Right now, your work feels mostly like a way to pay the bills. The days may blur together, and the weekend carries most of the weight. That is common and it is not permanent. Finding even one thread between your work and something you care about can change how the week feels.',
@@ -31,6 +32,7 @@ export default {
       key: 'fit',
       label: 'Fit',
       desc: 'Doing work that uses your strengths and suits who you are.',
+      goal: 'Spend more of your workday in your strengths',
       why: 'Work that fits your strengths and values takes less out of you and gives more back. Poor fit wears you down, even when the job looks good on paper.',
       levels: {
         low: 'Much of your work asks you to be someone you are not, or to rely on skills that drain you. That can leave you tired in a way rest does not fix. The first step is to get specific about which tasks drain you and which ones bring you alive.',
@@ -49,6 +51,7 @@ export default {
       key: 'growth',
       label: 'Growth',
       desc: 'Becoming more capable and closer to your potential through the work itself.',
+      goal: 'Grow your skills through the work you already do',
       why: 'Work that stops growing you slowly shrinks your future options. Growth keeps you capable, engaged and ready for the next opportunity.',
       levels: {
         low: 'You have not learned much in your role lately, and the work no longer stretches you. That can feel comfortable at first, then quietly frustrating. You do not need to change jobs to restart growth. You need one deliberate stretch inside the work you already do.',
@@ -67,6 +70,7 @@ export default {
       key: 'contribution',
       label: 'Contribution',
       desc: 'Seeing how your effort serves people beyond your own paycheck.',
+      goal: 'See and serve the people your work helps',
       why: 'Knowing who your work serves turns tasks into contribution. It is one of the strongest sources of meaning and motivation at work.',
       levels: {
         low: 'You may not be able to see who benefits from your work, or you wonder whether anyone would notice if you stopped. That feeling is painful, and it is more common than people admit. Reconnecting with the people on the other end of your effort is the place to start.',
@@ -85,6 +89,7 @@ export default {
       key: 'future',
       label: 'Future',
       desc: 'Seeing a path from where you are now to the work you feel called to do.',
+      goal: 'Map a path from your current role to your calling',
       why: 'Hope for the future makes today\'s work easier to carry. A clear path turns a calling from a daydream into a plan.',
       levels: {
         low: 'You feel stuck in a role that does not lead where you want to go, and the future may feel uncertain or heavy. That is a hard place to be, and it is a starting point, not a verdict. Getting clear on what you feel called to do is the first step toward building a bridge.',

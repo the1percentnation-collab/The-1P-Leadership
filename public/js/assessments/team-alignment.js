@@ -13,6 +13,7 @@ export default {
       key: 'sharedVision',
       label: 'Shared Vision',
       desc: 'Everyone knows where the team is going and why it matters.',
+      goal: 'Get your team pointed at one shared goal',
       why: 'A team that is not headed to the same place will work hard in different directions. Shared vision turns individual effort into collective progress.',
       levels: {
         low: 'Your team is likely working hard, but not toward the same picture of success. Different people may be chasing different goals, and priorities shift depending on who you ask. That is a clarity gap, not a people problem, and naming one shared goal in plain words is where alignment starts.',
@@ -31,6 +32,7 @@ export default {
       key: 'roleClarity',
       label: 'Clarity of Roles',
       desc: 'Each person knows what they own and what they do not.',
+      goal: 'Give every key outcome one clear owner',
       why: 'When everyone owns something, no one does. Clear roles prevent dropped balls, duplicated work and quiet resentment.',
       levels: {
         low: 'On your team, important work is likely slipping through the cracks or being done twice. People may be unsure where their job ends and someone else begins. Giving every key outcome one clear owner will remove a surprising amount of friction.',
@@ -49,6 +51,7 @@ export default {
       key: 'trust',
       label: 'Trust',
       desc: 'People feel safe to speak up, disagree, and admit mistakes.',
+      goal: 'Make it safe for your team to speak up',
       why: 'Without trust, problems go underground and the best ideas never get said. Trust is what makes honest conversation and fast learning possible.',
       levels: {
         low: 'On your team, people may be holding back: agreeing in meetings and disagreeing afterward, or hiding mistakes instead of surfacing them. That is usually a learned response, not bad intent. As the leader, going first with your own honesty is the fastest way to change it.',
@@ -67,6 +70,7 @@ export default {
       key: 'accountability',
       label: 'Accountability',
       desc: 'Commitments are kept, and the team holds a shared standard.',
+      goal: 'Build a team that keeps its commitments',
       why: 'Commitments without follow-through slowly teach a team that deadlines are optional. Accountability is how a team keeps its word to itself.',
       levels: {
         low: 'On your team, commitments may slip without much consequence, and you may be the only one who notices. That is draining and it lowers the standard over time. Clear commitments at the end of each meeting and quick, kind follow-up will start to reset the bar.',
@@ -85,6 +89,7 @@ export default {
       key: 'communication',
       label: 'Communication',
       desc: 'Information flows clearly, and the right people know what they need to know.',
+      goal: 'Keep the right information flowing to the right people',
       why: 'Most team friction is not about bad intent, it is about missing information. Clear communication keeps people from guessing, and guessing is expensive.',
       levels: {
         low: 'Information on your team is not reaching people when they need it, so decisions catch people off guard and meetings end without clear next steps. That creates rework and frustration. A simple weekly update and clear meeting wrap-ups will make a quick difference.',
@@ -103,6 +108,7 @@ export default {
       key: 'engagement',
       label: 'Engagement',
       desc: 'People bring energy and ownership, not just effort.',
+      goal: 'Help your team bring energy and ownership to the work',
       why: 'A team that only does what is asked will never surprise you. Engagement is the difference between compliance and commitment.',
       levels: {
         low: 'Your team is likely doing what is required, but not much more, and new ideas are rare. That is often a sign that people do not feel heard or do not see how their work matters. Asking for their input on real problems, and using it, is the fastest way to bring energy back.',

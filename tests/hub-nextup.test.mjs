@@ -203,4 +203,10 @@ ok('a brand-new member still gets something to do', () => {
   assert.deepStrictEqual(keys(steps), ['profile', 'browse', 'introduce']);
 });
 
+ok('the member\'s own plan leads, two cards at most', () => {
+  const plan = ['plan-review', 'plan-checkin', 'plan-task'].map((key) => ({ key, title: key, href: '/plan' }));
+  const steps = buildNextSteps({ planSteps: plan, hasPosted: true, profile: { displayName: 'A', avatarUrl: 'x', bio: 'b', profession: 'p', location: 'l' } });
+  assert.deepStrictEqual(keys(steps).slice(0, 3), ['plan-review', 'plan-checkin', 'browse']);
+});
+
 console.log(`\n${passed} checks passed.`);

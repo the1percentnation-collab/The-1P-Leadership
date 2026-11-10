@@ -13,6 +13,7 @@ export default {
       key: 'energy',
       label: 'Energy',
       desc: 'Having enough in the tank to do your best work and still show up for your life.',
+      goal: 'Protect your energy for the work and life that matter',
       why: 'Energy is the currency you spend on everything else. When it runs low, your work, your patience and your relationships all pay the price.',
       levels: {
         low: 'You are getting through your days, but often by pushing rather than flowing. Caffeine, adrenaline or sheer will may be carrying more of the load than you realize. This is a signal, not a weakness. The first step is to learn when your energy is naturally highest and protect that time.',
@@ -31,6 +32,7 @@ export default {
       key: 'recovery',
       label: 'Recovery',
       desc: 'Truly resetting, so rest restores you instead of just pausing the pressure.',
+      goal: 'Rest in a way that truly restores you',
       why: 'Hard work is sustainable only if recovery keeps up with it. Without real rest, effort slowly turns into exhaustion.',
       levels: {
         low: 'Rest is not really restoring you right now. Even on days off, your mind stays at work, and you wake up tired. That is not because you are bad at resting. It is because pressure has nowhere to go. Clear stopping points and one truly restful activity will help.',
@@ -49,6 +51,7 @@ export default {
       key: 'boundaries',
       label: 'Boundaries',
       desc: 'Protecting your time and attention so other people do not set your pace for you.',
+      goal: 'Set your own pace and protect your attention',
       why: 'Without boundaries, your time belongs to whoever asks first. Boundaries are how you protect the energy you need for what matters most.',
       levels: {
         low: 'Other people are setting much of your pace right now. You say yes to avoid letting anyone down, and being unreachable makes you anxious. That comes from caring, but it leaves little for you. One small, kind boundary this week is the place to start.',
@@ -67,6 +70,7 @@ export default {
       key: 'meaning',
       label: 'Meaning',
       desc: 'Remembering why the work matters, which is often what keeps effort from turning into exhaustion.',
+      goal: 'Reconnect with why your work matters',
       why: 'Meaning is what makes hard work feel worth it. When it fades, even a reasonable workload can start to feel crushing.',
       levels: {
         low: 'The work may feel like a series of tasks with no clear purpose behind them. Going through the motions is one of the earliest signs of burnout, and it is common. Reconnecting with who your work helps, even in small ways, can bring some of the meaning back.',
@@ -85,6 +89,7 @@ export default {
       key: 'body',
       label: 'Physical Signals',
       desc: 'Listening to sleep, tension, and health before they force you to listen.',
+      goal: 'Listen to your body before it forces you to',
       why: 'Your body often notices burnout before your mind admits it. Listening early keeps small signals from becoming serious problems.',
       levels: {
         low: 'Your body is sending signals: short sleep, tension, headaches or other strain. It is easy to push through these, but they are asking for attention. Start with one basic, like a steady bedtime or a daily walk, and give it a full week.',

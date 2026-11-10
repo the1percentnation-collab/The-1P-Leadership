@@ -17,6 +17,7 @@ export default {
       key: 'sharedVision',
       label: 'Shared Vision',
       desc: 'Your people are pulling toward the same outcome, for the same reasons.',
+      goal: 'Name the one outcome everyone is working toward',
       why: 'A team can hit its numbers and still be headed in five directions. When the destination is not shared, every gain costs more effort than it should and every setback splits the room.',
       levels: {
         low: 'Your organization may be producing, but not toward one picture of success. Ask five people what winning looks like this year and you would likely hear five answers. That is the most common gap in teams that look strong on paper, and it is fixed with clarity, not pressure.',
@@ -35,6 +36,7 @@ export default {
       key: 'roleClarity',
       label: 'Clarity of Roles',
       desc: 'Every important outcome has one clear owner.',
+      goal: 'Put one named owner on every important outcome',
       why: 'Busy teams lose more time to unclear ownership than to a lack of effort. When two people own something, it gets argued over. When no one owns it, it quietly dies.',
       levels: {
         low: 'Work is likely getting dropped or done twice. Good people are waiting on each other, or redoing what someone else already started. This drains energy fast, and it is one of the quickest gaps to close once ownership is written down.',
@@ -53,6 +55,7 @@ export default {
       key: 'trust',
       label: 'Trust',
       desc: 'People tell the truth in the room, not after it.',
+      goal: 'Make the truth safe to say in the room',
       why: 'Misalignment hides wherever people do not feel safe naming it. Every other area depends on whether the real problems get said out loud.',
       levels: {
         low: 'The real conversation is likely happening after the meeting. People nod in the room and disagree in the hallway, which means decisions are being made without the full picture. The fix starts with how you respond the next time someone tells you something you do not want to hear.',
@@ -71,6 +74,7 @@ export default {
       key: 'accountability',
       label: 'Accountability',
       desc: 'Commitments are kept, and missed ones are addressed.',
+      goal: 'Keep commitments and address the missed ones',
       why: 'Without accountability, alignment is just agreement. The real standard on a team is set by what the leader allows to slide, not by what the leader announces.',
       levels: {
         low: 'Commitments are likely being missed without a clear conversation. Over time the people who deliver carry the people who do not, and your best performers notice. Raising the standard starts with one direct, respectful conversation you have been putting off.',
@@ -89,6 +93,7 @@ export default {
       key: 'communication',
       label: 'Communication',
       desc: 'The right information reaches the right people in time to act on it.',
+      goal: 'Get information to the right people in time to act',
       why: 'Most alignment problems are communication problems under another name. When information moves late or not at all, good people make reasonable decisions that pull in different directions.',
       levels: {
         low: 'People are likely finding out about decisions after they are made, or hearing different versions from different leaders. That creates rework and quiet frustration. One consistent rhythm for sharing decisions will change how connected the team feels.',
@@ -107,6 +112,7 @@ export default {
       key: 'engagement',
       label: 'Engagement',
       desc: 'People bring ownership and energy, not just compliance.',
+      goal: 'Turn compliance into ownership across the team',
       why: 'Engagement is the result of the other five areas. When people are aligned, trusted and clear, they give discretionary effort. When they are not, you get exactly what the job description asks for.',
       levels: {
         low: 'Much of your team may be doing what is required and holding the rest in reserve. That is rarely a motivation problem. It is usually a sign that something upstream, like vision, roles or trust, is out of alignment, and it is often the first warning of turnover.',

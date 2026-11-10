@@ -13,6 +13,7 @@ export default {
       key: 'trust',
       label: 'Trust',
       desc: 'Believing your people can deliver, and giving them room to prove it.',
+      goal: 'Give your people real ownership and room to deliver',
       why: 'Delegation without trust is just supervision with extra steps. People rise to the level of ownership you actually give them.',
       levels: {
         low: 'Right now it is hard for you to fully hand things off, so you stay close, check often and keep the final say. That usually comes from being burned before or caring deeply about the result. Start rebuilding trust in small, low-risk pieces so both you and your team can see it work.',
@@ -31,6 +32,7 @@ export default {
       key: 'systems',
       label: 'Systems',
       desc: 'Having processes in place so work does not depend on your memory or presence.',
+      goal: 'Build processes that run without your memory or presence',
       why: 'If the work lives in your head, your head becomes the ceiling. Systems let your team move without waiting for you.',
       levels: {
         low: 'A lot of how things get done lives in your memory, so people come to you for answers and wait when you are not available. That is normal for a team that grew quickly. Writing down one process a week will start to free you faster than you expect.',
@@ -49,6 +51,7 @@ export default {
       key: 'lettingGo',
       label: 'Letting Go',
       desc: 'Releasing control of how things get done, as long as they get done well.',
+      goal: 'Hand off the how and hold the standard on results',
       why: 'Your way is not the only way that works. Holding on to how things get done keeps your people small and keeps you busy with work beneath your role.',
       levels: {
         low: 'You find it hard to let others do things their way, so you redo, adjust or simply keep the work. That comes from high standards, which are a strength. The shift is separating the result you need from the method you prefer, and accepting a different path to the same outcome.',
@@ -67,6 +70,7 @@ export default {
       key: 'teamCapability',
       label: 'Team Capability',
       desc: 'Building a team that is equipped to carry more than it does today.',
+      goal: 'Equip your team to carry more than it does today',
       why: 'You can only delegate as much as your team is ready to carry. Building their capability is how you build your own freedom.',
       levels: {
         low: 'Right now your team may not feel ready to take more off your plate, so the work keeps coming back to you. That is a gap in development, not in people. A small, steady investment in training will change what you can hand off within a few months.',
@@ -85,6 +89,7 @@ export default {
       key: 'highValueWork',
       label: 'High-Value Work',
       desc: 'Spending your time on the work only you can do.',
+      goal: 'Focus your time on the work only you can do',
       why: 'Every hour you spend on work someone else could do is an hour taken from work only you can do. Your calendar shows what you are really leading.',
       levels: {
         low: 'Most of your week is going to tasks that others could handle, and the work only you can do keeps getting pushed back. That is exhausting and it slows your whole team. Start by tracking your time for a few days so you can see exactly what to hand off.',

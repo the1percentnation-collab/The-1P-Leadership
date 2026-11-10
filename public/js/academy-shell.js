@@ -36,6 +36,7 @@ function escapeHtml(s) {
 // stroke: currentColor, so a nav item's colour drives its icon for free.
 const ICONS = {
   dashboard: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/><path d="M9.5 20v-6h5v6"/>',
+  plan: '<circle cx="12" cy="12" r="8.2"/><circle cx="12" cy="12" r="4.4"/><path d="M12 12l5.5-5.5M15.2 6.5h2.3v2.3"/>',
   library: '<path d="M5 4.5h3.5v15H5z"/><path d="M10.5 4.5H14v15h-3.5z"/><path d="m16 5.4 3.3-.9 3 14.3-3.3.8z"/>',
   reads: '<path d="M6 3.5h12a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1Z"/><path d="M8.5 8h7M8.5 11.5h7M8.5 15h4.5"/>',
   courses: '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5Z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5Z"/>',
@@ -72,6 +73,7 @@ export function navIcon(name) {
 // Ordered by what a member does: learn, then connect, then buy.
 const MAIN_NAV = [
   { key: 'dashboard', href: '/dashboard.html', label: 'Dashboard', icon: 'dashboard' },
+  { key: 'plan',      href: '/plan',           label: 'My Plan',   icon: 'plan' },
   { key: 'courses',   href: '/courses.html',   label: 'Courses',   icon: 'courses' },
   { key: 'reads',     href: '/reads',          label: 'Reads',     icon: 'reads' },
   { key: 'library',   href: '/library',        label: 'Library',   icon: 'library' },

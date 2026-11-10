@@ -15,6 +15,7 @@ export default {
       key: 'cashFlow',
       label: 'Cash Flow',
       desc: 'Knowing where your money goes each month and keeping more coming in than going out.',
+      goal: 'Know exactly where your money goes each month',
       why: 'Cash flow is the engine for every other money goal. Saving, paying down debt and investing all come from the gap between what you earn and what you spend.',
       levels: {
         low: 'Right now your money is moving faster than your attention. That does not mean you are careless. It usually means no one ever showed you a simple system. Start by simply seeing where it goes for one month, without judging any of it.',
@@ -33,6 +34,7 @@ export default {
       key: 'safetyNet',
       label: 'Safety Net',
       desc: 'Having cash set aside so a surprise expense stays an inconvenience, not a crisis.',
+      goal: 'Build a cash cushion for surprise expenses',
       why: 'Life will hand you a surprise expense. A safety net decides whether that moment is a hassle or a setback that sends you to a credit card.',
       levels: {
         low: 'A surprise expense would likely land on a card or a loan right now. That is a very common place to be, and it changes faster than most people expect. Many people start with a first goal of $1,000, then build toward one full month of essential expenses.',
@@ -51,6 +53,7 @@ export default {
       key: 'debt',
       label: 'Debt',
       desc: 'Owing on purpose, with a clear plan to pay it down, instead of letting balances run your choices.',
+      goal: 'Follow a clear written plan to pay down debt',
       why: 'Every dollar going to interest is a dollar that cannot build your future. A clear debt plan turns a weight you carry into a finish line you can see.',
       levels: {
         low: 'Debt is likely shaping more of your choices than you would like, and it may feel heavy to look at. Looking is still the first step, and it almost always feels lighter afterward. One page with every balance on it is where your plan begins.',
@@ -69,6 +72,7 @@ export default {
       key: 'protection',
       label: 'Protection',
       desc: 'Having the right coverage in place so one hard event does not undo years of progress.',
+      goal: 'Know what your coverage protects and where the gaps are',
       why: 'Everything you build can be undone by one illness, accident or loss if it is not protected. Coverage is what keeps a hard event from becoming a financial reset.',
       levels: {
         low: 'You may not be sure what your coverage includes, or whether you have the right kinds. That is common, because policies are not written to be easy to read. Gathering what you have in one place is a calm, simple first step.',
@@ -87,6 +91,7 @@ export default {
       key: 'future',
       label: 'Future',
       desc: 'Putting money to work today for the version of you that will need it later.',
+      goal: 'Start putting money aside for the future you',
       why: 'Time is the biggest advantage you have when saving for the future. Small, steady contributions made early do more work than large ones made late.',
       levels: {
         low: 'Saving for later has probably taken a back seat to the needs of today. That is understandable, and it is not too late. A small automatic contribution started now matters more than the perfect amount started someday.',
@@ -105,6 +110,7 @@ export default {
       key: 'clarity',
       label: 'Clarity',
       desc: 'Knowing your numbers and having written goals that give your money a direction.',
+      goal: 'Give your money written goals and a clear direction',
       why: 'Money without direction tends to drift toward whatever is loudest. Clear numbers and written goals tell every dollar where it is supposed to go.',
       levels: {
         low: 'Your money does not have a clear destination yet, so it is hard to know if you are winning. That is not a character flaw. It is a missing map. One page with your net worth and three goals will change how every money decision feels.',

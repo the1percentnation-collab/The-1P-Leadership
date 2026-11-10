@@ -143,6 +143,9 @@ const NOTIF_ICON_PATHS = {
   channel_access_denied: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   course_reminder: '<circle cx="12" cy="13.5" r="7"/><path d="M12 10v3.5l2.5 1.5M10 3h4"/>',
   course_deadline: '<path d="M6 21V4M6 4h11l-2.5 4L17 12H6"/>',
+  plan_checkin: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>',
+  plan_review: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.8"/>',
+  plan_shared: '<circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 7.5a3 3 0 0 1 0 5.5M17.5 19a5.5 5.5 0 0 0-2-4.2"/>',
   announcement: '<path d="M4 10v4h3l8 4V6l-8 4H4zM18.5 9.5a3.5 3.5 0 0 1 0 5"/>',
   course_granted: '<path d="M2.5 9.5L12 5l9.5 4.5L12 14z"/><path d="M6.5 11.5v4.5c3 2.4 8 2.4 11 0v-4.5M21.5 9.5V14"/>',
   default: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>'
@@ -155,6 +158,7 @@ const NOTIF_TONES = {
   mention: 'hot',
   announcement: 'hot',
   course_deadline: 'hot',
+  plan_review: 'hot',
   course_granted: 'win',
   channel_access_granted: 'win'
 };
@@ -187,6 +191,9 @@ function notifLine(n) {
   if (n.type === 'channel_access_denied') return `Your request for ${channelLabel(n)} wasn't approved`;
   if (n.type === 'course_reminder') return `Time to get to work: ${who}`;
   if (n.type === 'course_deadline') return `Deadline check-in: ${who}`;
+  if (n.type === 'plan_checkin') return `Weekly check-in: ${escapeHtml(n.title || 'your goal')}`;
+  if (n.type === 'plan_review') return `Time to review: ${escapeHtml(n.title || 'your goal')}`;
+  if (n.type === 'plan_shared') return `${who} shared a goal with you`;
   return `${who} did something`;
 }
 

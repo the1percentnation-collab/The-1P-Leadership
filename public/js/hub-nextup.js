@@ -45,6 +45,8 @@ function fmtWhen(ms) {
  *   profile, certification, hasPosted
  *   profileNudgeShown: true when the first-login setup card is already on the
  *                      page, so this list does not repeat its ask
+ *   planSteps:     cards from planNextSteps in plan-core.js (a review or
+ *                  check-in that is due, the focus goal's next task)
  * }
  *
  * Returns [{ key, eyebrow, title, sub, ctaLabel, href, external, urgent }].
@@ -57,11 +59,18 @@ export function buildNextSteps(context = {}, { max = 4 } = {}) {
     profile = null,
     certification = null,
     hasPosted = true,
-    profileNudgeShown = false
+    profileNudgeShown = false,
+    planSteps = []
   } = context;
 
   const out = [];
   const now = Date.now();
+
+  // 0. The member's own plan. They chose these goals, so a review or a
+  //    check-in that is due, or the next task on their focus goal, comes
+  //    before anything we would suggest. Two at most, so the plan never
+  //    crowds out a live call.
+  planSteps.slice(0, 2).forEach((p) => out.push(p));
 
   // 1. Resume the course with real momentum — the one furthest along but not
   //    finished. Starting a member on the course they have already invested in
