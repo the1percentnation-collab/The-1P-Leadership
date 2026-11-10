@@ -3,13 +3,26 @@ name: Approve campaigns
 # the deploy service account. It makes the same change as the Approve button
 # in /campaigns.html, for when the owner asks for an approval away from it.
 #
-# Run by hand only: Actions tab, Approve campaigns, Run workflow. It never
-# runs on a push. Leave "apply" unticked for a dry run that prints what would
-# be approved and writes nothing.
+# Three ways in:
+#   pull request   A change to scripts/campaign-approvals.txt gets a DRY RUN:
+#                  this check prints what the added ids would approve and
+#                  writes nothing.
+#   push to main   Merging that change approves the ids it ADDED. Ids already
+#                  in the file are a record and are never re-applied.
+#   by hand        Actions tab, Approve campaigns, Run workflow. Leave "apply"
+#                  unticked for a dry run.
 #
 # Approving never sends. A campaign with a send time goes out from the
 # automation tick after that time; one without waits for Send now.
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/campaign-approvals.txt'
+  pull_request:
+    paths:
+      - 'scripts/campaign-approvals.txt'
   workflow_dispatch:
     inputs:
       ids:
@@ -22,21 +35,71 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
 concurrency:
-  group: approve-campaigns
+  group: approve-campaigns-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
   approve:
+    # A pull request from a fork gets no secrets, so there is nothing to run.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
+      # Which ids, and whether to write. Everything from the event arrives
+      # through the environment, never spliced into the script, and
+      # approve-campaigns.js rejects anything that is not a plain id.
+      - name: Work out what to approve
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_IDS: ${{ inputs.ids }}
+          INPUT_APPLY: ${{ inputs.apply }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          FILE=scripts/campaign-approvals.txt
+          added_since() {
+            git diff --unified=0 "$1" HEAD -- "$FILE" \
+              | grep '^+[^+]' | sed -e 's/^+//' -e 's/#.*//' | tr -s ' \t\r\n' ' ' || true
+          }
+          case "$EVENT" in
+            workflow_dispatch)
+              IDS="$INPUT_IDS"
+              APPLY="$INPUT_APPLY"
+              ;;
+            pull_request)
+              IDS="$(added_since "$(git merge-base "$PR_BASE" HEAD)")"
+              APPLY=false
+              ;;
+            push)
+              BASE="$PUSH_BEFORE"
+              if ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then BASE="HEAD^"; fi
+              IDS="$(added_since "$BASE")"
+              APPLY=true
+              ;;
+            *)
+              echo "Unexpected event: $EVENT"; exit 1
+              ;;
+          esac
+          IDS="$(echo "$IDS" | xargs)"
+          echo "Ids:   ${IDS:-(none added)}"
+          echo "Apply: $APPLY"
+          echo "ids=$IDS" >> "$GITHUB_OUTPUT"
+          echo "apply=$APPLY" >> "$GITHUB_OUTPUT"
+
       - name: Write service account key
+        if: ${{ steps.plan.outputs.ids != '' }}
         id: sa
         env:
           SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP }}
@@ -45,17 +108,17 @@ jobs:
           echo "path=$RUNNER_TEMP/sa.json" >> "$GITHUB_OUTPUT"
 
       - name: Install script dependencies
+        if: ${{ steps.plan.outputs.ids != '' }}
         working-directory: scripts
         run: npm ci
 
-      # The ids arrive through the environment, never spliced into the shell
-      # command, and the script rejects anything that is not a plain id.
       - name: Approve
+        if: ${{ steps.plan.outputs.ids != '' }}
         working-directory: scripts
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.sa.outputs.path }}
-          CAMPAIGN_IDS: ${{ inputs.ids }}
-          APPLY: ${{ inputs.apply }}
+          CAMPAIGN_IDS: ${{ steps.plan.outputs.ids }}
+          APPLY: ${{ steps.plan.outputs.apply }}
         run: |
           if [ "$APPLY" = "true" ]; then
             node approve-campaigns.js "$CAMPAIGN_IDS" --apply

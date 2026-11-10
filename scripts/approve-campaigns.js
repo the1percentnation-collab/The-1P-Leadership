@@ -18,7 +18,9 @@
 // - It can be undone in /campaigns.html (Back to draft) until the send.
 //
 // Run with Admin credentials, from the scripts/ directory after `npm install`.
-// The Approve campaigns workflow runs it from the Actions tab.
+// The Approve campaigns workflow runs it: as a dry run on a pull request that
+// adds ids to campaign-approvals.txt, for real when that merges, and by hand
+// from the Actions tab.
 
 const OWNER_EMAIL = 'the1percentnation@gmail.com';
 const APPROVER_ID = 'approve-campaigns-script';

@@ -4,7 +4,8 @@
 // 1. Only a draft is approved; anything past draft is left alone.
 // 2. Ids are validated before anything is read or written.
 // 3. The script writes what the Approve button writes, and never sends.
-// 4. The workflow runs by hand only, and is a dry run unless asked.
+// 4. The workflow acts only on ids added to campaign-approvals.txt (dry run
+//    on the pull request, applied on merge) or on a hand run.
 //
 // Run: node tests/approve-campaigns.test.cjs
 const fs = require('fs');
@@ -71,13 +72,38 @@ ok('the write is inside a transaction that re-reads the status', () => {
   assert.ok(/runTransaction/.test(src) && /tx\.get\(ref\)/.test(src) && /tx\.update\(ref/.test(src));
 });
 
-ok('the workflow runs by hand only, dry run unless ticked', () => {
-  assert.ok(/^on:\n  workflow_dispatch:/m.test(wf));
-  assert.ok(!/^\s+(push|schedule|pull_request):/m.test(wf));
+ok('the workflow acts only on the approvals file or a hand run', () => {
+  assert.ok(/workflow_dispatch:/.test(wf));
+  assert.ok(!/^\s+schedule:/m.test(wf));
+  // Push and pull request are both limited to the approvals file.
+  const paths = wf.match(/paths:\n\s+- 'scripts\/campaign-approvals\.txt'/g) || [];
+  assert.strictEqual(paths.length, 2);
+  assert.ok(/push:\n\s+branches:\n\s+- main\n/.test(wf), 'push is main only');
+});
+
+ok('a pull request is always a dry run; only a merge or a ticked hand run writes', () => {
+  const pr = wf.slice(wf.indexOf('pull_request)'), wf.indexOf('push)'));
+  assert.ok(/APPLY=false/.test(pr) && !/APPLY=true/.test(pr));
   assert.ok(/apply:[\s\S]*?default: false/.test(wf));
-  // Inputs reach the script through env, not spliced into the command line.
-  const runBlock = wf.slice(wf.lastIndexOf('run: |'));
-  assert.ok(!runBlock.includes('${{'), 'no expression inside the run script');
+  assert.ok(/permissions:\n  contents: read/.test(wf));
+});
+
+ok('only ids added in the change are acted on, never the whole file', () => {
+  assert.ok(/git diff --unified=0/.test(wf) && /grep '\^\+\[\^\+\]'/.test(wf));
+  assert.ok(!/cat "?\$FILE/.test(wf));
+});
+
+ok('event values reach the shell through env, not spliced into a script', () => {
+  const runs = wf.split(/\n\s+run: \|\n/).slice(1).map((r) => r.split(/\n      - /)[0]);
+  assert.ok(runs.length >= 3);
+  runs.forEach((r) => assert.ok(!r.includes('${{'), 'expression inside a run script'));
+});
+
+ok('the approvals file holds plain ids and comments only', () => {
+  const lines = fs.readFileSync(path.join(root, 'scripts', 'campaign-approvals.txt'), 'utf8')
+    .split('\n').map((l) => l.replace(/#.*/, '').trim()).filter(Boolean);
+  assert.ok(lines.length >= 1);
+  assert.deepStrictEqual(parseArgs([lines.join(' ')]).ids, [...new Set(lines)]);
 });
 
 console.log(`\n${passed} passed`);
