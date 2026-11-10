@@ -1,0 +1,64 @@
+name: Approve campaigns
+# Approves campaign drafts by id by running scripts/approve-campaigns.js with
+# the deploy service account. It makes the same change as the Approve button
+# in /campaigns.html, for when the owner asks for an approval away from it.
+#
+# Run by hand only: Actions tab, Approve campaigns, Run workflow. It never
+# runs on a push. Leave "apply" unticked for a dry run that prints what would
+# be approved and writes nothing.
+#
+# Approving never sends. A campaign with a send time goes out from the
+# automation tick after that time; one without waits for Send now.
+on:
+  workflow_dispatch:
+    inputs:
+      ids:
+        description: 'Campaign ids, separated by spaces (e.g. brief-free-launch icant-audiobook-launch)'
+        required: true
+        type: string
+      apply:
+        description: 'Approve for real. Leave unticked for a dry run.'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: approve-campaigns
+  cancel-in-progress: false
+
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Write service account key
+        id: sa
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP }}
+        run: |
+          echo "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+          echo "path=$RUNNER_TEMP/sa.json" >> "$GITHUB_OUTPUT"
+
+      - name: Install script dependencies
+        working-directory: scripts
+        run: npm ci
+
+      # The ids arrive through the environment, never spliced into the shell
+      # command, and the script rejects anything that is not a plain id.
+      - name: Approve
+        working-directory: scripts
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.sa.outputs.path }}
+          CAMPAIGN_IDS: ${{ inputs.ids }}
+          APPLY: ${{ inputs.apply }}
+        run: |
+          if [ "$APPLY" = "true" ]; then
+            node approve-campaigns.js "$CAMPAIGN_IDS" --apply
+          else
+            node approve-campaigns.js "$CAMPAIGN_IDS"
+          fi
