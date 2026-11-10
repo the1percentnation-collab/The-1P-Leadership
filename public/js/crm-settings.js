@@ -20,6 +20,7 @@ import {
   fmtDateTime, SOURCES, SOURCE_MAX, listCustomSources, addSource, removeSource
 } from './crm.js';
 import { MERGE_FIELDS, renderTemplate } from './merge-fields.js';
+import { signatureBlockHtml, DEFAULT_SIGNATURE } from './email-layout-core.js';
 
 const $ = (id) => document.getElementById(id);
 const PROTECTED = new Set(DEFAULT_PIPELINE_STAGES.map((s) => s.id)); // referenced by contacts
@@ -591,8 +592,13 @@ function emailCardHtml() {
       </div>
       <div class="crm-field" style="margin-top:12px;">
         <label>Signature</label>
-        <textarea class="c-textarea" id="em-signature" rows="3" placeholder="Anthony Brown&#10;The One Percent Nation">${escapeHtml(e.signature || '')}</textarea>
-        <div class="crm-mini-sub" style="margin-top:4px;">Appended to every 1-on-1 email after a <code>--</code> separator.</div>
+        <textarea class="c-textarea" id="em-signature" rows="5" placeholder="${escapeHtml(DEFAULT_SIGNATURE)}">${escapeHtml(e.signature || '')}</textarea>
+        <div class="crm-mini-sub" style="margin-top:4px;">
+          Added to every 1-on-1 email with your photo. Line 1 is your name, line 2 your title, then your roles
+          (split with <code>|</code>), a contact line, and <code>[Button label](https://...)</code> for the booking button.
+          Leave it blank to use the default shown in the preview.
+        </div>
+        <iframe id="em-sig-preview" class="em-sig-preview" sandbox title="Signature preview"></iframe>
       </div>
       <div class="crm-save-row" style="margin-top:20px;">
         <span id="set-email-status" class="crm-save-status"></span>
@@ -735,6 +741,13 @@ function wire() {
 
   $('save-calling').addEventListener('click', saveCalling);
   $('save-email').addEventListener('click', saveEmail);
+  // The photo signature exactly as a 1-on-1 email ends, redrawn as it is typed.
+  const paintSig = () => {
+    const sig = $('em-signature').value.trim() || DEFAULT_SIGNATURE;
+    $('em-sig-preview').srcdoc = `<!doctype html><html><body style="margin:0;padding:0 16px 16px;background:#fff;">${signatureBlockHtml(sig)}</body></html>`;
+  };
+  $('em-signature').addEventListener('input', paintSig);
+  paintSig();
   wireTemplates();
   wireVoicemail();
   $('set-recording').addEventListener('change', (e) => {
