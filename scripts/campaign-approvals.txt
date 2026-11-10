@@ -1,0 +1,18 @@
+# Campaign approvals.
+#
+# Add a campaign id on its own line to approve that draft. The pull request
+# that adds it shows a dry run (the "Approve campaigns" check prints what
+# would be approved and writes nothing). Merging it into main approves it.
+#
+# Only ids ADDED in a change are acted on. Lines already here are a record:
+# they are never re-applied, so moving a campaign back to draft in
+# /campaigns.html sticks. Removing a line does nothing.
+#
+# Approving never sends. A campaign with a send time goes out after that time;
+# one without waits for Send now in /campaigns.html.
+
+# 2026-11-10, asked for by Anthony: the Brief free window and the audiobook launch.
+brief-free-launch
+brief-free-one-week
+brief-free-final-day
+icant-audiobook-launch
