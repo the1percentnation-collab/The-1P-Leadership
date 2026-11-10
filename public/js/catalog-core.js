@@ -139,8 +139,25 @@ export function normalizeProduct(p, { now = Date.now() } = {}) {
     grantsBooks: Array.isArray(p.grantsBooks) ? p.grantsBooks.map(String) : [],
     inventory,
     soldOut: inventory != null && inventory <= 0,
-    interestCount: Number(p.interestCount || 0)
+    interestCount: Number(p.interestCount || 0),
+    shippingLabel: shippingLabel(p)
   };
+}
+
+// Flat US shipping on anything that goes in the mail. Mirrors
+// FLAT_SHIPPING_CENTS in functions/shipping-core.js, which is what checkout
+// actually charges; a product's `shippingCents` overrides both.
+export const FLAT_SHIPPING_CENTS = 599;
+
+/** "+ $5.99 shipping" for a product that ships, "Free shipping" at 0, else null. */
+export function shippingLabel(p) {
+  if (!p) return null;
+  const ships = p.requiresShipping === true
+    || (p.requiresShipping !== false && p.type === 'physical');
+  if (!ships) return null;
+  const v = p.shippingCents;
+  const cents = typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : FLAT_SHIPPING_CENTS;
+  return cents === 0 ? 'Free shipping' : `+ $${(cents / 100).toFixed(2)} shipping`;
 }
 
 /** Is this item on sale right now? A synonym for the normalised flag. */

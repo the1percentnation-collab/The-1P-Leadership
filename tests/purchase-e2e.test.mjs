@@ -199,6 +199,20 @@ await t('print bundle: the email says the paperback ships to their city', async 
   assert(/the1pnation\.com\/library/.test(body), 'library link missing');
 });
 
+await t('print bundle: the owner is alerted with the address to ship to', async () => {
+  const alert = emails.find((e) => /New order/.test(e.subject || '') && /print@e2e\.test/.test(JSON.stringify(e)));
+  assert(alert, 'no owner alert: ' + JSON.stringify(emails.map((e) => [e.to, e.subject])));
+  assert(JSON.stringify(alert.to).includes('anthonybrown@the1pnation.com'), 'alert went to ' + JSON.stringify(alert.to));
+  const body = JSON.stringify(alert);
+  assert(/1 Main St/.test(body) && /Oklahoma City, OK 73102/.test(body), 'address missing from alert');
+  assert(/paperback/.test(alert.subject), 'subject: ' + alert.subject);
+});
+
+await t('digital bundle: no owner order alert (nothing to ship, not a store order)', async () => {
+  assert(!emails.some((e) => /New order/.test(e.subject || '') && /buyer@e2e\.test/.test(JSON.stringify(e))),
+    'a digital course purchase sent a shipping alert');
+});
+
 // ── 3. Membership: annual Brief, ended by the member, then expired ────────
 const MEMBER = 'e2e-member';
 const briefSession = checkoutEvent({
