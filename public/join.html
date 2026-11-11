@@ -91,80 +91,80 @@
     main { position: relative; z-index: 1; flex: 1; padding: calc(var(--nav-h) + 64px) 32px 88px; }
     .wrap { max-width: 1140px; margin: 0 auto; }
 
+    .wrap.narrow { max-width: 760px; }
     .hero { max-width: 760px; }
-    .title { font-family: var(--font-display); font-size: clamp(52px, 7vw, 92px); letter-spacing: 0.02em; line-height: 0.9; margin: 20px 0 22px; }
+    .title { font-family: var(--font-display); font-size: clamp(48px, 6.5vw, 84px); letter-spacing: 0.02em; line-height: 0.9; margin: 18px 0 18px; }
     .title .red { color: var(--red); }
-    .sub { font-size: 18px; font-weight: 300; line-height: 1.7; color: var(--gray-400); max-width: 58ch; }
-    .jump { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 28px; }
-    .jump a { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gray-300); border: 1px solid var(--border-strong); border-radius: 999px; padding: 9px 16px; transition: border-color .2s, color .2s; }
-    .jump a:hover { border-color: var(--red); color: var(--white); }
+    .role-title { font-size: clamp(44px, 6vw, 72px); margin-bottom: 14px; }
+    .sub { font-size: 18px; font-weight: 300; line-height: 1.65; color: var(--gray-300); max-width: 58ch; }
+    .back { display: block; width: fit-content; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gray-400); margin-bottom: 22px; }
+    .back:hover { color: var(--white); }
+    .hero-cta { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 28px; }
+    .hint { font-size: 13px; color: var(--gray-400); }
 
-    /* Teams and role postings */
-    .team { margin-top: 84px; }
-    .team-head { display: grid; grid-template-columns: 1fr 1.2fr; gap: 40px; align-items: end; padding-bottom: 24px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
-    .team-org { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--red); }
-    .team-title { font-family: var(--font-display); font-size: clamp(36px, 4.4vw, 54px); letter-spacing: 0.02em; line-height: 0.95; margin-top: 8px; }
-    .team-intro { font-size: 16px; font-weight: 300; line-height: 1.7; color: var(--gray-400); }
-    .roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-    .roles.one { grid-template-columns: minmax(0, 1fr); }
-
-    .role {
-      background: var(--black-2); border: 1px solid var(--border); border-radius: 12px;
-      padding: 30px 28px 26px; display: flex; flex-direction: column; gap: 14px;
-      transition: border-color .25s, transform .25s var(--ease-out), box-shadow .25s;
-    }
-    .role:hover { border-color: rgba(230,3,6,0.45); transform: translateY(-3px); box-shadow: 0 18px 40px rgba(0,0,0,0.4); }
-    .role-status { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: #4ade80; }
-    .role-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 10px rgba(74,222,128,0.6); }
-    .role h3 { font-family: var(--font-display); font-weight: 400; font-size: 34px; letter-spacing: 0.02em; line-height: 0.95; }
-    .role-meta { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; color: var(--gray-400); }
+    .role-meta { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; color: var(--gray-400); line-height: 1.8; }
     .role-meta span + span::before { content: '·'; margin: 0 8px; color: var(--gray-600); }
-    .role-summary { font-size: 15.5px; line-height: 1.65; color: var(--gray-300); }
-    .role-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; padding-top: 14px; border-top: 1px solid var(--border); }
-    .roles.one .role-cols { max-width: 900px; }
-    .role-k { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gray-600); margin-bottom: 10px; }
-    .role ul { list-style: none; display: grid; gap: 8px; }
-    .role li { display: flex; gap: 10px; align-items: baseline; font-size: 14px; line-height: 1.55; color: var(--gray-300); }
-    .role li::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--red); flex-shrink: 0; transform: translateY(-2px); }
-    .role-path { font-size: 13.5px; color: var(--gray-400); }
-    .role-path a { color: var(--white); border-bottom: 1px solid var(--red); padding-bottom: 1px; }
-    .role-foot { margin-top: auto; padding-top: 8px; }
-    .team-path-k { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gray-600); margin: 0 0 12px; }
-    .team-path { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
-    .team-path li { background: #0d0d0d; padding: 20px 20px 22px; display: flex; flex-direction: column; gap: 6px; }
-    .team-path .n { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; color: var(--red); }
-    .team-path strong { font-size: 15px; font-weight: 600; color: var(--white); }
-    .team-path li > span:last-child { font-size: 13.5px; line-height: 1.6; color: var(--gray-400); }
-    .team-note { margin-top: 18px; font-size: 12px; line-height: 1.6; color: var(--gray-600); max-width: 900px; }
+    .focused .hero .role-meta { margin-bottom: 18px; }
 
-    .btn-outline {
-      display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
-      font-family: var(--font-body); font-size: 14px; font-weight: 600; letter-spacing: 0.03em;
-      padding: 12px 22px; border-radius: 6px; background: transparent; color: var(--white);
-      border: 1px solid var(--border-strong); transition: border-color .2s, background .2s;
+    /* Section label */
+    .k { font-family: var(--font-mono); font-size: 11px; font-weight: 400; letter-spacing: 0.16em; text-transform: uppercase; color: var(--red); margin-bottom: 16px; }
+
+    /* Browse view: one short row per role */
+    .team { margin-top: 72px; }
+    .team-org { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--red); }
+    .team-title { font-family: var(--font-display); font-weight: 400; font-size: clamp(34px, 4vw, 48px); letter-spacing: 0.02em; line-height: 0.95; margin: 6px 0 12px; }
+    .team-intro { font-size: 16px; font-weight: 300; line-height: 1.65; color: var(--gray-400); max-width: 64ch; margin-bottom: 22px; }
+    .role-rows { display: grid; gap: 12px; }
+    .role-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 24px;
+      background: var(--black-2); border: 1px solid var(--border); border-radius: 12px; padding: 24px 26px;
+      transition: border-color .2s, background .2s;
     }
-    .btn-outline:hover { border-color: var(--red); background: rgba(230,3,6,0.08); }
-    .btn-outline:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .role-row:hover { border-color: rgba(230,3,6,0.5); background: #121212; }
+    .role-row h3 { font-family: var(--font-display); font-weight: 400; font-size: 30px; letter-spacing: 0.02em; line-height: 1; margin-bottom: 6px; }
+    .role-row p { font-size: 15px; line-height: 1.6; color: var(--gray-300); margin-top: 10px; max-width: 70ch; }
+    .role-row-go { flex-shrink: 0; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--white); border: 1px solid var(--border-strong); border-radius: 999px; padding: 9px 16px; transition: border-color .2s; }
+    .role-row:hover .role-row-go { border-color: var(--red); }
+
+    /* Role view: one column, read top to bottom */
+    .block { margin-top: 56px; padding-top: 32px; border-top: 1px solid var(--border); }
+    .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+    .dots { list-style: none; display: grid; gap: 10px; }
+    .dots li { display: flex; gap: 12px; align-items: baseline; font-size: 15.5px; line-height: 1.55; color: var(--gray-300); }
+    .dots li::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--red); flex-shrink: 0; transform: translateY(-3px); }
+    .role-path { margin-top: 22px; font-size: 14.5px; color: var(--gray-400); }
+    .role-path a { color: var(--white); border-bottom: 1px solid var(--red); padding-bottom: 1px; }
+    .steps { list-style: none; display: grid; gap: 18px; }
+    .steps li { display: grid; grid-template-columns: 36px 1fr; gap: 12px; }
+    .steps .n { font-family: var(--font-mono); font-size: 12px; color: var(--red); padding-top: 3px; }
+    .steps strong { display: block; font-size: 16px; font-weight: 600; margin-bottom: 2px; }
+    .steps li span:not(.n) { font-size: 14.5px; font-weight: 300; line-height: 1.6; color: var(--gray-400); }
+
+    .others { margin-top: 48px; }
+    .others:empty { display: none; }
+    .other-list { display: grid; gap: 8px; }
+    .other-list a { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 20px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; font-weight: 500; transition: border-color .2s; }
+    .other-list a:hover { border-color: var(--red); }
+    .team-note { margin-top: 40px; font-size: 12px; line-height: 1.6; color: var(--gray-600); max-width: 900px; }
+    .team-note:empty { display: none; }
 
     /* Inquiry */
-    .inquire { margin-top: 96px; display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 56px; align-items: start; }
-    .steps { list-style: none; display: grid; gap: 22px; margin-top: 28px; counter-reset: s; }
-    .steps li { display: grid; grid-template-columns: 44px 1fr; gap: 14px; counter-increment: s; }
-    .steps li::before { content: '0' counter(s); font-family: var(--font-display); font-size: 30px; color: var(--red); line-height: 1; }
-    .steps strong { display: block; font-size: 16px; font-weight: 600; margin-bottom: 3px; }
-    .steps span { font-size: 14.5px; font-weight: 300; color: var(--gray-400); line-height: 1.6; }
-
+    .inquire { margin-top: 72px; max-width: 760px; }
     .panel {
       background: var(--black-2); border: 1px solid var(--border); border-top: 3px solid var(--red);
       border-radius: 12px; padding: 32px 28px 28px;
     }
-    .eyebrow-mono { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--red); margin-bottom: 10px; }
-    .panel-title { font-family: var(--font-display); font-size: 38px; letter-spacing: 0.03em; line-height: 0.95; margin-bottom: 22px; }
+    .panel-title { font-family: var(--font-display); font-size: 40px; letter-spacing: 0.03em; line-height: 0.95; margin-bottom: 8px; }
     .panel-title .red { color: var(--red); }
+    .panel-sub { font-size: 14.5px; font-weight: 300; line-height: 1.6; color: var(--gray-400); margin-bottom: 22px; }
+    .chosen { font-size: 14px; color: var(--gray-400); margin-bottom: 18px; padding: 12px 14px; background: var(--charcoal); border-radius: 8px; }
+    .chosen strong { color: var(--white); font-weight: 600; }
+    .chosen a { color: var(--gray-400); text-decoration: underline; margin-left: 6px; font-size: 13px; }
 
-    .cform { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .cform { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; }
     .cform .full { grid-column: 1 / -1; }
-    .cform label { display: block; font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gray-400); margin-bottom: 6px; }
+    .cform [hidden] { display: none; }
+    .cform label { display: block; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gray-400); margin-bottom: 6px; }
     .cform input, .cform textarea, .cform select {
       width: 100%; background: var(--charcoal); border: 1px solid var(--border); border-radius: 8px;
       color: var(--white); padding: 12px 14px; font-family: var(--font-body); font-size: 14px;
@@ -173,6 +173,7 @@
     .cform textarea { resize: vertical; min-height: 110px; }
     .cform input:focus, .cform textarea:focus, .cform select:focus { outline: 2px solid var(--red); outline-offset: 1px; border-color: transparent; }
     .req { color: var(--red); }
+    .opt { color: var(--gray-600); }
     .actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 6px; }
     .fine { font-size: 11.5px; line-height: 1.55; color: var(--gray-600); }
     .msg { font-size: 13px; line-height: 1.5; }
@@ -194,6 +195,8 @@
     .btn-primary:disabled { opacity: 0.6; cursor: wait; transform: none; box-shadow: none; }
     .btn-primary:focus-visible { outline: 2px solid var(--white); outline-offset: 2px; }
 
+    .sticky-cta { display: none; }
+
     footer { position: relative; z-index: 1; border-top: 1px solid var(--border); padding: 28px 32px; }
     .footer-inner { max-width: 1140px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
     .footer-copy { font-size: 12px; color: var(--gray-600); }
@@ -201,24 +204,33 @@
     .footer-legal a:hover { color: var(--white); }
 
     @media (max-width: 900px) {
-      main { padding: calc(var(--nav-h) + 40px) 20px 64px; }
-      .team { margin-top: 64px; }
-      .team-head { grid-template-columns: 1fr; gap: 12px; }
-      .roles { grid-template-columns: minmax(0, 1fr); }
-      .inquire { grid-template-columns: 1fr; gap: 36px; margin-top: 72px; }
-      .sub { font-size: 16px; }
+      main { padding: calc(var(--nav-h) + 36px) 20px 64px; }
+      .team { margin-top: 56px; }
+      .inquire { margin-top: 56px; }
+      .sub { font-size: 16.5px; }
+    }
+    @media (max-width: 760px) {
+      .sticky-cta {
+        display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
+        padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+        background: rgba(8,8,8,0.94); backdrop-filter: blur(16px); border-top: 1px solid var(--border);
+        transform: translateY(110%); transition: transform .25s var(--ease-out);
+      }
+      .sticky-cta.show { transform: none; }
+      .sticky-cta .btn-primary { width: 100%; justify-content: center; }
+      body { padding-bottom: 76px; }
     }
     @media (max-width: 600px) {
       .nav-inner { padding: 0 20px; }
-      .role { padding: 24px 20px 22px; }
-      .role-cols { grid-template-columns: 1fr; gap: 18px; }
-      .team-path { grid-template-columns: minmax(0, 1fr); }
+      .role-row { flex-direction: column; align-items: flex-start; gap: 16px; padding: 22px 20px; }
+      .cols2 { grid-template-columns: 1fr; gap: 28px; }
+      .block { margin-top: 40px; padding-top: 28px; }
       .cform { grid-template-columns: 1fr; }
       .panel { padding: 26px 18px 20px; }
-      .panel-title { font-size: 32px; }
+      .panel-title { font-size: 34px; }
       footer { padding: 24px 20px; }
     }
-    @media (prefers-reduced-motion: reduce) { .role, .role:hover { transition: none; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { .sticky-cta { transition: none; } }
     /* Phones: 16px controls so iOS Safari does not zoom on focus. */
     @media (max-width: 760px) { input, select, textarea { font-size: 16px !important; } }
   </style>
@@ -237,31 +249,20 @@
 </nav>
 
 <main>
-  <div class="wrap">
-    <section class="hero">
+  <div class="wrap narrow">
+    <section class="hero" id="hero">
       <span class="tag">Join the Team</span>
       <h1 class="title">BUILD WITH THE<br><span class="red">ONE PERCENT.</span></h1>
-      <p class="sub">We are growing two teams: coaches who deliver One Percent work inside organizations, and financial professionals building with Aligned Wealth. Read the role. If it fits who you are becoming, tell us about you.</p>
-      <div class="jump" id="jump"></div>
+      <p class="sub">Two teams are hiring: coaches who deliver One Percent work inside organizations, and financial professionals building with Aligned Wealth. Pick a role, read it, and tell us about you.</p>
     </section>
 
+    <div id="role-view"></div>
     <div id="teams"></div>
 
     <section class="inquire" id="inquire">
-      <div>
-        <span class="tag">Inquire</span>
-        <h2 class="title" style="font-size:clamp(44px,5.4vw,68px);">START THE<br><span class="red">CONVERSATION.</span></h2>
-        <p class="sub">An inquiry is not an application. It is the first step, and it tells us enough to know whether a conversation makes sense.</p>
-        <ol class="steps">
-          <li><div><strong>You tell us about you</strong><span>The role, where you are today, and what draws you to this team.</span></div></li>
-          <li><div><strong>We read every inquiry</strong><span>Each one is reviewed against what the role needs right now.</span></div></li>
-          <li><div><strong>If it fits, we talk</strong><span>A conversation about the work, the standard, and the details that do not belong on a web page.</span></div></li>
-        </ol>
-      </div>
-
       <div class="panel">
-        <div class="eyebrow-mono">Join the Team · Inquiry</div>
         <div class="panel-title">TELL US ABOUT <span class="red">YOU.</span></div>
+        <p class="panel-sub">This is an inquiry, not a formal application. We read every one and reply by email if it fits.</p>
 
         <div class="done" id="join-done">
           <div class="t">INQUIRY <span class="red">RECEIVED.</span></div>
@@ -269,7 +270,8 @@
         </div>
 
         <form class="cform" id="join-form" novalidate>
-          <div class="full">
+          <div class="full chosen" id="role-chosen" hidden>Inquiring about <strong id="role-chosen-name"></strong> <a href="/join" data-nav>Change</a></div>
+          <div class="full" id="role-field">
             <label for="j-role">The role <span class="req">*</span></label>
             <select id="j-role" required></select>
           </div>
@@ -282,7 +284,7 @@
             <input id="j-email" type="email" autocomplete="email" maxlength="160" required>
           </div>
           <div>
-            <label for="j-phone">Phone (optional)</label>
+            <label for="j-phone">Phone <span class="opt">(optional)</span></label>
             <input id="j-phone" type="tel" autocomplete="tel" maxlength="40">
           </div>
           <div>
@@ -301,26 +303,31 @@
           </div>
           <div>
             <label for="j-credentials">Licenses or certifications</label>
-            <input id="j-credentials" type="text" maxlength="160" placeholder="e.g. 1P-CLC, Life license, SIE">
+            <input id="j-credentials" type="text" maxlength="160" placeholder="e.g. Life license, SIE, 1P-CLC">
           </div>
           <div class="full">
             <label for="j-why">What draws you to this team? <span class="req">*</span></label>
             <textarea id="j-why" maxlength="600" required placeholder="Where you are today, where you want to be, and why this team."></textarea>
           </div>
           <div class="full">
-            <label for="j-link">LinkedIn or website (optional)</label>
+            <label for="j-link">LinkedIn or website <span class="opt">(optional)</span></label>
             <input id="j-link" type="url" maxlength="200" placeholder="https://">
           </div>
           <div class="full actions">
-            <button class="btn-primary" id="j-submit" type="submit">Send my inquiry →</button>
+            <button class="btn-primary" id="j-submit" type="submit">Send my inquiry &rarr;</button>
             <span class="msg" id="j-msg" role="status" aria-live="polite"></span>
           </div>
           <p class="full fine">By sending this you agree to our <a href="/privacy.html" style="text-decoration:underline;">Privacy Policy</a>. We will reply by email. A phone number, if you add one, is only used to call you back about this inquiry.</p>
         </form>
       </div>
     </section>
+
+    <section class="others" id="others"></section>
+    <p class="team-note" id="note"></p>
   </div>
 </main>
+
+<div class="sticky-cta" id="sticky-cta"><a class="btn-primary" href="#inquire">Start your inquiry &rarr;</a></div>
 
 <footer>
   <div class="footer-inner">

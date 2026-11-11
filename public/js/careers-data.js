@@ -24,15 +24,15 @@ export const TEAMS = [
     key: 'financial',
     label: 'The Financial Team',
     org: 'Aligned Wealth',
-    intro: 'Aligned growth includes your money. We are building a team of financial professionals who bring the same intention to a family\'s finances that The One Percent brings to everything else. You do not need a background in finance. You need to be coachable, consistent, and willing to earn the licenses the work requires.',
+    intro: 'Financial professionals who bring the same intention to a family\'s money that The One Percent brings to everything else. No finance background needed: you need to be coachable, consistent, and willing to earn the licenses the work requires.',
     // How someone gets started, in order. Shown above the financial roles.
     path: [
-      { title: 'Inquire and talk', text: 'Tell us about you below. If it fits, we sit down and walk through the work, the standard, and how the business runs.' },
-      { title: 'Join and clear a background check', text: 'Joining is part of onboarding with the national financial services firm our team is affiliated with. Any onboarding fee is explained in writing before you commit.' },
-      { title: 'Earn your life license', text: 'An online pre-licensing course, then your state\'s life insurance licensing exam. You study at your own pace, with the team helping you prepare.' },
-      { title: 'Train in the field', text: 'Your first client appointments run alongside a licensed field trainer, until you are ready to run them on your own.' },
-      { title: 'Add securities, if you choose', text: 'Once you are life licensed, you can pursue the SIE, Series 6, and Series 63 exams. The Series 6 and 63 require a sponsoring broker-dealer, which comes through the firm after you join.' },
-      { title: 'Grow into leadership', text: 'Promotions are earned, not bought: by your licensed client work, and by training and developing licensed people on your own team.' }
+      { title: 'Inquire and talk', text: 'Send the short form below. If it fits, we sit down and walk through the work and how the business runs.' },
+      { title: 'Join and clear a background check', text: 'Onboarding runs through the national financial services firm our team is affiliated with. Any onboarding fee is explained in writing before you commit.' },
+      { title: 'Earn your life license', text: 'An online pre-licensing course, then your state\'s life insurance licensing exam. Study at your own pace, with the team helping you prepare.' },
+      { title: 'Train in the field', text: 'Your first client appointments run alongside a licensed field trainer until you are ready to run them yourself.' },
+      { title: 'Add securities, if you choose', text: 'Once life licensed, you can pursue the SIE, Series 6, and Series 63. The Series 6 and 63 require a sponsoring broker-dealer, which comes through the firm after you join.' },
+      { title: 'Grow into leadership', text: 'Promotions are earned, not bought: through your licensed client work and by developing licensed people on your own team.' }
     ],
     disclaimer: 'Aligned Wealth is a separate company from The One Percent Nation. Financial representatives are independent contractors who contract with the affiliated national financial services firm. They are not employees of Aligned Wealth or The One Percent Nation. Earnings are based entirely on the work you do: there is no salary, no guaranteed income, and results vary. Representatives offer products only where they are properly licensed. This page is not an offer of employment or a contract, and nothing here offers or recommends any insurance or securities product.'
   }
