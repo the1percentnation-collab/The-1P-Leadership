@@ -1,0 +1,109 @@
+name: Schedule campaigns
+# Sets campaign send times by running scripts/set-campaign-send-times.js with
+# the deploy service account. It makes the same change as the send time field
+# in /campaigns.html, for when the owner asks for one away from it.
+#
+#   pull request   A change to scripts/campaign-send-times.txt gets a DRY RUN:
+#                  this check prints the old and new send time for each added
+#                  line and writes nothing.
+#   push to main   Merging that change saves the times it ADDED. Lines already
+#                  in the file are a record and are never re-applied.
+#
+# It never approves and never sends. An approved campaign goes out from the
+# automation tick after its send time.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/campaign-send-times.txt'
+  pull_request:
+    paths:
+      - 'scripts/campaign-send-times.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: schedule-campaigns-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  set_send_times:
+    # A pull request from a fork gets no secrets, so there is nothing to run.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Which lines, and whether to write. Everything from the event arrives
+      # through the environment, never spliced into the script, and
+      # set-campaign-send-times.js rejects anything that is not a plain id
+      # and a time with its offset.
+      - name: Work out what to schedule
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          FILE=scripts/campaign-send-times.txt
+          added_since() {
+            git diff --unified=0 "$1" HEAD -- "$FILE" \
+              | { grep '^+[^+]' || true; } | sed -e 's/^+//' -e 's/#.*//' \
+              | awk 'NF > 0 { if (NF != 2) { print "Malformed line: " $0 > "/dev/stderr"; exit 1 } printf "%s=%s ", $1, $2 }'
+          }
+          case "$EVENT" in
+            pull_request)
+              PAIRS="$(added_since "$(git merge-base "$PR_BASE" HEAD)")"
+              APPLY=false
+              ;;
+            push)
+              BASE="$PUSH_BEFORE"
+              if ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then BASE="HEAD^"; fi
+              PAIRS="$(added_since "$BASE")"
+              APPLY=true
+              ;;
+            *)
+              echo "Unexpected event: $EVENT"; exit 1
+              ;;
+          esac
+          PAIRS="$(echo "$PAIRS" | xargs)"
+          echo "Lines: ${PAIRS:-(none added)}"
+          echo "Apply: $APPLY"
+          echo "pairs=$PAIRS" >> "$GITHUB_OUTPUT"
+          echo "apply=$APPLY" >> "$GITHUB_OUTPUT"
+
+      - name: Write service account key
+        if: ${{ steps.plan.outputs.pairs != '' }}
+        id: sa
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_THE_1P_LEADERSHIP }}
+        run: |
+          echo "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+          echo "path=$RUNNER_TEMP/sa.json" >> "$GITHUB_OUTPUT"
+
+      - name: Install script dependencies
+        if: ${{ steps.plan.outputs.pairs != '' }}
+        working-directory: scripts
+        run: npm ci
+
+      - name: Schedule
+        if: ${{ steps.plan.outputs.pairs != '' }}
+        working-directory: scripts
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.sa.outputs.path }}
+          PAIRS: ${{ steps.plan.outputs.pairs }}
+          APPLY: ${{ steps.plan.outputs.apply }}
+        run: |
+          if [ "$APPLY" = "true" ]; then
+            node set-campaign-send-times.js "$PAIRS" --apply
+          else
+            node set-campaign-send-times.js "$PAIRS"
+          fi
