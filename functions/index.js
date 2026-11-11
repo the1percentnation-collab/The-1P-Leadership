@@ -39,7 +39,7 @@ const sgMail = require('@sendgrid/mail');
 // The Focus Tax calculator's math, shared with the page (generated from
 // public/js/focus-tax-core.js by scripts/build-focus-tax-server.cjs).
 const { computeFocusTax, WORK_WEEKS: FOCUS_TAX_WEEKS } = require('./focus-tax.js');
-const { careerTags } = require('./careers.js');
+const { careerTags, careerReplyEmail, CAREER_REPLY_COOLDOWN_MS } = require('./careers.js');
 const handSales = require('./hand-sales-core.js');
 const messenger = require('./messenger.js');
 const audioCore = require('./audio-core.js');
@@ -16247,6 +16247,40 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
     name, email, phone, fields,
     contactUrl: `${APP_BASE_URL}/contact.html?id=${encodeURIComponent(ref.id)}`
   });
+
+  // An applicant gets a pick-a-time link right away instead of waiting on a
+  // hand-written reply. Once a week at most per contact, logged on the
+  // contact so the team can see it went. Best-effort: the lead is saved.
+  if (formType === 'careers' && emailConfigured()) {
+    try {
+      const prior = await ref.collection('activities').where('type', '==', 'career_reply').get();
+      const recent = prior.docs.some((d) => {
+        const at = d.get('createdAt');
+        return at && typeof at.toMillis === 'function' && Date.now() - at.toMillis() < CAREER_REPLY_COOLDOWN_MS;
+      });
+      if (!recent) {
+        const msg = careerReplyEmail({ name, roleKey: fields.role_key });
+        await sendEmail({
+          to: email,
+          from: { email: FROM_EMAIL, name: FROM_NAME_DEFAULT },
+          replyTo: REPLY_TO,
+          subject: msg.subject,
+          text: msg.text,
+          html: msg.html,
+          customArgs: { type: 'career_reply' }
+        });
+        await ref.collection('activities').add({
+          type: 'career_reply',
+          description: `Sent the pick-a-time email: ${msg.subject}`,
+          actorUid: 'system', actorName: 'Join the Team form',
+          createdAt: FV.serverTimestamp(),
+          meta: { roleKey: fields.role_key || null }
+        });
+      }
+    } catch (e) {
+      console.warn('[submitLeadForm] career reply failed:', e && e.message);
+    }
+  }
 
   // The calculator promised a report, so send it. Recomputed here from the
   // submitted inputs (clamped by computeFocusTax), never from totals the page

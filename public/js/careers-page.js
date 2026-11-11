@@ -225,7 +225,12 @@ async function submit(e) {
   }
   $('join-form').style.display = 'none';
   $('join-done').classList.add('show');
+  $('join-done').closest('.panel').classList.add('sent');
+  $('join-done').scrollIntoView({ behavior: 'smooth', block: 'center' });
   if (typeof window.gtag === 'function') window.gtag('event', 'generate_lead', { form: 'careers', role: role.key, source: TRACK.source || 'direct' });
+  $('j-book').addEventListener('click', () => {
+    if (typeof window.gtag === 'function') window.gtag('event', 'booking_click', { form: 'careers', role: role.key, source: TRACK.source || 'direct' });
+  }, { once: true });
 }
 
 render();

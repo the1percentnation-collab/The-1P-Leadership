@@ -182,6 +182,8 @@
     .done.show { display: block; }
     .done .t { font-family: var(--font-display); font-size: 30px; letter-spacing: 0.03em; margin-bottom: 8px; }
     .done .t .red { color: var(--red); }
+    .done-cta { margin-top: 20px; }
+    .panel.sent .panel-title, .panel.sent .panel-sub { display: none; }
     .done p { font-size: 14.5px; font-weight: 300; color: var(--gray-400); line-height: 1.65; max-width: 52ch; }
 
     .btn-primary {
@@ -262,11 +264,12 @@
     <section class="inquire" id="inquire">
       <div class="panel">
         <div class="panel-title">TELL US ABOUT <span class="red">YOU.</span></div>
-        <p class="panel-sub">This is an inquiry, not a formal application. We read every one and reply by email if it fits.</p>
+        <p class="panel-sub">This is an inquiry, not a formal application. Send it, then pick a time to talk.</p>
 
         <div class="done" id="join-done">
           <div class="t">INQUIRY <span class="red">RECEIVED.</span></div>
-          <p>Thank you. Your inquiry is in front of the team. If the role is a fit, you will hear from us at the email you gave to set up a conversation.</p>
+          <p>One step left: pick a time for a short conversation about the role. The link is in your inbox too, if you would rather book later.</p>
+          <a class="btn-primary done-cta" href="/book-a-call?for=team" id="j-book">Pick a time to talk &rarr;</a>
         </div>
 
         <form class="cform" id="join-form" novalidate>

@@ -14,7 +14,7 @@ import { loadPure } from './_load-pure.mjs';
 const data = await loadPure('careers-data.js');
 const server = createRequire(import.meta.url)('../functions/careers.js');
 const { TEAMS, ROLES, NOT_SURE, openRoles, roleByKey } = data;
-const { CAREER_ROLE_TAGS, CAREER_SOURCE_TAGS, careerTags, RECRUITING_TAG } = server;
+const { CAREER_ROLE_TAGS, CAREER_SOURCE_TAGS, careerTags, RECRUITING_TAG, CAREER_ROLE_REPLY, careerReplyEmail, replyFirstName } = server;
 
 let passed = 0;
 function ok(name, run) {
@@ -101,6 +101,42 @@ ok('the affiliated firm is never named anywhere on the site', () => {
   walk(new URL('../public/', import.meta.url));
   if (/primerica|pfs investments/i.test(fs.readFileSync(new URL('../functions/careers.js', import.meta.url), 'utf8'))) hits.push('functions/careers.js');
   assert.deepStrictEqual(hits, []);
+});
+
+ok('the reply email names each role exactly as the page posts it', () => {
+  assert.deepStrictEqual(Object.keys(CAREER_ROLE_REPLY).sort(), ROLES.map((r) => r.key).sort());
+  for (const r of ROLES) {
+    const team = TEAMS.find((t) => t.key === r.team);
+    assert.strictEqual(CAREER_ROLE_REPLY[r.key].title, r.title, `${r.key}: title`);
+    assert.strictEqual(CAREER_ROLE_REPLY[r.key].team, team.org, `${r.key}: team`);
+  }
+});
+
+ok('the reply email links to the team booking page and follows the copy rules', () => {
+  for (const key of [...ROLES.map((r) => r.key), 'not-sure', undefined, '<b>x</b>']) {
+    const m = careerReplyEmail({ name: 'Marcus Johnson', roleKey: key });
+    const all = m.subject + m.text + m.html;
+    assert.ok(m.text.includes('https://the1pnation.com/book-a-call?for=team'), `${key}: text link`);
+    assert.ok(m.html.includes('href="https://the1pnation.com/book-a-call?for=team"'), `${key}: html link`);
+    assert.ok(!/\$|commission|salary|income|guarantee|unlimited|six.figure/i.test(all), `${key}: pay language`);
+    assert.ok(!/primerica|pfs investments/i.test(all), `${key}: firm named`);
+    assert.ok(!/—/.test(all), `${key}: em dash`);
+    assert.ok(!/<b>x<\/b>/.test(all), `${key}: role key echoed`);
+  }
+  assert.ok(careerReplyEmail({ name: 'Ana', roleKey: 'life-insurance' }).text.startsWith('Hi Ana,'));
+  assert.ok(careerReplyEmail({ name: 'Ana', roleKey: 'life-insurance' }).subject.includes('Financial Representative'));
+});
+
+ok('the greeting only ever uses a plain first name', () => {
+  assert.strictEqual(replyFirstName('Marcus Johnson'), 'Marcus');
+  assert.strictEqual(replyFirstName("D'Andre Smith"), "D'Andre");
+  assert.strictEqual(replyFirstName('José'), 'José');
+  for (const bad of ['http://spam.example', 'www.win.com', '<script>', 'Win$500', '12345', 'A', '', null]) {
+    assert.strictEqual(replyFirstName(bad), '', String(bad));
+  }
+  const m = careerReplyEmail({ name: 'Visit http://spam.example now', roleKey: 'coach' });
+  assert.ok(m.text.startsWith('Hi Visit,') && !/spam\.example/.test(m.text + m.html));
+  assert.ok(careerReplyEmail({ name: 'http://spam.example', roleKey: 'coach' }).text.startsWith('Hi,\n'));
 });
 
 ok('no em dashes in the posted copy', () => {

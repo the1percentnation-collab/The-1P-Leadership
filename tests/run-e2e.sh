@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs an emulator e2e: `tests/run-e2e.sh purchase`, `reader`, `audiobook` or `notify`
+# Runs an emulator e2e: `tests/run-e2e.sh purchase`, `reader`, `audiobook`, `notify` or `careers`
 # (the reader one needs READER_E2E_EPUB=/path/to/sample.epub).
 # The Functions emulator needs fake secrets and an email provider it can
 # reach; both files are gitignored and removed afterwards.
