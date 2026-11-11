@@ -31,55 +31,142 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));
 
-const list = (items) => `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`;
+const list = (items) => `<ul class="dots">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`;
+const meta = (m) => `<div class="role-meta">${m.map((x) => `<span>${esc(x)}</span>`).join('')}</div>`;
+const roleHref = (key) => `/join?role=${encodeURIComponent(key)}`;
 
-function roleCard(r) {
-  return `<article class="role" id="role-${esc(r.key)}">
-    <span class="role-status">Open</span>
-    <h3>${esc(r.title)}</h3>
-    <div class="role-meta">${r.meta.map((m) => `<span>${esc(m)}</span>`).join('')}</div>
-    <p class="role-summary">${esc(r.summary)}</p>
-    <div class="role-cols">
-      <div><div class="role-k">What you will do</div>${list(r.does)}</div>
-      <div><div class="role-k">Who fits</div>${list(r.fits)}</div>
+// Two views on one page:
+//   /join             every open role as a short row, then the form
+//   /join?role=<key>  one role as a single-column posting, then the form
+// Recruiting links go straight to the second, so an applicant reads one role,
+// not the whole board.
+let heroBrowse = null;
+
+// Recruiting links can say where they were shared and who shared them:
+//   /join?role=life-insurance&src=linkedin&ref=marcus
+// Read once on arrival, so moving between roles on the page keeps them.
+// The server turns a known src into a CRM tag (functions/careers.js); ref is
+// kept as a field on the inquiry. utm_source works as a fallback for src.
+const clean = (v, n) => String(v || '').toLowerCase().trim().replace(/[^a-z0-9 _.-]/g, '').slice(0, n);
+const arrival = new URLSearchParams(location.search);
+const TRACK = {
+  source: clean(arrival.get('src') || arrival.get('utm_source'), 40),
+  referred_by: clean(arrival.get('ref'), 60)
+};
+
+function teamsWithRoles() {
+  const roles = openRoles();
+  return TEAMS
+    .map((t) => ({ ...t, roles: roles.filter((r) => r.team === t.key) }))
+    .filter((t) => t.roles.length);
+}
+
+function roleRow(r) {
+  return `<a class="role-row" href="${roleHref(r.key)}" data-nav>
+    <div class="role-row-main">
+      <h3>${esc(r.title)}</h3>
+      ${meta(r.meta)}
+      <p>${esc(r.summary)}</p>
     </div>
-    ${r.path ? `<p class="role-path">${esc(r.path.text)} <a href="${esc(r.path.href)}">${esc(r.path.label)}</a></p>` : ''}
-    <div class="role-foot"><button class="btn-outline" type="button" data-inquire="${esc(r.key)}">Inquire about this role &rarr;</button></div>
-  </article>`;
+    <span class="role-row-go">View role <span aria-hidden="true">&rarr;</span></span>
+  </a>`;
+}
+
+function renderBrowse(teams) {
+  $('hero').innerHTML = heroBrowse;
+  $('role-view').innerHTML = '';
+  $('teams').innerHTML = teams.map((t) => `<section class="team" id="team-${esc(t.key)}">
+      <div class="team-org">${esc(t.org)}</div>
+      <h2 class="team-title">${esc(t.label)}</h2>
+      <p class="team-intro">${esc(t.intro)}</p>
+      <div class="role-rows">${t.roles.map(roleRow).join('')}</div>
+    </section>`).join('');
+  $('others').innerHTML = '';
+  const notes = teams.filter((t) => t.disclaimer).map((t) => esc(t.disclaimer));
+  $('note').innerHTML = notes.join('<br><br>');
+  $('role-field').hidden = false;
+  $('role-chosen').hidden = true;
+}
+
+function renderRole(role, teams) {
+  const team = teams.find((t) => t.key === role.team);
+  $('hero').innerHTML = `
+    <a class="back" href="/join" data-nav>&larr; All open roles</a>
+    <span class="tag">${esc(team.org)} &middot; Open role</span>
+    <h1 class="title role-title">${esc(role.title)}</h1>
+    ${meta(role.meta)}
+    <p class="sub">${esc(role.summary)}</p>
+    <div class="hero-cta">
+      <a class="btn-primary" href="#inquire">Start your inquiry &rarr;</a>
+      <span class="hint">Takes about two minutes. No resume needed.</span>
+    </div>`;
+
+  $('role-view').innerHTML = `
+    <section class="block">
+      <div class="cols2">
+        <div><h2 class="k">What you will do</h2>${list(role.does)}</div>
+        <div><h2 class="k">Who fits</h2>${list(role.fits)}</div>
+      </div>
+      ${role.path ? `<p class="role-path">${esc(role.path.text)} <a href="${esc(role.path.href)}">${esc(role.path.label)}</a></p>` : ''}
+    </section>
+    ${team.path ? `<section class="block">
+      <h2 class="k">How you get started</h2>
+      <ol class="steps">${team.path.map((st, i) => `<li><span class="n">${String(i + 1).padStart(2, '0')}</span><div><strong>${esc(st.title)}</strong><span>${esc(st.text)}</span></div></li>`).join('')}</ol>
+    </section>` : ''}`;
+  $('teams').innerHTML = '';
+
+  const others = teams.flatMap((t) => t.roles).filter((r) => r.key !== role.key);
+  $('others').innerHTML = others.length ? `<h2 class="k">Other open roles</h2>
+    <div class="other-list">${others.map((r) => `<a href="${roleHref(r.key)}" data-nav><span>${esc(r.title)}</span><span aria-hidden="true">&rarr;</span></a>`).join('')}</div>` : '';
+  $('note').textContent = team.disclaimer || '';
+
+  $('role-field').hidden = true;
+  $('role-chosen').hidden = false;
+  $('role-chosen-name').textContent = role.title;
 }
 
 function render() {
-  const roles = openRoles();
-  const teams = TEAMS
-    .map((t) => ({ ...t, roles: roles.filter((r) => r.team === t.key) }))
-    .filter((t) => t.roles.length);
+  const teams = teamsWithRoles();
+  if (heroBrowse === null) heroBrowse = $('hero').innerHTML;
 
-  $('jump').innerHTML = teams.map((t) => `<a href="#team-${esc(t.key)}">${esc(t.label)}</a>`).join('')
-    + '<a href="#inquire">Inquire</a>';
-
-  $('teams').innerHTML = teams.map((t) => `<section class="team" id="team-${esc(t.key)}">
-      <div class="team-head">
-        <div><div class="team-org">${esc(t.org)}</div><h2 class="team-title">${esc(t.label)}</h2></div>
-        <p class="team-intro">${esc(t.intro)}</p>
-      </div>
-      ${t.path ? `<div class="team-path-k">How you get started</div><ol class="team-path">${t.path.map((st, i) => `<li><span class="n">${String(i + 1).padStart(2, '0')}</span><strong>${esc(st.title)}</strong><span>${esc(st.text)}</span></li>`).join('')}</ol>` : ''}
-      <div class="roles${t.roles.length === 1 ? ' one' : ''}">${t.roles.map(roleCard).join('')}</div>
-      ${t.disclaimer ? `<p class="team-note">${esc(t.disclaimer)}</p>` : ''}
-    </section>`).join('');
+  // A link like /join?role=coach arrives with the role already chosen.
+  const wanted = roleByKey(new URLSearchParams(location.search).get('role'));
+  const focused = wanted && wanted !== NOT_SURE;
+  document.body.classList.toggle('focused', !!focused);
 
   $('j-role').innerHTML = '<option value="">Select a role</option>'
     + teams.map((t) => `<optgroup label="${esc(t.label)}">${t.roles.map((r) => `<option value="${esc(r.key)}">${esc(r.title)}</option>`).join('')}</optgroup>`).join('')
     + `<option value="${NOT_SURE.key}">${esc(NOT_SURE.title)}</option>`;
-
-  document.querySelectorAll('[data-inquire]').forEach((b) => b.addEventListener('click', () => {
-    $('j-role').value = b.dataset.inquire;
-    $('inquire').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    setTimeout(() => $('j-name').focus({ preventScroll: true }), 500);
-  }));
-
-  // A link like /join?role=coach arrives with the role already chosen.
-  const wanted = roleByKey(new URLSearchParams(location.search).get('role'));
   if (wanted) $('j-role').value = wanted.key;
+
+  if (focused) renderRole(wanted, teams);
+  else renderBrowse(teams);
+  document.title = focused ? `${wanted.title} | Join the Team | The One Percent Nation` : 'Join the Team | The One Percent Nation';
+}
+
+// Moving between roles stays on the page: no reload, back button works.
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-nav]');
+  if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+  e.preventDefault();
+  history.pushState(null, '', a.getAttribute('href'));
+  render();
+  window.scrollTo(0, 0);
+});
+window.addEventListener('popstate', render);
+
+// Phones: a pinned "Start your inquiry" bar while neither the hero button nor
+// the form is on screen.
+function stickyCta() {
+  const bar = $('sticky-cta');
+  if (!bar || !('IntersectionObserver' in window)) return;
+  const seen = new Map();
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((en) => seen.set(en.target, en.isIntersecting));
+    bar.classList.toggle('show', ![...seen.values()].some(Boolean));
+  });
+  io.observe($('hero'));
+  io.observe($('inquire'));
 }
 
 function show(text, isErr) {
@@ -110,7 +197,9 @@ async function submit(e) {
     experience: $('j-experience').value,
     credentials: $('j-credentials').value.trim(),
     why,
-    link: $('j-link').value.trim()
+    link: $('j-link').value.trim(),
+    source: TRACK.source,
+    referred_by: TRACK.referred_by
   };
   Object.keys(fields).forEach((k) => { if (!fields[k]) delete fields[k]; });
 
@@ -136,9 +225,15 @@ async function submit(e) {
   }
   $('join-form').style.display = 'none';
   $('join-done').classList.add('show');
-  if (typeof window.gtag === 'function') window.gtag('event', 'generate_lead', { form: 'careers', role: role.key });
+  $('join-done').closest('.panel').classList.add('sent');
+  $('join-done').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (typeof window.gtag === 'function') window.gtag('event', 'generate_lead', { form: 'careers', role: role.key, source: TRACK.source || 'direct' });
+  $('j-book').addEventListener('click', () => {
+    if (typeof window.gtag === 'function') window.gtag('event', 'booking_click', { form: 'careers', role: role.key, source: TRACK.source || 'direct' });
+  }, { once: true });
 }
 
 render();
+stickyCta();
 $('join-form').addEventListener('submit', submit);
 loadFirebase().catch((e) => console.warn('[join] Firebase did not load yet', e));
