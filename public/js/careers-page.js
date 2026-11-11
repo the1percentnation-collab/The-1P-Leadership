@@ -42,6 +42,18 @@ const roleHref = (key) => `/join?role=${encodeURIComponent(key)}`;
 // not the whole board.
 let heroBrowse = null;
 
+// Recruiting links can say where they were shared and who shared them:
+//   /join?role=life-insurance&src=linkedin&ref=marcus
+// Read once on arrival, so moving between roles on the page keeps them.
+// The server turns a known src into a CRM tag (functions/careers.js); ref is
+// kept as a field on the inquiry. utm_source works as a fallback for src.
+const clean = (v, n) => String(v || '').toLowerCase().trim().replace(/[^a-z0-9 _.-]/g, '').slice(0, n);
+const arrival = new URLSearchParams(location.search);
+const TRACK = {
+  source: clean(arrival.get('src') || arrival.get('utm_source'), 40),
+  referred_by: clean(arrival.get('ref'), 60)
+};
+
 function teamsWithRoles() {
   const roles = openRoles();
   return TEAMS
@@ -185,7 +197,9 @@ async function submit(e) {
     experience: $('j-experience').value,
     credentials: $('j-credentials').value.trim(),
     why,
-    link: $('j-link').value.trim()
+    link: $('j-link').value.trim(),
+    source: TRACK.source,
+    referred_by: TRACK.referred_by
   };
   Object.keys(fields).forEach((k) => { if (!fields[k]) delete fields[k]; });
 
@@ -211,7 +225,7 @@ async function submit(e) {
   }
   $('join-form').style.display = 'none';
   $('join-done').classList.add('show');
-  if (typeof window.gtag === 'function') window.gtag('event', 'generate_lead', { form: 'careers', role: role.key });
+  if (typeof window.gtag === 'function') window.gtag('event', 'generate_lead', { form: 'careers', role: role.key, source: TRACK.source || 'direct' });
 }
 
 render();

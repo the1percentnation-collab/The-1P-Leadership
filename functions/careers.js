@@ -15,10 +15,30 @@ const CAREER_ROLE_TAGS = {
   'not-sure': 'Recruit: Not Sure'
 };
 
-/** Tags for an inquiry about `roleKey`. Unknown keys fall back to Not Sure. */
-function careerTags(roleKey) {
+// Where the recruiting link was shared: /join?role=...&src=linkedin. Same
+// rule as roles: the page sends a key, and only a key on this list becomes a
+// tag, so each channel is one CRM filter. An unknown src still reaches the
+// inquiry as a field, just without a tag.
+const CAREER_SOURCE_TAGS = {
+  'linkedin': 'Recruit Source: LinkedIn',
+  'instagram': 'Recruit Source: Instagram',
+  'facebook': 'Recruit Source: Facebook',
+  'tiktok': 'Recruit Source: TikTok',
+  'text': 'Recruit Source: Text',
+  'email': 'Recruit Source: Email',
+  'referral': 'Recruit Source: Referral',
+  'event': 'Recruit Source: Event',
+  'indeed': 'Recruit Source: Indeed',
+  'website': 'Recruit Source: Website'
+};
+
+/** Tags for an inquiry about `roleKey` from `sourceKey`. Unknown roles fall back to Not Sure. */
+function careerTags(roleKey, sourceKey) {
   const role = CAREER_ROLE_TAGS[roleKey] || CAREER_ROLE_TAGS['not-sure'];
-  return [RECRUITING_TAG, role];
+  const tags = [RECRUITING_TAG, role];
+  const source = Object.prototype.hasOwnProperty.call(CAREER_SOURCE_TAGS, sourceKey) ? CAREER_SOURCE_TAGS[sourceKey] : null;
+  if (source) tags.push(source);
+  return tags;
 }
 
-module.exports = { RECRUITING_TAG, CAREER_ROLE_TAGS, careerTags };
+module.exports = { RECRUITING_TAG, CAREER_ROLE_TAGS, CAREER_SOURCE_TAGS, careerTags };

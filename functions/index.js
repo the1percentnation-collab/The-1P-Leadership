@@ -16204,7 +16204,7 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
   // buyer-input math the annual program conversation starts from.
   if (formType === 'focus-tax' && fields.mode === 'team') tags.push('Corporate', 'Focus Tax: Team');
   // The page sends a role key, never a tag; careerTags maps it to a fixed set.
-  if (formType === 'careers') tags.push(...careerTags(fields.role_key));
+  if (formType === 'careers') tags.push(...careerTags(fields.role_key, fields.source));
   // Someone who read a preview end to end is further down the funnel than
   // someone who only opened it, and the book they finished is the offer to
   // put in front of them.

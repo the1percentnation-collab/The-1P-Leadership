@@ -14,7 +14,7 @@ import { loadPure } from './_load-pure.mjs';
 const data = await loadPure('careers-data.js');
 const server = createRequire(import.meta.url)('../functions/careers.js');
 const { TEAMS, ROLES, NOT_SURE, openRoles, roleByKey } = data;
-const { CAREER_ROLE_TAGS, careerTags, RECRUITING_TAG } = server;
+const { CAREER_ROLE_TAGS, CAREER_SOURCE_TAGS, careerTags, RECRUITING_TAG } = server;
 
 let passed = 0;
 function ok(name, run) {
@@ -37,6 +37,17 @@ ok('every inquiry is tagged Recruiting plus its role', () => {
 ok('an unknown or forged role key falls back to Not Sure, never a free-form tag', () => {
   assert.deepStrictEqual(careerTags('<b>VIP</b>'), [RECRUITING_TAG, 'Recruit: Not Sure']);
   assert.deepStrictEqual(careerTags(undefined), [RECRUITING_TAG, 'Recruit: Not Sure']);
+});
+
+ok('a known link source adds one source tag; anything else adds none', () => {
+  assert.deepStrictEqual(careerTags('life-insurance', 'linkedin'), [RECRUITING_TAG, 'Recruit: Life Insurance', 'Recruit Source: LinkedIn']);
+  assert.deepStrictEqual(careerTags('life-insurance', 'myspace'), [RECRUITING_TAG, 'Recruit: Life Insurance']);
+  assert.deepStrictEqual(careerTags('coach', '__proto__'), [RECRUITING_TAG, 'Recruit: 1P Coach']);
+  assert.deepStrictEqual(careerTags('coach', 'constructor'), [RECRUITING_TAG, 'Recruit: 1P Coach']);
+  for (const [k, tag] of Object.entries(CAREER_SOURCE_TAGS)) {
+    assert.ok(/^[a-z]+$/.test(k), `${k}: source keys are plain lowercase`);
+    assert.ok(tag.startsWith('Recruit Source: '), `${k}: tag prefix`);
+  }
 });
 
 ok('every role belongs to a team and has the fields the card renders', () => {
