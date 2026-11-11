@@ -1,0 +1,23 @@
+# Campaign send times.
+#
+# Add a line with a campaign id and a send time to schedule that campaign:
+#
+#   campaign-id  2026-11-11T09:00:00-05:00
+#
+# The time carries its own offset (-05:00 is Eastern Standard, -04:00 is
+# Eastern Daylight), so it is never read in the wrong zone.
+#
+# The pull request that adds a line shows a dry run (the "Schedule campaigns"
+# check prints the old and new send time and writes nothing). Merging it into
+# main saves the time.
+#
+# Only lines ADDED in a change are acted on. Lines already here are a record
+# and are never re-applied, so a time changed or cleared in /campaigns.html
+# sticks. Removing a line does nothing.
+#
+# This never approves and never sends. An approved campaign goes out at the
+# automation tick's first check after its send time, usually within a few
+# hours of it. A draft still needs approving (campaign-approvals.txt).
+
+# 2026-11-10, asked for by Anthony: the audiobook launch, Wed Nov 11, 9 AM ET.
+icant-audiobook-launch  2026-11-11T09:00:00-05:00
