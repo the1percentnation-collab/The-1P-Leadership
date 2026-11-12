@@ -308,10 +308,7 @@ Give me a final list:
 2. **Check the inbox daily.** Automations open the door; a person still
    closes it. Any reply to the AUDIT keyword is a lead toward an annual
    program and gets a same-day answer.
-3. **Mirror to Instagram once it works.** The same automations can run on
-   Instagram DMs from the same screen. Run the prompt again with rule 3
-   changed to include Instagram.
-4. **Turn comments into conversations.** Business Suite's comment-to-message
-   automation can DM anyone who comments a keyword (for example "SCORECARD")
-   on a post. Pair it with a post about the assessment and every comment
-   becomes a Messenger lead that lands in this flow.
+3. **Mirror to Instagram and add comment-to-message.** Once this is tested,
+   run `docs/instagram-and-comments-chrome-prompt.md`. It copies these
+   automations to Instagram DMs and sets up a Scorecard post where anyone who
+   comments SCORECARD gets the assessment link by DM.
