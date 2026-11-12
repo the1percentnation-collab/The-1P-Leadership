@@ -1,5 +1,8 @@
 # Facebook Page Messenger setup
 
+Looking for automated welcome replies and conversation starters instead? See
+[messenger-automations-chrome-prompt.md](messenger-automations-chrome-prompt.md).
+
 Lets the store send invoices and reminders from your Facebook **Page**
 straight from the order's send screen, with no copy and paste. Until this is
 set up, the Page section on the send screen stays hidden and everything else
