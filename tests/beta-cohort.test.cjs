@@ -125,6 +125,26 @@ console.log('beta cohort — the record behind the beta console');
     assert.strictEqual(d.uid, 'uid1');
   });
 
+  // Applying creates the account in the same step, so most applicants have
+  // one before any decision. Signing up must not skip the Applicants queue,
+  // or the approve branch reads their courses as already held and grants none.
+  await ok('an applicant who has an account stays an applicant, with the account linked', async () => {
+    const db = makeDb({ 'betaTesters/a@b.com': tester({ status: 'applied' }) });
+    assert.strictEqual(await B.markBetaActivated(db, 'a@b.com', 'uid1'), true);
+    const d = db._docs.get('betaTesters/a@b.com');
+    assert.strictEqual(d.status, 'applied');
+    assert.strictEqual(d.uid, 'uid1');
+    assert.strictEqual(d.activatedAt, undefined);
+  });
+
+  await ok('a declined applicant who signs up stays declined', async () => {
+    const db = makeDb({ 'betaTesters/a@b.com': tester({ status: 'declined' }) });
+    await B.markBetaActivated(db, 'a@b.com', 'uid1');
+    const d = db._docs.get('betaTesters/a@b.com');
+    assert.strictEqual(d.status, 'declined');
+    assert.strictEqual(d.uid, 'uid1');
+  });
+
   await ok('activation never demotes someone already completed', async () => {
     const db = makeDb({ 'betaTesters/a@b.com': tester({ status: 'completed' }) });
     await B.markBetaActivated(db, 'a@b.com', 'uid1');

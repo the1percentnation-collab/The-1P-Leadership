@@ -147,6 +147,8 @@
     }
     .beta-consent input { width: auto; margin-top: 2px; accent-color: var(--red); }
     .beta-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .beta-hint { font-size: 12px; font-weight: 300; color: var(--gray-400); line-height: 1.5; margin-top: 6px; }
+    .beta-hint a, .beta-msg a { color: inherit; text-decoration: underline; }
     .beta-msg { font-size: 13px; line-height: 1.5; }
     .beta-msg.err { color: #ff6b6d; }
     .beta-done { display: none; padding: 8px 0; }
@@ -229,7 +231,8 @@
       <div class="beta-panel-title">APPLY TO <span class="red">BETA TEST.</span></div>
       <div class="beta-done" id="beta-done">
         <div class="t">YOU'RE ON <span class="red">THE LIST.</span></div>
-        <p>You are on the list for every course in beta. Anthony will reach out personally by email when a course opens to testers, with access details and what to look at first.</p>
+        <p id="beta-done-text">You are on the list for every course in beta. Anthony will reach out personally by email when a course opens to testers, with access details and what to look at first.</p>
+        <p id="beta-done-cta" style="margin-top:16px;"></p>
       </div>
       <form class="beta-form" id="beta-form" novalidate>
         <div>
@@ -240,10 +243,16 @@
           <label for="beta-email">Email</label>
           <input id="beta-email" type="email" autocomplete="email" maxlength="160" required>
         </div>
-        <div class="full">
+        <div id="beta-password-wrap">
+          <label for="beta-password">Create a password</label>
+          <input id="beta-password" type="password" autocomplete="new-password" minlength="8" maxlength="128">
+          <div class="beta-hint">8+ characters. Applying creates your member account, so your courses and books are waiting there when you're approved.</div>
+        </div>
+        <div id="beta-phone-wrap">
           <label for="beta-phone">Phone (optional)</label>
           <input id="beta-phone" type="tel" autocomplete="tel" maxlength="40">
         </div>
+        <div class="full beta-hint" id="beta-signed-in" hidden></div>
         <div class="full">
           <label for="beta-why">Why you'd be a good tester</label>
           <textarea id="beta-why" maxlength="600" placeholder="What are you working on, and which topics matter most to you? A sentence or two is plenty."></textarea>
