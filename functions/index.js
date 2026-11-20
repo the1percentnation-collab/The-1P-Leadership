@@ -6955,8 +6955,29 @@ async function markBetaGranted(db, email, { slug, slugs, grantedBy, note, applie
   });
 }
 
-/** onUserCreated hook: the tester now has an account. */
+/**
+ * onUserCreated hook: the tester now has an account.
+ *
+ * `active` means approved AND signed up, so only a granted tester moves.
+ * Applying now creates the account in the same step, which means most
+ * applicants have one before anybody has looked at them. Promoting those
+ * would empty the Applicants queue and, worse, make the approve branch read
+ * their wanted courses as already held and grant nothing. Anyone still
+ * waiting on a decision just gets the account linked to their record.
+ */
 async function markBetaActivated(db, email, uid) {
+  const ref = betaTesterRef(db, email);
+  if (!ref) return false;
+  const snap = await ref.get();
+  if (!snap.exists) return false;
+  const current = snap.data().status || 'applied';
+  if ((BETA_STATUS_RANK[current] || 0) < BETA_STATUS_RANK.granted) {
+    await ref.set({
+      uid: uid || null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    return true;
+  }
   return advanceBetaStatus(db, email, 'active', {
     uid: uid || null,
     activatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -16222,8 +16243,17 @@ exports.submitLeadForm = onCall({ secrets: [sendgridKey] }, async (request) => {
   // A beta application is also a cohort record, not just a lead. Best-effort:
   // the lead is already saved, so a failure here must not fail the form.
   if (formType === 'beta-tester') {
+    // The beta form creates (or signs into) the applicant's account before it
+    // submits, so a signed-in caller whose verified address is the one on the
+    // form is the account holder. Link it here rather than relying on
+    // onUserCreated, which can run before this record exists. The flag goes
+    // on the owner's alert so "do they have a login?" never needs a lookup.
+    const authEmail = normalizeEmail(request.auth && request.auth.token && request.auth.token.email);
+    const accountUid = authEmail && authEmail === email ? request.auth.uid : null;
+    fields.account = accountUid ? 'yes, created or signed in' : 'no';
     try {
       await recordBetaApplication(db, { name, email, phone, fields, crmContactId: ref.id });
+      if (accountUid) await markBetaActivated(db, email, accountUid);
     } catch (e) {
       console.error('[submitLeadForm] beta record failed:', e && e.message);
     }
