@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBH536HRZE"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-RBH536HRZE");
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Free Financial Consultation | The One Percent Nation</title>
+  <meta name="description" content="Book a free, no-pressure Zoom consultation with Anthony Brown Sr. Choose a financial strategy session, a life insurance review, or a conversation about joining the Aligned Wealth team.">
+  <link rel="canonical" href="https://the1pnation.com/free-consultation">
+  <meta property="og:title" content="Free Financial Consultation">
+  <meta property="og:image" content="https://the1pnation.com/assets/og-default.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="The One Percent Nation. Redefining Success. Realigning Purpose. Releasing Potential.">
+  <meta property="og:site_name" content="The One Percent Nation">
+  <meta name="twitter:image" content="https://the1pnation.com/assets/og-default.jpg">
+  <meta property="og:description" content="Book a free, no-pressure Zoom consultation with Anthony Brown Sr. Choose a financial strategy session, a life insurance review, or a conversation about joining the Aligned Wealth team.">
+  <meta property="og:url" content="https://the1pnation.com/free-consultation">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Free Financial Consultation">
+  <meta name="twitter:description" content="Book a free, no-pressure Zoom consultation with Anthony Brown Sr. Choose a financial strategy session, a life insurance review, or a conversation about joining the Aligned Wealth team.">
+  <link rel="icon" type="image/jpeg" href="/assets/favicon.jpg">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/assets/brand-icon-512.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/site.css">
+  <script>
+    /* Arm the reveal animations for motion-OK visitors. site-fx.js confirms by
+       setting window.__1pFx; if it never loads, nothing stays hidden. */
+    (function () {
+      try {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) return;
+        var d = document.documentElement;
+        d.classList.add('anim');
+        setTimeout(function () { if (!window.__1pFx) d.classList.remove('anim'); }, 3000);
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    /* Free consultation page. Visitors pick a consultation type and the
+       matching Zoom Scheduler calendar loads inline, right under the picker. */
+    .fc-types { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 0; padding: 0; }
+    .fc-type {
+      font: inherit; text-align: left; color: var(--white); cursor: pointer;
+      background: var(--charcoal); border: 1px solid var(--line); border-radius: 10px;
+      padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 10px;
+      transition: border-color .2s, box-shadow .3s, transform .2s;
+    }
+    .fc-type:hover { border-color: var(--red-line); }
+    .fc-type:focus-visible { outline: 2px solid var(--red); outline-offset: 3px; }
+    .fc-type[aria-selected="true"] { border-color: var(--red); box-shadow: 0 20px 60px -24px rgba(230, 3, 6, 0.55); }
+    .fc-type .fc-meta { font-family: var(--font-mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--gray-500); display: flex; justify-content: space-between; gap: 10px; }
+    .fc-type[aria-selected="true"] .fc-meta { color: var(--red); }
+    .fc-type .fc-name { font-family: var(--font-display); font-size: clamp(28px, 2.6vw, 36px); line-height: .95; }
+    .fc-type .fc-desc { color: var(--gray-300); font-size: 15px; line-height: 1.5; }
+    .fc-type .fc-pick { margin-top: auto; padding-top: 6px; font-size: 14px; font-weight: 600; color: var(--gray-300); }
+    .fc-type[aria-selected="true"] .fc-pick { color: var(--white); }
+
+    .fc-panel { margin-top: 28px; background: var(--charcoal); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    .fc-panel-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 20px; padding: 18px 22px; border-bottom: 1px solid var(--line); }
+    .fc-panel-head .fc-now { font-family: var(--font-mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--gray-500); }
+    .fc-panel-head .fc-now b { color: var(--white); font-weight: 700; }
+    .fc-panel-head a { color: var(--gray-300); font-size: 13px; }
+    .fc-frame { display: block; width: 100%; height: 760px; border: 0; background: #fff; }
+
+    .fc-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .fc-step { border-top: 1px solid var(--line-strong); padding-top: 16px; }
+    .fc-step .n { font-family: var(--font-mono); font-size: 12px; color: var(--red); letter-spacing: .12em; }
+    .fc-step h3 { font-family: var(--font-display); font-weight: 400; font-size: 28px; margin: 8px 0 6px; }
+    .fc-step p { color: var(--gray-300); margin: 0; }
+    .fc-fine { color: var(--gray-500); font-size: 13px; line-height: 1.6; max-width: 80ch; margin: 28px 0 0; }
+
+    @media (max-width: 900px) {
+      .fc-types, .fc-steps { grid-template-columns: 1fr; }
+      .fc-type { padding: 18px; }
+      .fc-frame { height: 900px; }
+    }
+  </style>
+</head>
+<body>
+<div id="page-sweep" class="cover" aria-hidden="true"></div>
+<header class="nav band" id="nav">
+  <div class="wrap nav-bar">
+    <a class="logo" href="/" aria-label="The One Percent Nation home">
+      <img src="/assets/favicon.jpg" alt="" width="38" height="38">
+      <span class="logo-text"><span class="l1">THE ONE PERCENT</span><span class="l2">NATION</span></span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="/corporate">For Organizations</a></li>
+      <li><a href="/start">For Individuals</a></li>
+      <li><a href="/clc">Become a Coach</a></li>
+      <li><a href="/about">About</a></li>
+      <li><a href="/books">Books</a></li>
+      <li><a href="/beta">Beta Testers</a></li>
+    </ul>
+    <div class="nav-right">
+      <a class="btn-portal" href="/login.html">Member Portal</a>
+      <a class="btn-cta-nav" href="/corporate#audit">Free Alignment Audit</a>
+      <button class="burger" id="burger" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu"><span></span><span></span><span></span></button>
+    </div>
+  </div>
+  <nav class="mobile-menu" id="mobile-menu" aria-label="Mobile">
+    <a class="m-link" href="/corporate">For Organizations</a>
+    <a class="m-link" href="/start">For Individuals</a>
+    <a class="m-link" href="/clc">Become a Coach</a>
+    <a class="m-link" href="/about">About</a>
+    <a class="m-link" href="/books">Books</a>
+    <a class="m-link" href="/beta">Become a Beta Tester</a>
+    <div class="m-actions">
+      <a class="btn btn-red" href="/login.html">Member Portal</a>
+      <a class="btn btn-ghost" href="/corporate#audit">Book a Free Alignment Audit</a>
+    </div>
+  </nav>
+</header>
+
+
+<main id="top">
+
+<section class="hero hero--page band" data-particles>
+  <div class="hero-bg"></div>
+  <div class="hero-gridlines"></div>
+  <div class="hero-spotlight"></div>
+  <img class="hero-watermark" src="/assets/favicon.jpg" alt="" aria-hidden="true">
+  <div class="wrap">
+    <div>
+      <div class="hero-eyebrow"><span class="tag">Aligned Wealth &middot; Free Consultation</span></div>
+      <h1 class="display hero-title h-xl">
+        <span class="line">Align your <span class="red">money</span></span>
+        <span class="line">with your life.</span>
+      </h1>
+      <span class="hero-title-line"></span>
+      <p class="lede hero-reveal">A free, no-pressure conversation with Anthony Brown Sr. about where your money is today and where you want it to go. Pick the conversation that fits, choose a time, and the Zoom link lands in your inbox.</p>
+      <div class="hero-actions hero-reveal">
+        <a class="btn btn-red" href="#book">Choose a time &rarr;</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section band" id="book">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <span class="tag">Step 1 &middot; Pick your conversation</span>
+        <h2 class="display h-md">What do you want to talk about?</h2>
+      </div>
+      <p>Every option is free and happens on Zoom. Choose one and its calendar opens right below.</p>
+    </div>
+
+    <div class="fc-types" role="tablist" aria-label="Consultation type" id="fc-types">
+      <button class="fc-type" type="button" role="tab" id="tab-strategy" data-type="strategy" aria-selected="true" aria-controls="fc-panel">
+        <span class="fc-meta"><span>Free &middot; Zoom</span><span>30 min</span></span>
+        <span class="fc-name">Financial Strategy Session</span>
+        <span class="fc-desc">Talk through your goals, what you have in place today, and the gaps between the two. You leave with a clearer picture and next steps, whether or not we work together.</span>
+        <span class="fc-pick">Selected</span>
+      </button>
+      <button class="fc-type" type="button" role="tab" id="tab-insurance" data-type="insurance" aria-selected="false" aria-controls="fc-panel" tabindex="-1">
+        <span class="fc-meta"><span>Free &middot; Zoom</span><span>45 min</span></span>
+        <span class="fc-name">Life Insurance Review</span>
+        <span class="fc-desc">Already have a policy, or not sure you have the right one? We walk through what you have, what it covers, and what your family would actually need.</span>
+        <span class="fc-pick">Choose this</span>
+      </button>
+      <button class="fc-type" type="button" role="tab" id="tab-career" data-type="career" aria-selected="false" aria-controls="fc-panel" tabindex="-1">
+        <span class="fc-meta"><span>Free &middot; Zoom</span><span>30 min</span></span>
+        <span class="fc-name">Join the Team</span>
+        <span class="fc-desc">Curious about a career in financial services? Learn what the work looks like, how licensing works, and whether the Aligned Wealth team is a fit for you.</span>
+        <span class="fc-pick">Choose this</span>
+      </button>
+    </div>
+
+    <div class="fc-panel" id="fc-panel" role="tabpanel" aria-labelledby="tab-strategy">
+      <div class="fc-panel-head">
+        <span class="fc-now">Step 2 &middot; Booking: <b id="fc-now-name">Financial Strategy Session</b></span>
+        <a id="fc-fallback" href="#" target="_blank" rel="noopener">Calendar not loading? Open it in a new tab &rarr;</a>
+      </div>
+      <iframe class="fc-frame" id="fc-frame" title="Book a Financial Strategy Session" src="" allow="clipboard-write" loading="lazy"></iframe>
+    </div>
+  </div>
+</section>
+
+<section class="section section--tight band">
+  <div class="wrap">
+    <div class="fc-steps">
+      <div class="fc-step">
+        <span class="n">01</span>
+        <h3>Pick a time</h3>
+        <p>Choose the conversation and a time that works. You get a confirmation email with the Zoom link right away.</p>
+      </div>
+      <div class="fc-step">
+        <span class="n">02</span>
+        <h3>We talk</h3>
+        <p>Bring your questions. There is nothing to prepare and nothing to buy. It is a conversation, not a pitch.</p>
+      </div>
+      <div class="fc-step">
+        <span class="n">03</span>
+        <h3>You decide</h3>
+        <p>You leave with a clearer picture and your next steps. What you do with it is up to you.</p>
+      </div>
+    </div>
+    <p class="fc-fine">Consultations are free, educational, and carry no obligation to purchase. Insurance products are offered only in states where Anthony Brown is licensed. No securities or investment advisory services are offered through this page.</p>
+  </div>
+</section>
+
+</main>
+
+
+<footer class="site-footer band" id="footer">
+  <div class="wrap">
+    <div class="foot-top">
+      <div class="foot-brand">
+        <a class="logo" href="/"><img src="/assets/favicon.jpg" alt="" width="38" height="38"><span class="logo-text"><span class="l1">THE ONE PERCENT</span><span class="l2">NATION</span></span></a>
+        <p>Redefining Success. Realigning Purpose. Releasing Potential. Weekly insights on mindset, leadership, and execution.</p>
+        <form class="nl" id="nl-form" novalidate>
+          <label class="sr-only" for="nl-email">Email address</label>
+          <input id="nl-email" type="email" placeholder="Your email address" autocomplete="email">
+          <button class="btn btn-red" type="submit">Subscribe</button>
+        </form>
+        <div class="nl-msg" id="nl-msg" aria-live="polite">No spam. Unsubscribe anytime.</div>
+        <div class="socials">
+          <a href="https://www.facebook.com/TheOnePercentNation" target="_blank" rel="noopener" aria-label="Facebook">f</a>
+          <a href="https://www.instagram.com/theonepercentnation" target="_blank" rel="noopener" aria-label="Instagram">ig</a>
+          <a href="https://www.linkedin.com/in/anthony-brown-20040a130" target="_blank" rel="noopener" aria-label="LinkedIn">in</a>
+        </div>
+      </div>
+      <div class="foot-col">
+        <h4>Organizations</h4>
+        <a href="/corporate">Corporate Programs</a>
+        <a href="/corporate#programs">Signature Programs</a>
+        <a href="/corporate#audit">Alignment Audit</a>
+        <a href="/coaches.html">Find a Certified Coach</a>
+      </div>
+      <div class="foot-col">
+        <h4>Individuals</h4>
+        <a class="is-key" href="/login.html">Member Portal</a>
+        <a href="/membership">Become a Member</a>
+        <a href="/assessments">Free Assessments</a>
+        <a href="/start#courses">Courses</a>
+        <a href="/books">Books</a>
+        <a href="/webinar.html">Live Webinars</a>
+        <a href="/matrix.html">The Social Media Matrix</a>
+        <a href="/goal-planning.html">Goal Planner</a>
+      </div>
+      <div class="foot-col">
+        <h4>Company</h4>
+        <a href="/about">About</a>
+        <a href="/clc">Become a Coach</a>
+        <a href="/book-a-call.html">Book a Call</a>
+        <a href="/financial-services.html">Financial Services</a>
+        <a href="/contact-us.html">Contact</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>&copy; <span id="yr">2026</span> The One Percent Nation. All rights reserved.</span>
+      <nav aria-label="Legal"><a href="/privacy.html">Privacy Policy</a><a href="/terms.html">Terms of Service</a><a href="/contact-us.html">Contact</a></nav>
+    </div>
+  </div>
+</footer>
+<script>document.getElementById("yr").textContent = new Date().getFullYear();</script>
+<script src="/assets/site-fx.js" defer></script>
+<script type="module">
+  import { init as initChatbot } from "/js/chatbot.js";
+  initChatbot();
+</script>
+<script type="module" src="/js/free-consultation.js"></script>
+<script src="/js/consent-banner.js" defer></script>
+<script type="module" src="/js/newsletter-lead.js"></script>
+</body>
+</html>
